@@ -42,6 +42,7 @@
         "changelog_update": null,
         "dependencies_update": null,
         "features_always_increment_minor": null,
+        "git_only": null,
         "git_release_body": null,
         "git_release_draft": null,
         "git_release_enable": null,
@@ -288,6 +289,14 @@
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
           "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases. - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_only": {
+          "title": "Git-only Mode",
+          "description": "Whether to use git tags instead of the Cargo registry to determine package versions.",
           "type": [
             "boolean",
             "null"
@@ -542,6 +551,14 @@
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
           "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases. - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_only": {
+          "title": "Git-only Mode",
+          "description": "Whether to use git tags instead of the Cargo registry to determine package versions.",
           "type": [
             "boolean",
             "null"

@@ -20,6 +20,7 @@ mod project;
 mod registry_packages;
 mod release_order;
 mod repo_url;
+mod repo_versions;
 mod semver_check;
 mod tera;
 mod tmp_repo;

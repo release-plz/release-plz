@@ -284,6 +284,10 @@ pub struct PackageConfig {
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
+    /// # Git-only Mode
+    /// Whether to use git tags instead of the Cargo registry to determine
+    /// package versions.
+    pub git_only: Option<bool>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea release for the created git tag.
     /// Enabled by default.
@@ -339,6 +343,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
         Self {
             semver_check: config.semver_check != Some(false),
             changelog_update: config.changelog_update != Some(false),
+            git_only: config.git_only == Some(true),
             release: config.release != Some(false),
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
@@ -367,6 +372,7 @@ impl PackageConfig {
             features_always_increment_minor: self
                 .features_always_increment_minor
                 .or(default.features_always_increment_minor),
+            git_only: self.git_only.or(default.git_only),
             git_release_enable: self.git_release_enable.or(default.git_release_enable),
             git_release_type: self.git_release_type.or(default.git_release_type),
             git_release_draft: self.git_release_draft.or(default.git_release_draft),
@@ -470,6 +476,7 @@ mod tests {
                 packages_defaults: PackageConfig {
                     semver_check: None,
                     changelog_update: None,
+                    git_only: None,
                     git_release_enable: Some(true),
                     git_release_type: Some(ReleaseType::Prod),
                     git_release_draft: Some(false),
@@ -495,6 +502,7 @@ mod tests {
                 common: PackageConfig {
                     semver_check: None,
                     changelog_update: None,
+                    git_only: None,
                     git_release_enable: None,
                     git_release_type: None,
                     git_release_draft: None,
@@ -597,6 +605,7 @@ mod tests {
                 packages_defaults: PackageConfig {
                     semver_check: None,
                     changelog_update: true.into(),
+                    git_only: None,
                     git_release_enable: true.into(),
                     git_release_type: Some(ReleaseType::Prod),
                     git_release_draft: Some(false),
@@ -614,6 +623,7 @@ mod tests {
                     common: PackageConfig {
                         semver_check: Some(false),
                         changelog_update: true.into(),
+                        git_only: None,
                         git_release_enable: true.into(),
                         git_release_type: Some(ReleaseType::Prod),
                         git_release_draft: Some(false),

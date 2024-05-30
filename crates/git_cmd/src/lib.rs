@@ -304,6 +304,24 @@ impl Repo {
         self.git(&["rev-list", "-n", "1", tag]).ok()
     }
 
+    /// Returns a `Vec` of all tags in the repository, sorted with tag names treated as versions,
+    /// or `None` if the repository has no tags.
+    ///
+    /// default sort order: first item is the oldest (smallest version), last item is the newest (biggest version)
+    /// if reverse is set to true, the order is reversed.
+    pub fn get_tags_version_sorted(&self, reverse: bool) -> Option<Vec<String>> {
+        let key = if reverse { "-v:refname" } else { "v:refname" };
+        match self
+            .git(&["tag", "--list", "--sort", key])
+            .ok()
+            .map(|output| output.trim().to_owned())
+        {
+            None => None,
+            Some(output) if output.is_empty() => None,
+            Some(output) => Some(output.lines().map(|line| line.to_owned()).collect()),
+        }
+    }
+
     /// Check if a commit comes before another one.
     ///
     /// ## Example

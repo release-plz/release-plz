@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Context;
-use cargo_metadata::{camino::Utf8Path, Package};
+use cargo_metadata::{camino::Utf8PathBuf, Package};
 use git_cmd::git_in_dir;
 use itertools::Itertools;
 use tempfile::{tempdir, TempDir};
@@ -46,7 +46,7 @@ impl PackagesCollection {
 /// - If `registry` is provided, the packages are downloaded from the specified registry.
 /// - Otherwise, the packages are downloaded from crates.io.
 pub fn get_registry_packages(
-    registry_manifest: Option<&Utf8Path>,
+    registry_manifest: Option<Utf8PathBuf>,
     local_packages: &[&Package],
     registry: Option<&str>,
 ) -> anyhow::Result<PackagesCollection> {
