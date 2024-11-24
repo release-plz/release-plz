@@ -938,9 +938,8 @@ impl Updater<'_> {
 
             // Check if files changed in git commit belong to the current package.
             // This is required because a package can contain another package in a subdirectory.
-            let are_changed_files_in_pkg = || {
-                self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
-            };
+            let are_changed_files_in_pkg =
+                || are_changed_files_in_package(package_path, repository, &current_commit_hash);
 
             if let Some(registry_package) = registry_package {
                 debug!(
@@ -949,7 +948,7 @@ impl Updater<'_> {
                 );
                 let registry_package_path = registry_package.package.package_path()?;
 
-                let are_packages_equal = self.check_package_equality(
+                let are_packages_equal = check_package_equality(
                     repository,
                     package,
                     package_path,
@@ -1007,33 +1006,6 @@ impl Updater<'_> {
         Ok(())
     }
 
-    fn check_package_equality(
-        &self,
-        repository: &Repo,
-        package: &Package,
-        package_path: &Utf8Path,
-        registry_package_path: &Utf8Path,
-    ) -> anyhow::Result<bool> {
-        if is_readme_updated(&package.name, package_path, registry_package_path)? {
-            debug!("{}: README updated", package.name);
-            return Ok(false);
-        }
-        // We run `cargo package` when comparing packages, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = are_packages_equal(package_path, registry_package_path)
-            .context("cannot compare packages")?;
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
-        Ok(are_packages_equal)
-    }
-
     fn add_dependencies_update_if_any(
         &self,
         diff: &mut Diff,
@@ -1064,17 +1036,6 @@ impl Updater<'_> {
             info!("{}: already up to date", package.name);
         }
         Ok(())
-    }
-
-    fn get_cargo_lock_path(&self, repository: &Repo) -> anyhow::Result<Option<String>> {
-        let project_cargo_lock = self.project.cargo_lock_path();
-        let relative_lock_path = strip_prefix(&project_cargo_lock, self.project.root())?;
-        let repository_cargo_lock = repository.directory().join(relative_lock_path);
-        if repository_cargo_lock.exists() {
-            Ok(Some(repository_cargo_lock.to_string()))
-        } else {
-            Ok(None)
-        }
     }
 
     fn get_next_version(
@@ -1110,39 +1071,83 @@ impl Updater<'_> {
         };
         Ok(next_version)
     }
+}
 
-    /// `hash` is only used for logging purposes.
-    fn are_changed_files_in_package(
-        &self,
-        package_path: &Utf8Path,
-        repository: &Repo,
-        hash: &str,
-    ) -> anyhow::Result<bool> {
-        // We run `cargo package` to get package files, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let package_files_res = get_package_files(package_path, repository);
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
+/// `hash` is only used for logging purposes.
+fn are_changed_files_in_package(
+    package_path: &Utf8Path,
+    repository: &Repo,
+    hash: &str,
+) -> anyhow::Result<bool> {
+    // We run `cargo package` to get package files, which can edit files, such as `Cargo.lock`.
+    // Store its path so it can be reverted after comparison.
+    let cargo_lock_path = get_cargo_lock_path(package_path, repository)
+        .context("failed to determine Cargo.lock path")?;
+    let package_files_res = get_package_files(package_path, repository);
+    if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
+        // Revert any changes to `Cargo.lock`
+        repository
+            .checkout(cargo_lock_path)
+            .context("cannot revert changes introduced when comparing packages")?;
+    }
+    let Ok(package_files) = package_files_res.inspect_err(|e| {
+        debug!("failed to get package files at commit {hash}: {e:?}");
+    }) else {
+        // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
+        return Ok(true);
+    };
+    let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
+        warn!("failed to get changed files of commit {hash}: {e:?}");
+    }) else {
+        // Assume that this commit contains changes to the package.
+        return Ok(true);
+    };
+    Ok(!package_files.is_disjoint(&changed_files))
+}
+
+fn check_package_equality(
+    repository: &Repo,
+    package: &Package,
+    package_path: &Utf8Path,
+    registry_package_path: &Utf8Path,
+) -> anyhow::Result<bool> {
+    if is_readme_updated(&package.name, package_path, registry_package_path)? {
+        debug!("{}: README updated", package.name);
+        return Ok(false);
+    }
+    // We run `cargo package` when comparing packages, which can edit files, such as `Cargo.lock`.
+    // Store its path so it can be reverted after comparison.
+    let cargo_lock_path = get_cargo_lock_path(package_path, repository)
+        .context("failed to determine Cargo.lock path")?;
+    let are_packages_equal = are_packages_equal(package_path, registry_package_path)
+        .context("cannot compare packages")?;
+    if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
+        // Revert any changes to `Cargo.lock`
+        repository
+            .checkout(cargo_lock_path)
+            .context("cannot revert changes introduced when comparing packages")?;
+    }
+    Ok(are_packages_equal)
+}
+
+fn get_cargo_lock_path(
+    package_path: &Utf8Path,
+    repository: &Repo,
+) -> anyhow::Result<Option<String>> {
+    let mut next_dir = package_path;
+    loop {
+        let check_path = next_dir.join("Cargo.lock");
+        if check_path.exists() {
+            return Ok(Some(check_path.to_string()));
         }
-        let Ok(package_files) = package_files_res.inspect_err(|e| {
-            debug!("failed to get package files at commit {hash}: {e:?}");
-        }) else {
-            // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
-            return Ok(true);
-        };
-        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
-            warn!("failed to get changed files of commit {hash}: {e:?}");
-        }) else {
-            // Assume that this commit contains changes to the package.
-            return Ok(true);
-        };
-        Ok(!package_files.is_disjoint(&changed_files))
+        if next_dir == repository.directory() {
+            return Ok(None);
+        }
+        if let Some(parent_dir) = next_dir.parent() {
+            next_dir = parent_dir;
+        } else {
+            return Ok(None);
+        }
     }
 }
 
