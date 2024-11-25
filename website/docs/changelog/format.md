@@ -77,6 +77,7 @@ You can use the following context in the template:
       "group": "<type> (overridden by commit_parsers)",
       "scope": "[scope]",
       "message": "<description>",
+      "raw_message": "<type>[scope]: <description>\n[body]\n[footer(s)]",
       "body": "[body]",
       "footers": [
         {
