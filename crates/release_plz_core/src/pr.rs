@@ -6,6 +6,16 @@ use chrono::SecondsFormat;
 
 pub const DEFAULT_BRANCH_PREFIX: &str = "release-plz-";
 pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
+pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"## 🤖 New release{{ summary }}
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+{{ changes }}
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#;
 
 #[derive(Debug)]
 pub struct Pr {
@@ -135,29 +145,29 @@ fn pr_body_default(
     packages_to_update: &PackagesUpdate,
     project_contains_multiple_pub_packages: bool,
 ) -> String {
-    let header = "## 🤖 New release";
+    let mut context = tera::Context::new();
+    context.insert("summary", &packages_to_update.summary());
+    context.insert(
+        "changes",
+        &packages_to_update.changes(project_contains_multiple_pub_packages),
+    );
 
-    let summary = packages_to_update.summary();
-    let changes = {
-        let changes = packages_to_update.changes(project_contains_multiple_pub_packages);
-        format!(
-            "<details><summary><i><b>Changelog</b></i></summary><p>\n\n{changes}\n</p></details>\n"
-        )
-    };
-
-    let footer =
-        "---\nThis PR was generated with [release-plz](https://github.com/release-plz/release-plz/).";
-    let mut formatted = format!("{header}{summary}\n{changes}\n{footer}");
+    let formatted = render_template(DEFAULT_PR_BODY_TEMPLATE, &context, "pr_body");
 
     // Make sure we don't go over the Github API's limit for PR body size
     if formatted.chars().count() > MAX_BODY_LEN {
         tracing::info!(
             "PR body is longer than {MAX_BODY_LEN} characters. Omitting full changelog."
         );
-        formatted = format!("{header}{summary}\n{footer}");
-    }
+        // create simplified version without changelog
+        let simplified_template = r#"## 🤖 New release{{ summary }}
 
-    trim_pr_body(formatted)
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#;
+        render_template(simplified_template, &context, "pr_body")
+    } else {
+        formatted
+    }
 }
 
 fn trim_pr_body(body: String) -> String {
