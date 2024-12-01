@@ -9,19 +9,19 @@ use tempfile::{tempdir, TempDir};
 use crate::{cargo_vcs_info, download, next_ver, PackagePath};
 
 pub struct PackagesCollection {
-    packages: BTreeMap<String, RegistryPackage>,
+    packages: BTreeMap<String, PublishedPackage>,
     /// Packages might be downloaded and stored in a temporary directory.
     /// The directory is stored here so that it is deleted on drop
     _temp_dir: Option<TempDir>,
 }
 
-pub struct RegistryPackage {
+pub struct PublishedPackage {
     pub package: Package,
     /// The SHA1 hash of the commit when the package was published.
     sha1: Option<String>,
 }
 
-impl RegistryPackage {
+impl PublishedPackage {
     pub fn published_at_sha1(&self) -> Option<&str> {
         self.sha1.as_deref()
     }
@@ -32,7 +32,7 @@ impl PackagesCollection {
         self.packages.get(package_name).map(|p| &p.package)
     }
 
-    pub fn get_registry_package(&self, package_name: &str) -> Option<&RegistryPackage> {
+    pub fn get_published_package(&self, package_name: &str) -> Option<&PublishedPackage> {
         self.packages.get(package_name)
     }
 }
@@ -55,7 +55,7 @@ pub fn get_registry_packages(
             None,
             next_ver::publishable_packages_from_manifest(manifest)?
                 .into_iter()
-                .map(|p| RegistryPackage {
+                .map(|p| PublishedPackage {
                     package: p,
                     sha1: None,
                 })
@@ -98,7 +98,7 @@ pub fn get_registry_packages(
             (Some(temp_dir), registry_packages)
         }
     };
-    let registry_packages: BTreeMap<String, RegistryPackage> = registry_packages
+    let registry_packages: BTreeMap<String, PublishedPackage> = registry_packages
         .into_iter()
         .map(|c| {
             let package_name = c.package.name.clone();
@@ -111,7 +111,7 @@ pub fn get_registry_packages(
     })
 }
 
-fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<RegistryPackage>> {
+fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<PublishedPackage>> {
     let mut registry_packages = vec![];
     for p in packages {
         let package_path = p.package_path().unwrap();
@@ -141,7 +141,7 @@ fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<Reg
                 }
             }
         }
-        registry_packages.push(RegistryPackage { package: p, sha1 });
+        registry_packages.push(PublishedPackage { package: p, sha1 });
     }
     Ok(registry_packages)
 }

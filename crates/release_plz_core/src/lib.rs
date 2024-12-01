@@ -17,7 +17,7 @@ mod package_path;
 mod pr;
 mod pr_parser;
 mod project;
-mod registry_packages;
+mod published_packages;
 mod release_order;
 mod repo_url;
 mod semver_check;
