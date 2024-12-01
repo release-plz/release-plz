@@ -9,7 +9,7 @@ use crate::{
     is_readme_updated, local_readme_override, lock_compare,
     package_compare::are_packages_equal,
     package_path::{manifest_dir, PackagePath},
-    registry_packages::{self, PackagesCollection, RegistryPackage},
+    published_packages::{self, PackagesCollection, PublishedPackage},
     repo_url::RepoUrl,
     repo_versions::get_the_latest_repo_tag,
     semver_check::{self, SemverCheck},
@@ -443,13 +443,13 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
                 .context("failed to fetch registry manifest from git")?,
         )
     } else {
-        input.registry_manifest.clone()
+        input.registry_manifest.as_deref()
     };
 
     // Retrieve the latest published version of the packages.
     // Release-plz will compare the registry packages with the local packages,
     // to determine the new commits.
-    let registry_packages = registry_packages::get_registry_packages(
+    let registry_packages = published_packages::get_registry_packages(
         registry_manifest_path,
         &local_project.publishable_packages(),
         input.registry.as_deref(),
@@ -461,10 +461,10 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     Ok((packages_to_update, repository))
 }
 
-fn fetch_registry_manifest_from_git(
+fn fetch_registry_manifest_from_git<'i>(
     repository: &TempRepo,
-    input: &UpdateRequest,
-) -> anyhow::Result<Utf8PathBuf> {
+    input: &'i UpdateRequest,
+) -> anyhow::Result<&'i Utf8Path> {
     debug!("git-only feature is enabled, and no registry manifest supplied. Will try to fetch the manifest from the latest tag");
     match get_the_latest_repo_tag(&repository.repo) {
         Some(tag) => {
@@ -479,7 +479,7 @@ fn fetch_registry_manifest_from_git(
             // as the local manifest for this one, so we will use `local_manifest` here.
             // 3. use it to override the `None` value for `registry_manifest`:
             repository.repo.checkout(&tag)?;
-            Ok(input.local_manifest.clone())
+            Ok(&input.local_manifest)
         }
         None => unimplemented!("no tag found. In this case, release v0.1.0"),
     }
@@ -938,7 +938,7 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
-        let registry_package = registry_packages.get_registry_package(&package.name);
+        let registry_package = registry_packages.get_published_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
@@ -984,7 +984,7 @@ impl Updater<'_> {
         &self,
         package_path: &Utf8Path,
         package: &Package,
-        registry_package: Option<&RegistryPackage>,
+        registry_package: Option<&PublishedPackage>,
         repository: &Repo,
         tag_commit: Option<&str>,
         diff: &mut Diff,
