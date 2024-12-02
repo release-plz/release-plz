@@ -1,5 +1,6 @@
 use cargo_metadata::camino::Utf8Path;
 use git_cmd::Repo;
+use std::ops::Deref;
 
 use crate::fs_utils::Utf8TempDir;
 
@@ -15,5 +16,13 @@ impl TempRepo {
             _temp_dir: temp_dir,
             repo: Repo::new(directory)?,
         })
+    }
+}
+
+impl Deref for TempRepo {
+    type Target = Repo;
+
+    fn deref(&self) -> &Self::Target {
+        &self.repo
     }
 }

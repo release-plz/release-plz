@@ -9,7 +9,7 @@ use crate::{
     is_readme_updated, local_readme_override, lock_compare,
     package_compare::are_packages_equal,
     package_path::{manifest_dir, PackagePath},
-    registry_packages::{self, PackagesCollection, RegistryPackage},
+    published_packages::{self, PackagesCollection, PublishedPackage},
     repo_url::RepoUrl,
     semver_check::{self, SemverCheck},
     tmp_repo::TempRepo,
@@ -139,6 +139,9 @@ pub struct UpdateConfig {
     /// Whether to create/update changelog or not.
     /// Default: `true`.
     pub changelog_update: bool,
+    /// Whether to use git tags instead of the Cargo registry to determine package versions.
+    /// Default: `false`.
+    pub git_only: bool,
     /// High-level toggle to process this package or ignore it.
     pub release: bool,
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
@@ -167,6 +170,10 @@ impl PackageUpdateConfig {
     pub fn should_update_changelog(&self) -> bool {
         self.generic.changelog_update
     }
+
+    pub fn git_only(&self) -> bool {
+        self.generic.git_only
+    }
 }
 
 impl Default for UpdateConfig {
@@ -174,6 +181,7 @@ impl Default for UpdateConfig {
         Self {
             semver_check: true,
             changelog_update: true,
+            git_only: false,
             release: true,
             features_always_increment_minor: false,
             tag_name_template: None,
@@ -210,6 +218,10 @@ impl UpdateConfig {
     pub fn version_updater(&self) -> VersionUpdater {
         VersionUpdater::default()
             .with_features_always_increment_minor(self.features_always_increment_minor)
+    }
+
+    pub fn with_git_only(self, git_only: bool) -> Self {
+        Self { git_only, ..self }
     }
 }
 
@@ -406,14 +418,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         project: &local_project,
         req: input,
     };
-    // Retrieve the latest published version of the packages.
-    // Release-plz will compare the registry packages with the local packages,
-    // to determine the new commits.
-    let registry_packages = registry_packages::get_registry_packages(
-        input.registry_manifest.as_deref(),
-        &local_project.publishable_packages(),
-        input.registry.as_deref(),
-    )?;
 
     let repository = local_project
         .get_repo()
@@ -421,6 +425,31 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     if !input.allow_dirty {
         repository.repo.is_clean()?;
     }
+
+    // Retrieve the latest published version of the packages.
+    // Release-plz will compare the registry packages with the local packages,
+    // to determine the new commits.
+    let publishable_packages = local_project.publishable_packages();
+
+    let registry_published_packages = publishable_packages
+        .iter()
+        .copied()
+        .filter(|p| !input.packages_config.get(&p.name).git_only());
+
+    let git_only_published_packages = publishable_packages
+        .iter()
+        .copied()
+        .filter(|p| input.packages_config.get(&p.name).git_only());
+
+    let registry_packages = published_packages::get_latest_packages(
+        &local_project,
+        &repository,
+        registry_published_packages,
+        git_only_published_packages,
+        input.registry_manifest(),
+        input.registry.as_deref(),
+    )?;
+
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
         .await?;
@@ -880,7 +909,7 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
-        let registry_package = registry_packages.get_registry_package(&package.name);
+        let registry_package = registry_packages.get_published_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
@@ -926,7 +955,7 @@ impl Updater<'_> {
         &self,
         package_path: &Utf8Path,
         package: &Package,
-        registry_package: Option<&RegistryPackage>,
+        registry_package: Option<&PublishedPackage>,
         repository: &Repo,
         tag_commit: Option<&str>,
         diff: &mut Diff,
