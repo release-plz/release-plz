@@ -1,6 +1,5 @@
 use crate::helpers::test_context::TestContext;
 use cargo_utils::LocalManifest;
-use chrono::Local;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -332,5 +331,5 @@ fn move_readme(context: &TestContext, message: &str) {
 }
 
 fn today() -> String {
-    Local::now().format("%Y-%m-%d").to_string()
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
