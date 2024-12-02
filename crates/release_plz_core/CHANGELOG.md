@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.12](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.11...release_plz_core-v0.30.12) - 2024-12-02
+
+### Added
+
+- Enable `pr_labels` for GitLab backend ([#1879](https://github.com/release-plz/release-plz/pull/1879))
+- add raw_message to commit context ([#1867](https://github.com/release-plz/release-plz/pull/1867))
+
+### Other
+
+- *(deps)* update rust crate cargo_metadata to 0.19.0 ([#1847](https://github.com/release-plz/release-plz/pull/1847))
+
 ## [0.30.11](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.10...release_plz_core-v0.30.11) - 2024-11-21
 
 ### Added
