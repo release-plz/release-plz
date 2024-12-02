@@ -1,5 +1,4 @@
 use cargo_utils::LocalManifest;
-use chrono::Local;
 
 use crate::helpers::test_context::TestContext;
 
@@ -234,5 +233,5 @@ fn move_readme(context: &TestContext, message: &str) {
 }
 
 fn today() -> String {
-    Local::now().format("%Y-%m-%d").to_string()
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
