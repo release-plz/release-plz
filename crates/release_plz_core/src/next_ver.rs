@@ -11,7 +11,6 @@ use crate::{
     package_path::{manifest_dir, PackagePath},
     published_packages::{self, PackagesCollection, PublishedPackage},
     repo_url::RepoUrl,
-    repo_versions::get_the_latest_repo_tag,
     semver_check::{self, SemverCheck},
     tmp_repo::TempRepo,
     toml_compare::are_toml_dependencies_updated,
@@ -19,7 +18,7 @@ use crate::{
     ChangelogBuilder, PackagesToUpdate, PackagesUpdate, Project, Remote, CHANGELOG_FILENAME,
 };
 use crate::{GitBackend, GitClient};
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use cargo_metadata::TargetKind;
 use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
@@ -427,31 +426,27 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         repository.repo.is_clean()?;
     }
 
-    // if `git-only`, use the latest tag's cargo.toml, else use the given registry manifest.
-    let registry_manifest_path = if input.packages_config.default.git_only {
-        if input.registry_manifest.is_some() {
-            return Err(anyhow!("Both `git_only` and `registry_manifest` is supplied. This is conflicting behavior."));
-        }
-        if input.registry.is_some() {
-            return Err(anyhow!(
-                "Both `git_only` and `registry` is supplied. This is conflicting behavior."
-            ));
-        }
-
-        Some(
-            fetch_registry_manifest_from_git(&repository, input)
-                .context("failed to fetch registry manifest from git")?,
-        )
-    } else {
-        input.registry_manifest.as_deref()
-    };
-
     // Retrieve the latest published version of the packages.
     // Release-plz will compare the registry packages with the local packages,
     // to determine the new commits.
-    let registry_packages = published_packages::get_registry_packages(
-        registry_manifest_path,
-        &local_project.publishable_packages(),
+    let publishable_packages = local_project.publishable_packages();
+
+    let registry_published_packages = publishable_packages
+        .iter()
+        .copied()
+        .filter(|p| !input.packages_config.get(&p.name).git_only());
+
+    let git_only_published_packages = publishable_packages
+        .iter()
+        .copied()
+        .filter(|p| input.packages_config.get(&p.name).git_only());
+
+    let registry_packages = published_packages::get_latest_packages(
+        &local_project,
+        &repository,
+        registry_published_packages,
+        git_only_published_packages,
+        input.registry_manifest(),
         input.registry.as_deref(),
     )?;
 
@@ -459,30 +454,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
         .await?;
     Ok((packages_to_update, repository))
-}
-
-fn fetch_registry_manifest_from_git<'i>(
-    repository: &TempRepo,
-    input: &'i UpdateRequest,
-) -> anyhow::Result<&'i Utf8Path> {
-    debug!("git-only feature is enabled, and no registry manifest supplied. Will try to fetch the manifest from the latest tag");
-    match get_the_latest_repo_tag(&repository.repo) {
-        Some(tag) => {
-            // in the case of crates.io, `registry_manifest` represents the released
-            // package's cargo.toml file. However, since we are dealing with tags in git,
-            // `registry_manifest` is `None` at the moment so we need to set it to
-            // the latest tag's cargo.toml file
-
-            // TODO:
-            // 1. check out to `tag` in this repo
-            // 2. find the manifest (cargo.toml)'s path, we expect the same path
-            // as the local manifest for this one, so we will use `local_manifest` here.
-            // 3. use it to override the `None` value for `registry_manifest`:
-            repository.repo.checkout(&tag)?;
-            Ok(&input.local_manifest)
-        }
-        None => unimplemented!("no tag found. In this case, release v0.1.0"),
-    }
 }
 
 pub fn root_repo_path(local_manifest: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {

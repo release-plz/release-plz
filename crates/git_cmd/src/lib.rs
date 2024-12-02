@@ -236,6 +236,20 @@ impl Repo {
         Ok(())
     }
 
+    /// Adds a detached git worktree at the given path checked out at the given object.
+    pub fn add_worktree(&self, path: &Path, object: &str) -> anyhow::Result<()> {
+        self.git(&[
+            "worktree",
+            "add",
+            "--detach",
+            path.to_str().expect("invalid path"),
+            object,
+        ])
+        .context("failed to create git worktree")?;
+
+        Ok(())
+    }
+
     /// Get `nth` commit starting from `1`.
     #[instrument(
         skip(self)
@@ -304,21 +318,20 @@ impl Repo {
         self.git(&["rev-list", "-n", "1", tag]).ok()
     }
 
-    /// Returns a `Vec` of all tags in the repository, sorted with tag names treated as versions,
-    /// or `None` if the repository has no tags.
+    /// Returns a `Vec` of all tags in the repository, sorted with tag names treated as versions.
     ///
     /// default sort order: first item is the oldest (smallest version), last item is the newest (biggest version)
     /// if reverse is set to true, the order is reversed.
-    pub fn get_tags_version_sorted(&self, reverse: bool) -> Option<Vec<String>> {
+    pub fn get_tags_version_sorted(&self, reverse: bool) -> Vec<String> {
         let key = if reverse { "-v:refname" } else { "v:refname" };
         match self
             .git(&["tag", "--list", "--sort", key])
             .ok()
-            .map(|output| output.trim().to_owned())
+            .as_ref()
+            .map(|output| output.trim())
         {
-            None => None,
-            Some(output) if output.is_empty() => None,
-            Some(output) => Some(output.lines().map(|line| line.to_owned()).collect()),
+            None | Some("") => vec![],
+            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
         }
     }
 
