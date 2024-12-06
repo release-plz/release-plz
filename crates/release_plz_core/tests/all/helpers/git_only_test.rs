@@ -1,11 +1,13 @@
 use crate::helpers::github_mock_server::GitHubMockServer;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::Metadata;
-use cargo_utils::{get_manifest_metadata, CARGO_TOML};
+use cargo_utils::{get_manifest_metadata, LocalManifest, CARGO_TOML};
 use git_cmd::Repo;
+use itertools::Itertools;
 use release_plz_core::{
-    fs_utils::Utf8TempDir, GitBackend, GitHub, GitRelease, GitReleaseConfig, PackagesUpdate,
-    PublishConfig, Release, ReleaseConfig, ReleaseRequest, UpdateConfig, UpdateRequest,
+    fs_utils::Utf8TempDir, GitBackend, GitHub, GitRelease, GitReleaseConfig, GitTagConfig,
+    PackagesUpdate, PublishConfig, Release, ReleaseConfig, ReleaseRequest, UpdateConfig,
+    UpdateRequest,
 };
 use secrecy::SecretString;
 use std::ffi::OsStr;
@@ -14,6 +16,7 @@ use std::process::Command;
 pub struct GitOnlyTestContext {
     pub repo: Repo,
     github_mock_server: GitHubMockServer,
+    tag_template: Option<String>,
     _test_dir: Utf8TempDir,
 }
 
@@ -21,10 +24,11 @@ pub const PROJECT_NAME: &str = "myproject";
 const PROJECT_UPSTREAM_NAME: &str = "myproject-upstream";
 const OWNER: &str = "owner";
 const REPO: &str = "repo";
+const SPARSE_CRATES_IO_REGISTRY: &str = "crates-io-sparse";
 
 impl GitOnlyTestContext {
-    pub async fn new() -> Self {
-        let context = Self::init().await;
+    pub async fn new(tag_template: Option<String>) -> Self {
+        let context = Self::init(tag_template).await;
 
         cargo_init(context.project_dir());
         context.generate_cargo_lock();
@@ -33,7 +37,33 @@ impl GitOnlyTestContext {
         context
     }
 
-    async fn init() -> Self {
+    pub async fn new_workspace<S: AsRef<Utf8Path>, const N: usize>(
+        tag_template: Option<String>,
+        crates: [S; N],
+    ) -> (Self, [Utf8PathBuf; N]) {
+        let context = Self::init(tag_template).await;
+
+        let root_cargo_toml = {
+            let crates_list = crates
+                .iter()
+                .format_with(", ", |c, fmt| fmt(&format_args!("\"{}\"", c.as_ref())));
+            format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
+        };
+        fs_err::write(context.project_dir().join(CARGO_TOML), root_cargo_toml).unwrap();
+
+        let crate_dirs = crates.map(|crate_dir| context.repo.directory().join(crate_dir));
+
+        for crate_dir in &crate_dirs {
+            fs_err::create_dir_all(crate_dir).unwrap();
+            cargo_init(crate_dir);
+        }
+
+        context.generate_cargo_lock();
+        context.add_all_commit_and_push("feat: Initial commit");
+        (context, crate_dirs)
+    }
+
+    async fn init(tag_template: Option<String>) -> Self {
         test_logs::init();
         let test_dir = Utf8TempDir::new().unwrap();
 
@@ -59,11 +89,34 @@ impl GitOnlyTestContext {
         repo.git(&["config", "user.email", "author@example.com"])
             .unwrap();
 
+        // Add sparse crates.io registry to cargo config
+        let mut cargo_config = toml_edit::DocumentMut::new();
+        cargo_config.insert(
+            "registries",
+            toml_edit::Item::Table(toml_edit::Table::from_iter([(
+                SPARSE_CRATES_IO_REGISTRY,
+                toml_edit::InlineTable::from_iter([("index", crates_index::sparse::URL)]),
+            )])),
+        );
+
+        let cargo_config_path = project_dir.join(".cargo/config.toml");
+        fs_err::create_dir(cargo_config_path.parent().unwrap()).unwrap();
+        fs_err::write(cargo_config_path, cargo_config.to_string()).unwrap();
+
         Self {
             _test_dir: test_dir,
             github_mock_server: GitHubMockServer::start(OWNER, REPO).await,
+            tag_template,
             repo,
         }
+    }
+
+    pub async fn run_update_and_commit(&self) -> anyhow::Result<PackagesUpdate> {
+        self.run_update().await.inspect(|_| {
+            if self.repo.is_clean().is_err() {
+                self.add_all_commit_and_push("chore: release");
+            }
+        })
     }
 
     pub async fn run_update(&self) -> anyhow::Result<PackagesUpdate> {
@@ -74,13 +127,11 @@ impl GitOnlyTestContext {
     }
 
     fn update_request(&self) -> UpdateRequest {
-        // TODO: Git tag configuration
-
         UpdateRequest::new(self.workspace_metadata())
             .unwrap()
             .with_default_package_config(UpdateConfig {
                 release: true,
-                git_only: true,
+                tag_name_template: self.tag_template.clone(),
                 ..Default::default()
             })
     }
@@ -95,15 +146,16 @@ impl GitOnlyTestContext {
     }
 
     fn release_request(&self) -> ReleaseRequest {
-        // TODO: Git tag configuration
-
         let config = ReleaseConfig::default()
             .with_publish(PublishConfig::enabled(false))
             .with_git_release(GitReleaseConfig::enabled(false))
-            .with_git_only(true);
+            .with_git_tag(GitTagConfig::enabled(true).set_name_template(self.tag_template.clone()));
 
         ReleaseRequest::new(self.workspace_metadata())
             .with_default_package_config(config)
+            // Specify a sparse registry by default - tests don't interact with it since
+            // we don't publish any packages anyway
+            .with_registry(SPARSE_CRATES_IO_REGISTRY)
             .with_git_release(GitRelease {
                 backend: self.git_backend(),
             })
@@ -140,6 +192,36 @@ impl GitOnlyTestContext {
         self.repo.add_all_and_commit(message.as_ref()).unwrap();
         self.repo.git(&["push"]).unwrap();
     }
+
+    pub fn write_cargo_toml(
+        &self,
+        crate_dir: impl AsRef<Utf8Path>,
+        write_fn: impl FnOnce(&mut toml_edit::DocumentMut),
+    ) -> anyhow::Result<()> {
+        let mut cargo_toml_dir = self.crate_dir(crate_dir);
+        cargo_toml_dir.push(CARGO_TOML);
+        write_cargo_toml(&cargo_toml_dir, write_fn)
+    }
+
+    pub fn write_root_cargo_toml(
+        &self,
+        write_fn: impl FnOnce(&mut toml_edit::DocumentMut),
+    ) -> anyhow::Result<()> {
+        write_cargo_toml(&self.project_dir().join(CARGO_TOML), write_fn)
+    }
+
+    pub fn crate_dir(&self, crate_dir: impl AsRef<Utf8Path>) -> Utf8PathBuf {
+        self.project_dir().join(crate_dir)
+    }
+}
+
+fn write_cargo_toml(
+    cargo_toml_dir: &Utf8PathBuf,
+    write_fn: impl FnOnce(&mut toml_edit::DocumentMut),
+) -> anyhow::Result<()> {
+    let mut cargo_toml = LocalManifest::try_new(cargo_toml_dir)?;
+    write_fn(&mut cargo_toml.data);
+    cargo_toml.write()
 }
 
 fn cargo_init(dir: impl AsRef<OsStr>) {
