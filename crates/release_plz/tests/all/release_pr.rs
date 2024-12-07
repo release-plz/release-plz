@@ -21,6 +21,7 @@ async fn release_plz_opens_pr_with_default_config() {
         format!(
             r#"
 ## 🤖 New release
+
 * `{package}`: 0.1.0
 
 <details><summary><i><b>Changelog</b></i></summary><p>
