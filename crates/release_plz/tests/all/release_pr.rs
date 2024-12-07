@@ -314,6 +314,96 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
     }
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_works_with_publish_false() {
+    const CARGO_PUBLISH_FALSE_CRATE: &str = "cargo-publish-false";
+    let context = TestContext::new_workspace(&[CARGO_PUBLISH_FALSE_CRATE, "foo"]).await;
+
+    let config = r#"
+[workspace]
+publish = false
+    "#;
+
+    context.write_release_plz_toml(config);
+    context.run_release_pr().success();
+
+    let cargo_publish_false_crate_dir = context.repo_dir().join(CARGO_PUBLISH_FALSE_CRATE);
+
+    // Write publish = false to Cargo.toml
+    let cargo_toml_path = cargo_publish_false_crate_dir.join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
+
+    let expected_title = "chore: release v0.1.0";
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, expected_title);
+
+    context.merge_release_pr().await;
+    // The commit contains the PR id number
+    let expected_commit = format!("{expected_title} (#1)");
+    assert_eq!(
+        context.repo.current_commit_message().unwrap(),
+        expected_commit
+    );
+
+    context.run_release().success();
+
+    // Create a change only in one crate
+    fs_err::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(cargo_publish_false_crate_dir.join("README.md"))
+        .unwrap();
+
+    context
+        .repo
+        .add_all_and_commit("feat: Create README")
+        .unwrap();
+    context.repo.git(&["push"]).unwrap();
+
+    context.run_release_pr().success();
+
+    let expected_title = format!("chore({CARGO_PUBLISH_FALSE_CRATE}): release v0.1.1");
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, expected_title);
+
+    let today = today();
+    let package = CARGO_PUBLISH_FALSE_CRATE;
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        opened_prs[0].body.as_ref().unwrap().trim(),
+        format!(
+            r#"
+## 🤖 New release
+* `{package}`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{package}`
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{package}-v0.1.0...{package}-v0.1.1) - {today}
+
+### Added
+
+- Create README
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+}
+
 fn move_readme(context: &TestContext, message: &str) {
     let readme = "README.md";
     let new_readme = format!("NEW_{readme}");
