@@ -96,6 +96,7 @@ impl Project {
         &self.root
     }
 
+    /// Get all the packages that should be published to a Cargo registry.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()
@@ -103,7 +104,7 @@ impl Project {
             .collect()
     }
 
-    /// Get all packages, including non-publishable.
+    /// Get all packages that should be processed by release-plz, including non-publishable.
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
     }

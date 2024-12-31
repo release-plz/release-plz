@@ -531,7 +531,7 @@ async fn release_packages(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
-    let packages = project.publishable_packages();
+    let packages = project.workspace_packages();
     let release_order = release_order(&packages).context("cannot determine release order")?;
     let mut package_releases: Vec<PackageRelease> = vec![];
     for package in release_order {
