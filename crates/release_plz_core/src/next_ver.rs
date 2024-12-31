@@ -380,6 +380,16 @@ impl UpdateRequest {
     pub fn repo_url(&self) -> Option<&RepoUrl> {
         self.repo_url.as_ref()
     }
+
+    pub(crate) fn create_project(&self) -> anyhow::Result<Project> {
+        Project::new(
+            &self.local_manifest,
+            self.single_package.as_deref(),
+            &self.packages_config.overrides.keys().cloned().collect(),
+            &self.metadata,
+            self,
+        )
+    }
 }
 
 impl ReleaseMetadataBuilder for UpdateRequest {
@@ -395,14 +405,7 @@ impl ReleaseMetadataBuilder for UpdateRequest {
 /// Determine next version of packages
 #[instrument(skip_all)]
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
-    let overrides = input.packages_config.overrides.keys().cloned().collect();
-    let local_project = Project::new(
-        &input.local_manifest,
-        input.single_package.as_deref(),
-        &overrides,
-        &input.metadata,
-        input,
-    )?;
+    let local_project = input.create_project()?;
     let updater = Updater {
         project: &local_project,
         req: input,
@@ -412,7 +415,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     // to determine the new commits.
     let registry_packages = published_packages::get_registry_packages(
         input.registry_manifest.as_deref(),
-        &local_project.publishable_packages(),
+        &local_project.workspace_packages(),
         input.registry.as_deref(),
     )?;
 
@@ -628,7 +631,7 @@ impl Updater<'_> {
         // package at a time.
         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = self
             .project
-            .publishable_packages()
+            .workspace_packages()
             .iter()
             .map(|&p| {
                 let diff = self
