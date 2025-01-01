@@ -9,7 +9,7 @@ use crate::{
     is_readme_updated, local_readme_override, lock_compare,
     package_compare::are_packages_equal,
     package_path::{manifest_dir, PackagePath},
-    published_packages::{self, PackagesCollection, PublishedPackage},
+    published_packages::{PackagesCollection, PublishedPackage},
     repo_url::RepoUrl,
     semver_check::{self, SemverCheck},
     tmp_repo::TempRepo,
@@ -410,14 +410,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         project: &local_project,
         req: input,
     };
-    // Retrieve the latest published version of the packages.
-    // Release-plz will compare the registry packages with the local packages,
-    // to determine the new commits.
-    let registry_packages = published_packages::get_registry_packages(
-        input.registry_manifest.as_deref(),
-        &local_project.workspace_packages(),
-        input.registry.as_deref(),
-    )?;
 
     let repository = local_project
         .get_repo()
@@ -425,6 +417,20 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     if !input.allow_dirty {
         repository.repo.is_clean()?;
     }
+
+    // Retrieve the latest published version of the packages.
+    // Release-plz will compare the registry packages with the local packages,
+    // to determine the new commits.
+    let publishable_packages = local_project.workspace_packages();
+
+    let registry_packages = PackagesCollection::fetch_latest(
+        &local_project,
+        &repository,
+        publishable_packages.into_iter(),
+        input.registry_manifest(),
+        input.registry.as_deref(),
+    )?;
+
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
         .await?;
