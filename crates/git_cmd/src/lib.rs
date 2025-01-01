@@ -304,6 +304,19 @@ impl Repo {
         self.git(&["rev-list", "-n", "1", tag]).ok()
     }
 
+    /// Returns all the tags in the repository in an unspecified order.
+    pub fn get_all_tags(&self) -> Vec<String> {
+        match self
+            .git(&["tag", "--list"])
+            .ok()
+            .as_ref()
+            .map(|output| output.trim())
+        {
+            None | Some("") => vec![],
+            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
+        }
+    }
+
     /// Check if a commit comes before another one.
     ///
     /// ## Example
