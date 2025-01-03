@@ -5,6 +5,7 @@ use crate::fs_utils::Utf8TempDir;
 use crate::published_packages::git_tags::GitTagsSource;
 use crate::published_packages::registry::RegistrySource;
 use crate::Project;
+use anyhow::Context;
 use cargo_metadata::{camino::Utf8Path, semver::Version, Package};
 use git_cmd::Repo;
 use std::collections::BTreeMap;
@@ -73,7 +74,13 @@ impl PackagesCollection {
                     .max_by(|a, b| a.version().cmp(b.version()));
 
                 let published_package = published_package_summary
-                    .map(|summary| summary.resolve(temp_dir.path()))
+                    .map(|summary| {
+                        let dir_name = format!("{}-{}", summary.name(), summary.version());
+                        let package_dir = temp_dir.path().join(dir_name);
+                        fs_err::create_dir_all(&package_dir)
+                            .context("failed to create package dir in temp dir")?;
+                        summary.resolve(&package_dir)
+                    })
                     .transpose()?;
 
                 Ok(published_package.map(|package| (package.package.name.clone(), package)))
@@ -105,6 +112,9 @@ trait Source {
 /// Some properties of the published package can be queried directly through the [`Summary`],
 /// but it must be [resolved](Summary::resolve) to a [`PublishedPackage`] for everything else.
 trait Summary {
+    /// The name of the published package.
+    fn name(&self) -> &str;
+
     /// The version of the published package.
     fn version(&self) -> &Version;
 

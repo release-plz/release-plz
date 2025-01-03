@@ -58,6 +58,13 @@ enum RegistrySummary<'a> {
 }
 
 impl Summary for RegistrySummary<'_> {
+    fn name(&self) -> &str {
+        match self {
+            RegistrySummary::FromLocalManifest(package) => &package.name,
+            RegistrySummary::FromRegistry(_, summary) => summary.as_summary().name().as_str(),
+        }
+    }
+
     fn version(&self) -> &Version {
         match self {
             RegistrySummary::FromLocalManifest(package) => &package.version,
@@ -72,10 +79,8 @@ impl Summary for RegistrySummary<'_> {
                 sha1: None,
             }),
             RegistrySummary::FromRegistry(cloner, summary) => {
-                let package_store_dir = temp_dir.join(summary.as_summary().name().as_str());
-
-                cloner.clone_from_summary_into(summary, &package_store_dir)?;
-                let package = download::read_package(&package_store_dir)?;
+                cloner.clone_from_summary_into(summary, temp_dir)?;
+                let package = download::read_package(temp_dir)?;
                 initialize_registry_package(package)
             }
         }
