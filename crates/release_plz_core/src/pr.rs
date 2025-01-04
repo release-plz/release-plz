@@ -9,10 +9,15 @@ pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
 pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"## 🤖 New release
 
 {% for release in releases %}
+* `{{release.package}}`: {{release.next_version}}
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
 {% if release.title %}
-### {{release.title}}
+{{release.title}}
 {% endif %}
-Package: {{release.package}} {{release.previous_version}} -> {{release.next_version}}
 {% if release.changelog %}
 {{release.changelog}}
 {% endif %}
@@ -20,10 +25,13 @@ Package: {{release.package}} {{release.previous_version}} -> {{release.next_vers
 ### ⚠️ Breaking Changes
 {{release.breaking_changes}}
 {% endif %}
+</blockquote>
+
+</p></details>
 {% endfor %}
 
 ---
-*This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)*"#;
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#;
 
 #[derive(Debug)]
 pub struct Pr {
