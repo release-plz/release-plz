@@ -14,9 +14,8 @@ pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"## 🤖 New release
 <details><summary><i><b>Changelog</b></i></summary><p>
 
 <blockquote>
-
 {% if release.title %}
-{{release.title}}
+## {{release.title}}
 {% endif %}
 {% if release.changelog %}
 {{release.changelog}}
