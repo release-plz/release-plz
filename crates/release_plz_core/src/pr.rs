@@ -151,14 +151,11 @@ fn pr_body_custom(packages_to_update: &PackagesUpdate, body_template: &str) -> S
 
 fn pr_body_default(
     packages_to_update: &PackagesUpdate,
-    project_contains_multiple_pub_packages: bool,
+    _project_contains_multiple_pub_packages: bool,
 ) -> String {
+    let releases = packages_to_update.releases();
     let mut context = tera::Context::new();
-    context.insert("summary", &packages_to_update.summary());
-    context.insert(
-        "changes",
-        &packages_to_update.changes(project_contains_multiple_pub_packages),
-    );
+    context.insert(RELEASES_VAR, &releases);
 
     let formatted = render_template(DEFAULT_PR_BODY_TEMPLATE, &context, "pr_body");
 
@@ -168,10 +165,13 @@ fn pr_body_default(
             "PR body is longer than {MAX_BODY_LEN} characters. Omitting full changelog."
         );
         // create simplified version without changelog
-        let simplified_template = r#"## 🤖 New release{{ summary }}
+        let simplified_template = r#"## 🤖 New release
+{% for release in releases %}
+Package: {{release.package}} {{release.previous_version}} -> {{release.next_version}}
+{% endfor %}
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#;
+*This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)*"#;
         render_template(simplified_template, &context, "pr_body")
     } else {
         formatted
