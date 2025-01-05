@@ -8,7 +8,7 @@
   automerge: true,
   packageRules: [
     {
-      matchCategories: [
+      matchManagers: [
         'github-actions',
       ],
       // At 06:XX on Monday.

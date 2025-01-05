@@ -26,7 +26,7 @@ jobs:
       - name: Install cargo-semver-checks
         uses: taiki-e/install-action@716fb8f756560d6f767650920c8ff20aad9bd48c # v2.47.3
         with:
-          tool: cargo-semver-checks@0.34
+          tool: cargo-semver-checks
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
@@ -59,7 +59,7 @@ jobs:
       - name: Install cargo-semver-checks
         uses: taiki-e/install-action@716fb8f756560d6f767650920c8ff20aad9bd48c # v2.47.3
         with:
-          tool: cargo-semver-checks@0.34
+          tool: cargo-semver-checks
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
       - name: Run tests
