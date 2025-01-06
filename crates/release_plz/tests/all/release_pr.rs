@@ -218,7 +218,7 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_add_labels_to_release_pull_request() {
+async fn release_plz_adds_labels_to_release_pr() {
     let test_context = TestContext::new().await;
 
     // Initial PR setup with two labels
@@ -270,7 +270,7 @@ async fn release_plz_add_labels_to_release_pull_request() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_add_duplicate_labels_to_release_pr() {
+async fn release_plz_adds_deduplicated_labels_in_release_pr() {
     let test_context = TestContext::new().await;
     let duplicate_config_test_cases = r#"
             [workspace]
@@ -294,7 +294,7 @@ async fn release_plz_add_duplicate_labels_to_release_pr() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_add_invalid_labels_to_release_pr() {
+async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
     let test_context = TestContext::new().await;
     let test_cases: &[(&str, &str)] = &[
         // (label config, expected error message)
