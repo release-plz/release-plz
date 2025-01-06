@@ -1,6 +1,6 @@
 use crate::git::{gitea_client::Gitea, gitlab_client::GitLab};
 use crate::{GitHub, GitReleaseInfo};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::pr::Pr;
 use anyhow::Context;
@@ -578,21 +578,7 @@ impl GitClient {
         match self.backend {
             BackendType::Github => self.post_github_labels(labels, pr_number).await,
             BackendType::Gitlab => self.post_gitlab_labels(labels, pr_number).await,
-            BackendType::Gitea => {
-                let (labels_to_create, mut label_ids) = self
-                    .get_pr_info_and_categorize_labels(pr_number, labels)
-                    .await?;
-
-                let new_label_ids = self.create_gitea_labels(&labels_to_create).await?;
-                label_ids.extend(new_label_ids);
-
-                anyhow::ensure!(
-                    !label_ids.is_empty(),
-                    "The provided labels: {labels:?} \n
-                        were not added to PR #{pr_number}",
-                );
-                self.post_gitea_labels(&label_ids, pr_number).await
-            }
+            BackendType::Gitea => self.post_gitea_labels(labels, pr_number).await,
         }
     }
 
@@ -631,7 +617,17 @@ impl GitClient {
     }
 
     /// Add all labels to PR
-    async fn post_gitea_labels(&self, label_ids: &[u64], pr_number: u64) -> anyhow::Result<()> {
+    async fn post_gitea_labels(&self, labels: &[String], pr_number: u64) -> anyhow::Result<()> {
+        let (labels_to_create, mut label_ids) = self
+            .get_labels_info_and_categorize_labels(labels, pr_number)
+            .await?;
+        let new_label_ids = self.create_gitea_labels(&labels_to_create).await?;
+        label_ids.extend(new_label_ids);
+        anyhow::ensure!(
+            !label_ids.is_empty(),
+            "The provided labels: {labels:?} \n
+                were not added to PR #{pr_number}",
+        );
         self.client
             .post(self.pr_labels_url(pr_number))
             .json(&json!({ "labels": label_ids }))
@@ -642,30 +638,79 @@ impl GitClient {
         Ok(())
     }
 
-    async fn get_pr_info_and_categorize_labels(
+    /// Retrieves and categorizes labels for a PR, ensuring case-insensitive deduplication
+    /// within the input and against existing PR labels.
+    /// # Returns
+    /// A tuple containing:
+    /// - Vec<String>: Labels that need to be created in the repository
+    /// - Vec<u64>: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
+    async fn get_labels_info_and_categorize_labels(
         &self,
-        pr_number: u64,
         labels: &[String],
+        pr_number: u64,
     ) -> anyhow::Result<(Vec<String>, Vec<u64>)> {
-        let current_pr_info = self
-            .get_pr_info(pr_number)
-            .await
-            .context("failed to get pr info")?;
-        let existing_labels = current_pr_info.labels;
-
-        let label_map: HashMap<String, Option<u64>> = existing_labels
+        let mut unique_labels = HashSet::new();
+        let labels: Vec<String> = labels
             .iter()
-            .map(|l| (l.name.clone(), l.id))
+            .filter_map(|label| {
+                let lowercase_label = label.to_lowercase();
+                // Try to insert into the set, return only if it was successfully inserted
+                unique_labels.insert(lowercase_label).then(|| label.clone())
+            })
+            .collect();
+        // Fetch both existing repository labels and current PR labels concurrently
+        let (existing_labels, pr_info) = tokio::try_join!(
+            async {
+                let result = self
+                    .client
+                    .get(format!("{}/labels", self.repo_url()))
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<Vec<Label>>()
+                    .await;
+                anyhow::Ok(result?)
+            },
+            async { self.get_pr_info(pr_number).await }
+        )?;
+
+        // Create case-insensitive maps for efficient lookups
+        let existing_label_map: HashMap<String, (String, Option<u64>)> = existing_labels
+            .iter()
+            .map(|l| (l.name.to_lowercase(), (l.name.clone(), l.id)))
+            .collect();
+
+        // Get current PR labels
+        let current_pr_labels: HashSet<String> = pr_info
+            .labels
+            .iter()
+            .map(|l| l.name.to_lowercase())
             .collect();
 
         let mut labels_to_create = Vec::new();
         let mut label_ids = Vec::new();
 
         for label in labels {
-            match label_map.get(label) {
-                Some(id) => label_ids
-                    .push(id.with_context(|| format!("failed to extract id from label {label}"))?),
-                None => labels_to_create.push(label.to_owned()),
+            let lowercase_label = label.to_lowercase();
+
+            match existing_label_map.get(&lowercase_label) {
+                Some((original_name, id)) => {
+                    // Only add the ID if the label isn't already on the PR
+                    if !current_pr_labels.contains(&lowercase_label) {
+                        label_ids.push(id.with_context(|| {
+                            format!("failed to extract id from existing label '{original_name}'")
+                        })?);
+                    }
+                }
+                None => {
+                    // Only create labels that don't exist (case-insensitive check)
+                    if !labels_to_create
+                        .iter()
+                        .any(|l: &String| l.to_lowercase() == lowercase_label)
+                    {
+                        labels_to_create.push(label.clone());
+                    }
+                }
             }
         }
 
@@ -682,41 +727,42 @@ impl GitClient {
                 .post(format!("{}/labels", self.repo_url()))
                 .json(&json!({
                     "name": label.trim(),
+                    // Required field - using white (#FFFFFF) as default color
                     "color": "#FFFFFF"
                 }))
                 .send()
-                .await?
-                .successful_status()
                 .await?;
 
-            match res.status() {
-                StatusCode::CREATED => {
-                    let new_label: Label = res.json().await?;
-                    let label_id = new_label
-                        .id
-                        .with_context(|| format!("failed to extract id from label {label}"))?;
-                    label_ids.push(label_id);
-                }
-                StatusCode::NOT_FOUND => {
-                    anyhow::bail!(
-                        "Failed to create label '{label}'. \n\
-                    Please check if the repository URL '{}' \
-                    is correct and the user has the necessary permissions.",
-                        self.repo_url()
-                    );
-                }
-                StatusCode::UNPROCESSABLE_ENTITY => anyhow::bail!(
-                    "Label '{label}' creation failed. Existing labels are {:?}",
-                    labels_to_create
-                ),
-                _ => {
-                    anyhow::bail!(
-                        "Label creation failed response is {label} \n\
-                    With Status Code: {}",
-                        res.status()
-                    );
-                }
-            }
+            let res = match res.error_for_status() {
+                Ok(response) => response,
+                Err(err) => return match err.status() {
+                    Some(StatusCode::NOT_FOUND) => {
+                        Err(err).context(format!(
+                            "Failed to create label '{}'. Please check if the repository URL '{}' is correct and the user has the necessary permissions",
+                            label,
+                            self.repo_url()
+                        ))
+                    }
+                    Some(StatusCode::UNPROCESSABLE_ENTITY) => {
+                        Err(err).context(format!(
+                            "Label {label} creation failed. Existing labels are {labels_to_create:?}"
+                        ))
+                    }
+                    _ => {
+                        let status = err.status()
+                            .with_context(|| "HTTP response contained no status code when creating label")?;
+                        Err(err).context(format!(
+                            "Label {label} creation failed with status: {status}"
+                        ))
+                    }
+                },
+            };
+
+            let new_label: Label = res.json().await?;
+            let label_id = new_label
+                .id
+                .with_context(|| format!("failed to extract id from label {label}"))?;
+            label_ids.push(label_id);
         }
 
         Ok(label_ids)
