@@ -51,10 +51,11 @@ impl GitOnlyTestContext {
         };
         fs_err::write(context.project_dir().join(CARGO_TOML), root_cargo_toml).unwrap();
 
-        let crate_dirs = crates.map(|crate_dir| context.repo.directory().join(crate_dir));
+        let crate_dirs = crates.map(|crate_dir| crate_dir.as_ref().into());
 
         for crate_dir in &crate_dirs {
-            fs_err::create_dir_all(crate_dir).unwrap();
+            let crate_dir = context.crate_dir(crate_dir);
+            fs_err::create_dir_all(&crate_dir).unwrap();
             cargo_init(crate_dir);
         }
 

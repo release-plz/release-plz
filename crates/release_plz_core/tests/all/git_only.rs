@@ -1,4 +1,5 @@
 use crate::helpers::git_only_test::{GitOnlyTestContext, PROJECT_NAME};
+use cargo_metadata::camino::{Utf8Component, Utf8PathBuf};
 use cargo_metadata::semver::Version;
 use release_plz_core::PackagesUpdate;
 use std::path::PathBuf;
@@ -96,12 +97,12 @@ async fn single_crate() {
 async fn workspace() {
     let (context, crates) = GitOnlyTestContext::new_workspace(
         Some("{{ package }}--vv{{ version }}".into()),
-        ["publish-false", "other"],
+        ["publish-false", "dependant", "other"],
     )
     .await;
-    let [publish_false_crate, other_crate] = &crates;
+    let [publish_false_crate, dependant_crate, other_crate] = &crates;
     let crate_names = crates.each_ref().map(|dir| dir.file_name().unwrap());
-    let [publish_false_crate_name, other_crate_name] = crate_names;
+    let [publish_false_crate_name, dependant_crate_name, other_crate_name] = crate_names;
 
     context
         .run_update_and_commit()
@@ -143,14 +144,56 @@ async fn workspace() {
         .expect("publish-false release should succeed")
         .expect("publish-false release should not be empty");
 
+    // Make 'dependant' depend on 'publish-false'
+    // Simulates a binary depending on an unpublished library in the same workspace
+
+    context
+        .write_cargo_toml(dependant_crate, |cargo_toml| {
+            // Relative path to a crate is found by going up by number of components in this
+            // crate's path (i.e. to the workspace root) and appending the path of the dependant crate
+            let relative_path = Utf8PathBuf::from_iter(
+                dependant_crate
+                    .components()
+                    .map(|_| Utf8Component::ParentDir)
+                    .chain(publish_false_crate.components()),
+            );
+
+            cargo_toml["dependencies"][publish_false_crate_name] =
+                toml_edit::InlineTable::from_iter([
+                    ("path", relative_path.as_str()),
+                    ("version", "0.1.0"),
+                ])
+                .into();
+        })
+        .expect("writing Cargo.toml should succeed");
+
+    context.add_all_commit_and_push("feat(dependant)!: Add dependency on 'publish-false'");
+
+    context
+        .run_update_and_commit()
+        .await
+        .expect("crates update should succeed")
+        .assert_packages_updated([(
+            dependant_crate_name,
+            Version::new(0, 1, 0),
+            Version::new(0, 2, 0),
+        )]);
+
+    // TODO: Check contents of release
+    context
+        .run_release()
+        .await
+        .expect("publish-false release should succeed")
+        .expect("publish-false release should not be empty");
+
+    // Since 'dependant' has a path dependency on 'publish-false',
+    // updating 'publish-false' must trigger an update of 'dependant'
+
     touch(context.crate_dir(publish_false_crate).join("foo")).unwrap();
     context.add_all_commit_and_push("fix(publish-false): Add foo");
 
-    touch(context.crate_dir(other_crate).join("bar")).unwrap();
-    context.add_all_commit_and_push("feat(other)!: Add bar");
-
     context
-        .run_update()
+        .run_update_and_commit()
         .await
         .expect("crates update should succeed")
         .assert_packages_updated([
@@ -160,16 +203,9 @@ async fn workspace() {
                 Version::new(0, 1, 2),
             ),
             (
-                other_crate_name,
-                Version::new(0, 1, 0),
+                dependant_crate_name,
                 Version::new(0, 2, 0),
+                Version::new(0, 2, 1),
             ),
         ]);
-
-    // TODO: Check contents of release
-    context
-        .run_release()
-        .await
-        .expect("publish-false release should succeed")
-        .expect("publish-false release should not be empty");
 }
