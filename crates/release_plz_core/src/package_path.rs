@@ -8,7 +8,7 @@ pub trait PackagePath {
     fn package_path(&self) -> anyhow::Result<&Utf8Path>;
 
     fn canonical_path(&self) -> anyhow::Result<Utf8PathBuf> {
-        let p = Utf8Path::canonicalize_utf8(self.package_path()?)?;
+        let p = dunce::canonicalize(self.package_path()?)?.try_into()?;
         Ok(p)
     }
 }
