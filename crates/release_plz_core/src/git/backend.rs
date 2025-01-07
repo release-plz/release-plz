@@ -706,19 +706,27 @@ impl GitClient {
         let mut label_ids = Vec::new();
 
         for label in labels_to_create {
-            debug!("Backend Gitea creating label: {label}");
-            let res = self
-                .client
-                .post(format!("{}/labels", self.repo_url()))
-                .json(&json!({
-                    "name": label.trim(),
-                    // Required field - using white (#FFFFFF) as default color
-                    "color": "#FFFFFF"
-                }))
-                .send()
-                .await?;
+            let label_id = self.create_gitea_repository_label(label).await?;
+            label_ids.push(label_id);
+        }
 
-            let res = match res.error_for_status() {
+        Ok(label_ids)
+    }
+
+    async fn create_gitea_repository_label(&self, label: &str) -> anyhow::Result<u64> {
+        debug!("Backend Gitea creating label: {label}");
+        let res = self
+            .client
+            .post(format!("{}/labels", self.repo_url()))
+            .json(&json!({
+                "name": label.trim(),
+                // Required field - using white (#FFFFFF) as default color
+                "color": "#FFFFFF"
+            }))
+            .send()
+            .await?;
+
+        let res = match res.error_for_status() {
                 Ok(response) => response,
                 Err(err) => return match err.status() {
                     Some(StatusCode::NOT_FOUND) => {
@@ -730,7 +738,7 @@ impl GitClient {
                     }
                     Some(StatusCode::UNPROCESSABLE_ENTITY) => {
                         Err(err).context(format!(
-                            "Label {label} creation failed. Existing labels are {labels_to_create:?}"
+                            "Label {label} creation failed."
                         ))
                     }
                     _ => {
@@ -743,14 +751,11 @@ impl GitClient {
                 },
             };
 
-            let new_label: Label = res.json().await?;
-            let label_id = new_label
-                .id
-                .with_context(|| format!("failed to extract id from label {label}"))?;
-            label_ids.push(label_id);
-        }
-
-        Ok(label_ids)
+        let new_label: Label = res.json().await?;
+        let label_id = new_label
+            .id
+            .with_context(|| format!("failed to extract id from label {label}"))?;
+        Ok(label_id)
     }
 
     pub async fn pr_commits(&self, pr_number: u64) -> anyhow::Result<Vec<PrCommit>> {
