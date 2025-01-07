@@ -890,17 +890,18 @@ impl Updater<'_> {
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        if let Err(err) = repository.checkout_last_commit_at_paths(&paths_to_check) {
-            if err
-                .to_string()
-                .contains("Your local changes to the following files would be overwritten")
-            {
-                return Err(err.context("The allow-dirty option can't be used in this case"));
-            } else {
-                info!("{}: there are no commits", package.name);
-                return Ok(diff);
-            }
-        }
+        repository
+            .checkout_last_commit_at_paths(&paths_to_check)
+            .map_err(|err| {
+                if err
+                    .to_string()
+                    .contains("Your local changes to the following files would be overwritten")
+                {
+                    err.context("The allow-dirty option can't be used in this case")
+                } else {
+                    err.context("Failed to retrieve the last commit of local repository.")
+                }
+            })?;
 
         let git_tag = self
             .project
