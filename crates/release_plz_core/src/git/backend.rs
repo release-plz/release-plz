@@ -638,6 +638,18 @@ impl GitClient {
         Ok(())
     }
 
+    /// Get Gitea and GitHub repository labels
+    async fn get_repository_labels(&self) -> anyhow::Result<Vec<Label>> {
+        self.client
+            .get(format!("{}/labels", self.repo_url()))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await
+            .context("failed to parse labels")
+    }
+
     /// Retrieves and categorizes labels for a PR, ensuring exact matching and deduplication
     /// within the input and against existing PR labels.
     /// # Returns
@@ -650,20 +662,10 @@ impl GitClient {
         pr_number: u64,
     ) -> anyhow::Result<(Vec<String>, Vec<u64>)> {
         // Fetch both existing repository labels and current PR labels concurrently
-        let (existing_labels, pr_info) = tokio::try_join!(
-            async {
-                let result = self
-                    .client
-                    .get(format!("{}/labels", self.repo_url()))
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .json::<Vec<Label>>()
-                    .await;
-                anyhow::Ok(result?)
-            },
-            async { self.get_pr_info(pr_number).await }
-        )?;
+        let (existing_labels, pr_info) =
+            tokio::try_join!(async { self.get_repository_labels().await }, async {
+                self.get_pr_info(pr_number).await
+            })?;
 
         // Create case-sensitive map for lookups
         let existing_label_map: HashMap<String, (String, Option<u64>)> = existing_labels
