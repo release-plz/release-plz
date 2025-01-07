@@ -109,6 +109,65 @@ async fn single_crate() {
         .assert_packages_updated([]);
 
     assert!(context.repo.is_clean().is_ok());
+
+    // Test non-content change to Cargo.toml
+    // Since the contents are unchanged, the version should remain unchanged.
+    // We do this by setting the executable bit to the file
+    context
+        .repo
+        .git(&["add", "--chmod", "+x", "--", cargo_utils::CARGO_TOML])
+        .unwrap();
+    context
+        .repo
+        .commit("chore: Make Cargo.toml executable")
+        .unwrap();
+    // If the filesystem supports an executable bit, set it on the file by restoring it from the index
+    context
+        .repo
+        .git(&["restore", "--worktree", cargo_utils::CARGO_TOML])
+        .unwrap();
+
+    context
+        .run_update()
+        .await
+        .expect("update should succeed")
+        .assert_packages_updated([]);
+
+    assert!(context.repo.is_clean().is_ok());
+
+    // Test README
+    let readme_path = context.project_dir().join("README.md");
+    fs_err::write(&readme_path, "README").unwrap();
+
+    context.add_all_commit_and_push("fix: Add README");
+
+    context
+        .run_update_and_commit()
+        .await
+        .expect("update after adding README should succeed")
+        .assert_packages_updated([(PROJECT_NAME, Version::new(0, 1, 1), Version::new(0, 1, 2))]);
+
+    context
+        .run_release()
+        .await
+        .expect("release should succeed")
+        .expect("release should not be empty");
+
+    fs_err::write(&readme_path, "README modified").unwrap();
+
+    context.add_all_commit_and_push("chore: Modify README");
+
+    context
+        .run_update_and_commit()
+        .await
+        .expect("update after modifying README should succeed")
+        .assert_packages_updated([(PROJECT_NAME, Version::new(0, 1, 2), Version::new(0, 1, 3))]);
+
+    context
+        .run_release()
+        .await
+        .expect("release should succeed")
+        .expect("release should not be empty");
 }
 
 #[tokio::test]
