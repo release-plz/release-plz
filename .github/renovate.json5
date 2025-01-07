@@ -6,6 +6,9 @@
     ':maintainLockFilesWeekly',
   ],
   automerge: true,
+  'docker-compose': {
+    fileMatch: ['tests/docker-compose.yml'],
+  },
   packageRules: [
     {
       matchManagers: [
@@ -27,7 +30,9 @@
       enabled: false,
     },
     {
-      matchFileNames: ['tests/docker-compose.yml'],
+      matchManagers: [
+        'docker-compose',
+      ],
       groupName: 'Docker Compose',
       // At 07:XX on Monday.
       schedule: '* 7 * * 1',
