@@ -6,7 +6,11 @@ use crate::published_packages::git_tags::GitTagsSource;
 use crate::published_packages::registry::RegistrySource;
 use crate::Project;
 use anyhow::Context;
-use cargo_metadata::{camino::Utf8Path, semver::Version, Package};
+use cargo_metadata::{
+    camino::{Utf8Path, Utf8PathBuf},
+    semver::Version,
+    Package,
+};
 use git_cmd::Repo;
 use std::collections::BTreeMap;
 
@@ -23,11 +27,21 @@ pub struct PublishedPackage {
     pub package: Package,
     /// The SHA1 hash of the commit when the package was published.
     sha1: Option<String>,
+    files: Option<Vec<Utf8PathBuf>>,
 }
 
 impl PublishedPackage {
     pub fn published_at_sha1(&self) -> Option<&str> {
         self.sha1.as_deref()
+    }
+
+    /// Returns a list of relative paths of all the files in the published package. If [`None`],
+    /// the list must be obtained by running `cargo package --list`
+    /// (or [`crate::get_cargo_package_files`]) in the package root (manifest) directory.
+    ///
+    /// Each path is assumed to be relative to the package root directory.
+    pub fn files(&self) -> Option<impl Iterator<Item = &Utf8Path>> {
+        Some(self.files.as_ref()?.iter().map(AsRef::as_ref))
     }
 }
 

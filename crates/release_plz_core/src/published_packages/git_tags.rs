@@ -148,6 +148,7 @@ impl Summary for ReleaseTag<'_> {
             sha1: Some(self.repo.get_tag_commit(self.tag).with_context(|| {
                 format!("release tag '{}' does not point to a commit", self.tag)
             })?),
+            files: Some(published_package_files),
         })
     }
 }

@@ -7,7 +7,7 @@ use crate::{
     diff::Diff,
     fs_utils::{strip_prefix, Utf8TempDir},
     is_readme_updated, local_readme_override, lock_compare,
-    package_compare::are_packages_equal,
+    package_compare::{are_packages_equal, is_package_equal_to_published},
     package_path::{manifest_dir, PackagePath},
     published_packages::{PackagesCollection, PublishedPackage},
     repo_url::RepoUrl,
@@ -969,6 +969,7 @@ impl Updater<'_> {
                     repository,
                     package,
                     package_path,
+                    registry_package,
                     registry_package_path,
                 )?;
                 if are_packages_equal
@@ -1031,9 +1032,10 @@ impl Updater<'_> {
         repository: &Repo,
         package: &Package,
         package_path: &Utf8Path,
-        registry_package_path: &Utf8Path,
+        published_package: &PublishedPackage,
+        published_package_path: &Utf8Path,
     ) -> anyhow::Result<bool> {
-        if is_readme_updated(&package.name, package_path, registry_package_path)? {
+        if is_readme_updated(&package.name, package_path, published_package_path)? {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
@@ -1042,8 +1044,19 @@ impl Updater<'_> {
         let cargo_lock_path = self
             .get_cargo_lock_path(repository)
             .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = are_packages_equal(package_path, registry_package_path)
-            .context("cannot compare packages")?;
+
+        let are_packages_equal_result =
+            if let Some(published_package_files) = published_package.files() {
+                is_package_equal_to_published(
+                    package_path,
+                    published_package_path,
+                    published_package_files,
+                )
+            } else {
+                are_packages_equal(package_path, published_package_path)
+            };
+
+        let are_packages_equal = are_packages_equal_result.context("cannot compare packages")?;
         if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
             // Revert any changes to `Cargo.lock`
             repository

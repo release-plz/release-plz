@@ -77,6 +77,7 @@ impl Summary for RegistrySummary<'_> {
             RegistrySummary::FromLocalManifest(package) => Ok(PublishedPackage {
                 package: package.clone(),
                 sha1: None,
+                files: None,
             }),
             RegistrySummary::FromRegistry(cloner, summary) => {
                 cloner.clone_from_summary_into(summary, temp_dir)?;
@@ -100,6 +101,13 @@ fn initialize_registry_package(p: Package) -> anyhow::Result<PublishedPackage> {
     } else {
         None
     };
+
+    // Initialize git repo in cloned package directory. We do this because the output of
+    // `cargo package` depends on if it is run in a git repository or not.
+    // E.g. If package.include is unspecified in the Cargo.toml, `cargo package` excludes hidden
+    // (dot) files *only* if not run in a git repo. Otherwise, it follows the .gitignore rules.
+    // Since we do publishing in the workspace git repo, we must obtain the list of packaged files
+    // for a published package in the context of a git repo as well.
     let git_repo = package_path.join(".git");
     let commit_init = || git_in_dir(package_path, &["commit", "-m", "init"]);
     if !git_repo.exists() {
@@ -115,5 +123,10 @@ fn initialize_registry_package(p: Package) -> anyhow::Result<PublishedPackage> {
             }
         }
     }
-    Ok(PublishedPackage { package: p, sha1 })
+
+    Ok(PublishedPackage {
+        package: p,
+        sha1,
+        files: None,
+    })
 }
