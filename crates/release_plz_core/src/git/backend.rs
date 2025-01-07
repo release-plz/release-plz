@@ -652,7 +652,7 @@ impl GitClient {
         let mut unique_labels = HashSet::new();
         let labels: Vec<String> = labels
             .iter()
-            .filter(|&label| unique_labels.insert(label.clone()))
+            .filter(|&label| unique_labels.insert(label))
             .cloned()
             .collect();
 
