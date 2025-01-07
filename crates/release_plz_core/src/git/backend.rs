@@ -675,14 +675,14 @@ impl GitClient {
         let current_pr_labels: HashSet<String> =
             pr_info.labels.iter().map(|l| l.name.clone()).collect();
 
-        let mut labels_to_create = Vec::new();
+        let mut labels_to_create: Vec<String> = vec![];
         let mut label_ids = Vec::new();
 
         for label in labels {
-            match existing_label_map.get(&label) {
+            match existing_label_map.get(label) {
                 Some((original_name, id)) => {
                     // Only add the ID if the label isn't already on the PR
-                    if !current_pr_labels.contains(&label) {
+                    if !current_pr_labels.contains(label) {
                         label_ids.push(id.with_context(|| {
                             format!("failed to extract id from existing label '{original_name}'")
                         })?);
@@ -690,8 +690,8 @@ impl GitClient {
                 }
                 None => {
                     // Only create labels that don't exist
-                    if !labels_to_create.contains(&label) {
-                        labels_to_create.push(label.clone());
+                    if !labels_to_create.contains(label) {
+                        labels_to_create.push(label.to_string());
                     }
                 }
             }
