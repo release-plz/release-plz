@@ -3,6 +3,8 @@ use cargo_metadata::{camino::Utf8Path, Package};
 use crates_index::{Crate, GitIndex, SparseIndex};
 use tracing::{debug, info};
 
+use cargo::{core::Shell, util::homedir, GlobalContext};
+use cargo_metadata::camino::Utf8PathBuf;
 use http::{header, Version};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -212,4 +214,21 @@ pub async fn wait_until_published(
     }
 
     Ok(())
+}
+
+/// Creates a new Cargo [`GlobalContext`] in the specified working directory `cwd`.
+///
+/// If `cwd` is [`None`], [`GlobalContext::default`] is returned.
+pub fn new_global_context_in(cwd: Option<Utf8PathBuf>) -> anyhow::Result<GlobalContext> {
+    match cwd {
+        Some(cwd) => {
+            let shell = Shell::new();
+            let homedir = homedir(cwd.as_std_path()).context(
+                "Cargo couldn't find your home directory. \
+                 This probably means that $HOME was not set.",
+            )?;
+            Ok(GlobalContext::new(shell, cwd.into_std_path_buf(), homedir))
+        }
+        None => GlobalContext::default(),
+    }
 }

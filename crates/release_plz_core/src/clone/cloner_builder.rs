@@ -1,9 +1,10 @@
 // Copied from [cargo-clone](https://github.com/JanLikar/cargo-clone/blob/89ba4da215663ffb3b8c93a674f3002937eafec4/cargo-clone-core/src/cloner_builder.rs)
 
 use anyhow::Context;
-use cargo::{core::Shell, util::homedir, CargoResult, GlobalContext};
+use cargo::{CargoResult, GlobalContext};
 use cargo_metadata::camino::Utf8PathBuf;
 
+use crate::cargo::new_global_context_in;
 use crate::fs_utils::current_directory;
 
 use super::{Cloner, ClonerSource};
@@ -52,7 +53,7 @@ impl ClonerBuilder {
     pub fn build(self) -> CargoResult<Cloner> {
         let config = match self.config {
             Some(config) => config,
-            None => new_cargo_config(self.cargo_cwd).context("Unable to get cargo config.")?,
+            None => new_global_context_in(self.cargo_cwd).context("Unable to get cargo config.")?,
         };
 
         let directory = match self.directory {
@@ -72,19 +73,5 @@ impl ClonerBuilder {
             srcid,
             use_git: self.use_git,
         })
-    }
-}
-
-fn new_cargo_config(cwd: Option<Utf8PathBuf>) -> anyhow::Result<GlobalContext> {
-    match cwd {
-        Some(cwd) => {
-            let shell = Shell::new();
-            let homedir = homedir(cwd.as_std_path()).context(
-                "Cargo couldn't find your home directory. \
-                 This probably means that $HOME was not set.",
-            )?;
-            Ok(GlobalContext::new(shell, cwd.into_std_path_buf(), homedir))
-        }
-        None => GlobalContext::default(),
     }
 }
