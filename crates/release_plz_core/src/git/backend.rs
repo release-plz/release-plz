@@ -902,7 +902,13 @@ pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
             anyhow::bail!("Failed to add label `{l}`: it exceeds maximum length of 50 characters.");
         }
 
-        if l.trim().is_empty() {
+        if l.trim() != l {
+            anyhow::bail!(
+                "Failed to add label `{l}`: leading or trailing whitespace is not allowed."
+            );
+        }
+
+        if l.is_empty() {
             anyhow::bail!("Failed to add label. Empty labels are not allowed.");
         }
 
