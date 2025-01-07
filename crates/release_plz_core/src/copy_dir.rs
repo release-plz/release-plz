@@ -48,7 +48,13 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
 #[tracing::instrument]
 #[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
 fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error> {
+    // Create a override to whitelist .git folder
+    // to copy it without take care of .gitignore content
+    let git_folder_override = ignore::overrides::OverrideBuilder::new(from)
+        .add(".git/**")?
+        .build()?;
     let walker = ignore::WalkBuilder::new(from)
+        .overrides(git_folder_override)
         // Read hidden files
         .hidden(false)
         // Don't consider `.ignore` files.
