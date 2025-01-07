@@ -663,9 +663,7 @@ impl GitClient {
     ) -> anyhow::Result<(Vec<String>, Vec<u64>)> {
         // Fetch both existing repository labels and current PR labels concurrently
         let (existing_labels, pr_info) =
-            tokio::try_join!(async { self.get_repository_labels().await }, async {
-                self.get_pr_info(pr_number).await
-            })?;
+            tokio::try_join!(self.get_repository_labels(), self.get_pr_info(pr_number))?;
 
         // Create case-sensitive map for lookups
         let existing_label_map: HashMap<String, (String, Option<u64>)> = existing_labels
