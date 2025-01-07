@@ -4,7 +4,10 @@ on:
   push:
     branches:
       - main
-  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linkChecker:
@@ -18,3 +21,7 @@ jobs:
         uses: lycheeverse/lychee-action@f796c8b7d468feb9b8c0a46da3fac0af6874d374 # v2.2.0
         with:
           fail: true
+          args: |
+            --no-progress
+            --include-fragments
+            .
