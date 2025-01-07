@@ -92,6 +92,8 @@ impl GitOnlyTestContext {
         repo.git(&["config", "user.name", "author_name"]).unwrap();
         repo.git(&["config", "user.email", "author@example.com"])
             .unwrap();
+        // Set autocrlf to false so we use the system line endings
+        repo.git(&["config", "core.autocrlf", "false"]).unwrap();
 
         // Add sparse crates.io registry to cargo config
         let mut cargo_config = toml_edit::DocumentMut::new();
