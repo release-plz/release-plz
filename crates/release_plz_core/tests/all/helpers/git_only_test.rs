@@ -1,4 +1,6 @@
 use crate::helpers::github_mock_server::GitHubMockServer;
+use cargo::core::Workspace;
+use cargo::GlobalContext;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::Metadata;
 use cargo_utils::{get_manifest_metadata, LocalManifest, CARGO_TOML};
@@ -18,6 +20,7 @@ pub struct GitOnlyTestContext {
     github_mock_server: GitHubMockServer,
     tag_template: Option<String>,
     _test_dir: Utf8TempDir,
+    gctx: GlobalContext,
 }
 
 pub const PROJECT_NAME: &str = "myproject";
@@ -104,11 +107,15 @@ impl GitOnlyTestContext {
         fs_err::create_dir(cargo_config_path.parent().unwrap()).unwrap();
         fs_err::write(cargo_config_path, cargo_config.to_string()).unwrap();
 
+        let shell = cargo::core::Shell::new();
+        let homedir = cargo::util::homedir(project_dir.as_std_path()).unwrap();
+
         Self {
             _test_dir: test_dir,
             github_mock_server: GitHubMockServer::start(OWNER, REPO).await,
             tag_template,
             repo,
+            gctx: GlobalContext::new(shell, project_dir.into_std_path_buf(), homedir),
         }
     }
 
@@ -213,6 +220,31 @@ impl GitOnlyTestContext {
 
     pub fn crate_dir(&self, crate_dir: impl AsRef<Utf8Path>) -> Utf8PathBuf {
         self.project_dir().join(crate_dir)
+    }
+
+    pub fn cargo_gctx(&self) -> &GlobalContext {
+        &self.gctx
+    }
+
+    pub fn cargo_workspace(&self) -> Workspace {
+        Workspace::new(self.manifest_path().as_std_path(), self.cargo_gctx()).unwrap()
+    }
+
+    pub fn run_cargo_update(
+        &self,
+        to_update: Vec<String>,
+        precise: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let workspace = self.cargo_workspace();
+        let update_options = cargo::ops::UpdateOptions {
+            gctx: workspace.gctx(),
+            to_update,
+            precise,
+            recursive: false,
+            dry_run: false,
+            workspace: false,
+        };
+        cargo::ops::update_lockfile(&workspace, &update_options)
     }
 }
 

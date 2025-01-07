@@ -27,12 +27,30 @@ impl AssertUpdate for PackagesUpdate {
         {
             let packages = packages.into_iter();
             let updates = self.updates();
-            assert_eq!(updates.len(), packages.len());
+            assert_eq!(
+                updates.len(),
+                packages.len(),
+                "expected {} packages updated, got {}",
+                packages.len(),
+                updates.len()
+            );
 
             for ((name, old_version, new_version), (package, result)) in packages.zip(updates) {
-                assert_eq!(package.name, name);
-                assert_eq!(package.version, old_version);
-                assert_eq!(result.version, new_version);
+                assert_eq!(
+                    package.name, name,
+                    "expected package name {}, got {}",
+                    name, package.name
+                );
+                assert_eq!(
+                    package.version, old_version,
+                    "expected package version {}, got {}",
+                    old_version, package.version
+                );
+                assert_eq!(
+                    result.version, new_version,
+                    "expected new version {}, got {}",
+                    new_version, package.version
+                );
             }
         }
     }
@@ -208,4 +226,65 @@ async fn workspace() {
                 Version::new(0, 2, 1),
             ),
         ]);
+
+    // Test Cargo.lock update
+    // Add `rand` dependency to `other`
+    context
+        .write_cargo_toml(other_crate, |cargo_toml| {
+            cargo_toml["dependencies"]["rand"] = "0.8.0".into();
+        })
+        .unwrap();
+
+    // Run cargo update to update lockfile
+    context
+        .run_cargo_update(vec![], None)
+        .expect("update lockfile should not fail");
+
+    // Set rand to exactly version 0.8.0
+    context
+        .run_cargo_update(vec!["rand".into()], Some("0.8.0"))
+        .expect("update lockfile should not fail");
+
+    context.add_all_commit_and_push("feat(other)!: Add dependency on rand crate");
+
+    context
+        .run_update_and_commit()
+        .await
+        .expect("update after adding rand dependency should succeed")
+        .assert_packages_updated([(
+            other_crate_name,
+            Version::new(0, 1, 0),
+            Version::new(0, 2, 0),
+        )]);
+
+    context
+        .run_release()
+        .await
+        .expect("release should succeed")
+        .expect("release should not be empty");
+
+    // Now run cargo update again, but this time update everything
+    // This should update rand to a newer 0.8.x version in the lockfile
+    // Which should trigger a version bump for *only* the `other` crate
+    context
+        .run_cargo_update(vec![], None)
+        .expect("update lockfile should not fail");
+
+    context.add_all_commit_and_push("chore: Run cargo update");
+
+    context
+        .run_update_and_commit()
+        .await
+        .expect("update after running `cargo update` should succeed")
+        .assert_packages_updated([(
+            other_crate_name,
+            Version::new(0, 2, 0),
+            Version::new(0, 2, 1),
+        )]);
+
+    context
+        .run_release()
+        .await
+        .expect("release should succeed")
+        .expect("release should not be empty");
 }
