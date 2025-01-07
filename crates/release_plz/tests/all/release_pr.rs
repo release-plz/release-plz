@@ -293,7 +293,7 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
             [workspace]
             pr_labels = [""]
             "#,
-            "Empty labels are not allowed",
+            "empty labels are not allowed",
         ),
         (
             r#"

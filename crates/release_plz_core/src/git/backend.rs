@@ -898,23 +898,30 @@ pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
     let mut unique_labels: HashSet<&str> = HashSet::new();
 
     for l in labels {
+        // use a closure to avoid allocating the error message string unless needed
+        let error_msg = || format!("Failed to add label `{l}`:");
+
         if l.len() > 50 {
-            anyhow::bail!("Failed to add label `{l}`: it exceeds maximum length of 50 characters.");
+            anyhow::bail!(
+                "{} it exceeds maximum length of 50 characters.",
+                error_msg()
+            );
         }
 
         if l.trim() != l {
             anyhow::bail!(
-                "Failed to add label `{l}`: leading or trailing whitespace is not allowed."
+                "{} leading or trailing whitespace is not allowed.",
+                error_msg()
             );
         }
 
         if l.is_empty() {
-            anyhow::bail!("Failed to add label. Empty labels are not allowed.");
+            anyhow::bail!("{} empty labels are not allowed.", error_msg());
         }
 
         let is_label_new = unique_labels.insert(l.as_str());
         if !is_label_new {
-            anyhow::bail!("Failed to add label `{l}`: duplicate labels are not allowed.");
+            anyhow::bail!("{} duplicate labels are not allowed.", error_msg());
         }
     }
     Ok(())
