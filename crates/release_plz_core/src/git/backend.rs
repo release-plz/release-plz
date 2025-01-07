@@ -724,32 +724,27 @@ impl GitClient {
                 "color": "#FFFFFF"
             }))
             .send()
-            .await?;
-
-        let res = match res.error_for_status() {
-                Ok(response) => response,
-                Err(err) => return match err.status() {
+            .await?
+            .error_for_status()
+            .map_err(|err| {
+                let status = err.status();
+                let err = anyhow::anyhow!(err);
+                match status {
                     Some(StatusCode::NOT_FOUND) => {
-                        Err(err).context(format!(
-                            "Failed to create label '{}'. Please check if the repository URL '{}' is correct and the user has the necessary permissions",
-                            label,
-                            self.repo_url()
+                        err.context(format!(
+                        "Please check if the repository URL '{}' is correct and the user has the necessary permissions to add labels",
+                        self.repo_url()
                         ))
                     }
                     Some(StatusCode::UNPROCESSABLE_ENTITY) => {
-                        Err(err).context(format!(
-                            "Label {label} creation failed."
-                        ))
+                        err.context("Please open a GitHub issue: https://github.com/release-plz/release-plz/issues")
                     }
                     _ => {
-                        let status = err.status()
-                            .with_context(|| "HTTP response contained no status code when creating label")?;
-                        Err(err).context(format!(
-                            "Label {label} creation failed with status: {status}"
-                        ))
+                        err.context("HTTP response contained no status code when creating label")
                     }
-                },
-            };
+                }
+                .context(format!("failed to create label '{label}'"))
+        })?;
 
         let new_label: Label = res.json().await?;
         let label_id = new_label
