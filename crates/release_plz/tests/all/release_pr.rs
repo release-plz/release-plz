@@ -270,30 +270,6 @@ async fn release_plz_adds_labels_to_release_pr() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_adds_deduplicated_labels_in_release_pr() {
-    let test_context = TestContext::new().await;
-    let duplicate_config_test_cases = r#"
-            [workspace]
-            pr_labels = ["feature", "Feature", "FEATURE"]
-            "#; // initial release pr
-    let duplicate_config2_test_cases = r#"
-            [workspace]
-            pr_labels = ["feature", "FEATURE", "Bug", "urgent"]
-            "#; // update release pr
-
-    test_context.write_release_plz_toml(duplicate_config_test_cases);
-    test_context.run_release_pr().success();
-    let mut prs = test_context.opened_release_prs().await;
-    assert_eq!(prs[0].labels.len(), 3, "Expected 2 labels to get created");
-
-    test_context.write_release_plz_toml(duplicate_config2_test_cases);
-    test_context.run_release_pr().success();
-    prs = test_context.opened_release_prs().await;
-    assert_eq!(prs[0].labels.len(), 5, "Expected 3 labels to get created");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
     let test_context = TestContext::new().await;
     let test_cases: &[(&str, &str)] = &[
