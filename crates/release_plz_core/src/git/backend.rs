@@ -638,7 +638,7 @@ impl GitClient {
         Ok(())
     }
 
-    /// Retrieves and categorizes labels for a PR, ensuring case-insensitive deduplication
+    /// Retrieves and categorizes labels for a PR, ensuring exact matching and deduplication
     /// within the input and against existing PR labels.
     /// # Returns
     /// A tuple containing:
@@ -652,12 +652,10 @@ impl GitClient {
         let mut unique_labels = HashSet::new();
         let labels: Vec<String> = labels
             .iter()
-            .filter_map(|label| {
-                let lowercase_label = label.to_lowercase();
-                // Try to insert into the set, return only if it was successfully inserted
-                unique_labels.insert(lowercase_label).then(|| label.clone())
-            })
+            .filter(|&label| unique_labels.insert(label.clone()))
+            .cloned()
             .collect();
+
         // Fetch both existing repository labels and current PR labels concurrently
         let (existing_labels, pr_info) = tokio::try_join!(
             async {
@@ -674,40 +672,32 @@ impl GitClient {
             async { self.get_pr_info(pr_number).await }
         )?;
 
-        // Create case-insensitive maps for efficient lookups
+        // Create case-sensitive map for lookups
         let existing_label_map: HashMap<String, (String, Option<u64>)> = existing_labels
             .iter()
-            .map(|l| (l.name.to_lowercase(), (l.name.clone(), l.id)))
+            .map(|l| (l.name.clone(), (l.name.clone(), l.id)))
             .collect();
 
         // Get current PR labels
-        let current_pr_labels: HashSet<String> = pr_info
-            .labels
-            .iter()
-            .map(|l| l.name.to_lowercase())
-            .collect();
+        let current_pr_labels: HashSet<String> =
+            pr_info.labels.iter().map(|l| l.name.clone()).collect();
 
         let mut labels_to_create = Vec::new();
         let mut label_ids = Vec::new();
 
         for label in labels {
-            let lowercase_label = label.to_lowercase();
-
-            match existing_label_map.get(&lowercase_label) {
+            match existing_label_map.get(&label) {
                 Some((original_name, id)) => {
                     // Only add the ID if the label isn't already on the PR
-                    if !current_pr_labels.contains(&lowercase_label) {
+                    if !current_pr_labels.contains(&label) {
                         label_ids.push(id.with_context(|| {
                             format!("failed to extract id from existing label '{original_name}'")
                         })?);
                     }
                 }
                 None => {
-                    // Only create labels that don't exist (case-insensitive check)
-                    if !labels_to_create
-                        .iter()
-                        .any(|l: &String| l.to_lowercase() == lowercase_label)
-                    {
+                    // Only create labels that don't exist
+                    if !labels_to_create.contains(&label) {
                         labels_to_create.push(label.clone());
                     }
                 }

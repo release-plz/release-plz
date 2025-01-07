@@ -284,12 +284,12 @@ async fn release_plz_adds_deduplicated_labels_in_release_pr() {
     test_context.write_release_plz_toml(duplicate_config_test_cases);
     test_context.run_release_pr().success();
     let mut prs = test_context.opened_release_prs().await;
-    assert_eq!(prs[0].labels.len(), 1, "Expected 2 labels to get created");
+    assert_eq!(prs[0].labels.len(), 3, "Expected 2 labels to get created");
 
     test_context.write_release_plz_toml(duplicate_config2_test_cases);
     test_context.run_release_pr().success();
     prs = test_context.opened_release_prs().await;
-    assert_eq!(prs[0].labels.len(), 3, "Expected 3 labels to get created");
+    assert_eq!(prs[0].labels.len(), 5, "Expected 3 labels to get created");
 }
 
 #[tokio::test]
