@@ -649,13 +649,6 @@ impl GitClient {
         labels: &[String],
         pr_number: u64,
     ) -> anyhow::Result<(Vec<String>, Vec<u64>)> {
-        let mut unique_labels = HashSet::new();
-        let labels: Vec<String> = labels
-            .iter()
-            .filter(|&label| unique_labels.insert(label))
-            .cloned()
-            .collect();
-
         // Fetch both existing repository labels and current PR labels concurrently
         let (existing_labels, pr_info) = tokio::try_join!(
             async {
@@ -900,6 +893,8 @@ impl GitClient {
 }
 
 pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
+    let mut unique_labels: HashSet<&str> = HashSet::new();
+
     for l in labels {
         if l.len() > 50 {
             anyhow::bail!("Failed to add label `{l}`: it exceeds maximum length of 50 characters.");
@@ -907,6 +902,11 @@ pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
 
         if l.trim().is_empty() {
             anyhow::bail!("Failed to add label. Empty labels are not allowed.");
+        }
+
+        let is_label_new = unique_labels.insert(l.as_str());
+        if !is_label_new {
+            anyhow::bail!("Failed to add label `{l}`: duplicate labels are not allowed.");
         }
     }
     Ok(())
