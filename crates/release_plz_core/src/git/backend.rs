@@ -665,10 +665,10 @@ impl GitClient {
         let (existing_labels, pr_info) =
             tokio::try_join!(self.get_repository_labels(), self.get_pr_info(pr_number))?;
 
-        // Create case-sensitive map for lookups
-        let existing_label_map: HashMap<String, (String, Option<u64>)> = existing_labels
+        // Create map for lookups
+        let existing_label_map: HashMap<&str, &Label> = existing_labels
             .iter()
-            .map(|l| (l.name.clone(), (l.name.clone(), l.id)))
+            .map(|l| (l.name.as_str(), l))
             .collect();
 
         // Get current PR labels
@@ -679,12 +679,12 @@ impl GitClient {
         let mut label_ids = Vec::new();
 
         for label in labels {
-            match existing_label_map.get(label) {
-                Some((original_name, id)) => {
+            match existing_label_map.get(label.as_str()) {
+                Some(l) => {
                     // Only add the ID if the label isn't already on the PR
                     if !current_pr_labels.contains(label) {
-                        label_ids.push(id.with_context(|| {
-                            format!("failed to extract id from existing label '{original_name}'")
+                        label_ids.push(l.id.with_context(|| {
+                            format!("failed to extract id from existing label '{}'", l.name)
                         })?);
                     }
                 }
