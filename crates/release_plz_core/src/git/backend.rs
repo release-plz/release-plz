@@ -681,15 +681,17 @@ impl GitClient {
         for label in labels {
             match existing_label_map.get(label.as_str()) {
                 Some(l) => {
-                    // Only add the ID if the label isn't already on the PR
+                    // The label already exists in the repository.
+                    // If the label isn't already in the PR, we add it using the label ID.
                     if !current_pr_labels.contains(label.as_str()) {
+                        // The label ID is present for Gitea and GitHub
                         label_ids.push(l.id.with_context(|| {
                             format!("failed to extract id from existing label '{}'", l.name)
                         })?);
                     }
                 }
                 None => {
-                    // Only create labels that don't exist
+                    // The label doesn't exist in the repository, so we need to create it.
                     if !labels_to_create.contains(label) {
                         labels_to_create.push(label.to_string());
                     }
