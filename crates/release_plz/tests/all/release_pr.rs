@@ -294,7 +294,14 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
             pr_labels = [""]
             "#,
             "Empty labels are not allowed",
-        ), // empty label
+        ),
+        (
+            r#"
+            [workspace]
+            pr_labels = ["abc", "abc"]
+            "#,
+            "duplicate labels are not allowed",
+        ),
     ];
 
     for test_case in test_cases {
