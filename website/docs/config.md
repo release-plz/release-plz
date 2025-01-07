@@ -421,7 +421,6 @@ Before changing the release-plz branch you should close the old release PR.
 #### The `pr_labels` field
 
 Add labels to the Pull Request opened by release-plz.
-*(GitHub and GitLab only)*.
 
 Example:
 

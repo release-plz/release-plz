@@ -100,7 +100,7 @@ impl GiteaContext {
     }
 
     /// Get the Gitea release associated to the given `tag`.
-    pub async fn get_gitea_release(&self, tag: &str) -> GiteaRelase {
+    pub async fn get_gitea_release(&self, tag: &str) -> GiteaRelease {
         let request_path = format!("{}/releases/tags/{}", self.repo_url(), tag);
         self.client
             .get(&request_path)
@@ -111,7 +111,7 @@ impl GiteaContext {
             .ok_if_2xx()
             .await
             .unwrap()
-            .json::<GiteaRelase>()
+            .json::<GiteaRelease>()
             .await
             .unwrap()
     }
@@ -141,7 +141,7 @@ impl GiteaContext {
 }
 
 #[derive(Debug, serde::Deserialize)]
-pub struct GiteaRelase {
+pub struct GiteaRelease {
     pub name: String,
     pub body: String,
 }
