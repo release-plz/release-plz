@@ -1,4 +1,5 @@
-name: Check Links In Pull Requests
+# Check links that changed in the pull request
+name: PR Links
 
 on:
   pull_request:
