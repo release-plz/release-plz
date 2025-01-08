@@ -94,6 +94,10 @@ impl Project {
         &self.root
     }
 
+    pub fn manifest_dir(&self) -> &Utf8Path {
+        &self.manifest_dir
+    }
+
     /// Get all the packages that should be published to a Cargo registry.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages

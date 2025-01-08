@@ -1,4 +1,4 @@
-use crate::helpers::git_only_test::{GitOnlyTestContext, PROJECT_NAME};
+use crate::helpers::git_only_test::{GitOnlyTestContext, TestOptions};
 use cargo_metadata::camino::{Utf8Component, Utf8PathBuf};
 use cargo_metadata::semver::Version;
 use release_plz_core::PackagesUpdate;
@@ -58,13 +58,20 @@ impl AssertUpdate for PackagesUpdate {
 
 #[tokio::test]
 async fn single_crate() {
-    let context = GitOnlyTestContext::new(None).await;
+    let workspace_name = "myworkspace";
+    let workspace_subdirectory = Utf8PathBuf::from(workspace_name);
+    let relative_manifest_path = workspace_subdirectory.join(cargo_utils::CARGO_TOML);
+    let options = TestOptions {
+        workspace_subdirectory: Some(workspace_subdirectory),
+        ..Default::default()
+    };
+    let context = GitOnlyTestContext::new(options).await;
 
     context
         .run_update_and_commit()
         .await
         .expect("initial update should succeed")
-        .assert_packages_updated([(PROJECT_NAME, Version::new(0, 1, 0), Version::new(0, 1, 0))]);
+        .assert_packages_updated([(workspace_name, Version::new(0, 1, 0), Version::new(0, 1, 0))]);
 
     context
         .run_release()
@@ -72,7 +79,7 @@ async fn single_crate() {
         .expect("initial release should succeed")
         .expect("initial release should not be empty");
 
-    touch(context.project_dir().join("included")).unwrap();
+    touch(context.workspace_dir().join("included")).unwrap();
     context.add_all_commit_and_push("fix: Add `included` file");
 
     // Add package excludes
@@ -90,7 +97,7 @@ async fn single_crate() {
         .run_update_and_commit()
         .await
         .expect("second update should succeed")
-        .assert_packages_updated([(PROJECT_NAME, Version::new(0, 1, 0), Version::new(0, 1, 1))]);
+        .assert_packages_updated([(workspace_name, Version::new(0, 1, 0), Version::new(0, 1, 1))]);
 
     context
         .run_release()
@@ -98,7 +105,7 @@ async fn single_crate() {
         .expect("second release should succeed")
         .expect("second release should not be empty");
 
-    touch(context.project_dir().join(EXCLUDED_FILENAME)).unwrap();
+    touch(context.workspace_dir().join(EXCLUDED_FILENAME)).unwrap();
     context.add_all_commit_and_push("chore: Add `excluded` file");
 
     // Modifying file excluded from package should not lead to version increment
@@ -115,7 +122,13 @@ async fn single_crate() {
     // We do this by setting the executable bit to the file
     context
         .repo
-        .git(&["add", "--chmod", "+x", "--", cargo_utils::CARGO_TOML])
+        .git(&[
+            "add",
+            "--chmod",
+            "+x",
+            "--",
+            relative_manifest_path.as_str(),
+        ])
         .unwrap();
     context
         .repo
@@ -124,7 +137,7 @@ async fn single_crate() {
     // If the filesystem supports an executable bit, set it on the file by restoring it from the index
     context
         .repo
-        .git(&["restore", "--worktree", cargo_utils::CARGO_TOML])
+        .git(&["restore", "--worktree", relative_manifest_path.as_str()])
         .unwrap();
 
     context
@@ -136,7 +149,7 @@ async fn single_crate() {
     assert!(context.repo.is_clean().is_ok());
 
     // Test README
-    let readme_path = context.project_dir().join("README.md");
+    let readme_path = context.workspace_dir().join("README.md");
     fs_err::write(&readme_path, "README").unwrap();
 
     context.add_all_commit_and_push("fix: Add README");
@@ -145,7 +158,7 @@ async fn single_crate() {
         .run_update_and_commit()
         .await
         .expect("update after adding README should succeed")
-        .assert_packages_updated([(PROJECT_NAME, Version::new(0, 1, 1), Version::new(0, 1, 2))]);
+        .assert_packages_updated([(workspace_name, Version::new(0, 1, 1), Version::new(0, 1, 2))]);
 
     context
         .run_release()
@@ -161,7 +174,7 @@ async fn single_crate() {
         .run_update_and_commit()
         .await
         .expect("update after modifying README should succeed")
-        .assert_packages_updated([(PROJECT_NAME, Version::new(0, 1, 2), Version::new(0, 1, 3))]);
+        .assert_packages_updated([(workspace_name, Version::new(0, 1, 2), Version::new(0, 1, 3))]);
 
     context
         .run_release()
@@ -172,11 +185,13 @@ async fn single_crate() {
 
 #[tokio::test]
 async fn workspace() {
-    let (context, crates) = GitOnlyTestContext::new_workspace(
-        Some("{{ package }}--vv{{ version }}".into()),
-        ["publish-false", "dependant", "other"],
-    )
-    .await;
+    let options = TestOptions {
+        tag_template: Some("{{ package }}--vv{{ version }}".into()),
+        ..Default::default()
+    };
+
+    let (context, crates) =
+        GitOnlyTestContext::new_workspace(options, ["publish-false", "dependant", "other"]).await;
     let [publish_false_crate, dependant_crate, other_crate] = &crates;
     let crate_names = crates.each_ref().map(|dir| dir.file_name().unwrap());
     let [publish_false_crate_name, dependant_crate_name, other_crate_name] = crate_names;

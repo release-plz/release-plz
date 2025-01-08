@@ -12,14 +12,21 @@ pub struct GitTagsSource<'a> {
     project: &'a Project,
     repo: &'a Repo,
     tags: Vec<String>,
+    relative_manifest_dir: &'a Utf8Path,
 }
 
 impl<'a> GitTagsSource<'a> {
     pub(crate) fn new(project: &'a Project, repo: &'a Repo) -> Self {
+        let relative_manifest_dir = project
+            .manifest_dir()
+            .strip_prefix(project.root())
+            .expect("bug: manifest dir should be a subdirectory of project root");
+
         Self {
             project,
             repo,
             tags: repo.get_all_tags(),
+            relative_manifest_dir,
         }
     }
 }
@@ -41,6 +48,7 @@ impl Source for GitTagsSource<'_> {
             repo: self.repo,
             tag,
             version,
+            relative_manifest_dir: self.relative_manifest_dir,
         });
 
         Ok(release_tag)
@@ -96,6 +104,7 @@ struct ReleaseTag<'a> {
     repo: &'a Repo,
     tag: &'a str,
     version: Version,
+    relative_manifest_dir: &'a Utf8Path,
 }
 
 const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
@@ -170,8 +179,11 @@ impl ReleaseTag<'_> {
         let gctx = crate::cargo::new_global_context_in(Some(source_dir.to_path_buf()))
             .context("failed to create Cargo config")?;
 
-        // TODO: root Cargo.toml may not be in the repository root dir
-        let manifest_path = source_dir.join(cargo_utils::CARGO_TOML);
+        // TODO: Workspace manifest may be in a different location in the repository
+        // at the release tag than at the current repository HEAD.
+        // Maybe do a breadth-first search for the workspace manifest in the repository tree?
+        let mut manifest_path = source_dir.join(self.relative_manifest_dir);
+        manifest_path.push(cargo_utils::CARGO_TOML);
 
         let workspace = Workspace::new(manifest_path.as_std_path(), &gctx)
             .context("failed to load workspace manifest")?;

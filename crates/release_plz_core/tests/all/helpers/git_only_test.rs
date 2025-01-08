@@ -17,10 +17,19 @@ use std::process::Command;
 
 pub struct GitOnlyTestContext {
     pub repo: Repo,
+    workspace_dir: Utf8PathBuf,
     github_mock_server: GitHubMockServer,
     tag_template: Option<String>,
     _test_dir: Utf8TempDir,
     gctx: GlobalContext,
+}
+
+#[derive(Default)]
+pub struct TestOptions {
+    /// The git tag template to use when creating a release.
+    pub tag_template: Option<String>,
+    /// The subdirectory under the repository root to use as the workspace root.
+    pub workspace_subdirectory: Option<Utf8PathBuf>,
 }
 
 pub const PROJECT_NAME: &str = "myproject";
@@ -30,10 +39,10 @@ const REPO: &str = "repo";
 const SPARSE_CRATES_IO_REGISTRY: &str = "crates-io-sparse";
 
 impl GitOnlyTestContext {
-    pub async fn new(tag_template: Option<String>) -> Self {
-        let context = Self::init(tag_template).await;
+    pub async fn new(options: TestOptions) -> Self {
+        let context = Self::init(options).await;
 
-        cargo_init(context.project_dir());
+        cargo_init(context.workspace_dir());
         context.generate_cargo_lock();
         context.add_all_commit_and_push("feat: Initial commit");
 
@@ -41,10 +50,10 @@ impl GitOnlyTestContext {
     }
 
     pub async fn new_workspace<S: AsRef<Utf8Path>, const N: usize>(
-        tag_template: Option<String>,
+        options: TestOptions,
         crates: [S; N],
     ) -> (Self, [Utf8PathBuf; N]) {
-        let context = Self::init(tag_template).await;
+        let context = Self::init(options).await;
 
         let root_cargo_toml = {
             let crates_list = crates
@@ -52,7 +61,7 @@ impl GitOnlyTestContext {
                 .format_with(", ", |c, fmt| fmt(&format_args!("\"{}\"", c.as_ref())));
             format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
         };
-        fs_err::write(context.project_dir().join(CARGO_TOML), root_cargo_toml).unwrap();
+        fs_err::write(context.workspace_dir().join(CARGO_TOML), root_cargo_toml).unwrap();
 
         let crate_dirs = crates.map(|crate_dir| crate_dir.as_ref().into());
 
@@ -67,7 +76,7 @@ impl GitOnlyTestContext {
         (context, crate_dirs)
     }
 
-    async fn init(tag_template: Option<String>) -> Self {
+    async fn init(options: TestOptions) -> Self {
         test_logs::init();
         let test_dir = Utf8TempDir::new().unwrap();
 
@@ -112,10 +121,16 @@ impl GitOnlyTestContext {
         let shell = cargo::core::Shell::new();
         let homedir = cargo::util::homedir(project_dir.as_std_path()).unwrap();
 
+        let mut workspace_dir = repo.directory().to_path_buf();
+        if let Some(workspace_subdirectory) = options.workspace_subdirectory {
+            workspace_dir.push(workspace_subdirectory);
+        }
+
         Self {
             _test_dir: test_dir,
             github_mock_server: GitHubMockServer::start(OWNER, REPO).await,
-            tag_template,
+            workspace_dir,
+            tag_template: options.tag_template,
             repo,
             gctx: GlobalContext::new(shell, project_dir.into_std_path_buf(), homedir),
         }
@@ -182,17 +197,17 @@ impl GitOnlyTestContext {
         )
     }
 
-    pub fn project_dir(&self) -> &Utf8Path {
-        self.repo.directory()
+    pub fn workspace_dir(&self) -> &Utf8Path {
+        &self.workspace_dir
     }
 
     pub fn manifest_path(&self) -> Utf8PathBuf {
-        self.project_dir().join(CARGO_TOML)
+        self.workspace_dir().join(CARGO_TOML)
     }
 
     fn generate_cargo_lock(&self) {
         Command::new("cargo")
-            .current_dir(self.repo.directory())
+            .current_dir(self.workspace_dir())
             .arg("check")
             .output()
             .unwrap();
@@ -217,11 +232,11 @@ impl GitOnlyTestContext {
         &self,
         write_fn: impl FnOnce(&mut toml_edit::DocumentMut),
     ) -> anyhow::Result<()> {
-        write_cargo_toml(&self.project_dir().join(CARGO_TOML), write_fn)
+        write_cargo_toml(&self.workspace_dir().join(CARGO_TOML), write_fn)
     }
 
     pub fn crate_dir(&self, crate_dir: impl AsRef<Utf8Path>) -> Utf8PathBuf {
-        self.project_dir().join(crate_dir)
+        self.workspace_dir().join(crate_dir)
     }
 
     pub fn cargo_gctx(&self) -> &GlobalContext {
