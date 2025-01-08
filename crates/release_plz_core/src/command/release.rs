@@ -20,7 +20,7 @@ use crate::{
     git::backend::GitClient,
     pr_parser::{prs_from_text, Pr},
     release_order::release_order,
-    GitBackend, PackagePath, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
+    GitBackend, PackagePath, Project, Publishable, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX,
 };
 
@@ -146,9 +146,11 @@ impl ReleaseRequest {
             })
     }
 
-    fn is_publish_enabled(&self, package: &str) -> bool {
-        let config = self.get_package_config(package);
-        config.publish.enabled
+    /// Returns true if the package does not have publishing disabled in its manifest
+    /// and if release-plz is configured to publish the package to a registry.
+    fn is_publish_enabled(&self, package: &Package) -> bool {
+        let config = self.get_package_config(&package.name);
+        package.is_publishable() && config.publish.enabled
     }
 
     fn is_git_release_enabled(&self, package: &str) -> bool {
@@ -580,7 +582,7 @@ async fn release_package_if_needed(
         let token = input.find_registry_token(name.as_deref())?;
         // Only check if this package has already been published to the registry if
         // registry publishing is enabled for it
-        if input.is_publish_enabled(&release_info.package.name)
+        if input.is_publish_enabled(release_info.package)
             && is_published(&mut index, package, input.publish_timeout, &token)
                 .await
                 .context("can't determine if package is published")?
@@ -725,7 +727,7 @@ async fn release_package(
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
-    let should_publish = input.is_publish_enabled(&release_info.package.name);
+    let should_publish = input.is_publish_enabled(release_info.package);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
 

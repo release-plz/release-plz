@@ -1,3 +1,4 @@
+use cargo_utils::LocalManifest;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::test_context::TestContext;
@@ -118,7 +119,7 @@ async fn release_plz_does_not_release_a_new_project_if_release_always_is_false()
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_releases_a_new_project_with_custom_release() {
+async fn release_plz_releases_a_new_project_with_custom_release_and_manifest_publish_false() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -127,6 +128,12 @@ async fn release_plz_releases_a_new_project_with_custom_release() {
     git_release_body = "Welcome to this new release!\n{{ changelog }}"
     "#;
     context.write_release_plz_toml(config);
+
+    // Test publish = true in release-plz config but publish = false in manifest
+    let cargo_toml_path = context.repo_dir().join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
 
     let crate_name = &context.gitea.repo;
 
