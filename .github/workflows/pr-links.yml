@@ -19,11 +19,11 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-          ref: ${{github.event.pull_request.head.ref}}
-          repository: ${{github.event.pull_request.head.repo.full_name}}
+          ref: main
+          persist-credentials: false
 
       - name: Check out base branch
-        run: git checkout ${{github.event.pull_request.base.ref}}
+        run: git checkout main
 
       - name: Dump all links from ${{github.event.pull_request.base.ref}}
         uses: lycheeverse/lychee-action@f796c8b7d468feb9b8c0a46da3fac0af6874d374 # v2.2.0
@@ -39,7 +39,10 @@ jobs:
         run: git stash push --include-untracked
 
       - name: Check out feature branch
-        run: git checkout ${{ github.head_ref }}
+        run: git checkout "${HEAD_REF}"
+        # use the env var to get the head ref for security reasons
+        env:
+          HEAD_REF: ${{ github.head_ref }}
 
       - name: Apply stashed changes
         run: git stash pop || true
