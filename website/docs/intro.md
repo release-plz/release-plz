@@ -39,7 +39,7 @@ Here's an example of a release Pull Request created on the release-plz repositor
 - No configuration required.
 - Optional `cargo update` before releasing.
 - Git tag created for every released package.
-- Package published to any cargo registry.
+- Package published to any cargo registry, or none at all.
 - GitHub/Gitea releases.
 
 ## Releases made easy
