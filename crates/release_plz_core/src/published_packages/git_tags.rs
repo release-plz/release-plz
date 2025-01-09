@@ -6,7 +6,23 @@ use cargo::core::Workspace;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::semver::Version;
 use git_cmd::Repo;
+use itertools::Itertools;
 use regex::Regex;
+
+/// Utility trait to map nested [`Option`]s and [`Result`]s via [`InnerMap::inner_map`].
+trait InnerMap<T> {
+    type Output<R>;
+
+    fn inner_map<R>(self, f: impl FnOnce(T) -> R) -> Self::Output<R>;
+}
+
+impl<T, E> InnerMap<T> for Result<Option<T>, E> {
+    type Output<R> = Result<Option<R>, E>;
+
+    fn inner_map<R>(self, f: impl FnOnce(T) -> R) -> Self::Output<R> {
+        self.map(|inner| inner.map(f))
+    }
+}
 
 pub struct GitTagsSource<'a> {
     project: &'a Project,
@@ -29,6 +45,52 @@ impl<'a> GitTagsSource<'a> {
             relative_manifest_dir,
         }
     }
+
+    /// Checks that the given `tag` is a valid release tag for a package with the given name and
+    /// version.
+    ///
+    /// If `tag` is a valid release tag, returns the path to the workspace manifest at that tag.
+    /// Otherwise, returns [`None`].
+    fn check_release_tag_validity(
+        &self,
+        tag: &str,
+        package_name: &str,
+        version: &Version,
+    ) -> anyhow::Result<Option<Utf8PathBuf>> {
+        self.repo
+            .checkout(tag)
+            .with_context(|| format!("failed to checkout release tag '{tag}'"))?;
+
+        // TODO: Workspace manifest may be in a different location in the repository
+        // at the release tag than at the current repository HEAD.
+        // Maybe do a breadth-first search for the workspace manifest in the repository tree
+        let relative_manifest_path = self.relative_manifest_dir.join(cargo_utils::CARGO_TOML);
+        let manifest_path = self.repo.directory().join(&relative_manifest_path);
+
+        let metadata = cargo_utils::get_manifest_metadata(&manifest_path).with_context(|| {
+            format!(
+                "failed to load workspace manifest at path {relative_manifest_path} at tag '{tag}'"
+            )
+        })?;
+
+        let package_found = cargo_utils::workspace_members(&metadata)
+            .with_context(|| format!("failed to get workspace members at tag '{tag}'"))?
+            .any(|package| package.name == package_name && package.version == *version);
+
+        if package_found {
+            Ok(Some(relative_manifest_path))
+        } else {
+            tracing::warn!(
+                "Tag '{}' looks like a release tag for package '{}' with version '{}', \
+                but the workspace at that tag does not contain a package with that \
+                name and version. Treating the tag as not a release tag.",
+                tag,
+                package_name,
+                version
+            );
+            Ok(None)
+        }
+    }
 }
 
 impl Source for GitTagsSource<'_> {
@@ -37,21 +99,26 @@ impl Source for GitTagsSource<'_> {
         package_name: &'a str,
     ) -> anyhow::Result<Option<impl Summary + 'a>> {
         // Find the package release tag corresponding to the greatest (i.e. latest) version
-        let release_tag = filter_release_tags(
+        filter_release_tags(
             self.tags.iter().map(AsRef::as_ref),
             package_name,
             self.project,
         )
-        .max_by(|(_, a), (_, b)| a.cmp(b))
-        .map(|(tag, version)| ReleaseTag {
+        .filter_map(|(tag, version)| {
+            self.check_release_tag_validity(tag, package_name, &version)
+                .inner_map(|relative_manifest_path| (tag, version, relative_manifest_path))
+                .transpose()
+        })
+        .process_results(|tags| {
+            tags.max_by(|(_, version1, _), (_, version2, _)| version1.cmp(version2))
+        })
+        .inner_map(|(tag, version, relative_manifest_path)| ReleaseTag {
             package_name,
             repo: self.repo,
             tag,
             version,
-            relative_manifest_dir: self.relative_manifest_dir,
-        });
-
-        Ok(release_tag)
+            relative_manifest_path,
+        })
     }
 }
 
@@ -104,7 +171,7 @@ struct ReleaseTag<'a> {
     repo: &'a Repo,
     tag: &'a str,
     version: Version,
-    relative_manifest_dir: &'a Utf8Path,
+    relative_manifest_path: Utf8PathBuf,
 }
 
 const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
@@ -179,12 +246,7 @@ impl ReleaseTag<'_> {
         let gctx = crate::cargo::new_global_context_in(Some(source_dir.to_path_buf()))
             .context("failed to create Cargo config")?;
 
-        // TODO: Workspace manifest may be in a different location in the repository
-        // at the release tag than at the current repository HEAD.
-        // Maybe do a breadth-first search for the workspace manifest in the repository tree?
-        let mut manifest_path = source_dir.join(self.relative_manifest_dir);
-        manifest_path.push(cargo_utils::CARGO_TOML);
-
+        let manifest_path = source_dir.join(&self.relative_manifest_path);
         let workspace = Workspace::new(manifest_path.as_std_path(), &gctx)
             .context("failed to load workspace manifest")?;
 

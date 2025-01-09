@@ -82,6 +82,18 @@ async fn single_crate() {
     touch(context.workspace_dir().join("included")).unwrap();
     context.add_all_commit_and_push("fix: Add `included` file");
 
+    // Create misleading tag v9.8.7 that does not actually point to a version 9.8.7 of the package
+    // If not correctly handled, we'll get the following error:
+    //  package `myworkspace` has a different version (0.1.1) with respect to the
+    //  registry package (0.1.0), but the git tag v0.1.1 exists.
+    // This is because the published package selection mechanism would use this tag as it
+    // is the latest "version tag" even though it doesn't actually correspond to version 9.8.7
+    // of the package
+    context
+        .repo
+        .tag("v9.8.7", "random version tag")
+        .expect("git tag should succeed");
+
     // Add package excludes
     const EXCLUDED_FILENAME: &str = "excluded";
     context

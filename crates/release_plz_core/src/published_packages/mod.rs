@@ -62,6 +62,7 @@ impl PackagesCollection {
     ///
     /// If `registry` is provided, the packages are downloaded from the specified registry.
     /// Otherwise, the registry specified in each package's manifest is used.
+    #[tracing::instrument(skip_all)]
     pub fn fetch_latest<'p>(
         project: &Project,
         repo: &Repo,
@@ -99,7 +100,7 @@ impl PackagesCollection {
 
                 Ok(published_package.map(|package| (package.package.name.clone(), package)))
             })
-            .filter_map(|x| x.transpose())
+            .filter_map(Result::transpose)
             .collect::<anyhow::Result<_>>()?;
 
         // Restore the repo to its original state
