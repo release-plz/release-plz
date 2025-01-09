@@ -20,6 +20,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          repository: ${{github.event.pull_request.head.repo.full_name}}
           persist-credentials: false
 
       - name: Check out base branch
