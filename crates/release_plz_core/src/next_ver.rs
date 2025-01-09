@@ -418,8 +418,16 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
+
+    let repo_is_clean_result = repository.repo.is_clean();
     if !input.allow_dirty {
-        repository.repo.is_clean()?;
+        repo_is_clean_result?;
+    } else if repo_is_clean_result.is_err() {
+        // Commit the uncommitted changes in a temporary commit, so we can use `checkout_head`
+        // to restore them
+        repository
+            .repo
+            .add_all_and_commit("release-plz temp commit with uncommitted changes")?;
     }
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
