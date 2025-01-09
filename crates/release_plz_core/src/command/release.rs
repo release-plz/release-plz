@@ -728,7 +728,11 @@ async fn release_package(
     let workspace_root = &input.metadata.workspace_root;
 
     let publish = input.is_publish_enabled(release_info.package);
+    let create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
     if publish {
+        // Runs `cargo publish --dry-run` in dry-run mode, so we can run this here
         let output = run_cargo_publish(release_info.package, input, workspace_root)
             .context("failed to run cargo publish")?;
         if !output.status.success()
@@ -744,17 +748,41 @@ async fn release_package(
     }
 
     if input.dry_run {
-        info!(
-            "{} {}: aborting upload due to dry run",
-            release_info.package.name, release_info.package.version
-        );
+        if publish {
+            info!(
+                "{} {}: aborting registry upload due to dry run",
+                release_info.package.name, release_info.package.version
+            );
+        }
+
+        if create_git_tag {
+            info!(
+                "{} {}: skipping creation of git tag '{}' due to dry run",
+                release_info.package.name, release_info.package.version, release_info.git_tag
+            );
+        }
+
+        if create_git_release {
+            info!(
+                "{} {}: skipping git release creation due to dry run",
+                release_info.package.name, release_info.package.version
+            );
+        }
+
+        if !publish && !create_git_tag && !create_git_release {
+            info!(
+                "{} {}: no release method enabled",
+                release_info.package.name, release_info.package.version
+            );
+        }
+
         Ok(false)
     } else {
         if publish {
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if input.is_git_tag_enabled(&release_info.package.name) {
+        if create_git_tag {
             // Use same tag message of cargo-release
             let message = format!(
                 "chore: Release package {} version {}",
@@ -773,7 +801,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if input.is_git_release_enabled(&release_info.package.name) {
+        if create_git_release {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
