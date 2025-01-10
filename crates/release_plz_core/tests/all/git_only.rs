@@ -1,5 +1,5 @@
 use crate::helpers::git_only_test::{GitOnlyTestContext, TestOptions};
-use cargo_metadata::camino::{Utf8Component, Utf8PathBuf};
+use cargo_metadata::camino::Utf8PathBuf;
 use cargo_metadata::semver::Version;
 use release_plz_core::PackagesUpdate;
 use std::path::PathBuf;
@@ -208,6 +208,22 @@ async fn workspace() {
     let crate_names = crates.each_ref().map(|dir| dir.file_name().unwrap());
     let [publish_false_crate_name, dependant_crate_name, other_crate_name] = crate_names;
 
+    // Add workspace references - manifest normalization should get rid of it
+    context
+        .write_root_cargo_toml(|cargo_toml| {
+            cargo_toml["workspace"]["package"]["authors"] =
+                toml_edit::Array::from_iter(["release-plz tests"]).into();
+        })
+        .unwrap();
+
+    context
+        .write_cargo_toml(other_crate, |cargo_toml| {
+            cargo_toml["package"]["authors"]["workspace"] = true.into();
+        })
+        .unwrap();
+
+    context.add_all_commit_and_push("fix: Add workspace references");
+
     context
         .run_update_and_commit()
         .await
@@ -252,22 +268,19 @@ async fn workspace() {
     // Simulates a binary depending on an unpublished library in the same workspace
 
     context
-        .write_cargo_toml(dependant_crate, |cargo_toml| {
-            // Relative path to a crate is found by going up by number of components in this
-            // crate's path (i.e. to the workspace root) and appending the path of the dependant crate
-            let relative_path = Utf8PathBuf::from_iter(
-                dependant_crate
-                    .components()
-                    .map(|_| Utf8Component::ParentDir)
-                    .chain(publish_false_crate.components()),
-            );
-
-            cargo_toml["dependencies"][publish_false_crate_name] =
+        .write_root_cargo_toml(|cargo_toml| {
+            cargo_toml["workspace"]["dependencies"][publish_false_crate_name] =
                 toml_edit::InlineTable::from_iter([
-                    ("path", relative_path.as_str()),
+                    ("path", publish_false_crate.as_str()),
                     ("version", "0.1.0"),
                 ])
                 .into();
+        })
+        .unwrap();
+
+    context
+        .write_cargo_toml(dependant_crate, |cargo_toml| {
+            cargo_toml["dependencies"][publish_false_crate_name]["workspace"] = true.into();
         })
         .expect("writing Cargo.toml should succeed");
 
