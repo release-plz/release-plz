@@ -135,7 +135,25 @@ async fn release_plz_releases_a_new_project_with_custom_release_and_manifest_pub
     cargo_toml.data["package"]["publish"] = false.into();
     cargo_toml.write().unwrap();
 
+    // release-plz should not release unpublished packages by default
+    context
+        .run_release()
+        .failure()
+        .stderr(predicates::str::contains("no public packages found"));
+
+    // Release should succeed after explicitly specifying release = true for unpublishable package
     let crate_name = &context.gitea.repo;
+
+    let config = format!(
+        r#"
+    {config}
+    
+    [[package]]
+    name = "{crate_name}"
+    release = true
+    "#
+    );
+    context.write_release_plz_toml(&config);
 
     let expected_tag = "v0.1.0";
     let expected_release = format!("{crate_name}--0.1.0");

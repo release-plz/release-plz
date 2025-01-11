@@ -321,20 +321,13 @@ async fn release_pr_works_with_publish_false() {
     let context = TestContext::new_workspace(&[CARGO_PUBLISH_FALSE_CRATE, "foo"]).await;
 
     let config = r#"
-[workspace]
-publish = false
+    [workspace]
+    publish = false
+    release = true
     "#;
 
     context.write_release_plz_toml(config);
     context.run_release_pr().success();
-
-    let cargo_publish_false_crate_dir = context.repo_dir().join(CARGO_PUBLISH_FALSE_CRATE);
-
-    // Write publish = false to Cargo.toml
-    let cargo_toml_path = cargo_publish_false_crate_dir.join("Cargo.toml");
-    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    cargo_toml.data["package"]["publish"] = false.into();
-    cargo_toml.write().unwrap();
 
     let expected_title = "chore: release v0.1.0";
     let opened_prs = context.opened_release_prs().await;
@@ -351,7 +344,15 @@ publish = false
 
     context.run_release().success();
 
-    // Create a change only in one crate
+    let cargo_publish_false_crate_dir = context.repo_dir().join(CARGO_PUBLISH_FALSE_CRATE);
+
+    // Write publish = false to Cargo.toml
+    let cargo_toml_path = cargo_publish_false_crate_dir.join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
+
+    // Create a change only in the unpublishable crate
     fs_err::OpenOptions::new()
         .create(true)
         .write(true)
@@ -363,6 +364,32 @@ publish = false
         .add_all_and_commit("feat: Create README")
         .unwrap();
     context.repo.git(&["push"]).unwrap();
+
+    // release-plz should not process unpublished packages by default, even with release = true
+    // in the workspace config
+    // release-pr will succeed because the other crate in the workspace is processed,
+    // but not create any PRs since only the unprocessed unpublished crate has changes
+    context
+        .run_release_pr()
+        .success()
+        .stdout(predicates::function::function(|s| {
+            let expected_output = serde_json::json!({ "prs": [] });
+            serde_json::from_str(s).ok() == Some(expected_output)
+        }));
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 0);
+
+    // release-pr should create PR after explicitly specifying release = true
+    let config = format!(
+        r#"
+    {config}
+
+    [[package]]
+    name = "{CARGO_PUBLISH_FALSE_CRATE}"
+    release = true
+    "#
+    );
+    context.write_release_plz_toml(&config);
 
     context.run_release_pr().success();
 

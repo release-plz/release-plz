@@ -55,6 +55,7 @@ fake_package = { path = "../fake_package" }
 assert_cmd.workspace = true
 fake.workspace = true
 expect-test.workspace = true
+predicates.workspace = true
 pretty_assertions.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
