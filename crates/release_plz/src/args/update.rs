@@ -14,7 +14,7 @@ use release_plz_core::{
 };
 use secrecy::SecretString;
 
-use crate::config::Config;
+use crate::config::{Config, Configurable, Configurator, PackageConfig, PackageSpecificConfig};
 
 use super::{
     config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
@@ -135,6 +135,35 @@ impl ConfigCommand for Update {
     }
 }
 
+impl Configurable for UpdateRequest {
+    type Overrides = Update;
+
+    fn configure_default(
+        self,
+        mut default_config: PackageConfig,
+        overrides: &Self::Overrides,
+    ) -> Self {
+        if overrides.no_changelog {
+            default_config.changelog_update = false.into();
+        }
+
+        self.with_default_package_config(default_config.into())
+    }
+
+    fn configure_package(
+        self,
+        package: impl Into<String>,
+        mut package_config: PackageSpecificConfig,
+        overrides: &Self::Overrides,
+    ) -> Self {
+        if overrides.no_changelog {
+            package_config.common.changelog_update = false.into();
+        }
+
+        self.with_package_config(package, package_config.into())
+    }
+}
+
 impl Update {
     pub fn git_backend(&self, repo: RepoUrl) -> anyhow::Result<Option<GitBackend>> {
         let Some(token) = self.git_token.clone() else {
@@ -190,7 +219,10 @@ impl Update {
                     format!("cannot find project manifest {registry_manifest_path:?}")
                 })?;
         }
-        update = config.fill_update_config(self.no_changelog, update);
+
+        let configurator = Configurator::new(update.cargo_metadata());
+        update = configurator.configure(update, config, self);
+
         {
             let release_date = self
                 .release_date
@@ -282,9 +314,9 @@ fn check_if_cargo_lock_is_ignored_and_committed(local_manifest: &Utf8Path) -> an
 
 #[cfg(test)]
 mod tests {
-    use fake_package::metadata::fake_metadata;
-
     use super::*;
+    use fake_package::metadata::fake_metadata;
+    use release_plz_core::Publishable;
 
     #[test]
     fn input_generates_correct_release_request() {
@@ -309,5 +341,13 @@ mod tests {
             .unwrap();
         let pkg_config = req.get_package_config("aaa");
         assert_eq!(pkg_config, release_plz_core::PackageUpdateConfig::default());
+
+        // Unpublishable packages should default to release = false
+        for package in req.cargo_metadata().workspace_packages() {
+            if !package.is_publishable() {
+                let pkg_config = req.get_package_config(&package.name);
+                assert!(!pkg_config.generic.release);
+            }
+        }
     }
 }

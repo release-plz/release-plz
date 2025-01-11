@@ -76,6 +76,11 @@ impl ReleaseRequest {
         cargo_utils::workspace_manifest(&self.metadata)
     }
 
+    /// The [`Metadata`] of the workspace or package to be released.
+    pub fn cargo_metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
     pub fn with_registry(mut self, registry: impl Into<String>) -> Self {
         self.registry = Some(registry.into());
         self

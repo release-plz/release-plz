@@ -7,7 +7,7 @@ use clap::{
 use release_plz_core::{GitBackend, GitHub, GitLab, Gitea, ReleaseRequest};
 use secrecy::SecretString;
 
-use crate::config::Config;
+use crate::config::{Config, Configurable, Configurator, PackageConfig, PackageSpecificConfig};
 
 use super::{
     config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
@@ -85,6 +85,46 @@ impl ConfigCommand for Release {
     }
 }
 
+pub struct ReleaseOverrides {
+    no_verify: bool,
+    allow_dirty: bool,
+}
+
+impl Configurable for ReleaseRequest {
+    type Overrides = ReleaseOverrides;
+
+    fn configure_default(
+        self,
+        mut default_config: PackageConfig,
+        overrides: &Self::Overrides,
+    ) -> Self {
+        if overrides.no_verify {
+            default_config.publish_no_verify = Some(true);
+        }
+        if overrides.allow_dirty {
+            default_config.publish_allow_dirty = Some(true);
+        }
+
+        self.with_default_package_config(default_config.into())
+    }
+
+    fn configure_package(
+        self,
+        package: impl Into<String>,
+        mut package_config: PackageSpecificConfig,
+        overrides: &Self::Overrides,
+    ) -> Self {
+        if overrides.no_verify {
+            package_config.common.publish_no_verify = Some(true);
+        }
+        if overrides.allow_dirty {
+            package_config.common.publish_allow_dirty = Some(true);
+        }
+
+        self.with_package_config(package, package_config.common.into())
+    }
+}
+
 impl Release {
     pub fn release_request(
         self,
@@ -131,7 +171,14 @@ impl Release {
 
         req = req.with_publish_timeout(config.workspace.publish_timeout()?);
 
-        req = config.fill_release_config(self.allow_dirty, self.no_verify, req);
+        let configurator = Configurator::new(req.cargo_metadata());
+        // We cannot pass &self as overrides because we partially moved out of self above,
+        // so we need the separate ReleaseOverrides struct
+        let overrides = ReleaseOverrides {
+            no_verify: self.no_verify,
+            allow_dirty: self.allow_dirty,
+        };
+        req = configurator.configure(req, config, &overrides);
 
         req = req.with_branch_prefix(config.workspace.pr_branch_prefix.clone());
 
@@ -154,6 +201,7 @@ impl ManifestCommand for Release {
 #[cfg(test)]
 mod tests {
     use fake_package::metadata::fake_metadata;
+    use release_plz_core::Publishable;
 
     use super::*;
 
@@ -229,5 +277,16 @@ mod tests {
         let expected = release_plz_core::ReleaseConfig::default();
         assert_eq!(pkg_config, expected);
         assert!(pkg_config.git_release().is_enabled());
+
+        // Unpublishable packages should default to release = false
+        for package in request.cargo_metadata().workspace_packages() {
+            if !package.is_publishable() {
+                let pkg_config = request.get_package_config(&package.name);
+                assert_eq!(
+                    pkg_config,
+                    release_plz_core::ReleaseConfig::default().with_release(false)
+                );
+            }
+        }
     }
 }
