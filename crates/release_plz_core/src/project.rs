@@ -208,7 +208,6 @@ See https://doc.rust-lang.org/cargo/reference/manifest.html\n",
 }
 
 fn check_local_dependencies(package: &Package) -> Vec<String> {
-    println!("---------- {:?}", package.name);
     //Check if version is specified for local dependencies (has a path entry)
     let mut local_dependencies_missing_version = vec![];
     for dependency in &package.dependencies {
