@@ -12,7 +12,8 @@ There are three main commands:
 There are also some utility commands:
 
 - [`release-plz init`](init.md) initializes release-plz for the current GitHub repository.
-- [`release-plz set-version`](set-version.md) edits the version of a package in Cargo.toml and changelog.
+- [`release-plz set-version`](set-version.md)
+  edits the version of a package in Cargo.toml and changelog.
 - [`release-plz generate-completions`](shell-completion.md) generates command completions for
   shells.
 - [`release-plz generate-schema`](generate-schema.md) generates the JSON schema for the
