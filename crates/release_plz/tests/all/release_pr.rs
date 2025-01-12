@@ -331,5 +331,6 @@ fn move_readme(context: &TestContext, message: &str) {
 }
 
 fn today() -> String {
+    // The changelogs specify the release date in UTC.
     chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
