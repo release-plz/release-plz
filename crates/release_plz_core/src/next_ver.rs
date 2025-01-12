@@ -1,5 +1,5 @@
 use crate::diff::Commit;
-use crate::get_cargo_package_files;
+use crate::{fs_utils, get_cargo_package_files};
 use crate::{
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser::{self, ChangelogRelease},
@@ -36,7 +36,6 @@ use regex::Regex;
 use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    io,
     path::Path,
 };
 use toml_edit::TableLike;
@@ -280,8 +279,8 @@ impl UpdateRequest {
         }
     }
 
-    pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> io::Result<Self> {
-        let registry_manifest = Utf8Path::canonicalize_utf8(registry_manifest)?;
+    pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> anyhow::Result<Self> {
+        let registry_manifest = fs_utils::canonicalize_utf8(registry_manifest)?;
         Ok(Self {
             registry_manifest: Some(registry_manifest),
             ..self
