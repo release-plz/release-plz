@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context as _;
 use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
-    Metadata, Package,
+    DependencyKind, Metadata, Package,
 };
 use cargo_utils::CARGO_TOML;
 use tracing::debug;
@@ -208,10 +208,15 @@ See https://doc.rust-lang.org/cargo/reference/manifest.html\n",
 }
 
 fn check_local_dependencies(package: &Package) -> Vec<String> {
+    println!("---------- {:?}", package.name);
     //Check if version is specified for local dependencies (has a path entry)
     let mut local_dependencies_missing_version = vec![];
     for dependency in &package.dependencies {
-        if dependency.path.is_some() && dependency.req.comparators.is_empty() {
+        if dependency.path.is_some()
+            && dependency.req.comparators.is_empty()
+            // TODO: should we check for other kinds of dependencies? E.g. Build?
+            && dependency.kind == DependencyKind::Normal
+        {
             local_dependencies_missing_version.push(dependency.name.clone());
         }
     }
