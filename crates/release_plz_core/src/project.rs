@@ -9,9 +9,11 @@ use cargo_utils::CARGO_TOML;
 use tracing::debug;
 
 use crate::{
-    copy_to_temp_dir, fs_utils::strip_prefix, manifest_dir, new_manifest_dir_path,
-    root_repo_path_from_manifest_dir, tmp_repo::TempRepo, workspace_packages, Publishable as _,
-    ReleaseMetadata, ReleaseMetadataBuilder,
+    copy_to_temp_dir,
+    fs_utils::{self, strip_prefix},
+    manifest_dir, new_manifest_dir_path, root_repo_path_from_manifest_dir,
+    tmp_repo::TempRepo,
+    workspace_packages, Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder,
 };
 use crate::{
     tera::{tera_context, tera_var, PACKAGE_VAR, VERSION_VAR},
@@ -283,13 +285,8 @@ fn override_packages_path(
     metadata: &Metadata,
     manifest_dir: &Utf8Path,
 ) -> Result<(), anyhow::Error> {
-    let canonicalized_workspace_root =
-        dunce::canonicalize(&metadata.workspace_root).with_context(|| {
-            format!(
-                "failed to canonicalize workspace root {:?}",
-                metadata.workspace_root
-            )
-        })?;
+    let canonicalized_workspace_root = fs_utils::canonicalize_utf8(&metadata.workspace_root)
+        .context("failed to canonicalize workspace root")?;
     for p in packages {
         let old_path = p.package_path()?;
         let relative_package_path =
