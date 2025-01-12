@@ -7,9 +7,9 @@ use crate::{
     diff::Diff,
     fs_utils::{strip_prefix, Utf8TempDir},
     is_readme_updated, local_readme_override, lock_compare,
-    package_compare::are_packages_equal,
+    package_compare::{are_packages_equal, is_package_equal_to_published},
     package_path::{manifest_dir, PackagePath},
-    registry_packages::{self, PackagesCollection, RegistryPackage},
+    published_packages::{PackagesCollection, PublishedPackage},
     repo_url::RepoUrl,
     semver_check::{self, SemverCheck},
     tmp_repo::TempRepo,
@@ -380,6 +380,16 @@ impl UpdateRequest {
     pub fn repo_url(&self) -> Option<&RepoUrl> {
         self.repo_url.as_ref()
     }
+
+    pub(crate) fn create_project(&self) -> anyhow::Result<Project> {
+        Project::new(
+            &self.local_manifest,
+            self.single_package.as_deref(),
+            &self.packages_config.overrides.keys().cloned().collect(),
+            &self.metadata,
+            self,
+        )
+    }
 }
 
 impl ReleaseMetadataBuilder for UpdateRequest {
@@ -395,33 +405,40 @@ impl ReleaseMetadataBuilder for UpdateRequest {
 /// Determine next version of packages
 #[instrument(skip_all)]
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
-    let overrides = input.packages_config.overrides.keys().cloned().collect();
-    let local_project = Project::new(
-        &input.local_manifest,
-        input.single_package.as_deref(),
-        &overrides,
-        &input.metadata,
-        input,
-    )?;
+    let local_project = input.create_project()?;
     let updater = Updater {
         project: &local_project,
         req: input,
     };
-    // Retrieve the latest published version of the packages.
-    // Release-plz will compare the registry packages with the local packages,
-    // to determine the new commits.
-    let registry_packages = registry_packages::get_registry_packages(
-        input.registry_manifest.as_deref(),
-        &local_project.publishable_packages(),
-        input.registry.as_deref(),
-    )?;
 
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
+
+    let repo_is_clean_result = repository.repo.is_clean();
     if !input.allow_dirty {
-        repository.repo.is_clean()?;
+        repo_is_clean_result?;
+    } else if repo_is_clean_result.is_err() {
+        // Commit the uncommitted changes in a temporary commit, so we can use `checkout_head`
+        // to restore them
+        repository
+            .repo
+            .add_all_and_commit("release-plz temp commit with uncommitted changes")?;
     }
+
+    // Retrieve the latest published version of the packages.
+    // Release-plz will compare the registry packages with the local packages,
+    // to determine the new commits.
+    let publishable_packages = local_project.workspace_packages();
+
+    let registry_packages = PackagesCollection::fetch_latest(
+        &local_project,
+        &repository,
+        publishable_packages.into_iter(),
+        input.registry_manifest(),
+        input.registry.as_deref(),
+    )?;
+
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
         .await?;
@@ -628,7 +645,7 @@ impl Updater<'_> {
         // package at a time.
         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = self
             .project
-            .publishable_packages()
+            .workspace_packages()
             .iter()
             .map(|&p| {
                 let diff = self
@@ -886,7 +903,7 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
-        let registry_package = registry_packages.get_registry_package(&package.name);
+        let registry_package = registry_packages.get_published_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
@@ -932,7 +949,7 @@ impl Updater<'_> {
         &self,
         package_path: &Utf8Path,
         package: &Package,
-        registry_package: Option<&RegistryPackage>,
+        registry_package: Option<&PublishedPackage>,
         repository: &Repo,
         tag_commit: Option<&str>,
         diff: &mut Diff,
@@ -960,6 +977,7 @@ impl Updater<'_> {
                     repository,
                     package,
                     package_path,
+                    registry_package,
                     registry_package_path,
                 )?;
                 if are_packages_equal
@@ -1022,9 +1040,10 @@ impl Updater<'_> {
         repository: &Repo,
         package: &Package,
         package_path: &Utf8Path,
-        registry_package_path: &Utf8Path,
+        published_package: &PublishedPackage,
+        published_package_path: &Utf8Path,
     ) -> anyhow::Result<bool> {
-        if is_readme_updated(&package.name, package_path, registry_package_path)? {
+        if is_readme_updated(&package.name, package_path, published_package_path)? {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
@@ -1033,8 +1052,19 @@ impl Updater<'_> {
         let cargo_lock_path = self
             .get_cargo_lock_path(repository)
             .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = are_packages_equal(package_path, registry_package_path)
-            .context("cannot compare packages")?;
+
+        let are_packages_equal_result =
+            if let Some(published_package_files) = published_package.files() {
+                is_package_equal_to_published(
+                    package_path,
+                    published_package_path,
+                    published_package_files,
+                )
+            } else {
+                are_packages_equal(package_path, published_package_path)
+            };
+
+        let are_packages_equal = are_packages_equal_result.context("cannot compare packages")?;
         if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
             // Revert any changes to `Cargo.lock`
             repository

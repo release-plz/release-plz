@@ -236,6 +236,20 @@ impl Repo {
         Ok(())
     }
 
+    /// Adds a detached git worktree at the given path checked out at the given object.
+    pub fn add_worktree(&self, path: impl AsRef<Utf8Path>, object: &str) -> anyhow::Result<()> {
+        self.git(&[
+            "worktree",
+            "add",
+            "--detach",
+            path.as_ref().as_str(),
+            object,
+        ])
+        .context("failed to create git worktree")?;
+
+        Ok(())
+    }
+
     /// Get `nth` commit starting from `1`.
     #[instrument(
         skip(self)
@@ -302,6 +316,19 @@ impl Repo {
     /// Get the commit hash of the given tag
     pub fn get_tag_commit(&self, tag: &str) -> Option<String> {
         self.git(&["rev-list", "-n", "1", tag]).ok()
+    }
+
+    /// Returns all the tags in the repository in an unspecified order.
+    pub fn get_all_tags(&self) -> Vec<String> {
+        match self
+            .git(&["tag", "--list"])
+            .ok()
+            .as_ref()
+            .map(|output| output.trim())
+        {
+            None | Some("") => vec![],
+            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
+        }
     }
 
     /// Check if a commit comes before another one.

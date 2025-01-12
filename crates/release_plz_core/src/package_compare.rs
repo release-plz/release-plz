@@ -4,6 +4,7 @@ use cargo_metadata::{
     Package,
 };
 use cargo_utils::{get_manifest_metadata, CARGO_TOML};
+use itertools::Itertools;
 use tracing::debug;
 
 use crate::cargo::run_cargo;
@@ -22,15 +23,6 @@ pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
 ) -> anyhow::Result<bool> {
-    debug!(
-        "compare local package {:?} with registry package {:?}",
-        local_package, registry_package
-    );
-    if !are_cargo_toml_equal(local_package, registry_package) {
-        debug!("Cargo.toml is different");
-        return Ok(false);
-    }
-
     // When a package is published to a cargo registry, the original `Cargo.toml` file is stored as `Cargo.toml.orig`.
     // We need to rename it to `Cargo.toml.orig.orig`, because this name is reserved, and `cargo package` will fail if it exists.
     rename(
@@ -38,9 +30,6 @@ pub fn are_packages_equal(
         registry_package.join("Cargo.toml.orig.orig"),
     )?;
 
-    let local_package_files = get_cargo_package_files(local_package).with_context(|| {
-        format!("cannot determine packaged files of local package {local_package:?}")
-    })?;
     let registry_package_files = get_cargo_package_files(registry_package).with_context(|| {
         format!("cannot determine packaged files of registry package {registry_package:?}")
     })?;
@@ -51,17 +40,49 @@ pub fn are_packages_equal(
         registry_package.join("Cargo.toml.orig"),
     )?;
 
+    is_package_equal_to_published(
+        local_package,
+        registry_package,
+        registry_package_files.iter().map(AsRef::as_ref),
+    )
+}
+
+/// Check if a local package is equal to the published package stored at the given path.
+///
+/// Some published packages may be obtained in a way that does not allow `cargo package --list`
+/// to successfully run (for example, if an unpublished workspace dependency is missing).
+/// The `published_package_files` argument allows such sources to manually provide the list
+/// of relative paths of the files included in the package.
+/// This should be equivalent to the output of `cargo package --list` (if it can be run).
+pub fn is_package_equal_to_published<'a>(
+    local_package: &Utf8Path,
+    published_package_path: &Utf8Path,
+    published_package_files: impl IntoIterator<Item = &'a Utf8Path>,
+) -> anyhow::Result<bool> {
+    debug!(
+        "compare local package {:?} with registry package {:?}",
+        local_package, published_package_path
+    );
+    if !are_cargo_toml_equal(local_package, published_package_path) {
+        debug!("Cargo.toml is different");
+        return Ok(false);
+    }
+
+    let local_package_files = get_cargo_package_files(local_package).with_context(|| {
+        format!("cannot determine packaged files of local package {local_package:?}")
+    })?;
+
     let local_files = local_package_files
         .iter()
         .filter(|file| *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json");
 
-    let registry_files = registry_package_files.iter().filter(|file| {
+    let registry_files = published_package_files.into_iter().filter(|file| {
         *file != "Cargo.toml.orig"
             && *file != "Cargo.toml.orig.orig"
             && *file != ".cargo_vcs_info.json"
     });
 
-    if !local_files.clone().eq(registry_files) {
+    if !local_files.clone().sorted().eq(registry_files.sorted()) {
         // New files were added or removed.
         debug!("cargo package list is different");
         return Ok(false);
@@ -87,8 +108,8 @@ pub fn are_packages_equal(
             .strip_prefix(local_package)
             .with_context(|| format!("can't find {local_package:?} prefix in {local_path:?}"))?;
 
-        let registry_path = registry_package.join(relative_path);
-        if !are_files_equal(&local_path, &registry_path).context("files are not equal")? {
+        let published_path = published_package_path.join(relative_path);
+        if !are_files_equal(&local_path, &published_path).context("files are not equal")? {
             return Ok(false);
         }
     }

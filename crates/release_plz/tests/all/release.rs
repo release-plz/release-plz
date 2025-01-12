@@ -1,3 +1,4 @@
+use cargo_utils::LocalManifest;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::test_context::TestContext;
@@ -118,7 +119,7 @@ async fn release_plz_does_not_release_a_new_project_if_release_always_is_false()
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_releases_a_new_project_with_custom_release() {
+async fn release_plz_releases_a_new_project_with_custom_release_and_manifest_publish_false() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -128,7 +129,31 @@ async fn release_plz_releases_a_new_project_with_custom_release() {
     "#;
     context.write_release_plz_toml(config);
 
+    // Test publish = true in release-plz config but publish = false in manifest
+    let cargo_toml_path = context.repo_dir().join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
+
+    // release-plz should not release unpublished packages by default
+    context
+        .run_release()
+        .failure()
+        .stderr(predicates::str::contains("no public packages found"));
+
+    // Release should succeed after explicitly specifying release = true for unpublishable package
     let crate_name = &context.gitea.repo;
+
+    let config = format!(
+        r#"
+    {config}
+    
+    [[package]]
+    name = "{crate_name}"
+    release = true
+    "#
+    );
+    context.write_release_plz_toml(&config);
 
     let expected_tag = "v0.1.0";
     let expected_release = format!("{crate_name}--0.1.0");

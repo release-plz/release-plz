@@ -1,19 +1,31 @@
 # FAQ
 
-## What packages does release-plz publish?
+## What packages does release-plz release?
 
-Release-plz publishes all packages, except:
+Release-plz can release packages in multiple ways, such as:
+
+- Publishing to a Cargo registry
+- Creating git tags
+- Creating repository releases
+
+By default, release-plz considers all packages in a workspace for releasing.
+The following are not published to a Cargo registry:
 
 - packages with `publish = false` in the `Cargo.toml`.
 - [examples](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#examples) that don't
   specify the [`publish`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-publish-field)
   field in their `Cargo.toml` file. To publish them, set this field.
 
-Even, if a package is not published, release-plz will update its `Cargo.toml` to bump the version of
-a local dependency if needed.
+_All_ packages considered by release-plz, even if not published to a registry,
+will have:
 
-If you want to check which packages release-plz will publish, run
-`release-plz release --dry-run`.
+- A new release pushed to a different release method (such as git tags and
+repository releases)
+- Their `Cargo.toml` updated to bump the version of a local dependency if needed.
+
+This behavior can be configured for both the workspace and individual packages in
+the [configuration](config.md). If you want to check which packages release-plz
+will release and how, run `release-plz release --dry-run`.
 
 ## Can I edit the release PR before merging it?
 

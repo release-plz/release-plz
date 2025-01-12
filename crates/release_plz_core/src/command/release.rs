@@ -20,7 +20,7 @@ use crate::{
     git::backend::GitClient,
     pr_parser::{prs_from_text, Pr},
     release_order::release_order,
-    GitBackend, PackagePath, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
+    GitBackend, PackagePath, Project, Publishable, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX,
 };
 
@@ -74,6 +74,11 @@ impl ReleaseRequest {
     /// The manifest of the project you want to release.
     pub fn local_manifest(&self) -> Utf8PathBuf {
         cargo_utils::workspace_manifest(&self.metadata)
+    }
+
+    /// The [`Metadata`] of the workspace or package to be released.
+    pub fn cargo_metadata(&self) -> &Metadata {
+        &self.metadata
     }
 
     pub fn with_registry(mut self, registry: impl Into<String>) -> Self {
@@ -146,9 +151,11 @@ impl ReleaseRequest {
             })
     }
 
-    fn is_publish_enabled(&self, package: &str) -> bool {
-        let config = self.get_package_config(package);
-        config.publish.enabled
+    /// Returns true if the package does not have publishing disabled in its manifest
+    /// and if release-plz is configured to publish the package to a registry.
+    fn is_publish_enabled(&self, package: &Package) -> bool {
+        let config = self.get_package_config(&package.name);
+        package.is_publishable() && config.publish.enabled
     }
 
     fn is_git_release_enabled(&self, package: &str) -> bool {
@@ -531,7 +538,7 @@ async fn release_packages(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
-    let packages = project.publishable_packages();
+    let packages = project.workspace_packages();
     let release_order = release_order(&packages).context("cannot determine release order")?;
     let mut package_releases: Vec<PackageRelease> = vec![];
     for package in release_order {
@@ -578,9 +585,12 @@ async fn release_package_if_needed(
     };
     for CargoRegistry { name, mut index } in registry_indexes {
         let token = input.find_registry_token(name.as_deref())?;
-        if is_published(&mut index, package, input.publish_timeout, &token)
-            .await
-            .context("can't determine if package is published")?
+        // Only check if this package has already been published to the registry if
+        // registry publishing is enabled for it
+        if input.is_publish_enabled(release_info.package)
+            && is_published(&mut index, package, input.publish_timeout, &token)
+                .await
+                .context("can't determine if package is published")?
         {
             info!("{} {}: already published", package.name, package.version);
             continue;
@@ -722,8 +732,12 @@ async fn release_package(
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
-    let publish = input.is_publish_enabled(&release_info.package.name);
+    let publish = input.is_publish_enabled(release_info.package);
+    let create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
     if publish {
+        // Runs `cargo publish --dry-run` in dry-run mode, so we can run this here
         let output = run_cargo_publish(release_info.package, input, workspace_root)
             .context("failed to run cargo publish")?;
         if !output.status.success()
@@ -739,17 +753,41 @@ async fn release_package(
     }
 
     if input.dry_run {
-        info!(
-            "{} {}: aborting upload due to dry run",
-            release_info.package.name, release_info.package.version
-        );
+        if publish {
+            info!(
+                "{} {}: aborting registry upload due to dry run",
+                release_info.package.name, release_info.package.version
+            );
+        }
+
+        if create_git_tag {
+            info!(
+                "{} {}: skipping creation of git tag '{}' due to dry run",
+                release_info.package.name, release_info.package.version, release_info.git_tag
+            );
+        }
+
+        if create_git_release {
+            info!(
+                "{} {}: skipping git release creation due to dry run",
+                release_info.package.name, release_info.package.version
+            );
+        }
+
+        if !publish && !create_git_tag && !create_git_release {
+            info!(
+                "{} {}: no release method enabled",
+                release_info.package.name, release_info.package.version
+            );
+        }
+
         Ok(false)
     } else {
         if publish {
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if input.is_git_tag_enabled(&release_info.package.name) {
+        if create_git_tag {
             // Use same tag message of cargo-release
             let message = format!(
                 "chore: Release package {} version {}",
@@ -768,7 +806,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if input.is_git_release_enabled(&release_info.package.name) {
+        if create_git_release {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
