@@ -40,16 +40,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: aarch64-pc-windows-msvc
-            os: windows-2022
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: x86_64-apple-darwin
-            os: macos-13
-          - target: x86_64-pc-windows-msvc
-            os: windows-2022
-          - target: x86_64-apple-darwin
-            os: macos-13
+          - os: windows-2022
+          - os: ubuntu-22.04
+          - os: macos-14
+          - os: macos-13
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
