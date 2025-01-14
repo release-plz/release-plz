@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.13...release_plz_core-v0.31.0) - 2025-01-14
+
+### Added
+
+- allow adding labels to Gitea release PR (#1937)
+
+### Fixed
+
+- *(core)* Use dunce to canonicalize package paths (#1975)
+- release-plz init local dependency check (#1978)
+
+### Other
+
+- refactor to remove duplicate string (#1964)
+
 ## [0.30.13](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.12...release_plz_core-v0.30.13) - 2024-12-19
 
 ### Fixed

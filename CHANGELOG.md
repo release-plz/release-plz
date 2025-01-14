@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.113](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.112...release-plz-v0.3.113) - 2025-01-14
+
+### Added
+
+- allow adding labels to Gitea release PR (#1937)
+
+### Fixed
+
+- Make release-pr tests Use UTC rather than local timezone (#1977)
+- *(core)* Use dunce to canonicalize package paths (#1975)
+- release-plz init local dependency check (#1978)
+
+### Other
+
+- refactor to remove duplicate string (#1964)
+- move permissions to workflow jobs (#1930)
+- update release-plz CI to use actions-rust-lang/setup-rust-toolchain (#1837)
+
 ## [0.3.112](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.111...release-plz-v0.3.112) - 2024-12-19
 
 ### Fixed
