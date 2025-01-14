@@ -722,11 +722,11 @@ async fn release_package(
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
-    let publish = input.is_publish_enabled(&release_info.package.name);
-    let create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let create_git_release = input.is_git_release_enabled(&release_info.package.name);
+    let should_publish = input.is_publish_enabled(&release_info.package.name);
+    let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
 
-    if publish {
+    if should_publish {
         // Runs `cargo publish --dry-run` in dry-run mode, so we can run this here
         let output = run_cargo_publish(release_info.package, input, workspace_root)
             .context("failed to run cargo publish")?;
@@ -743,14 +743,19 @@ async fn release_package(
     }
 
     if input.dry_run {
-        dry_run(release_info, publish, create_git_tag, create_git_release);
+        log_dry_run_info(
+            release_info,
+            should_publish,
+            should_create_git_tag,
+            should_create_git_relase,
+        );
         Ok(false)
     } else {
-        if publish {
+        if should_publish {
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if create_git_tag {
+        if should_create_git_tag {
             // Use same tag message of cargo-release
             let message = format!(
                 "chore: Release package {} version {}",
@@ -769,7 +774,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if create_git_release {
+        if should_create_git_relase {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
@@ -796,38 +801,34 @@ async fn release_package(
 }
 
 /// Traces the steps that would have been taken had release been run without dry-run.
-fn dry_run(
+fn log_dry_run_info(
     release_info: &ReleaseInfo,
-    publish: bool,
-    create_git_tag: bool,
-    create_git_release: bool,
+    should_publish: bool,
+    should_create_git_tag: bool,
+    should_create_git_release: bool,
 ) {
-    if publish {
+    let prefix = format!(
+        "{} {}:",
+        release_info.package.name, release_info.package.version
+    );
+
+    if should_publish {
+        info!("{prefix} aborting registry upload due to dry run",);
+    }
+
+    if should_create_git_tag {
         info!(
-            "{} {}: aborting registry upload due to dry run",
-            release_info.package.name, release_info.package.version
+            "{prefix} skipping creation of git tag '{}' due to dry run",
+            release_info.git_tag
         );
     }
 
-    if create_git_tag {
-        info!(
-            "{} {}: skipping creation of git tag '{}' due to dry run",
-            release_info.package.name, release_info.package.version, release_info.git_tag
-        );
+    if should_create_git_release {
+        info!("{prefix} skipping git release creation due to dry run",);
     }
 
-    if create_git_release {
-        info!(
-            "{} {}: skipping git release creation due to dry run",
-            release_info.package.name, release_info.package.version
-        );
-    }
-
-    if !publish && !create_git_tag && !create_git_release {
-        info!(
-            "{} {}: no release method enabled",
-            release_info.package.name, release_info.package.version
-        );
+    if !should_publish && !should_create_git_tag && !should_create_git_release {
+        info!("{prefix} no release method enabled",);
     }
 }
 
