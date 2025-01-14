@@ -236,6 +236,22 @@ impl Repo {
         Ok(())
     }
 
+    /// Adds a detached git worktree at the given path checked out at the given object.
+    pub fn add_worktree(&self, path: impl AsRef<str>, object: &str) -> anyhow::Result<()> {
+        self.git(&["worktree", "add", "--detach", path.as_ref(), object])
+            .context("failed to create git worktree")?;
+
+        Ok(())
+    }
+
+    /// Removes a worktree that was created for this repository at the given path.
+    pub fn remove_worktree(&self, path: impl AsRef<str>) -> anyhow::Result<()> {
+        self.git(&["worktree", "remove", path.as_ref()])
+            .context("failed to remove worktree")?;
+
+        Ok(())
+    }
+
     /// Get `nth` commit starting from `1`.
     #[instrument(
         skip(self)
