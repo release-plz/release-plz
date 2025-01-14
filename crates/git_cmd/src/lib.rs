@@ -320,6 +320,19 @@ impl Repo {
         self.git(&["rev-list", "-n", "1", tag]).ok()
     }
 
+    /// Returns all the tags in the repository in an unspecified order.
+    pub fn get_all_tags(&self) -> Vec<String> {
+        match self
+            .git(&["tag", "--list"])
+            .ok()
+            .as_ref()
+            .map(|output| output.trim())
+        {
+            None | Some("") => vec![],
+            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
+        }
+    }
+
     /// Check if a commit comes before another one.
     ///
     /// ## Example
@@ -551,6 +564,22 @@ D  crates/git_cmd/CHANGELOG.md
         }
         repo.tag("v1.0.0", "test").unwrap();
         assert!(!repo.tag_exists("v2.0.0").unwrap());
+    }
+
+    #[test]
+    fn tags_are_retrieved() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        repo.tag("v1.0.0", "test").unwrap();
+        let file1 = repository_dir.as_ref().join("file1.txt");
+        {
+            fs_err::write(file1, b"Hello, file1!").unwrap();
+            repo.add_all_and_commit("file1").unwrap();
+        }
+        repo.tag("v1.0.1", "test2").unwrap();
+        let tags = repo.get_all_tags();
+        assert_eq!(tags, vec!["v1.0.0", "v1.0.1"]);
     }
 
     #[test]
