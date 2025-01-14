@@ -727,7 +727,7 @@ async fn release_package(
     let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
 
     if should_publish {
-        // Run `cargo publish --dry-run`
+        // Run `cargo publish --dry-run` if `input.dry_run` is true.
         let output = run_cargo_publish(release_info.package, input, workspace_root)
             .context("failed to run cargo publish")?;
         if !output.status.success()
