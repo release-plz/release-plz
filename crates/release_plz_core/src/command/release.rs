@@ -812,23 +812,24 @@ fn log_dry_run_info(
         release_info.package.name, release_info.package.version
     );
 
+    let mut items_to_skip = vec![];
+
     if should_publish {
-        info!("{prefix} aborting registry upload due to dry run");
+        items_to_skip.push("cargo registry upload".to_string());
     }
 
     if should_create_git_tag {
-        info!(
-            "{prefix} skipping creation of git tag '{}' due to dry run",
-            release_info.git_tag
-        );
+        items_to_skip.push(format!("creation of tag '{}'", release_info.git_tag));
     }
 
     if should_create_git_release {
-        info!("{prefix} skipping git release creation due to dry run");
+        items_to_skip.push("creation of git release".to_string());
     }
 
-    if !should_publish && !should_create_git_tag && !should_create_git_release {
+    if items_to_skip.is_empty() {
         info!("{prefix} no release method enabled");
+    } else {
+        info!("{prefix} due to dry, skipping the following: {items_to_skip:?}",);
     }
 }
 
