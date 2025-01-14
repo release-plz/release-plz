@@ -567,6 +567,22 @@ D  crates/git_cmd/CHANGELOG.md
     }
 
     #[test]
+    fn tags_are_retrieved() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        repo.tag("v1.0.0", "test").unwrap();
+        let file1 = repository_dir.as_ref().join("file1.txt");
+        {
+            fs_err::write(file1, b"Hello, file1!").unwrap();
+            repo.add_all_and_commit("file1").unwrap();
+        }
+        repo.tag("v1.0.1", "test2").unwrap();
+        let tags = repo.get_all_tags();
+        assert_eq!(tags, vec!["v1.0.0", "v1.0.1"]);
+    }
+
+    #[test]
     fn is_branch_of_commit_detected_correctly() {
         test_logs::init();
         let repository_dir = tempdir().unwrap();
