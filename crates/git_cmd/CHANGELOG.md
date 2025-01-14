@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(git_cmd)* Add `Repo::get_all_tags` (#1981)
-- *(git_cmd)* Add worktree management methods (#1980)
+- Add `Repo::get_all_tags` (#1981)
+- Add worktree management methods (#1980)
 
 ## [0.6.17](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.16...git_cmd-v0.6.17) - 2024-12-07
 

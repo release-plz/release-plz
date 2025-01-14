@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(core)* Use dunce to canonicalize package paths (#1975)
-- release-plz init local dependency check (#1978)
+- use dunce to canonicalize package paths (#1975)
+- Fix `release-plz init` local dependency check (#1978)
 
 ### Other
 
