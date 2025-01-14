@@ -813,7 +813,7 @@ fn log_dry_run_info(
     );
 
     if should_publish {
-        info!("{prefix} aborting registry upload due to dry run",);
+        info!("{prefix} aborting registry upload due to dry run");
     }
 
     if should_create_git_tag {
@@ -824,11 +824,11 @@ fn log_dry_run_info(
     }
 
     if should_create_git_release {
-        info!("{prefix} skipping git release creation due to dry run",);
+        info!("{prefix} skipping git release creation due to dry run");
     }
 
     if !should_publish && !should_create_git_tag && !should_create_git_release {
-        info!("{prefix} no release method enabled",);
+        info!("{prefix} no release method enabled");
     }
 }
 
