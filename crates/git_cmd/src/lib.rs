@@ -217,10 +217,12 @@ impl Repo {
 
     fn last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
         self.nth_commit_at_paths(1, paths)
+            .context("failed to get message of last commit")
     }
 
     fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
         self.nth_commit_at_paths(2, paths)
+            .context("failed to get message of previous commit")
     }
 
     pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
