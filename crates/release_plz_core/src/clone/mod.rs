@@ -323,7 +323,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
+    #[ignore = "requires network"]
     fn query_latest_package_works_for_existing() {
         let package_name = "rand";
         let temp_dir = tempdir().unwrap();
