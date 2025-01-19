@@ -244,13 +244,13 @@ fn query_latest_package_summary(
             std::task::Poll::Ready(res) => match res {
                 Ok(()) => break,
                 Err(err) => {
-                    return package_from_query_err(err);
+                    return none_or_query_err(err);
                 }
             },
             std::task::Poll::Pending => match src.block_until_ready() {
                 Ok(()) => {}
                 Err(err) => {
-                    return package_from_query_err(err);
+                    return none_or_query_err(err);
                 }
             },
         }
@@ -258,7 +258,7 @@ fn query_latest_package_summary(
     Ok(latest_summary)
 }
 
-fn package_from_query_err<T>(err: anyhow::Error) -> CargoResult<Option<T>> {
+fn none_or_query_err<T>(err: anyhow::Error) -> CargoResult<Option<T>> {
     if err.to_string().contains("failed to fetch") {
         // I observed this error happens when the cargo registry contains no crates.
         // If this isn't the case, open an issue.
