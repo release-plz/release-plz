@@ -882,6 +882,13 @@ If a tag doesn't match the pattern, it won't be added to the changelog.
 
 By default, all tags are included.
 
+Example:
+
+```toml
+[changelog]
+tag_pattern = "v[0-9].*"
+```
+
 #### The `sort_commits` field
 
 Sort the commits inside sections by specified order.
