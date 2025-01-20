@@ -423,11 +423,14 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     if !input.allow_dirty {
         repo_is_clean_result?;
     } else if repo_is_clean_result.is_err() {
-        // Commit the uncommitted changes in a temporary commit, so we can use `checkout_head`
-        // to restore them
-        repository
-            .repo
-            .add_all_and_commit("release-plz temp commit with uncommitted changes")?;
+        // Stash uncommitted changes so we can freely check out other commits
+        repository.repo.git(&[
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "uncommitted changes stashed by release-plz",
+        ])?;
     }
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
