@@ -423,7 +423,9 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     if !input.allow_dirty {
         repo_is_clean_result?;
     } else if repo_is_clean_result.is_err() {
-        // Stash uncommitted changes so we can freely check out other commits
+        // Stash uncommitted changes so we can freely check out other commits.
+        // This function is ran inside a temporary repository, so this has no
+        // effects on the original repository of the user.
         repository.repo.git(&[
             "stash",
             "push",
