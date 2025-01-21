@@ -27,7 +27,7 @@ impl Pr {
         body_template: Option<String>,
     ) -> Self {
         Self {
-            branch: release_branch(branch_prefix),
+            branch: pr_branch_name(branch_prefix, packages_to_update),
             base_branch: default_branch.to_string(),
             title: pr_title(
                 packages_to_update,
@@ -64,6 +64,14 @@ fn release_branch(prefix: &str) -> String {
     format!("{prefix}{now}")
 }
 
+/// Generate the prefix for the PR branch name.
+fn pr_branch_name(branch_prefix: &str, packages_to_update: &PackagesUpdate) -> String {
+    let context = create_tera_context(packages_to_update);
+    let pr_branch_prefix = render_template(branch_prefix, &context, "pr_branch_prefix");
+
+    release_branch(&pr_branch_prefix)
+}
+
 fn pr_title(
     packages_to_update: &PackagesUpdate,
     project_contains_multiple_pub_packages: bool,
@@ -79,23 +87,13 @@ fn pr_title(
     };
 
     if let Some(title_template) = title_template {
-        let mut context = tera::Context::new();
-
-        if updates.len() == 1 {
-            let (package, _) = &updates[0];
-            context.insert(PACKAGE_VAR, &package.name);
-        }
-
-        if are_all_versions_equal() {
-            context.insert(VERSION_VAR, first_version.to_string().as_str());
-        }
-
+        let context = create_tera_context(packages_to_update);
         render_template(&title_template, &context, "pr_name")
     } else if updates.len() == 1 && project_contains_multiple_pub_packages {
         let (package, _) = &updates[0];
         // The project is a workspace with multiple public packages and we are only updating one of them.
         // Specify which package is being updated in the PR title.
-        format!("chore({}): release v{}", package.name, first_version)
+        format!("chore({}): release v{first_version}", package.name)
     } else if updates.len() > 1 && !are_all_versions_equal() {
         // We are updating multiple packages with different versions, so we don't specify the version in the PR title.
         "chore: release".to_string()
@@ -106,6 +104,30 @@ fn pr_title(
         // In both cases, we can specify the version in the PR title.
         format!("chore: release v{first_version}")
     }
+}
+
+fn create_tera_context(packages_to_update: &PackagesUpdate) -> tera::Context {
+    let updates = packages_to_update.updates();
+    let first_version = &updates[0].1.version;
+
+    let are_all_versions_equal = || {
+        updates
+            .iter()
+            .all(|(_, update)| &update.version == first_version)
+    };
+
+    let mut context = tera::Context::new();
+
+    if updates.len() == 1 {
+        let (package, _) = &updates[0];
+        context.insert(PACKAGE_VAR, &package.name);
+    }
+
+    if are_all_versions_equal() {
+        context.insert(VERSION_VAR, first_version.to_string().as_str());
+    }
+
+    context
 }
 
 /// The Github API allows a max of 65536 characters in the body field when trying to create a new PR
