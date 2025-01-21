@@ -504,7 +504,8 @@ registry or local configuration, allowing to:
 
 Process the packages for the `update`, `release-pr`, and `release` commands.
 
-- If `true`, all packages will be processed. *(Default)*.
+- If `true`, all [*publishable* packages](faq.md#what-packages-does-release-plz-process)
+  in the workspace will be processed. *(Default)*.
 - If `false`, no packages will be processed.
   Release-plz doesn't update the package, and doesn't release it (i.e. cargo publish, git tag
   and github/gitea/gitlab release).
@@ -514,6 +515,12 @@ Setting `release` as `false` at the workspace level,
 is useful in big workspaces, where you don't want release-plz to manage all crates.
 You can set `release` as `true` only in the packages you want release-plz to handle, by overriding
 this configuration at the [`[[package]]`](#the-package-section) level.
+
+:::caution
+To process an *unpublishable* package, you must set the `release` field [at the
+`[[package]]` level](#the-release-field-package-section) for that package to
+`true` - even if `release` is set to `true` at the workspace level.
+:::
 
 Example:
 
@@ -732,6 +739,11 @@ Overrides the [`workspace.publish_all_features`](#the-publish_all_features-field
 #### The `release` field (`package` section)
 
 Overrides the [`workspace.release`](#the-release-field) field.
+
+For release-plz to process an
+[unpublishable package](faq.md#what-packages-does-release-plz-process),
+this field must be set to `true` for that package - regardless of the value of
+the `workspace.release` field.
 
 #### The `semver_check` field (`package` section)
 
