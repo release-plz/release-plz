@@ -226,10 +226,10 @@ fn query_latest_package_summary(
     let mut latest_summary: Option<IndexSummary> = None;
     loop {
         let query_result = src.query(&dep, QueryKind::Exact, &mut |summary| {
-            let summary_is_newer = latest_summary.as_ref().map_or(true, |latest| {
+            let is_summary_newer = latest_summary.as_ref().map_or(true, |latest| {
                 latest.as_summary().version() < summary.as_summary().version()
             });
-            if summary_is_newer {
+            if is_summary_newer {
                 latest_summary = Some(summary);
             };
         });
