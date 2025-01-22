@@ -151,7 +151,16 @@ impl Cloner {
     }
 
     fn get_source(&self) -> CargoResult<Box<dyn Source + '_>> {
-        get_source(self.srcid, &self.config)
+        let mut source = if self.srcid.is_path() {
+            let path = self.srcid.url().to_file_path().expect("path must be valid");
+            Box::new(PathSource::new(&path, self.srcid, &self.config))
+        } else {
+            let map = SourceConfigMap::new(&self.config)?;
+            map.load(self.srcid, &HashSet::default())?
+        };
+
+        source.invalidate_cache();
+        Ok(source)
     }
 
     fn clone_in(
@@ -180,6 +189,7 @@ impl Cloner {
         self.clone_single(crate_, dest_path, src)
     }
 
+    /// Clone one crate.
     fn clone_single(
         &self,
         crate_: &Crate,
@@ -202,19 +212,6 @@ impl Cloner {
         };
         Ok(pkg)
     }
-}
-
-fn get_source<'a>(srcid: SourceId, config: &'a GlobalContext) -> CargoResult<Box<dyn Source + 'a>> {
-    let mut source = if srcid.is_path() {
-        let path = srcid.url().to_file_path().expect("path must be valid");
-        Box::new(PathSource::new(&path, srcid, config))
-    } else {
-        let map = SourceConfigMap::new(config)?;
-        map.load(srcid, &HashSet::default())?
-    };
-
-    source.invalidate_cache();
-    Ok(source)
 }
 
 fn query_latest_package_summary(
