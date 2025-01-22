@@ -79,15 +79,12 @@ impl Cloner {
         query_latest_package_summary(&mut src, name, None)
     }
 
-    fn clone_from_summary_into<'a, T>(
+    fn clone_from_summary_into(
         &self,
         summary: &IndexSummary,
         dest_path: &Utf8Path,
-        src: &mut T,
-    ) -> CargoResult<Package>
-    where
-        T: Source + 'a,
-    {
+        src: &mut impl Source,
+    ) -> CargoResult<Package> {
         let name = summary.as_summary().name();
 
         self.config.shell().note(format!(
@@ -157,15 +154,12 @@ impl Cloner {
         get_source(self.srcid, &self.config)
     }
 
-    fn clone_in<'a, T>(
+    fn clone_in(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
-        src: &mut T,
-    ) -> CargoResult<Option<Package>>
-    where
-        T: Source + 'a,
-    {
+        src: &mut impl Source,
+    ) -> CargoResult<Option<Package>> {
         if !dest_path.exists() {
             fs_err::create_dir_all(dest_path)?;
         }
@@ -186,15 +180,12 @@ impl Cloner {
         self.clone_single(crate_, dest_path, src)
     }
 
-    fn clone_single<'a, T>(
+    fn clone_single(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
-        src: &mut T,
-    ) -> CargoResult<Option<Package>>
-    where
-        T: Source + 'a,
-    {
+        src: &mut impl Source,
+    ) -> CargoResult<Option<Package>> {
         let name = &crate_.name;
         let vers = crate_.version.as_deref();
         let latest = query_latest_package_summary(src, name, vers)?;
