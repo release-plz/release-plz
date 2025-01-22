@@ -79,13 +79,15 @@ impl Cloner {
         query_latest_package_summary(&mut src, name, None)
     }
 
-    pub fn clone_from_summary_into(
+    fn clone_from_summary_into<'a, T>(
         &self,
         summary: &IndexSummary,
         dest_path: &Utf8Path,
-    ) -> CargoResult<Package> {
-        let _lock = self.acquire_cargo_package_cache_lock()?;
-        let src = self.get_source()?;
+        src: &mut T,
+    ) -> CargoResult<Package>
+    where
+        T: Source + 'a,
+    {
         let name = summary.as_summary().name();
 
         self.config.shell().note(format!(
@@ -199,7 +201,7 @@ impl Cloner {
 
         let pkg = match latest {
             Some(l) => {
-                let pkg = self.clone_from_summary_into(&l, dest_path)?;
+                let pkg = self.clone_from_summary_into(&l, dest_path, src)?;
                 Some(pkg)
             }
             None => {
