@@ -645,7 +645,9 @@ impl Updater<'_> {
             .map(|&p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
-                    .context("failed to retrieve difference between packages")?;
+                    .with_context(|| {
+                        format!("failed to retrieve difference of package {}", p.name)
+                    })?;
                 Ok((p, diff))
             })
             .collect();
