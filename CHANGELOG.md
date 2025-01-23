@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.114](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.113...release-plz-v0.3.114) - 2025-01-23
+
+### Fixed
+
+- don't suppress git error when determining commits to release (#1962)
+- *(core)* Stash uncommited changes in dirty repos during update (#1982)
+- *(core)* Make `release --dry-run` more informative (#1983)
+
+### Other
+
+- update Cargo.lock dependencies
+- allow fetching latest package summaries from cargo registry ([#1984](https://github.com/release-plz/release-plz/pull/1984))
+
 ## [0.3.113](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.112...release-plz-v0.3.113) - 2025-01-14
 
 ### Added
