@@ -421,8 +421,21 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
+
+    let repo_is_clean_result = repository.repo.is_clean();
     if !input.allow_dirty {
-        repository.repo.is_clean()?;
+        repo_is_clean_result?;
+    } else if repo_is_clean_result.is_err() {
+        // Stash uncommitted changes so we can freely check out other commits.
+        // This function is ran inside a temporary repository, so this has no
+        // effects on the original repository of the user.
+        repository.repo.git(&[
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "uncommitted changes stashed by release-plz",
+        ])?;
     }
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
