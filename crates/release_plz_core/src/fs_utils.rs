@@ -17,6 +17,12 @@ pub fn current_directory() -> anyhow::Result<Utf8PathBuf> {
     to_utf8_pathbuf(std::env::current_dir().context("Unable to get current directory.")?)
 }
 
+pub fn canonicalize_utf8(path: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
+    let canonicalized =
+        dunce::canonicalize(path).with_context(|| format!("cannot canonicalize path {path:?}"))?;
+    to_utf8_pathbuf(canonicalized)
+}
+
 #[derive(Debug)]
 pub struct Utf8TempDir {
     // temporary directory that will be deleted in the `Drop` method

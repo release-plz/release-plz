@@ -4,11 +4,13 @@ use cargo_metadata::{
     Package,
 };
 
+use crate::fs_utils;
+
 pub trait PackagePath {
     fn package_path(&self) -> anyhow::Result<&Utf8Path>;
 
     fn canonical_path(&self) -> anyhow::Result<Utf8PathBuf> {
-        let p = Utf8Path::canonicalize_utf8(self.package_path()?)?;
+        let p = fs_utils::canonicalize_utf8(self.package_path()?)?;
         Ok(p)
     }
 }

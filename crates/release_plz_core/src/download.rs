@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
+    #[ignore = "requires network"]
     fn one_package_is_downloaded() {
         let package_name = "rand";
         let temp_dir = tempdir().unwrap();
@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "requires network"]
     fn two_packages_are_downloaded() {
         let first_package = "rand";
         let second_package = "rust-gh-example";
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "requires network"]
     fn downloading_non_existing_package_does_not_error() {
         // Generate random string 15 characters long.
         let package: String = 15.fake();

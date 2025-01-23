@@ -7,7 +7,9 @@ use serde::Serialize;
 use tracing::{debug, info, instrument};
 use url::Url;
 
-use crate::git::backend::{contributors_from_commits, BackendType, GitClient, GitPr, PrEdit};
+use crate::git::backend::{
+    contributors_from_commits, validate_labels, BackendType, GitClient, GitPr, PrEdit,
+};
 use crate::git::github_graphql;
 use crate::pr::{Pr, DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX};
 use crate::{
@@ -100,6 +102,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         tmp_project_root_parent.path(),
     )?;
 
+    validate_labels(&input.labels)?;
     let tmp_project_root =
         new_project_root(&original_project_root, tmp_project_root_parent.path())?;
 
@@ -312,6 +315,11 @@ async fn update_pr(
     };
     if pr_edit.contains_edit() {
         git_client.edit_pr(opened_pr.number, pr_edit).await?;
+    }
+    if opened_pr.label_names() != new_pr.labels {
+        git_client
+            .add_labels(&new_pr.labels, opened_pr.number)
+            .await?;
     }
     info!("updated pr {}", opened_pr.html_url);
     Ok(())
