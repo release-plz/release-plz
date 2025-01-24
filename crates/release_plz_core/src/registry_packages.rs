@@ -65,41 +65,8 @@ pub fn get_registry_packages(
             let temp_dir = tempdir().context("failed to get a temporary directory")?;
             let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
 
-            // Find the registry from where to download each package.
-            let packages_grouped_by_registry = local_packages.iter().chunk_by(|p| {
-                // If registry is not provided, fallback to the Cargo.toml `publish` field.
-                registry.or_else(|| {
-                    p.publish
-                        .as_ref()
-                        // Use the first registry in the `publish` field.
-                        .and_then(|p| p.first())
-                        .map(|x| x.as_str())
-                })
-            });
             let registry_packages =
-                std::thread::scope(|scope| -> Result<Vec<Package>, anyhow::Error> {
-                    let mut registry_packages: Vec<Package> = vec![];
-                    let mut handles = Vec::new();
-                    for (registry, packages) in &packages_grouped_by_registry {
-                        let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
-                        let mut downloader =
-                            download::PackageDownloader::new(packages_names, directory);
-                        if let Some(registry) = registry {
-                            downloader = downloader.with_registry(registry.to_string());
-                        }
-                        let handle = scope.spawn(move || downloader.download());
-                        handles.push(handle);
-                    }
-
-                    for handle in handles {
-                        let downloaded_packages = handle
-                            .join()
-                            .expect("Panicked while downloading packages")
-                            .context("Failed to download packages")?;
-                        registry_packages.extend(downloaded_packages);
-                    }
-                    Ok(registry_packages)
-                })?;
+                download_packages_from_registry(local_packages, registry, directory)?;
 
             // After downloading the package, we initialize a git repo in the package.
             // This is because if cargo doesn't find a git repo in the package, it doesn't
@@ -119,6 +86,46 @@ pub fn get_registry_packages(
     Ok(PackagesCollection {
         _temp_dir: temp_dir,
         packages: registry_packages,
+    })
+}
+
+fn download_packages_from_registry(
+    local_packages: &[&Package],
+    registry: Option<&str>,
+    directory: &str,
+) -> anyhow::Result<Vec<Package>> {
+    let packages_grouped_by_registry = local_packages.iter().chunk_by(|p| {
+        // If registry is not provided, fallback to the Cargo.toml `publish` field.
+        registry.or_else(|| {
+            p.publish
+                .as_ref()
+                // Use the first registry in the `publish` field.
+                .and_then(|p| p.first())
+                .map(|x| x.as_str())
+        })
+    });
+
+    std::thread::scope(|scope| {
+        let mut registry_packages: Vec<Package> = vec![];
+        let mut handles = Vec::new();
+        for (registry, packages) in &packages_grouped_by_registry {
+            let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
+            let mut downloader = download::PackageDownloader::new(packages_names, directory);
+            if let Some(registry) = registry {
+                downloader = downloader.with_registry(registry.to_string());
+            }
+            let handle = scope.spawn(move || downloader.download());
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            let downloaded_packages = handle
+                .join()
+                .expect("Panicked while downloading packages")
+                .context("Failed to download packages")?;
+            registry_packages.extend(downloaded_packages);
+        }
+        Ok(registry_packages)
     })
 }
 
