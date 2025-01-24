@@ -76,19 +76,30 @@ pub fn get_registry_packages(
                         .map(|x| x.as_str())
                 })
             });
-            let mut registry_packages: Vec<Package> = vec![];
-            for (registry, packages) in &packages_grouped_by_registry {
-                let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
-                let mut downloader = download::PackageDownloader::new(packages_names, directory);
-                if let Some(registry) = registry {
-                    downloader = downloader.with_registry(registry.to_string());
-                }
-                registry_packages.extend(
-                    downloader
-                        .download()
-                        .context("failed to download packages")?,
-                );
-            }
+            let registry_packages =
+                std::thread::scope(|scope| -> Result<Vec<Package>, anyhow::Error> {
+                    let mut registry_packages: Vec<Package> = vec![];
+                    let mut handles = Vec::new();
+                    for (registry, packages) in &packages_grouped_by_registry {
+                        let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
+                        let mut downloader =
+                            download::PackageDownloader::new(packages_names, directory);
+                        if let Some(registry) = registry {
+                            downloader = downloader.with_registry(registry.to_string());
+                        }
+                        let handle = scope.spawn(move || downloader.download());
+                        handles.push(handle);
+                    }
+
+                    for handle in handles {
+                        let downloaded_packages = handle
+                            .join()
+                            .expect("Panicked while downloading packages")
+                            .context("Failed to download packages")?;
+                        registry_packages.extend(downloaded_packages);
+                    }
+                    Ok(registry_packages)
+                })?;
 
             // After downloading the package, we initialize a git repo in the package.
             // This is because if cargo doesn't find a git repo in the package, it doesn't
