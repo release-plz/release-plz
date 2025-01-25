@@ -62,10 +62,7 @@ impl Pr {
                 project_contains_multiple_pub_packages,
                 title_template,
             ),
-            body: pr_body(
-                packages_to_update,
-                body_template,
-            ),
+            body: pr_body(packages_to_update, body_template),
             draft: false,
             labels: vec![],
         }
