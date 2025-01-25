@@ -1,26 +1,38 @@
 use crate::{
     tera::{render_template, PACKAGE_VAR, RELEASES_VAR, VERSION_VAR},
-    PackagesUpdate,
+    PackagesUpdate, ReleaseInfo,
 };
 use chrono::SecondsFormat;
 
 pub const DEFAULT_BRANCH_PREFIX: &str = "release-plz-";
 pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
-pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"## 🤖 New release
-{% for release in releases %}
-* `{{ release.package }}`: {{ release.next_version }}
-
-<details><summary><i><b>Changelog</b></i></summary><p>
-
+pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
+{% macro get_changes(releases, type="text") %}
+    {%- for release in releases %}
+    {%- if release.title and release.changelog %}
 <blockquote>
 
+## {{ release.title }}
+
 {{ release.changelog }}
-
 </blockquote>
+    {%- endif %}
+    {%- endfor %}
+{% endmacro -%}
 
-</p></details>
+{% set changes = self::get_changes(releases=releases) %}
+
+## 🤖 New release
+{% for release in releases %}
+* `{{ release.package }}`: {{ release.next_version }}
 {%- endfor %}
 
+{% if changes -%}
+<details><summary><i><b>Changelog</b></i></summary><p>
+{{ changes }}
+
+</p></details>
+{% endif %}
 ---
 This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#;
 
@@ -133,48 +145,36 @@ fn pr_body(
     project_contains_multiple_pub_packages: bool,
     body_template: Option<String>,
 ) -> String {
-    if let Some(body_template) = body_template {
-        pr_body_custom(packages_to_update, body_template.as_str())
-    } else {
-        pr_body_default(packages_to_update, project_contains_multiple_pub_packages)
-    }
+    let body_template = body_template.unwrap_or(DEFAULT_PR_BODY_TEMPLATE.to_string());
+    pr_body_custom(packages_to_update, body_template.as_str())
 }
 
 fn pr_body_custom(packages_to_update: &PackagesUpdate, body_template: &str) -> String {
-    let releases = packages_to_update.releases();
-    let mut context = tera::Context::new();
-    context.insert(RELEASES_VAR, &releases);
+    let mut releases = packages_to_update.releases();
+    let first_render = render_pr_body(&releases, body_template);
 
-    trim_pr_body(render_template(body_template, &context, "pr_body"))
-}
-
-fn pr_body_default(
-    packages_to_update: &PackagesUpdate,
-    _project_contains_multiple_pub_packages: bool,
-) -> String {
-    let releases = packages_to_update.releases();
-    let mut context = tera::Context::new();
-    context.insert(RELEASES_VAR, &releases);
-
-    let formatted = render_template(DEFAULT_PR_BODY_TEMPLATE, &context, "pr_body");
-
-    // Make sure we don't go over the Github API's limit for PR body size
-    if formatted.chars().count() > MAX_BODY_LEN {
+    if first_render.chars().count() > MAX_BODY_LEN {
         tracing::info!(
             "PR body is longer than {MAX_BODY_LEN} characters. Omitting full changelog."
         );
-        // create simplified version without changelog
-        let simplified_template = r#"## 🤖 New release
-{% for release in releases %}
-Package: {{release.package}} {{release.previous_version}} -> {{release.next_version}}
-{% endfor %}
 
----
-*This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)*"#;
-        render_template(simplified_template, &context, "pr_body")
+        releases.iter_mut().for_each(|release| {
+            release.changelog = None;
+            release.title = None;
+        });
+
+        render_pr_body(&releases, body_template)
     } else {
-        formatted
+        first_render
     }
+}
+
+fn render_pr_body(releases: &[ReleaseInfo], body_template: &str) -> String {
+    let mut context = tera::Context::new();
+    context.insert(RELEASES_VAR, releases);
+
+    let rendered_body = render_template(body_template, &context, "pr_body");
+    trim_pr_body(rendered_body)
 }
 
 fn trim_pr_body(body: String) -> String {

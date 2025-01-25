@@ -46,6 +46,60 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_with_two_packages_and_default_config() {
+    let one = "one";
+    let two = "two";
+    let context =
+        TestContext::new_workspace(&[&format!("crates/{one}"), &format!("crates/{two}")]).await;
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let today = today();
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.0");
+    let username = context.gitea.user.username();
+    assert_eq!(
+        opened_prs[0].body.as_ref().unwrap().trim(),
+        format!(
+            r#"
+## 🤖 New release
+
+* `{one}`: 0.1.0
+* `{two}`: 0.1.0
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.0](https://localhost/{username}/{one}/releases/tag/v0.1.0) - {today}
+
+### Other
+
+- cargo init
+- Initial commit
+</blockquote>
+
+## [0.1.0](https://localhost/{username}/{two}/releases/tag/v0.1.0) - {today}
+
+### Other
+
+- cargo init
+- Initial commit
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_should_set_custom_pr_details() {
     let context = TestContext::new().await;
 

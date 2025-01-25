@@ -51,8 +51,8 @@ impl PackagesUpdate {
 #[derive(Serialize, Deserialize)]
 pub struct ReleaseInfo {
     package: String,
-    title: Option<String>,
-    changelog: Option<String>,
+    pub title: Option<String>,
+    pub changelog: Option<String>,
     previous_version: String,
     next_version: String,
     /// Summary of breaking changes of the release
