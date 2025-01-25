@@ -7,17 +7,15 @@ use chrono::SecondsFormat;
 pub const DEFAULT_BRANCH_PREFIX: &str = "release-plz-";
 pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
 pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"## 🤖 New release
-{%- for release in releases %}
+{% for release in releases %}
 * `{{ release.package }}`: {{ release.next_version }}
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
 <blockquote>
-## [{{ release.next_version }}]({{ release.release_link }}) - {{ release.date }}
 
-### Other
+{{ release.changelog }}
 
-{{ release.changelog | indent(4) }}
 </blockquote>
 
 </p></details>
