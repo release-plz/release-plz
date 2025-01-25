@@ -105,6 +105,7 @@ fn download_packages_from_registry(
         })
     });
 
+    // Clone from different registries in parallel
     std::thread::scope(|scope| {
         let mut registry_packages: Vec<Package> = vec![];
         let mut handles = Vec::new();
