@@ -70,6 +70,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
+## `{one}`
 <blockquote>
 
 ## [0.1.0](https://localhost/{username}/{one}/releases/tag/v0.1.0) - {today}
@@ -79,6 +80,9 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
 - cargo init
 - Initial commit
 </blockquote>
+
+## `{two}`
+<blockquote>
 
 ## [0.1.0](https://localhost/{username}/{two}/releases/tag/v0.1.0) - {today}
 
