@@ -8,8 +8,8 @@ pub const DEFAULT_BRANCH_PREFIX: &str = "release-plz-";
 pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
 pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 {% macro get_changes(releases, type="text") %}
-    {%- for release in releases %}
-    {%- if release.title and release.changelog %}{% if releases | length > 1 %}
+{%- for release in releases %}
+{%- if release.title and release.changelog %}{% if releases | length > 1 %}
 ## `{{ release.package }}`
 {% endif %}
 <blockquote>
