@@ -30,7 +30,7 @@
     },
     "devDependencies": {
         "@docusaurus/module-type-aliases": "^3.6.1",
-        "markdownlint-cli": "^0.43.0",
+        "markdownlint-cli": "^0.44.0",
         "sharp": "0.33.5",
         "tsx": "4.19.2"
     },
