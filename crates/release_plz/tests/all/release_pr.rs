@@ -1,7 +1,5 @@
-use cargo_utils::LocalManifest;
-use chrono::Local;
-
 use crate::helpers::test_context::TestContext;
+use cargo_utils::LocalManifest;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -218,6 +216,105 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
     assert_eq!(opened_prs.len(), 0);
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_adds_labels_to_release_pr() {
+    let test_context = TestContext::new().await;
+
+    // Initial PR setup with two labels
+    let initial_config = r#"
+    [workspace]
+    pr_labels = ["bug", "enhancement"]
+    "#;
+    let initial_labels = ["bug", "enhancement"];
+
+    test_context.write_release_plz_toml(initial_config);
+    test_context.run_release_pr().success();
+
+    let initial_prs = test_context.opened_release_prs().await;
+    assert_eq!(initial_prs.len(), 1, "Expected one PR to be created");
+
+    let initial_pr = &initial_prs[0];
+    assert_eq!(initial_pr.labels.len(), 2, "Expected 2 labels");
+
+    assert_eq!(
+        initial_pr.label_names(),
+        initial_labels,
+        "Labels don't match expected values"
+    );
+
+    // Update PR with additional label
+    let updated_config = r#"
+    [workspace]
+    pr_name = "add labels to release label update"
+    pr_labels = ["needs-testing"]
+    "#;
+    let expected_labels = ["bug", "enhancement", "needs-testing"];
+
+    test_context.write_release_plz_toml(updated_config);
+    test_context.run_release_pr().success();
+
+    let updated_prs = test_context.opened_release_prs().await;
+    assert_eq!(updated_prs.len(), 1, "Expected one PR after update");
+
+    let updated_pr = &updated_prs[0];
+    assert_eq!(updated_pr.title, "add labels to release label update");
+    assert_eq!(updated_pr.labels.len(), 3, "Expected 3 labels after update");
+
+    assert_eq!(
+        updated_pr.label_names(),
+        expected_labels,
+        "Updated labels don't match expected values"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
+    let test_context = TestContext::new().await;
+    let test_cases: &[(&str, &str)] = &[
+        // (label config, expected error message)
+        (
+            r#"
+            [workspace]
+            pr_labels = [" "]
+        "#,
+            "leading or trailing whitespace is not allowed",
+        ), // space label
+        (
+            r#"
+            [workspace]
+            pr_labels = ["this-is-a-very-long-label-that-exceeds-the-maximum-length-allowed-by-git-providers"]
+            "#,
+            "it exceeds maximum length of 50 characters",
+        ), // Too long
+        (
+            r#"
+            [workspace]
+            pr_labels = [""]
+            "#,
+            "empty labels are not allowed",
+        ),
+        (
+            r#"
+            [workspace]
+            pr_labels = ["abc", "abc"]
+            "#,
+            "duplicate labels are not allowed",
+        ),
+    ];
+
+    for test_case in test_cases {
+        let initial_config = test_case.0;
+        test_context.write_release_plz_toml(initial_config);
+        let error = test_context.run_release_pr().failure().to_string();
+        assert!(
+            error.contains("Failed to add label") && error.contains(test_case.1),
+            "Expected label creation failure got: {error}"
+        );
+    }
+}
+
 fn move_readme(context: &TestContext, message: &str) {
     let readme = "README.md";
     let new_readme = format!("NEW_{readme}");
@@ -235,5 +332,6 @@ fn move_readme(context: &TestContext, message: &str) {
 }
 
 fn today() -> String {
-    Local::now().format("%Y-%m-%d").to_string()
+    // The changelogs specify the release date in UTC.
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
 }

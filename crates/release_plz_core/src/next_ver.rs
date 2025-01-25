@@ -1,5 +1,4 @@
 use crate::diff::Commit;
-use crate::get_cargo_package_files;
 use crate::{
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser::{self, ChangelogRelease},
@@ -17,6 +16,7 @@ use crate::{
     version::NextVersionFromDiff,
     ChangelogBuilder, PackagesToUpdate, PackagesUpdate, Project, Remote, CHANGELOG_FILENAME,
 };
+use crate::{fs_utils, get_cargo_package_files};
 use crate::{GitBackend, GitClient};
 use anyhow::Context;
 use cargo::util::VersionExt;
@@ -36,7 +36,6 @@ use regex::Regex;
 use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    io,
     path::Path,
 };
 use toml_edit::TableLike;
@@ -280,8 +279,8 @@ impl UpdateRequest {
         }
     }
 
-    pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> io::Result<Self> {
-        let registry_manifest = Utf8Path::canonicalize_utf8(registry_manifest)?;
+    pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> anyhow::Result<Self> {
+        let registry_manifest = fs_utils::canonicalize_utf8(registry_manifest)?;
         Ok(Self {
             registry_manifest: Some(registry_manifest),
             ..self
@@ -419,8 +418,21 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
+
+    let repo_is_clean_result = repository.repo.is_clean();
     if !input.allow_dirty {
-        repository.repo.is_clean()?;
+        repo_is_clean_result?;
+    } else if repo_is_clean_result.is_err() {
+        // Stash uncommitted changes so we can freely check out other commits.
+        // This function is ran inside a temporary repository, so this has no
+        // effects on the original repository of the user.
+        repository.repo.git(&[
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "uncommitted changes stashed by release-plz",
+        ])?;
     }
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
@@ -633,7 +645,9 @@ impl Updater<'_> {
             .map(|&p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
-                    .context("failed to retrieve difference between packages")?;
+                    .with_context(|| {
+                        format!("failed to retrieve difference of package {}", p.name)
+                    })?;
                 Ok((p, diff))
             })
             .collect();
@@ -890,17 +904,18 @@ impl Updater<'_> {
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        if let Err(err) = repository.checkout_last_commit_at_paths(&paths_to_check) {
-            if err
-                .to_string()
-                .contains("Your local changes to the following files would be overwritten")
-            {
-                return Err(err.context("The allow-dirty option can't be used in this case"));
-            } else {
-                info!("{}: there are no commits", package.name);
-                return Ok(diff);
-            }
-        }
+        repository
+            .checkout_last_commit_at_paths(&paths_to_check)
+            .map_err(|err| {
+                if err
+                    .to_string()
+                    .contains("Your local changes to the following files would be overwritten")
+                {
+                    err.context("The allow-dirty option can't be used in this case")
+                } else {
+                    err.context("Failed to retrieve the last commit of local repository.")
+                }
+            })?;
 
         let git_tag = self
             .project

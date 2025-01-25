@@ -1,5 +1,5 @@
-use crate::root_repo_path_from_manifest_dir;
 use crate::semver_check::SemverCheck;
+use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use crate::{tmp_repo::TempRepo, PackagePath, UpdateRequest, UpdateResult};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
@@ -302,7 +302,7 @@ pub fn set_version(
         .write()
         .with_context(|| format!("cannot update manifest {:?}", &local_manifest.path))?;
 
-    let package_path = Utf8Path::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
+    let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
     update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
     Ok(())
 }

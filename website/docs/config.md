@@ -421,7 +421,6 @@ Before changing the release-plz branch you should close the old release PR.
 #### The `pr_labels` field
 
 Add labels to the Pull Request opened by release-plz.
-*(GitHub and GitLab only)*.
 
 Example:
 
@@ -882,6 +881,13 @@ A regular expression for matching the git tags that release-plz should add to th
 If a tag doesn't match the pattern, it won't be added to the changelog.
 
 By default, all tags are included.
+
+Example:
+
+```toml
+[changelog]
+tag_pattern = "v[0-9].*"
+```
 
 #### The `sort_commits` field
 
