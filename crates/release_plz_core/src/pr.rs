@@ -9,15 +9,16 @@ pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
 pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 {% macro get_changes(releases, type="text") %}
     {%- for release in releases %}
-    {%- if release.title and release.changelog %}
+    {%- if release.title and release.changelog %}{% if releases | length > 1 %}
+## `{{ release.package }}`
+{% endif %}
 <blockquote>
 
 ## {{ release.title }}
 
 {{ release.changelog }}
-</blockquote>
-    {%- endif %}
-    {%- endfor %}
+</blockquote>{% endif %}
+{% endfor %}
 {% endmacro -%}
 
 {% set changes = self::get_changes(releases=releases) %}
@@ -26,11 +27,9 @@ pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 {% for release in releases %}
 * `{{ release.package }}`: {{ release.next_version }}
 {%- endfor %}
-
-{% if changes -%}
+{% if changes %}
 <details><summary><i><b>Changelog</b></i></summary><p>
 {{ changes }}
-
 </p></details>
 {% endif %}
 ---
@@ -65,7 +64,6 @@ impl Pr {
             ),
             body: pr_body(
                 packages_to_update,
-                project_contains_multiple_pub_packages,
                 body_template,
             ),
             draft: false,
@@ -140,11 +138,7 @@ fn pr_title(
 /// The Github API allows a max of 65536 characters in the body field when trying to create a new PR
 const MAX_BODY_LEN: usize = 65536;
 
-fn pr_body(
-    packages_to_update: &PackagesUpdate,
-    project_contains_multiple_pub_packages: bool,
-    body_template: Option<String>,
-) -> String {
+fn pr_body(packages_to_update: &PackagesUpdate, body_template: Option<String>) -> String {
     let body_template = body_template.unwrap_or(DEFAULT_PR_BODY_TEMPLATE.to_string());
     pr_body_custom(packages_to_update, body_template.as_str())
 }

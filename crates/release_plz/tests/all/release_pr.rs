@@ -59,6 +59,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.1.0");
     let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
     assert_eq!(
         opened_prs[0].body.as_ref().unwrap().trim(),
         format!(
@@ -71,25 +72,25 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
 <details><summary><i><b>Changelog</b></i></summary><p>
 
 ## `{one}`
+
 <blockquote>
 
-## [0.1.0](https://localhost/{username}/{one}/releases/tag/v0.1.0) - {today}
+## [0.1.0](https://localhost/{username}/{repo}/releases/tag/{one}-v0.1.0) - {today}
 
 ### Other
 
 - cargo init
-- Initial commit
 </blockquote>
 
 ## `{two}`
+
 <blockquote>
 
-## [0.1.0](https://localhost/{username}/{two}/releases/tag/v0.1.0) - {today}
+## [0.1.0](https://localhost/{username}/{repo}/releases/tag/{two}-v0.1.0) - {today}
 
 ### Other
 
 - cargo init
-- Initial commit
 </blockquote>
 
 
