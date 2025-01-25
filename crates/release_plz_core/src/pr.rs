@@ -52,7 +52,7 @@ impl Pr {
         project_contains_multiple_pub_packages: bool,
         branch_prefix: &str,
         title_template: Option<String>,
-        body_template: Option<String>,
+        body_template: Option<&str>,
     ) -> Self {
         Self {
             branch: release_branch(branch_prefix),
@@ -135,12 +135,9 @@ fn pr_title(
 /// The Github API allows a max of 65536 characters in the body field when trying to create a new PR
 const MAX_BODY_LEN: usize = 65536;
 
-fn pr_body(packages_to_update: &PackagesUpdate, body_template: Option<String>) -> String {
-    let body_template = body_template.unwrap_or(DEFAULT_PR_BODY_TEMPLATE.to_string());
-    pr_body_custom(packages_to_update, body_template.as_str())
-}
+fn pr_body(packages_to_update: &PackagesUpdate, body_template: Option<&str>) -> String {
+    let body_template = body_template.unwrap_or(DEFAULT_PR_BODY_TEMPLATE);
 
-fn pr_body_custom(packages_to_update: &PackagesUpdate, body_template: &str) -> String {
     let mut releases = packages_to_update.releases();
     let first_render = render_pr_body(&releases, body_template);
 
