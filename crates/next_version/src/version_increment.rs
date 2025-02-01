@@ -12,8 +12,8 @@ pub enum VersionIncrement {
     Prerelease,
 }
 
-fn is_there_a_custom_match(regex_option: Option<&Regex>, commits: &[Commit]) -> bool {
-    regex_option.is_some_and(|regex| commits.iter().any(|commit| regex.is_match(&commit.type_())))
+fn is_there_a_custom_match(regex: Option<&Regex>, commits: &[Commit]) -> bool {
+    regex.is_some_and(|r| commits.iter().any(|commit| r.is_match(&commit.type_())))
 }
 
 impl VersionIncrement {
