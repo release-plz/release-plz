@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.0...release_plz_core-v0.32.1) - 2025-02-01
+
+### Fixed
+
+- don't update libraries versions on Cargo.lock update (#2016)
+
 ## [0.32.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.31.1...release_plz_core-v0.32.0) - 2025-02-01
 
 ### Added
