@@ -18,7 +18,6 @@ cargo = { version = "0.85.0", default-features = false }
 chrono = { version = "0.4.38", default-features = false }
 clap = "4.5.23"
 clap_complete = "4.5.38"
-conventional_commit_parser = "0.9.4"
 crates-index = { version = "3.3.0", features = ["git", "sparse", "git-https"] }
 dirs = "6.0.0"
 dunce = "1.0.5"
@@ -27,6 +26,7 @@ expect-test = "1.5.0"
 fake = "3.0.1"
 fs-err = "3.0.0"
 git-cliff-core = { version = "2.7.0", default-features = false }
+git-conventional = "0.12.9"
 git-url-parse = "0.4.5"
 http = "1.2.0"
 ignore = "0.4.23"

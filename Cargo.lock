@@ -3725,7 +3725,7 @@ dependencies = [
 name = "next_version"
 version = "0.2.21"
 dependencies = [
- "conventional_commit_parser",
+ "git-conventional",
  "regex",
  "semver",
 ]

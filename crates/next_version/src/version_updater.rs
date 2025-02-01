@@ -162,6 +162,30 @@ impl VersionUpdater {
     ///     Version::new(1, 2, 4)
     /// );
     /// ```
+    ///
+    /// ### Overriding default behavior
+    ///
+    /// You can also override the default behavior of conventional commits types:
+    ///
+    /// ```rust
+    /// use semver::Version;
+    /// use next_version::VersionUpdater;
+    ///
+    /// let commits = ["feat: incompatible change"];
+    /// let version = Version::new(1, 2, 3);
+    /// assert_eq!(
+    ///     VersionUpdater::new()
+    ///         .with_custom_major_increment_regex("feat")
+    ///         .expect("invalid regex")
+    ///         .increment(&version, &commits),
+    ///     Version::new(2, 0, 0)
+    /// );
+    /// assert_eq!(
+    ///     VersionUpdater::new()
+    ///         .increment(&version, &commits),
+    ///     Version::new(1, 3, 0)
+    /// );
+    /// ```
     pub fn with_custom_major_increment_regex(
         mut self,
         custom_major_increment_regex: &str,
@@ -213,7 +237,7 @@ impl VersionUpdater {
     pub fn increment<I>(self, version: &Version, commits: I) -> Version
     where
         I: IntoIterator,
-        I::Item: AsRef<str>,
+        I::Item: Into<String>,
     {
         let increment = VersionIncrement::from_commits_with_updater(&self, version, commits);
         match increment {
