@@ -1081,7 +1081,7 @@ impl Updater<'_> {
                 NO_COMMIT_ID.to_string(),
                 "chore: update Cargo.toml dependencies".to_string(),
             ));
-        } else if are_lock_dependencies_updated()? {
+        } else if is_executable(package) && are_lock_dependencies_updated()? {
             diff.commits.push(Commit::new(
                 NO_COMMIT_ID.to_string(),
                 "chore: update Cargo.lock dependencies".to_string(),
@@ -1354,7 +1354,7 @@ fn pathbufs_to_check(package_path: &Utf8Path, package: &Package) -> Vec<Utf8Path
 /// Check if release-plz should check the semver compatibility of the package.
 /// - `run_semver_check` is true if the user wants to run the semver check.
 fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
-    if run_semver_check && is_library(package) {
+    if run_semver_check && !is_executable(package) {
         let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
         if !is_cargo_semver_checks_installed {
             warn!("cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check");
@@ -1403,11 +1403,17 @@ fn is_example_package(package: &Package) -> bool {
         .all(|t| t.kind == [TargetKind::Example])
 }
 
-fn is_library(package: &Package) -> bool {
+fn is_executable(package: &Package) -> bool {
+    let executable_targets = [
+        TargetKind::Bin,
+        TargetKind::Example,
+        TargetKind::Test,
+        TargetKind::Bench,
+    ];
     package
         .targets
         .iter()
-        .any(|t| t.kind.contains(&TargetKind::Lib))
+        .any(|t| t.kind.iter().any(|k| executable_targets.contains(k)))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
