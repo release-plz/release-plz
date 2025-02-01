@@ -51,7 +51,7 @@ impl VersionIncrement {
             if !current_version.pre.is_empty() {
                 return Some(VersionIncrement::Prerelease);
             }
-            // Parse commits and keep only the ones that follow conventional commits specification
+            // Parse commits and keep only the ones that follow conventional commits specification.
             let commit_messages: Vec<String> = commits.map(|c| c.into()).collect();
             let commits: Vec<Commit> = commit_messages
                 .iter()
