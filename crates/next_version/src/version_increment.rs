@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn handles_commits_with_empty_custom_types() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![Commit::parse("custom: A custom commit").unwrap()];
+        let commits = vec![Commit::parse("A custom commit").unwrap()];
 
         assert!(!is_there_a_custom_match(Some(&regex), &commits));
     }
