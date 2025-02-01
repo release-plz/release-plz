@@ -165,7 +165,9 @@ impl VersionUpdater {
     ///
     /// ### Overriding default behavior
     ///
-    /// You can also override the default behavior of conventional commits types:
+    /// You can also override the default behavior of conventional commits types.
+    /// For example, you can make a `feat` commit trigger a _major_ version increment
+    /// instead of _minor_:
     ///
     /// ```rust
     /// use semver::Version;
