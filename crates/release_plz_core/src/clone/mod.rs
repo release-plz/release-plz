@@ -34,6 +34,7 @@ pub use cargo::{
 
 use crate::fs_utils::strip_prefix;
 use crate::fs_utils::to_utf8_path;
+use crate::read_package;
 
 /// Rust crate.
 #[derive(PartialEq, Eq, Debug)]
@@ -121,28 +122,39 @@ impl Cloner {
     /// Each crate is cloned in a subdirectory named as the crate name.
     /// Returns the cloned crates and the path where they are cloned.
     /// If a crate doesn't exist, is not returned.
-    pub fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
-        let _lock = self.acquire_cargo_package_cache_lock()?;
-        let mut src = self.get_source()?;
-        let mut cloned_pkgs = vec![];
+    pub fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<cargo_metadata::Package>> {
+        std::thread::scope(|scope| {
+            let _lock = self.acquire_cargo_package_cache_lock()?;
+            let mut src = self.get_source()?;
+            let mut cloned_pkgs = vec![];
 
-        for crate_ in crates {
-            let mut dest_path = self.directory.clone();
-
-            dest_path.push(&crate_.name);
-
-            let pkg = self
-                .clone_in(crate_, &dest_path, &mut src)
-                .with_context(|| {
-                    format!("failed to clone package {} in {dest_path}", &crate_.name)
-                })?;
-
-            if let Some(pkg) = pkg {
-                cloned_pkgs.push((pkg, dest_path));
+            let mut handles = Vec::with_capacity(crates.len());
+            for crate_ in crates {
+                let mut dest_path = self.directory.clone();
+                dest_path.push(&crate_.name);
+                let handle = scope.spawn(|| {
+                    let pkg = self
+                        .clone_in(crate_, &dest_path, &mut src)
+                        .with_context(|| {
+                            format!("failed to clone package {} in {dest_path}", &crate_.name)
+                        })?;
+                    let Some(pkg) = pkg else {
+                        return Ok(None);
+                    };
+                    Ok(Some(read_package(dest_path)?))
+                });
+                handles.push(handle);
             }
-        }
 
-        Ok(cloned_pkgs)
+            for handle in handles {
+                let cloned_pkg = handle.join().expect("Cloning a package panicked")?;
+                if let Some(pkg) = cloned_pkg {
+                    cloned_pkgs.push(pkg);
+                }
+            }
+
+            Ok(cloned_pkgs)
+        })
     }
 
     fn acquire_cargo_package_cache_lock(&self) -> CargoResult<cargo::util::cache_lock::CacheLock> {
