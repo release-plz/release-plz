@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.115](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.114...release-plz-v0.3.115) - 2025-02-01
+
+### Added
+
+- Download packages from different registries in parallel to improve performance (#2005)
+
+### Fixed
+
+- Don't try to fetch information from the remote if it's a "filler" commit (#2014)
+
+### Other
+
+- ♻️ refactor: use tera template for default PR body ([#1861](https://github.com/release-plz/release-plz/pull/1861))
+
 ## [0.3.114](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.113...release-plz-v0.3.114) - 2025-01-23
 
 ### Fixed
