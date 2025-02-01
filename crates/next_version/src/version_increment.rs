@@ -13,11 +13,7 @@ pub enum VersionIncrement {
 }
 
 fn is_there_a_custom_match(regex_option: Option<&Regex>, commits: &[Commit]) -> bool {
-    if let Some(regex) = regex_option {
-        commits.iter().any(|commit| regex.is_match(&commit.type_()))
-    } else {
-        false
-    }
+    regex_option.is_some_and(|regex| commits.iter().any(|commit| regex.is_match(&commit.type_())))
 }
 
 impl VersionIncrement {
