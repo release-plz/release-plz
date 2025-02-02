@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.22](https://github.com/release-plz/release-plz/compare/next_version-v0.2.21...next_version-v0.2.22) - 2025-02-02
+
+### Other
+
+- *(next-version)* add test for scope with whitespace (#1997)
+- use `git-conventional` library to parse commits (#2021)
+
 ## [0.2.21](https://github.com/release-plz/release-plz/compare/next_version-v0.2.20...next_version-v0.2.21) - 2024-12-07
 
 ### Other
