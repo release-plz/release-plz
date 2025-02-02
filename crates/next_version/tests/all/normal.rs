@@ -94,3 +94,24 @@ fn commit_with_custom_minor_increment_regex_increments_minor_version() {
         Version::new(1, 3, 0)
     );
 }
+
+#[test]
+fn commit_with_scope() {
+    let commits = ["feat(my_scope)!: this is a test commit"];
+    let version = Version::new(1, 0, 0);
+    assert_eq!(version.next(commits), Version::new(2, 0, 0));
+}
+
+#[test]
+fn commit_with_scope_whitespace() {
+    let commits = ["feat(my scope)!: this is a test commit"];
+    let version = Version::new(1, 0, 0);
+    assert_eq!(version.next(commits), Version::new(2, 0, 0));
+}
+
+#[test]
+fn commit_with_scope_minor() {
+    let commits = ["feat(my scope): this is a test commit"];
+    let version = Version::new(1, 0, 0);
+    assert_eq!(version.next(commits), Version::new(1, 1, 0));
+}
