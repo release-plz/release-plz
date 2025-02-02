@@ -20,7 +20,7 @@ use crate::{fs_utils, get_cargo_package_files};
 use crate::{GitBackend, GitClient};
 use anyhow::Context;
 use cargo::util::VersionExt;
-use cargo_metadata::TargetKind;
+use cargo_metadata::{CrateType, TargetKind};
 use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
@@ -1407,7 +1407,7 @@ fn is_executable(package: &Package) -> bool {
     package
         .targets
         .iter()
-        .any(|t| t.kind.iter().any(|k| k == &TargetKind::Bin))
+        .any(|t| t.crate_types.iter().any(|k| k == &CrateType::Bin))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
