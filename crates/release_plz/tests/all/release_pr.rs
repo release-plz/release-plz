@@ -19,6 +19,7 @@ async fn release_plz_opens_pr_with_default_config() {
         format!(
             r#"
 ## 🤖 New release
+
 * `{package}`: 0.1.0
 
 <details><summary><i><b>Changelog</b></i></summary><p>
@@ -31,6 +32,65 @@ async fn release_plz_opens_pr_with_default_config() {
 
 - cargo init
 - Initial commit
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_with_two_packages_and_default_config() {
+    let one = "one";
+    let two = "two";
+    let context =
+        TestContext::new_workspace(&[&format!("crates/{one}"), &format!("crates/{two}")]).await;
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let today = today();
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.0");
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        opened_prs[0].body.as_ref().unwrap().trim(),
+        format!(
+            r#"
+## 🤖 New release
+
+* `{one}`: 0.1.0
+* `{two}`: 0.1.0
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{one}`
+
+<blockquote>
+
+## [0.1.0](https://localhost/{username}/{repo}/releases/tag/{one}-v0.1.0) - {today}
+
+### Other
+
+- cargo init
+</blockquote>
+
+## `{two}`
+
+<blockquote>
+
+## [0.1.0](https://localhost/{username}/{repo}/releases/tag/{two}-v0.1.0) - {today}
+
+### Other
+
+- cargo init
 </blockquote>
 
 

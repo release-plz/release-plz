@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.0...release_plz_core-v0.32.1) - 2025-02-01
+
+### Fixed
+
+- don't update libraries versions on Cargo.lock update (#2016)
+
+## [0.32.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.31.1...release_plz_core-v0.32.0) - 2025-02-01
+
+### Added
+
+- Download packages from different registries in parallel to improve performance (#2005)
+
+### Fixed
+
+- Don't try to fetch information from the remote if it's a "filler" commit (#2014)
+
+### Other
+
+- ♻️ refactor: use tera template for default PR body ([#1861](https://github.com/release-plz/release-plz/pull/1861))
+
+## [0.31.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.31.0...release_plz_core-v0.31.1) - 2025-01-23
+
+### Fixed
+
+- don't suppress git error when determining commits to release (#1962)
+- *(core)* Stash uncommited changes in dirty repos during update (#1982)
+- *(core)* Make `release --dry-run` more informative (#1983)
+
+### Other
+
+- allow fetching latest package summaries from cargo registry ([#1984](https://github.com/release-plz/release-plz/pull/1984))
+
 ## [0.31.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.13...release_plz_core-v0.31.0) - 2025-01-14
 
 ### Added

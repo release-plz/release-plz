@@ -418,8 +418,21 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
+
+    let repo_is_clean_result = repository.repo.is_clean();
     if !input.allow_dirty {
-        repository.repo.is_clean()?;
+        repo_is_clean_result?;
+    } else if repo_is_clean_result.is_err() {
+        // Stash uncommitted changes so we can freely check out other commits.
+        // This function is ran inside a temporary repository, so this has no
+        // effects on the original repository of the user.
+        repository.repo.git(&[
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "uncommitted changes stashed by release-plz",
+        ])?;
     }
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
@@ -632,7 +645,9 @@ impl Updater<'_> {
             .map(|&p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
-                    .context("failed to retrieve difference between packages")?;
+                    .with_context(|| {
+                        format!("failed to retrieve difference of package {}", p.name)
+                    })?;
                 Ok((p, diff))
             })
             .collect();
@@ -889,17 +904,18 @@ impl Updater<'_> {
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        if let Err(err) = repository.checkout_last_commit_at_paths(&paths_to_check) {
-            if err
-                .to_string()
-                .contains("Your local changes to the following files would be overwritten")
-            {
-                return Err(err.context("The allow-dirty option can't be used in this case"));
-            } else {
-                info!("{}: there are no commits", package.name);
-                return Ok(diff);
-            }
-        }
+        repository
+            .checkout_last_commit_at_paths(&paths_to_check)
+            .map_err(|err| {
+                if err
+                    .to_string()
+                    .contains("Your local changes to the following files would be overwritten")
+                {
+                    err.context("The allow-dirty option can't be used in this case")
+                } else {
+                    err.context("Failed to retrieve the last commit of local repository.")
+                }
+            })?;
 
         let git_tag = self
             .project
@@ -1065,7 +1081,7 @@ impl Updater<'_> {
                 NO_COMMIT_ID.to_string(),
                 "chore: update Cargo.toml dependencies".to_string(),
             ));
-        } else if are_lock_dependencies_updated()? {
+        } else if is_executable(package) && are_lock_dependencies_updated()? {
             diff.commits.push(Commit::new(
                 NO_COMMIT_ID.to_string(),
                 "chore: update Cargo.lock dependencies".to_string(),
@@ -1338,7 +1354,7 @@ fn pathbufs_to_check(package_path: &Utf8Path, package: &Package) -> Vec<Utf8Path
 /// Check if release-plz should check the semver compatibility of the package.
 /// - `run_semver_check` is true if the user wants to run the semver check.
 fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
-    if run_semver_check && is_library(package) {
+    if run_semver_check && !is_executable(package) {
         let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
         if !is_cargo_semver_checks_installed {
             warn!("cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check");
@@ -1387,11 +1403,17 @@ fn is_example_package(package: &Package) -> bool {
         .all(|t| t.kind == [TargetKind::Example])
 }
 
-fn is_library(package: &Package) -> bool {
+fn is_executable(package: &Package) -> bool {
+    let executable_targets = [
+        TargetKind::Bin,
+        TargetKind::Example,
+        TargetKind::Test,
+        TargetKind::Bench,
+    ];
     package
         .targets
         .iter()
-        .any(|t| t.kind.contains(&TargetKind::Lib))
+        .any(|t| t.kind.iter().any(|k| executable_targets.contains(k)))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {

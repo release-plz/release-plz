@@ -1,4 +1,4 @@
-use conventional_commit_parser::commit::{CommitType, ConventionalCommit};
+use git_conventional::Commit;
 use regex::Regex;
 use semver::Version;
 
@@ -12,22 +12,8 @@ pub enum VersionIncrement {
     Prerelease,
 }
 
-fn is_there_a_custom_match(regex_option: Option<&Regex>, commits: &[ConventionalCommit]) -> bool {
-    if let Some(regex) = regex_option {
-        commits
-            .iter()
-            .any(|commit| custom_commit_matches_regex(regex, commit))
-    } else {
-        false
-    }
-}
-
-fn custom_commit_matches_regex(regex: &Regex, commit: &ConventionalCommit) -> bool {
-    if let CommitType::Custom(custom_type) = &commit.commit_type {
-        regex.is_match(custom_type)
-    } else {
-        false
-    }
+fn is_there_a_custom_match(regex: Option<&Regex>, commits: &[Commit]) -> bool {
+    regex.is_some_and(|r| commits.iter().any(|commit| r.is_match(&commit.type_())))
 }
 
 impl VersionIncrement {
@@ -66,8 +52,10 @@ impl VersionIncrement {
                 return Some(VersionIncrement::Prerelease);
             }
             // Parse commits and keep only the ones that follow conventional commits specification.
-            let commits: Vec<ConventionalCommit> = commits
-                .filter_map(|c| conventional_commit_parser::parse(c.as_ref()).ok())
+            let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
+            let commits: Vec<Commit> = commit_messages
+                .iter()
+                .filter_map(|c| Commit::parse(c).ok())
                 .collect();
 
             Some(Self::from_conventional_commits(
@@ -109,16 +97,16 @@ impl VersionIncrement {
     /// If no conventional commits are present, the version is incremented as a Patch
     fn from_conventional_commits(
         current: &Version,
-        commits: &[ConventionalCommit],
+        commits: &[Commit],
         updater: &VersionUpdater,
     ) -> Self {
         let is_there_a_feature = || {
             commits
                 .iter()
-                .any(|commit| commit.commit_type == CommitType::Feature)
+                .any(|commit| commit.type_() == git_conventional::Type::FEAT)
         };
 
-        let is_there_a_breaking_change = commits.iter().any(|commit| commit.is_breaking_change);
+        let is_there_a_breaking_change = commits.iter().any(|commit| commit.breaking());
 
         let is_major_bump = || {
             (is_there_a_breaking_change
@@ -162,19 +150,12 @@ impl VersionIncrement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use conventional_commit_parser::commit::{CommitType, ConventionalCommit};
     use regex::Regex;
+
     #[test]
     fn returns_true_for_matching_custom_type() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![ConventionalCommit {
-            commit_type: CommitType::Custom("custom".to_string()),
-            is_breaking_change: false,
-            summary: "A custom commit".to_string(),
-            body: None,
-            scope: None,
-            footers: vec![],
-        }];
+        let commits = vec![Commit::parse("custom: A custom commit").unwrap()];
 
         assert!(is_there_a_custom_match(Some(&regex), &commits));
     }
@@ -182,14 +163,7 @@ mod tests {
     #[test]
     fn returns_false_for_non_custom_commit_types() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![ConventionalCommit {
-            commit_type: CommitType::Feature,
-            is_breaking_change: false,
-            summary: "A feature commit".to_string(),
-            body: None,
-            scope: None,
-            footers: vec![],
-        }];
+        let commits = vec![Commit::parse("feat: A feature commit").unwrap()];
 
         assert!(!is_there_a_custom_match(Some(&regex), &commits));
     }
@@ -197,22 +171,7 @@ mod tests {
     #[test]
     fn returns_false_for_empty_commits_list() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits: Vec<ConventionalCommit> = Vec::new();
-
-        assert!(!is_there_a_custom_match(Some(&regex), &commits));
-    }
-
-    #[test]
-    fn handles_commits_with_empty_custom_types() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![ConventionalCommit {
-            commit_type: CommitType::Custom("".to_string()),
-            is_breaking_change: false,
-            summary: "A custom commit".to_string(),
-            body: None,
-            scope: None,
-            footers: vec![],
-        }];
+        let commits: Vec<Commit> = Vec::new();
 
         assert!(!is_there_a_custom_match(Some(&regex), &commits));
     }
