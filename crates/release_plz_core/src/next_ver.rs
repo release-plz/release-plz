@@ -1404,16 +1404,10 @@ fn is_example_package(package: &Package) -> bool {
 }
 
 fn is_executable(package: &Package) -> bool {
-    let executable_targets = [
-        TargetKind::Bin,
-        TargetKind::Example,
-        TargetKind::Test,
-        TargetKind::Bench,
-    ];
     package
         .targets
         .iter()
-        .any(|t| t.kind.iter().any(|k| executable_targets.contains(k)))
+        .any(|t| t.kind.iter().any(|k| k == &TargetKind::Bin))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
