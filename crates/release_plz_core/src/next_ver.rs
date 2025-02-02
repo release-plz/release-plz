@@ -20,12 +20,12 @@ use crate::{fs_utils, get_cargo_package_files};
 use crate::{GitBackend, GitClient};
 use anyhow::Context;
 use cargo::util::VersionExt;
-use cargo_metadata::TargetKind;
 use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
     Metadata, Package,
 };
+use cargo_metadata::{CrateType, TargetKind};
 use cargo_utils::{canonical_local_manifest, upgrade_requirement, LocalManifest, CARGO_TOML};
 use chrono::NaiveDate;
 use git_cliff_core::contributor::RemoteContributor;
@@ -1404,16 +1404,10 @@ fn is_example_package(package: &Package) -> bool {
 }
 
 fn is_executable(package: &Package) -> bool {
-    let executable_targets = [
-        TargetKind::Bin,
-        TargetKind::Example,
-        TargetKind::Test,
-        TargetKind::Bench,
-    ];
     package
         .targets
         .iter()
-        .any(|t| t.kind.iter().any(|k| executable_targets.contains(k)))
+        .any(|t| t.crate_types.iter().any(|k| k == &CrateType::Bin))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
