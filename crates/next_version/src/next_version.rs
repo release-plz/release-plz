@@ -6,7 +6,7 @@ pub trait NextVersion {
     fn next<I>(&self, commits: I) -> Self
     where
         I: IntoIterator,
-        I::Item: Into<String>;
+        I::Item: AsRef<str>;
 
     /// Increments the major version number.
     fn increment_major(&self) -> Self;
@@ -39,7 +39,7 @@ impl NextVersion for Version {
     fn next<I>(&self, commits: I) -> Self
     where
         I: IntoIterator,
-        I::Item: Into<String>,
+        I::Item: AsRef<str>,
     {
         VersionUpdater::default().increment(self, commits)
     }

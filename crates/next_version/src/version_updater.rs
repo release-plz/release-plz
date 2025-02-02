@@ -265,7 +265,7 @@ impl VersionUpdater {
     pub fn increment<I>(self, version: &Version, commits: I) -> Version
     where
         I: IntoIterator,
-        I::Item: Into<String>,
+        I::Item: AsRef<str>,
     {
         let increment = VersionIncrement::from_commits_with_updater(&self, version, commits);
         match increment {

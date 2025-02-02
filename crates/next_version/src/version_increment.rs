@@ -30,7 +30,7 @@ impl VersionIncrement {
     pub fn from_commits<I>(current_version: &Version, commits: I) -> Option<Self>
     where
         I: IntoIterator,
-        I::Item: Into<String>,
+        I::Item: AsRef<str>,
     {
         let updater = VersionUpdater::default();
         Self::from_commits_with_updater(&updater, current_version, commits)
@@ -43,7 +43,7 @@ impl VersionIncrement {
     ) -> Option<Self>
     where
         I: IntoIterator,
-        I::Item: Into<String>,
+        I::Item: AsRef<str>,
     {
         let mut commits = commits.into_iter().peekable();
         let are_commits_present = commits.peek().is_some();
@@ -52,7 +52,7 @@ impl VersionIncrement {
                 return Some(VersionIncrement::Prerelease);
             }
             // Parse commits and keep only the ones that follow conventional commits specification.
-            let commit_messages: Vec<String> = commits.map(|c| c.into()).collect();
+            let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
             let commits: Vec<Commit> = commit_messages
                 .iter()
                 .filter_map(|c| Commit::parse(c).ok())
