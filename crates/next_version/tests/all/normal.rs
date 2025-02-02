@@ -94,6 +94,7 @@ fn commit_with_custom_minor_increment_regex_increments_minor_version() {
         Version::new(1, 3, 0)
     );
 }
+
 #[test]
 fn commit_with_scope() {
     let commits = ["feat(my_scope)!: this is a test commit"];
