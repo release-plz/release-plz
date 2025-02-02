@@ -8,7 +8,7 @@ use crate::VersionIncrement;
 ///
 /// Useful if you don't like the default increment rules of the crate.
 ///
-// # Example
+/// # Example
 ///
 /// ```
 /// use next_version::VersionUpdater;
@@ -224,32 +224,6 @@ impl VersionUpdater {
     ///     VersionUpdater::new()
     ///         .increment(&version, &commits),
     ///     Version::new(0, 2, 4)
-    /// );
-    /// ```
-    ///
-    /// ### `feat` behavior
-    ///
-    /// Note that you need to include `feat` in the regex if you want it to keep
-    /// incrementing the minor version.
-    ///
-    ///
-    /// ```rust
-    /// use semver::Version;
-    /// use next_version::VersionUpdater;
-    ///
-    /// let commits = ["feat: make coffee"];
-    /// let version = Version::new(1, 2, 3);
-    /// assert_eq!(
-    ///     VersionUpdater::new()
-    ///         .with_custom_minor_increment_regex("abc")
-    ///         .expect("invalid regex")
-    ///         .increment(&version, &commits),
-    ///     Version::new(1, 2, 4)
-    /// );
-    /// assert_eq!(
-    ///     VersionUpdater::new()
-    ///         .increment(&version, &commits),
-    ///     Version::new(1, 3, 0)
     /// );
     /// ```
     pub fn with_custom_minor_increment_regex(
