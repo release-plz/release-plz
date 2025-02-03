@@ -774,16 +774,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 
 [[package]]
-name = "conventional_commit_parser"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58660f9e1d5eeeeec9c33d1473ea8bba000c673a2189edaeedb4523ec7d6f7cb"
-dependencies = [
- "pest",
- "pest_derive",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1506,7 +1496,7 @@ dependencies = [
  "lazy-regex",
  "lazy_static",
  "log",
- "next_version 0.2.21",
+ "next_version 0.2.22 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex",
  "rust-embed",
  "secrecy 0.8.0",
@@ -3723,11 +3713,9 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.2.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac10cbb9ea44ccdaf522542f25c6139266b2c0d9165148cc6e1d9970f2d2eb32"
+version = "0.2.22"
 dependencies = [
- "conventional_commit_parser",
+ "git-conventional",
  "regex",
  "semver",
 ]
@@ -3735,6 +3723,8 @@ dependencies = [
 [[package]]
 name = "next_version"
 version = "0.2.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d59c81b2258608b1c9b8285c9752494e5d890352c21a5f5facf7ad18296d1874"
 dependencies = [
  "git-conventional",
  "regex",
@@ -3865,9 +3855,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.104"
+version = "0.9.105"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45abf306cbf99debc8195b66b7346498d7b10c210de50418b5ccd7ceba08c741"
+checksum = "8b22d5b84be05a8d6947c7cb71f7c849aa0f112acd4bf51c2a7c1c988ac0a9dc"
 dependencies = [
  "cc",
  "libc",
