@@ -1,19 +1,28 @@
 # FAQ
 
-## What packages does release-plz publish?
+## What packages does release-plz process?
 
-Release-plz publishes all packages, except:
+By default, release-plz only processes packages that it considers *unpublishable*.
+A package is considered *unpublishable* if:
 
-- packages with `publish = false` in the `Cargo.toml`.
-- [examples](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#examples) that don't
-  specify the [`publish`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-publish-field)
-  field in their `Cargo.toml` file. To publish them, set this field.
+- It has `publish = false` in its `Cargo.toml`.
+- It is an [example](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#examples)
+  that does not specify the [`publish`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-publish-field)
+  field in its `Cargo.toml` file. To publish it, set this field.
 
-Even, if a package is not published, release-plz will update its `Cargo.toml` to bump the version of
-a local dependency if needed.
+:::tip
+Even if a package is not processed, release-plz will update its `Cargo.toml` to
+bump the version of a local dependency if needed.
+:::
 
-If you want to check which packages release-plz will publish, run
+If you want to check which packages release-plz will release, run
 `release-plz release --dry-run`.
+
+### Making release-plz process unpublished packages
+
+Unpublished packages *can* be updated and released by release-plz if so desired.
+Their processing must be opted into by setting the [package-specific `release` option](config.md#the-release-field-package-section)
+to `true`, even if `release = true` is specified at the workspace level.
 
 ## Can I edit the release PR before merging it?
 

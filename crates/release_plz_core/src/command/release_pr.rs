@@ -1,4 +1,3 @@
-use cargo_metadata::camino::Utf8Path;
 use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
@@ -13,8 +12,8 @@ use crate::git::backend::{
 use crate::git::github_graphql;
 use crate::pr::{Pr, DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX};
 use crate::{
-    copy_to_temp_dir, new_manifest_dir_path, new_project_root, publishable_packages_from_manifest,
-    root_repo_path_from_manifest_dir, update, PackagesUpdate, UpdateRequest,
+    copy_to_temp_dir, new_manifest_dir_path, new_project_root, root_repo_path_from_manifest_dir,
+    update, PackagesUpdate, Project, UpdateRequest,
 };
 
 #[derive(Debug)]
@@ -123,8 +122,9 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         let repo = Repo::new(tmp_project_root)?;
         let there_are_commits_to_push = repo.is_clean().is_err();
         if there_are_commits_to_push {
+            let local_project = input.update_request.create_project()?;
             let pr = open_or_update_release_pr(
-                &local_manifest,
+                &local_project,
                 &packages_to_update,
                 &git_client,
                 &repo,
@@ -153,7 +153,7 @@ struct ReleasePrOptions {
 }
 
 async fn open_or_update_release_pr(
-    local_manifest: &Utf8Path,
+    project: &Project,
     packages_to_update: &PackagesUpdate,
     git_client: &GitClient,
     repo: &Repo,
@@ -184,8 +184,7 @@ async fn open_or_update_release_pr(
     }
 
     let new_pr = {
-        let project_contains_multiple_pub_packages =
-            publishable_packages_from_manifest(local_manifest)?.len() > 1;
+        let project_contains_multiple_pub_packages = project.workspace_packages().len() > 1;
         Pr::new(
             repo.original_branch(),
             packages_to_update,

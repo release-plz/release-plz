@@ -1,12 +1,15 @@
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    fs_utils::to_utf8_path, set_version::SetVersionRequest, GitReleaseConfig, ReleaseRequest,
-    UpdateRequest,
+    fs_utils::to_utf8_path, set_version::SetVersionRequest, GitReleaseConfig, Publishable,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    time::Duration,
+};
 use url::Url;
 
 use crate::changelog_config::ChangelogCfg;
@@ -39,28 +42,6 @@ impl Config {
             .collect()
     }
 
-    pub fn fill_update_config(
-        &self,
-        is_changelog_update_disabled: bool,
-        update_request: UpdateRequest,
-    ) -> UpdateRequest {
-        let mut default_update_config = self.workspace.packages_defaults.clone();
-        if is_changelog_update_disabled {
-            default_update_config.changelog_update = false.into();
-        }
-        let mut update_request =
-            update_request.with_default_package_config(default_update_config.into());
-        for (package, config) in self.packages() {
-            let mut update_config = config.clone();
-            update_config = update_config.merge(self.workspace.packages_defaults.clone());
-            if is_changelog_update_disabled {
-                update_config.common.changelog_update = false.into();
-            }
-            update_request = update_request.with_package_config(package, update_config.into());
-        }
-        update_request
-    }
-
     pub fn fill_set_version_config(
         &self,
         set_version_request: &mut SetVersionRequest,
@@ -73,37 +54,88 @@ impl Config {
         }
         Ok(())
     }
+}
 
-    pub fn fill_release_config(
+/// An object that can be configured with workspace default and package specific configs.
+pub trait Configurable {
+    /// Contains the overrides (for example, from the command-line) to apply on top of the
+    /// provided configs.
+    type Overrides;
+
+    /// Configures `self` with the given workspace default config and overrides.
+    /// Returns the new configured value.
+    fn configure_default(self, default_config: PackageConfig, overrides: &Self::Overrides) -> Self;
+
+    /// Configures `self` with the given package-specific config and overrides for a package with
+    /// the given name. Returns the new configured value.
+    fn configure_package(
+        self,
+        package: impl Into<String>,
+        package_config: PackageSpecificConfig,
+        overrides: &Self::Overrides,
+    ) -> Self;
+}
+
+/// Configures a [`Configurable`] with a [`Config`] in the context of a Cargo workspace.
+pub struct Configurator {
+    unpublishable_package_names: HashSet<String>,
+}
+
+impl Configurator {
+    /// Creates a [`Configurator`] in the context of a workspace with the given
+    /// [metadata](cargo_metadata::Metadata).
+    pub fn new(metadata: &cargo_metadata::Metadata) -> Self {
+        Self {
+            unpublishable_package_names: metadata
+                .workspace_packages()
+                .into_iter()
+                .filter_map(|package| (!package.is_publishable()).then_some(package.name.clone()))
+                .collect(),
+        }
+    }
+
+    /// Configures the given [`Configurable`] with the provided [`Config`] and `overrides`.
+    pub fn configure<T: Configurable>(
         &self,
-        allow_dirty: bool,
-        no_verify: bool,
-        release_request: ReleaseRequest,
-    ) -> ReleaseRequest {
-        let mut default_config = self.workspace.packages_defaults.clone();
-        if no_verify {
-            default_config.publish_no_verify = Some(true);
-        }
-        if allow_dirty {
-            default_config.publish_allow_dirty = Some(true);
-        }
-        let mut release_request =
-            release_request.with_default_package_config(default_config.into());
+        mut configurable: T,
+        config: &Config,
+        overrides: &T::Overrides,
+    ) -> T {
+        let package_default_config = &config.workspace.packages_defaults;
+        configurable = configurable.configure_default(package_default_config.clone(), overrides);
 
-        for (package, config) in self.packages() {
-            let mut release_config = config.clone();
-            release_config = release_config.merge(self.workspace.packages_defaults.clone());
+        let mut unpublishable_package_names = self.unpublishable_package_names.clone();
 
-            if no_verify {
-                release_config.common.publish_no_verify = Some(true);
+        for (package, config) in config.packages() {
+            let mut default_config = package_default_config.clone();
+
+            if unpublishable_package_names.remove(package) {
+                // The `release` option for unpublishable packages must default to false,
+                // even if it is true in workspace config.
+                // Unpublished process were previously not processed by release-plz at all,
+                // so their processing must be opted into by explicitly setting release = true
+                // for an unpublished package
+                default_config.release = Some(false);
             }
-            if allow_dirty {
-                release_config.common.publish_allow_dirty = Some(true);
-            }
-            release_request =
-                release_request.with_package_config(package, release_config.common.into());
+
+            let mut update_config = config.clone();
+            update_config = update_config.merge(default_config);
+            configurable = configurable.configure_package(package, update_config, overrides);
         }
-        release_request
+
+        // Disable all unpublished packages which don't have a package-specific config
+        // (which means they weren't opted in to be processed)
+        for package in unpublishable_package_names {
+            let mut default_config = package_default_config.clone();
+            default_config.release = Some(false);
+            let package_config = PackageSpecificConfig {
+                common: default_config,
+                ..Default::default()
+            };
+            configurable = configurable.configure_package(package, package_config, overrides);
+        }
+
+        configurable
     }
 }
 
@@ -175,19 +207,19 @@ impl Workspace {
 }
 
 /// Config at the `[[package]]` level.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, JsonSchema)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default, Clone, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PackageSpecificConfig {
     /// Configuration that can be specified at the `[workspace]` level, too.
     #[serde(flatten)]
-    common: PackageConfig,
+    pub common: PackageConfig,
     /// # Changelog Include
     /// List of package names.
     /// Include the changelogs of these packages in the changelog of the current package.
-    changelog_include: Option<Vec<String>>,
+    pub changelog_include: Option<Vec<String>>,
     /// # Version group
     /// The name of a group of packages that needs to have the same version.
-    version_group: Option<String>,
+    pub version_group: Option<String>,
 }
 
 impl PackageSpecificConfig {
@@ -435,6 +467,7 @@ impl From<ReleaseType> for release_plz_core::ReleaseType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fake_package::metadata::fake_metadata;
 
     const BASE_WORKSPACE_CONFIG: &str = r#"
         [workspace]
@@ -725,5 +758,130 @@ unknown = false"#;
             unknown field `unknown`
         "#]]
         .assert_eq(&error);
+    }
+
+    struct PackageConfigs {
+        default_config: Option<PackageConfig>,
+        package_specific_config: HashMap<String, PackageSpecificConfig>,
+    }
+
+    impl PackageConfigs {
+        fn collect_from(config: &Config, configurator: &Configurator) -> Self {
+            let collector = PackageConfigs {
+                default_config: None,
+                package_specific_config: HashMap::new(),
+            };
+            configurator.configure(collector, config, &())
+        }
+    }
+
+    impl Configurable for PackageConfigs {
+        type Overrides = ();
+
+        fn configure_default(
+            mut self,
+            default_config: PackageConfig,
+            _overrides: &Self::Overrides,
+        ) -> Self {
+            self.default_config = Some(default_config);
+            self
+        }
+
+        fn configure_package(
+            mut self,
+            package: impl Into<String>,
+            package_config: PackageSpecificConfig,
+            _overrides: &Self::Overrides,
+        ) -> Self {
+            self.package_specific_config
+                .insert(package.into(), package_config);
+            self
+        }
+    }
+
+    #[test]
+    fn configurator_defaults_unpublished_packages_to_release_false() {
+        let metadata = fake_metadata();
+        let unpublished_packages = metadata
+            .workspace_packages()
+            .into_iter()
+            .filter(|package| !package.is_publishable())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !unpublished_packages.is_empty(),
+            concat!(
+                "`fake_metadata` returned manifest of workspace in `{}`. ",
+                "This test needs at least one unpublishable package in that workspace."
+            ),
+            metadata.workspace_root
+        );
+
+        let mut config = Config::default();
+
+        let configurator = Configurator::new(&metadata);
+        let configs = PackageConfigs::collect_from(&config, &configurator);
+
+        assert_eq!(
+            configs.default_config.as_ref(),
+            Some(&config.workspace.packages_defaults)
+        );
+
+        for package in metadata.workspace_packages() {
+            if package.is_publishable() {
+                // Publishable packages should not have a package specific config
+                // since we didn't provide one
+                assert!(!configs.package_specific_config.contains_key(&package.name));
+            } else {
+                // Unpublishable packages should default to release = false
+                assert_eq!(
+                    configs.package_specific_config[&package.name]
+                        .common
+                        .release,
+                    Some(false)
+                );
+            }
+        }
+
+        // Unpublished packages should have release = false even when
+        // release = true is explicitly set in workspace config
+        config.workspace.packages_defaults.release = Some(true);
+
+        let configs = PackageConfigs::collect_from(&config, &configurator);
+
+        for package in &unpublished_packages {
+            assert_eq!(
+                configs.package_specific_config[&package.name]
+                    .common
+                    .release,
+                Some(false)
+            );
+        }
+
+        // Unpublished package should only have release = true if it is explicitly allowed
+        // in the package specific config
+        let unpublished_package = unpublished_packages.first().unwrap();
+        config.package.push(PackageSpecificConfigWithName {
+            name: unpublished_package.name.clone(),
+            config: PackageSpecificConfig {
+                common: PackageConfig {
+                    release: Some(true),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        });
+
+        let configs = PackageConfigs::collect_from(&config, &configurator);
+
+        for package in &unpublished_packages {
+            let release = package.name == unpublished_package.name;
+            assert_eq!(
+                configs.package_specific_config[&package.name]
+                    .common
+                    .release,
+                Some(release)
+            );
+        }
     }
 }
