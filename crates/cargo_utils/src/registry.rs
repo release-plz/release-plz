@@ -7,6 +7,14 @@ use url::Url;
 const CRATES_IO_INDEX: &str = "https://github.com/rust-lang/crates.io-index";
 const CRATES_IO_REGISTRY: &str = "crates-io";
 
+/// Read index for a specific registry using environment variables.
+/// <https://doc.rust-lang.org/cargo/reference/environment-variables.html>
+pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
+    let env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry.to_uppercase());
+
+    std::env::var(env_var).ok()
+}
+
 /// Find the URL of a registry
 pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Result<Url> {
     fn read_config(
@@ -31,6 +39,19 @@ pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Res
     // it's looks like a singly linked list
     // put relations in this map.
     let mut registries: HashMap<String, Source> = HashMap::new();
+
+    // set top-level env var override if it exists.
+    if let Some(registry_name) = registry {
+        if let Some(env_var_override) = registry.and_then(registry_index_url_from_env) {
+            registries
+                .entry(registry_name.to_string())
+                .or_insert(Source {
+                    registry: Some(env_var_override),
+                    replace_with: None,
+                });
+        }
+    }
+
     // ref: https://doc.rust-lang.org/cargo/reference/config.html#hierarchical-structure
     for work_dir in manifest_path
         .parent()
