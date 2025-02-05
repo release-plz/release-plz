@@ -12,6 +12,10 @@ When the action runs with `command: release-pr`, it outputs the following proper
     It is the default branch of the repository. E.g. `main`.
   - `html_url`: The URL of the PR.
   - `number`: The number of the PR.
+  - `releases`: Array of packages edited in the PR.
+    Each entry is an object containing:
+    - `package_name`: The name of the edited package.
+    - `version`: The next version of the package. The PR updates the package to this version.
 - `prs_created`: Whether release-plz created any release PR. *Boolean.*
 
 When the action runs with `command: release`, it outputs the following properties:
