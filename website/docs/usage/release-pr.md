@@ -115,7 +115,7 @@ Example:
       "releases": [
         {
           "package_name": "my_package",
-          "version": "1.0.0"
+          "version": "1.0.3"
         }
       ]
     }
