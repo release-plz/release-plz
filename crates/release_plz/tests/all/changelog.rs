@@ -47,7 +47,13 @@ async fn release_plz_adds_changelog_on_new_project() {
             "head_branch": opened_pr.branch(),
             "base_branch": "main",
             "html_url": opened_pr.html_url,
-            "number": opened_pr.number
+            "number": opened_pr.number,
+            "releases": [
+                {
+                    "package_name": context.gitea.repo,
+                    "version": "0.1.0"
+                }
+            ]
           }
         ]
     })
