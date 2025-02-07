@@ -47,7 +47,13 @@ async fn release_plz_adds_changelog_on_new_project() {
             "head_branch": opened_pr.branch(),
             "base_branch": "main",
             "html_url": opened_pr.html_url,
-            "number": opened_pr.number
+            "number": opened_pr.number,
+            "releases": [
+                {
+                    "package_name": context.gitea.repo,
+                    "version": "0.1.0"
+                }
+            ]
           }
         ]
     })
@@ -107,14 +113,29 @@ async fn release_plz_adds_custom_changelog() {
     "#;
     context.write_release_plz_toml(config);
 
-    context.run_release_pr().success();
+    let outcome = context.run_release_pr().success();
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
+    let open_pr = &opened_prs[0];
+
+    let expected_stdout = serde_json::json!({
+        "prs": [{
+            "base_branch": "main",
+            "head_branch": open_pr.branch(),
+            "html_url": open_pr.html_url,
+            "number": open_pr.number,
+            "releases": [{
+                "package_name": context.gitea.repo,
+                "version": "0.1.0"
+            }]
+        }]
+    });
+    outcome.stdout(format!("{expected_stdout}\n"));
 
     let changelog = context
         .gitea
-        .get_file_content(opened_prs[0].branch(), "CHANGELOG.md")
+        .get_file_content(open_pr.branch(), "CHANGELOG.md")
         .await;
     let expected_changelog = "Changelog\n\n";
     let username = context.gitea.user.username();
