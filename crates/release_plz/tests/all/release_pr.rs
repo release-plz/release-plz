@@ -238,7 +238,23 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 
     move_readme(&context, "feat: move readme");
 
-    context.run_release_pr().success();
+    let outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let open_pr = &opened_prs[0];
+    let expected_stdout = serde_json::json!({
+        "prs": [{
+            "base_branch": "main",
+            "head_branch": open_pr.branch(),
+            "html_url": open_pr.html_url,
+            "number": open_pr.number,
+            "releases": [{
+                "package_name": context.gitea.repo,
+                "version": "0.2.0"
+            }]
+        }]
+    });
+    outcome.stdout(format!("{expected_stdout}\n"));
     context.merge_release_pr().await;
 
     let expected_tag = "v0.2.0";
