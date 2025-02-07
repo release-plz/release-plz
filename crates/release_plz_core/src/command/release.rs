@@ -1057,20 +1057,13 @@ mod tests {
         let token = "t0p$eCrEt";
         let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
 
-        let old_value = env::var(&token_env_var);
-        env::set_var(&token_env_var, token);
+        with_env_var(&token_env_var, token, || {
+            let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);
+            let registry_token = request.find_registry_token(Some(registry_name)).unwrap();
 
-        let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);
-        let registry_token = request.find_registry_token(Some(registry_name)).unwrap();
-
-        if let Ok(old) = old_value {
-            env::set_var(&token_env_var, old);
-        } else {
-            env::remove_var(&token_env_var);
-        }
-
-        assert!(registry_token.is_some());
-        assert_eq!(token, registry_token.unwrap().expose_secret());
+            assert!(registry_token.is_some());
+            assert_eq!(token, registry_token.unwrap().expose_secret());
+        });
     }
 
     #[test]
