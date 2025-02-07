@@ -42,7 +42,7 @@ pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Res
 
     // set top-level env var override if it exists.
     if let Some(registry_name) = registry {
-        if let Some(env_var_override) = registry.and_then(registry_index_url_from_env) {
+        if let Some(env_var_override) = registry_index_url_from_env(registry_name) {
             registries
                 .entry(registry_name.to_string())
                 .or_insert(Source {
