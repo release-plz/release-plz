@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.7.0">
 <title data-rh="true">Configuration | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/config"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Release-plz"><meta data-rh="true" name="description" content="This section describes how you can customize the behavior of release-plz"><meta data-rh="true" property="og:description" content="This section describes how you can customize the behavior of release-plz"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/config"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/config" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/config" hreflang="x-default"><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.f5f4c503.css">
-<script src="/assets/js/runtime~main.e6add174.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.910a198d.js" defer="defer"></script>
 <script src="/assets/js/main.247133f7.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -419,8 +419,9 @@ regex.</p>
 <p>You can use this if you think it is too noisy to raise PRs on every commit.</p>
 <p>Examples:</p>
 <ul>
-<li>With <code>release_commits = &quot;^feat:&quot;</code>, release-plz will update the package only if there&#x27;s a new feature.</li>
-<li>With <code>release_commits = &quot;^(feat:|docs:)&quot;</code>, release-plz will update the package only if there&#x27;s a
+<li>With <code>release_commits = &quot;^feat[(:]&quot;</code>, release-plz will update the package only if there&#x27;s a new feature.
+The regex matches strings starting with <code>feat:</code> or <code>feat(</code>.</li>
+<li>With <code>release_commits = &quot;^(feat|docs)[(:]</code>, release-plz will update the package only if there&#x27;s a
 new feature or a documentation change.</li>
 </ul>
 <p>By default, release-plz updates the package on every commit.</p>
