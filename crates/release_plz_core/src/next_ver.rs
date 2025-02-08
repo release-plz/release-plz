@@ -20,12 +20,12 @@ use crate::{fs_utils, get_cargo_package_files};
 use crate::{GitBackend, GitClient};
 use anyhow::Context;
 use cargo::util::VersionExt;
+use cargo_metadata::TargetKind;
 use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
     Metadata, Package,
 };
-use cargo_metadata::{CrateType, TargetKind};
 use cargo_utils::{canonical_local_manifest, upgrade_requirement, LocalManifest, CARGO_TOML};
 use chrono::NaiveDate;
 use git_cliff_core::contributor::RemoteContributor;
