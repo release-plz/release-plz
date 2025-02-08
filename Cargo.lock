@@ -1496,7 +1496,7 @@ dependencies = [
  "lazy-regex",
  "lazy_static",
  "log",
- "next_version 0.2.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "next_version 0.2.22",
  "regex",
  "rust-embed",
  "secrecy 0.8.0",
@@ -3714,6 +3714,8 @@ dependencies = [
 [[package]]
 name = "next_version"
 version = "0.2.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d59c81b2258608b1c9b8285c9752494e5d890352c21a5f5facf7ad18296d1874"
 dependencies = [
  "git-conventional",
  "regex",
@@ -3722,9 +3724,7 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.2.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d59c81b2258608b1c9b8285c9752494e5d890352c21a5f5facf7ad18296d1874"
+version = "0.2.23"
 dependencies = [
  "git-conventional",
  "regex",
@@ -4494,7 +4494,7 @@ dependencies = [
  "ignore",
  "itertools 0.14.0",
  "lazy_static",
- "next_version 0.2.22",
+ "next_version 0.2.23",
  "parse-changelog",
  "rand 0.9.0",
  "rayon",
