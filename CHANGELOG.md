@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.118](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.117...release-plz-v0.3.118) - 2025-02-08
+
+### Fixed
+
+- correctly detect if package is executable (#2041)
+
 ## [0.3.117](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.116...release-plz-v0.3.117) - 2025-02-08
 
 ### Added
