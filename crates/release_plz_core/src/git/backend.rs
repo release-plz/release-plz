@@ -864,18 +864,23 @@ impl GitClient {
 
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
         let api_path = self.commits_api_path(commit);
-        let github_commit: GitHubCommit = self
-            .client
-            .get(api_path)
-            .send()
-            .await?
+        let response = self.client.get(api_path).send().await?;
+
+        if let Err(err) = response.error_for_status_ref() {
+            if let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status() {
+                // The user didn't push the commit to the remote repository.
+                return Ok(RemoteCommit { username: None });
+            }
+        }
+
+        let remote_commit: GitHubCommit = response
             .successful_status()
             .await?
             .json()
             .await
             .context("can't parse commits")?;
 
-        let username = github_commit.author.and_then(|author| author.login);
+        let username = remote_commit.author.and_then(|author| author.login);
         Ok(RemoteCommit { username })
     }
 
