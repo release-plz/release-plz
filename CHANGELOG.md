@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.117](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.116...release-plz-v0.3.117) - 2025-02-08
+
+### Added
+
+- add releases to release-pr json output (#2031)
+
+### Fixed
+
+- don't fail if commit wasn't pushed to remote (#2037)
+- correctly detect if package contains executable (#2024)
+
 ## [0.3.116](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.115...release-plz-v0.3.116) - 2025-02-01
 
 ### Fixed
