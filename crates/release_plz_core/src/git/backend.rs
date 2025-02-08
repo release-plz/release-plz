@@ -869,7 +869,8 @@ impl GitClient {
         if let Err(err) = response.error_for_status_ref() {
             if let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status() {
                 // The user didn't push the commit to the remote repository.
-                // This can happen if people need to do edits before running release-plz (e.g. cargo hakari)
+                // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
+                // I'm not sure why GitHub returns 422 if the commit doesn't exist.
                 return Ok(RemoteCommit { username: None });
             }
         }
