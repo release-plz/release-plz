@@ -4481,7 +4481,6 @@ dependencies = [
  "http",
  "ignore",
  "itertools 0.14.0",
- "lazy_static",
  "next_version 0.2.22",
  "parse-changelog",
  "rand 0.9.0",
