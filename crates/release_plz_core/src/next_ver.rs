@@ -709,7 +709,10 @@ impl Updater<'_> {
                         &mut all_commits,
                         git_client.as_ref(),
                     )
-                    .await?;
+                    .await
+                    .context(
+                        "Failed to fetch the commit information required by the changelog template",
+                    )?;
                 }
             }
         }
