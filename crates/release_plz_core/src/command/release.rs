@@ -991,12 +991,10 @@ mod tests {
 
     use super::*;
 
-    static NO_PARALLEL: LazyLock<Mutex<()>> = LazyLock::new(|| {
-        // Trick to avoid the tests to run concurrently.
-        // It's used to not affect environment variables used in other tests
-        // since tests run concurrently by default and share the same environment context.
-        Mutex::default()
-    });
+    // Trick to avoid the tests to run concurrently.
+    // It's used to not affect environment variables used in other tests
+    // since tests run concurrently by default and share the same environment context.
+    static NO_PARALLEL: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
 
     #[test]
     fn git_release_config_pre_release_default_works() {
