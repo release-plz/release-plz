@@ -73,11 +73,13 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    // remove the line number from the semver check report because it contains a temporary directory
-    // that we don't know, so we can't do `assert_eq`.
+    // Remove the following lines from the semver check report to be able to do `assert_eq`:
+    // - The line with the line number of the source because it contains a temporary directory
+    //   that we don't know.
+    // - The line containing the cargo semver checks version because it can change.
     let pr_body = pr_body
         .lines()
-        .filter(|line| !line.contains("lib.rs:1"))
+        .filter(|line| !line.contains("lib.rs:1") && !line.contains("cargo-semver-checks/tree"))
         .collect::<Vec<_>>()
         .join("\n");
     pretty_assertions::assert_eq!(
@@ -96,7 +98,6 @@ async fn release_plz_opens_pr_with_breaking_changes() {
 Description:
 A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
         ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
-       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.39.0/src/lints/function_missing.ron
 
 Failed in:
 ```
