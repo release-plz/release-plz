@@ -33,10 +33,11 @@ use git_cmd::{self, Repo};
 use next_version::{NextVersion, VersionUpdater};
 use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
 use regex::Regex;
-use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::Path,
+    path::PathBuf,
+    sync::LazyLock,
 };
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, warn};
@@ -828,10 +829,10 @@ impl Updater<'_> {
 
         let pr_link = repo_url.map(|r| r.git_pr_link());
 
-        lazy_static::lazy_static! {
+        static PR_RE: LazyLock<Regex> = LazyLock::new(|| {
             // match PR/issue numbers, e.g. `#123`
-            static ref PR_RE: Regex = Regex::new("#(\\d+)").unwrap();
-        }
+            Regex::new("#(\\d+)").unwrap()
+        });
         let changelog = {
             let cfg = self.req.get_package_config(package.name.as_str());
             let changelog_req = cfg
