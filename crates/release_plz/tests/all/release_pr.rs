@@ -6,6 +6,63 @@ use cargo_utils::LocalManifest;
 async fn release_plz_opens_pr_with_default_config() {
     let context = TestContext::new().await;
 
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+
+    let write_lib_file = |content: &str, commit_message: &str| {
+        fs_err::write(&lib_file, content).unwrap();
+        context.repo.add_all_and_commit(commit_message).unwrap();
+    };
+
+    write_lib_file("pub fn foo() {}", "add lib");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    write_lib_file("pub fn bar() {}", "edit lib with breaking change");
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let today = today();
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    assert_eq!(
+        opened_prs[0].body.as_ref().unwrap().trim(),
+        format!(
+            r#"
+## 🤖 New release
+
+* `{package}`: 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+
+### Other
+
+- edit lib with breaking change
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_with_breaking_changes() {
+    let context = TestContext::new().await;
+
     context.run_release_pr().success();
 
     let opened_prs = context.opened_release_prs().await;
