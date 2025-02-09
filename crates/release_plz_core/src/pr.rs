@@ -25,8 +25,15 @@ pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 
 ## 🤖 New release
 {% for release in releases %}
-* `{{ release.package }}`: {% if release.previous_version and release.previous_version != release.next_version %}{{ release.previous_version }} -> {% endif %}{{ release.next_version }}
+* `{{ release.package }}`: {% if release.previous_version and release.previous_version != release.next_version %}{{ release.previous_version }} -> {% endif %}{{ release.next_version }}{% if release.breaking_changes %} (⚠ API breaking changes){% endif %}
 {%- endfor %}
+{%- for release in releases %}{% if release.breaking_changes %}
+
+### ⚠ `{{ release.package }}` breaking changes
+
+```text
+{{ release.breaking_changes }}
+```{% endif %}{% endfor %}
 {% if changes %}
 <details><summary><i><b>Changelog</b></i></summary><p>
 {{ changes }}

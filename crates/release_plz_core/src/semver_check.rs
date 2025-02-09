@@ -85,7 +85,7 @@ pub fn run_semver_check(
         let stderr = String::from_utf8(output.stderr)?;
         if stderr.contains("semver requires new major version") {
             let stdout = strip_ansi_escapes::strip(output.stdout);
-            let stdout = String::from_utf8(stdout)?;
+            let stdout = String::from_utf8(stdout)?.trim().to_string();
             if stdout.is_empty() {
                 anyhow::bail!("unknown source of semver incompatibility");
             }
