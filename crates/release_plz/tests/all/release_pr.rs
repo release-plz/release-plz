@@ -75,7 +75,7 @@ async fn release_plz_opens_pr_without_breaking_changes() {
     let opened_prs = context.opened_release_prs().await;
     let today = today();
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
