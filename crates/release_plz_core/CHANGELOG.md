@@ -11,12 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Bring back breaking change description in pr body (#2055)
-- show previous version in PR body (#2054)
+- Show previous version in PR body (#2054)
 - Check semver breaking changes on packages containing both library and binary (#2053)
+- Show in pr body when semver check passed ([#2057](https://github.com/release-plz/release-plz/pull/2057))
 
 ### Other
 
-- Fix show in pr body when semver check passed ([#2057](https://github.com/release-plz/release-plz/pull/2057))
 - hint to install cargo semver checks to run tests (#2056)
 - remove direct dipendency on lazy_static (#2049)
 
