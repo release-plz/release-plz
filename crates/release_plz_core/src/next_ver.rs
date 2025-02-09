@@ -1358,7 +1358,7 @@ fn pathbufs_to_check(package_path: &Utf8Path, package: &Package) -> Vec<Utf8Path
 /// Check if release-plz should check the semver compatibility of the package.
 /// - `run_semver_check` is true if the user wants to run the semver check.
 fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
-    if run_semver_check && !is_executable(package) {
+    if run_semver_check && is_library(package) {
         let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
         if !is_cargo_semver_checks_installed {
             warn!("cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check");
@@ -1413,6 +1413,13 @@ fn is_executable(package: &Package) -> bool {
         .targets
         .iter()
         .any(|t| t.kind.iter().any(|k| k == &TargetKind::Bin))
+}
+
+fn is_library(package: &Package) -> bool {
+    package
+        .targets
+        .iter()
+        .any(|t| t.kind.contains(&TargetKind::Lib))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {

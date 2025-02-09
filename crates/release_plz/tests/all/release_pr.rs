@@ -26,7 +26,7 @@ async fn release_plz_opens_pr_with_default_config() {
     let opened_prs = context.opened_release_prs().await;
     let today = today();
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     assert_eq!(
@@ -35,13 +35,13 @@ async fn release_plz_opens_pr_with_default_config() {
             r#"
 ## 🤖 New release
 
-* `{package}`: 0.1.1
+* `{package}`: 0.2.0
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+## [0.2.0](https://localhost/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
 
 ### Other
 
