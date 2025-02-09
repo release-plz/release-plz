@@ -429,7 +429,7 @@ pr_body = """
 
 ## 🤖 New release
 {% for release in releases %}
-* `{{ release.package }}`: {{ release.next_version }}
+* `{{ release.package }}`: {% if release.previous_version and release.previous_version != release.next_version %}{{ release.previous_version }} -> {% endif %}{{ release.next_version }}
 {%- endfor %}
 {% if changes %}
 <details><summary><i><b>Changelog</b></i></summary><p>
