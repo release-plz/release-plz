@@ -45,8 +45,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-// #[cfg_attr(not(feature = "docker-tests"), ignore)]
-#[ignore = "This test fails in CI, but works locally on MacOS. TODO: fix this."]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
     let context = TestContext::new().await;
 
@@ -54,7 +53,7 @@ async fn release_plz_opens_pr_with_breaking_changes() {
 
     let write_lib_file = |content: &str, commit_message: &str| {
         fs_err::write(&lib_file, content).unwrap();
-        context.repo.add_all_and_commit(commit_message).unwrap();
+        context.push_all_changes(commit_message);
     };
 
     write_lib_file("pub fn foo() {}", "add lib");
@@ -460,8 +459,7 @@ fn move_readme(context: &TestContext, message: &str) {
     cargo_toml.data["package"]["readme"] = toml_edit::value(new_readme);
     cargo_toml.write().unwrap();
 
-    context.repo.add_all_and_commit(message).unwrap();
-    context.repo.git(&["push"]).unwrap();
+    context.push_all_changes(message);
 }
 
 fn today() -> String {

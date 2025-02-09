@@ -21,7 +21,7 @@ async fn release_plz_does_not_open_release_pr_if_there_are_no_release_commits() 
     assert_eq!(opened_prs.len(), 0);
 
     fs_err::write(context.repo_dir().join("new.rs"), "// hi").unwrap();
-    context.repo.add_all_and_commit("feat: new file").unwrap();
+    context.push_all_changes("feat: new file");
 
     context.run_release_pr().success();
 

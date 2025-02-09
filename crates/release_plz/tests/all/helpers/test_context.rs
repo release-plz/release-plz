@@ -52,12 +52,16 @@ impl TestContext {
         }
     }
 
+    pub fn push_all_changes(&self, commit_message: &str) {
+        self.repo.add_all_and_commit(commit_message).unwrap();
+        self.repo.git(&["push"]).unwrap();
+    }
+
     pub async fn new() -> Self {
         let context = Self::init_context().await;
         cargo_init(context.repo.directory());
         context.generate_cargo_lock();
-        context.repo.add_all_and_commit("cargo init").unwrap();
-        context.repo.git(&["push"]).unwrap();
+        context.push_all_changes("cargo init");
         context
     }
 
@@ -76,8 +80,7 @@ impl TestContext {
             cargo_init(&crate_dir);
         }
         context.generate_cargo_lock();
-        context.repo.add_all_and_commit("cargo init").unwrap();
-        context.repo.git(&["push"]).unwrap();
+        context.push_all_changes("cargo init");
         context
     }
 
@@ -157,15 +160,13 @@ impl TestContext {
     pub fn write_release_plz_toml(&self, content: &str) {
         let release_plz_toml_path = self.repo_dir().join("release-plz.toml");
         fs_err::write(release_plz_toml_path, content).unwrap();
-        self.repo.add_all_and_commit("add config file").unwrap();
-        self.repo.git(&["push"]).unwrap();
+        self.push_all_changes("add config file");
     }
 
     pub fn write_changelog(&self, content: &str) {
         let changelog_path = self.repo_dir().join("CHANGELOG.md");
         fs_err::write(changelog_path, content).unwrap();
-        self.repo.add_all_and_commit("edit changelog").unwrap();
-        self.repo.git(&["push"]).unwrap();
+        self.push_all_changes("edit changelog");
     }
 
     pub fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
