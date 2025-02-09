@@ -9,7 +9,7 @@ use cargo_metadata::{
 use cargo_utils::LocalManifest;
 use git_cmd::Repo;
 use release_plz_core::{
-    fs_utils::Utf8TempDir, GitBackend, GitClient, GitPr, Gitea, RepoUrl, DEFAULT_BRANCH_PREFIX,
+    fs_utils::{canonicalize_utf8, Utf8TempDir}, GitBackend, GitClient, GitPr, Gitea, RepoUrl, DEFAULT_BRANCH_PREFIX,
 };
 use secrecy::SecretString;
 
@@ -147,7 +147,8 @@ impl TestContext {
     }
 
     pub fn repo_dir(&self) -> Utf8PathBuf {
-        self.test_dir.path().join(&self.gitea.repo)
+        let path = self.test_dir.path().join(&self.gitea.repo);
+        canonicalize_utf8(&path).unwrap()
     }
 
     pub async fn opened_release_prs(&self) -> Vec<GitPr> {

@@ -72,13 +72,33 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
-    assert_eq!(
-        opened_prs[0].body.as_ref().unwrap().trim(),
+    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
+    // remove the line number from the error message because it contains a temporary directory.
+    let pr_body = pr_body
+        .lines()
+        .filter(|line| !line.contains("lib.rs:1"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    pretty_assertions::assert_eq!(
+        pr_body,
         format!(
             r#"
 ## 🤖 New release
 
-* `{package}`: 0.1.0 -> 0.2.0
+* `{package}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
+
+### ⚠ `{package}` breaking changes
+
+```text
+--- failure function_missing: pub fn removed or renamed ---
+
+Description:
+A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.39.0/src/lints/function_missing.ron
+
+Failed in:
+```
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
