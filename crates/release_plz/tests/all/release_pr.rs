@@ -46,6 +46,71 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_without_breaking_changes() {
+    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
+        panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
+    }
+    let context = TestContext::new().await;
+
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+
+    let write_lib_file = |content: &str, commit_message: &str| {
+        fs_err::write(&lib_file, content).unwrap();
+        context.push_all_changes(commit_message);
+    };
+
+    write_lib_file("pub fn foo() {}", "add lib");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    write_lib_file(
+        "pub fn foo() {println!(\"hello\");}",
+        "edit lib with compatible change",
+    );
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let today = today();
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
+    pretty_assertions::assert_eq!(
+        pr_body,
+        format!(
+            r#"
+## 🤖 New release
+
+* `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+
+### Other
+
+- edit lib with compatible change
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
     if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
         panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
