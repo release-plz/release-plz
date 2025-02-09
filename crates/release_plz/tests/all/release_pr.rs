@@ -73,7 +73,8 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    // remove the line number from the error message because it contains a temporary directory.
+    // remove the line number from the semver check report because it contains a temporary directory
+    // that we don't know, so we can't do `assert_eq`.
     let pr_body = pr_body
         .lines()
         .filter(|line| !line.contains("lib.rs:1"))
