@@ -31,7 +31,6 @@ chrono = { workspace = true, features = ["clock"] }
 clap = { workspace = true, features = ["derive", "env"] }
 clap_complete.workspace = true
 dirs.workspace = true
-duration-str.workspace = true
 fs-err.workspace = true
 git-cliff-core.workspace = true
 regex.workspace = true
