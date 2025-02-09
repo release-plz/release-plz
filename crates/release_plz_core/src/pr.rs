@@ -25,7 +25,7 @@ pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 
 ## 🤖 New release
 {% for release in releases %}
-* `{{ release.package }}`: {% if release.previous_version and release.previous_version != release.next_version %}{{ release.previous_version }} -> {% endif %}{{ release.next_version }}{% if release.breaking_changes %} (⚠ API breaking changes){% endif %}
+* `{{ release.package }}`: {% if release.previous_version and release.previous_version != release.next_version %}{{ release.previous_version }} -> {% endif %}{{ release.next_version }}{% if release.semver_check == "incompatible" %} (⚠ API breaking changes){% elif release.semver_check == "compatible" %} (✓ API compatible changes){% endif %}
 {%- endfor %}
 {%- for release in releases %}{% if release.breaking_changes %}
 
