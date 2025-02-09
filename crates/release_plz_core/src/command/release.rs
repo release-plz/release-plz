@@ -1003,6 +1003,11 @@ mod tests {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
+        // Prevents concurrent runs where environment changes are made.
+        // Caller assumes all environment changes are reset to their state
+        // prior to calling this function when this guard is dropped.
+        let _guard = NO_PARALLEL.lock().unwrap();
+
         // Store the previous value of the var, if defined.
         let previous_val = env::var(key.as_ref()).ok();
 
@@ -1051,8 +1056,6 @@ mod tests {
 
     #[test]
     fn release_request_registry_token_env_works() {
-        let _guard = NO_PARALLEL.lock().unwrap();
-
         let registry_name = "my_registry";
         let token = "t0p$eCrEt";
         let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
@@ -1069,8 +1072,6 @@ mod tests {
     #[test]
     fn should_reference_env_var_provided_index() {
         use cargo_utils::registry_url;
-
-        let _guard = NO_PARALLEL.lock().unwrap();
 
         let registry_name = "my_registry";
         let mock_index = "https://example.com/git/index";
@@ -1092,7 +1093,8 @@ mod tests {
         let non_overriden_maybe_registry_index =
             registry_url(fake_manifest_path, Some(registry_name)).ok();
 
-        // assert it's inherited from the workspace otherwise
+        // assert the index is inherited from the workspace after the env var
+        // is cleared.
         assert_eq!(non_overriden_maybe_registry_index, None);
     }
 }
