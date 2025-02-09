@@ -1,6 +1,12 @@
 use crate::helpers::test_context::TestContext;
 use cargo_utils::LocalManifest;
 
+fn assert_cargo_semver_checks_is_installed() {
+    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
+        panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
+    }
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_default_config() {
@@ -47,9 +53,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_without_breaking_changes() {
-    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
-        panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
-    }
+    assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
@@ -87,7 +91,6 @@ async fn release_plz_opens_pr_without_breaking_changes() {
 
 * `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
 
-
 <details><summary><i><b>Changelog</b></i></summary><p>
 
 <blockquote>
@@ -112,9 +115,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
-    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
-        panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
-    }
+    assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
