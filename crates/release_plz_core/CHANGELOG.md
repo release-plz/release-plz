@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.4...release_plz_core-v0.32.5) - 2025-02-09
+
+### Fixed
+
+- Bring back breaking change description in pr body (#2055)
+- Show previous version in PR body (#2054)
+- Check semver breaking changes on packages containing both library and binary (#2053)
+- Show in pr body when semver check passed ([#2057](https://github.com/release-plz/release-plz/pull/2057))
+
+### Other
+
+- hint to install cargo semver checks to run tests (#2056)
+- remove direct dipendency on lazy_static (#2049)
+
 ## [0.32.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.3...release_plz_core-v0.32.4) - 2025-02-09
 
 ### Fixed
