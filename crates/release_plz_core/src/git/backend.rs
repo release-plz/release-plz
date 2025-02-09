@@ -802,17 +802,16 @@ impl GitClient {
         };
 
         let response = self.client.get(url).send().await?;
-        if response.status() == 404 {
-            debug!("No associated PRs for commit {commit}");
+        if response.status() == StatusCode::NOT_FOUND
+            // GitHub returns 422 if the commit doesn't exist/hasn't been pushed to the remote repository.
+            || (response.status() == StatusCode::UNPROCESSABLE_ENTITY
+                && self.backend == BackendType::Github)
+        {
+            debug!("No associated PRs for commit {commit}. This can happen if the commit is not pushed to the remote repository.");
             return Ok(vec![]);
         }
+        let response = response.error_for_status()?;
         debug!("Associated PR found. Status: {}", response.status());
-        let response = response.error_for_status().map_err(|e| match e.status() {
-            Some(StatusCode::UNPROCESSABLE_ENTITY) => {
-                anyhow::anyhow!("Received the following error from {}: {e:?}. Did you push the commit {commit}?", self.remote.base_url)
-            }
-            _ => anyhow::anyhow!(e),
-        })?;
 
         let prs = match self.backend {
             BackendType::Github => {
