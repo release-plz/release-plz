@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.119](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.118...release-plz-v0.3.119) - 2025-02-09
+
+### Fixed
+
+- Don't fail if you can't fetch associated PRs from the remote because the commit hasn't been pushed (#2045)
+
 ## [0.3.118](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.117...release-plz-v0.3.118) - 2025-02-08
 
 ### Fixed
