@@ -38,7 +38,11 @@ const config = {
     locales: ["en"],
   },
   scripts: [{ src: "/js/posthog.js" }],
+  markdown: {
+    mermaid: true,
+  },
   themes: [
+    '@docusaurus/theme-mermaid',
     [
       require.resolve("@easyops-cn/docusaurus-search-local"),
       /** @type {import("@easyops-cn/docusaurus-search-local").PluginOptions} */
