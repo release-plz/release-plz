@@ -47,6 +47,9 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
+    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
+        panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
+    }
     let context = TestContext::new().await;
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
