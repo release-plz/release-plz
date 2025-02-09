@@ -46,6 +46,63 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_with_breaking_changes() {
+    let context = TestContext::new().await;
+
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+
+    let write_lib_file = |content: &str, commit_message: &str| {
+        fs_err::write(&lib_file, content).unwrap();
+        context.push_all_changes(commit_message);
+    };
+
+    write_lib_file("pub fn foo() {}", "add lib");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    write_lib_file("pub fn bar() {}", "edit lib with breaking change");
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let today = today();
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    assert_eq!(
+        opened_prs[0].body.as_ref().unwrap().trim(),
+        format!(
+            r#"
+## 🤖 New release
+
+* `{package}`: 0.2.0
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.2.0](https://localhost/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
+
+### Other
+
+- edit lib with breaking change
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     let one = "one";
     let two = "two";
@@ -402,8 +459,7 @@ fn move_readme(context: &TestContext, message: &str) {
     cargo_toml.data["package"]["readme"] = toml_edit::value(new_readme);
     cargo_toml.write().unwrap();
 
-    context.repo.add_all_and_commit(message).unwrap();
-    context.repo.git(&["push"]).unwrap();
+    context.push_all_changes(message);
 }
 
 fn today() -> String {
