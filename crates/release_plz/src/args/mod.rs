@@ -14,7 +14,7 @@ use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use clap::{
-    builder::{styling::RgbColor, Styles},
+    builder::{styling::AnsiColor, Styles},
     ValueEnum,
 };
 use init::Init;
@@ -29,8 +29,8 @@ use self::{
     update::Update,
 };
 
-const MAIN_COLOR: RgbColor = RgbColor(130, 39, 11); // #82270b
-const SECONDARY_COLOR: RgbColor = RgbColor(254, 247, 119); // #fef777
+const MAIN_COLOR: AnsiColor = AnsiColor::Red;
+const SECONDARY_COLOR: AnsiColor = AnsiColor::Yellow;
 const HELP_STYLES: Styles = Styles::styled()
     .header(MAIN_COLOR.on_default().bold())
     .usage(MAIN_COLOR.on_default().bold())
