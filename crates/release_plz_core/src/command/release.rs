@@ -561,7 +561,6 @@ async fn release_package_if_needed(
             "{} {}: Already published - Tag {} already exists",
             package.name, package.version, &git_tag
         );
-        return Ok(None);
     }
 
     let registry_indexes = registry_indexes(package, input.registry.clone())
