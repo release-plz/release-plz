@@ -794,7 +794,11 @@ async fn release_package(
                 latest: release_config.latest,
                 pre_release: is_pre_release,
             };
-            git_client.create_release(&git_release_info).await?;
+
+            let release_exists = git_client.release_exists(&git_release_info).await?;
+            if !release_exists {
+                git_client.create_release(&git_release_info).await?;
+            }
         }
 
         info!(
