@@ -723,21 +723,27 @@ async fn release_package(
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let tag_exists = repo.tag_exists(release_info.git_tag)?;
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
     if should_publish {
-        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let output = run_cargo_publish(release_info.package, input, workspace_root)
-            .context("failed to run cargo publish")?;
-        if !output.status.success()
-            || !output.stderr.contains("Uploading")
-            || output.stderr.contains("error:")
-        {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                release_info.package.name,
-                output.stderr
-            );
+        let package_is_published =
+            is_published(index, release_info.package, input.publish_timeout, token).await?;
+
+        if !package_is_published {
+            // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
+            let output = run_cargo_publish(release_info.package, input, workspace_root)
+                .context("failed to run cargo publish")?;
+            if !output.status.success()
+                || !output.stderr.contains("Uploading")
+                || output.stderr.contains("error:")
+            {
+                anyhow::bail!(
+                    "failed to publish {}: {}",
+                    release_info.package.name,
+                    output.stderr
+                );
+            }
         }
     }
 
@@ -754,7 +760,7 @@ async fn release_package(
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if should_create_git_tag {
+        if should_create_git_tag && !tag_exists {
             // Use same tag message of cargo-release
             let message = format!(
                 "chore: Release package {} version {}",
