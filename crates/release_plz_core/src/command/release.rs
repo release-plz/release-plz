@@ -985,6 +985,7 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 #[cfg(test)]
 mod tests {
     use std::env;
+    use std::ffi::OsStr;
     use std::sync::{LazyLock, Mutex};
 
     use fake_package::metadata::fake_metadata;
@@ -995,6 +996,31 @@ mod tests {
     // It's used to not affect environment variables used in other tests
     // since tests run concurrently by default and share the same environment context.
     static NO_PARALLEL: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
+
+    fn with_env_var<K, V, F>(key: K, value: V, f: F)
+    where
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+        F: FnOnce(),
+    {
+        // Prevents concurrent runs where environment changes are made.
+        // Caller assumes all environment changes are reset to their state
+        // prior to calling this function when this guard is dropped.
+        let _guard = NO_PARALLEL.lock().unwrap();
+
+        // Store the previous value of the var, if defined.
+        let previous_val = env::var(key.as_ref()).ok();
+
+        env::set_var(key.as_ref(), value.as_ref());
+        (f)();
+
+        // Reset or clear the var after the test.
+        if let Some(previous_val) = previous_val {
+            env::set_var(key.as_ref(), previous_val);
+        } else {
+            env::remove_var(key.as_ref());
+        }
+    }
 
     #[test]
     fn git_release_config_pre_release_default_works() {
@@ -1030,25 +1056,45 @@ mod tests {
 
     #[test]
     fn release_request_registry_token_env_works() {
-        let _guard = NO_PARALLEL.lock().unwrap();
-
         let registry_name = "my_registry";
         let token = "t0p$eCrEt";
         let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
 
-        let old_value = env::var(&token_env_var);
-        env::set_var(&token_env_var, token);
+        with_env_var(&token_env_var, token, || {
+            let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);
+            let registry_token = request.find_registry_token(Some(registry_name)).unwrap();
 
-        let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);
-        let registry_token = request.find_registry_token(Some(registry_name)).unwrap();
+            assert!(registry_token.is_some());
+            assert_eq!(token, registry_token.unwrap().expose_secret());
+        });
+    }
 
-        if let Ok(old) = old_value {
-            env::set_var(&token_env_var, old);
-        } else {
-            env::remove_var(&token_env_var);
-        }
+    #[test]
+    fn should_reference_env_var_provided_index() {
+        use cargo_utils::registry_url;
 
-        assert!(registry_token.is_some());
-        assert_eq!(token, registry_token.unwrap().expose_secret());
+        let registry_name = "my_registry";
+        let mock_index = "https://example.com/git/index";
+        let mock_index_url = Url::parse(mock_index).unwrap();
+
+        let index_env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry_name.to_uppercase());
+
+        let fake_metadata = fake_metadata();
+        let fake_manifest_path = fake_metadata.workspace_root.as_ref();
+
+        with_env_var(&index_env_var, mock_index, || {
+            let maybe_registry_index =
+                registry_url(fake_manifest_path, Some(registry_name)).unwrap();
+
+            // assert the registry index is properly overriden
+            assert_eq!(maybe_registry_index, mock_index_url);
+        });
+
+        let non_overriden_maybe_registry_index =
+            registry_url(fake_manifest_path, Some(registry_name)).ok();
+
+        // assert the index is inherited from the workspace after the env var
+        // is cleared.
+        assert_eq!(non_overriden_maybe_registry_index, None);
     }
 }
