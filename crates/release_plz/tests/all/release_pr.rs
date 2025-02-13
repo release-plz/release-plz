@@ -205,11 +205,14 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     let opened_prs = context.opened_release_prs().await;
     let today = today();
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.0");
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release v0.1.0");
+
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
     assert_eq!(
-        opened_prs[0].body.as_ref().unwrap().trim(),
+        open_pr.body.as_ref().unwrap().trim(),
         format!(
             r#"
 ## 🤖 New release
@@ -329,8 +332,7 @@ async fn release_plz_should_fail_for_multi_package_pr() {
 }
 
 #[tokio::test]
-#[ignore = "This test fails in CI, but works locally on MacOS. TODO: fix this."]
-// #[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_detects_edited_readme_cargo_toml_field() {
     let context = TestContext::new().await;
 
@@ -363,8 +365,7 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
 }
 
 #[tokio::test]
-#[ignore = "This test fails in CI, but works locally on MacOS. TODO: fix this."]
-// #[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_honors_features_always_increment_minor_flag() {
     let context = TestContext::new().await;
 
