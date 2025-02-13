@@ -13,7 +13,10 @@ use std::path::Path;
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
-use clap::ValueEnum;
+use clap::{
+    builder::{styling::AnsiColor, Styles},
+    ValueEnum,
+};
 use init::Init;
 use release_plz_core::fs_utils::current_directory;
 use set_version::SetVersion;
@@ -26,8 +29,16 @@ use self::{
     update::Update,
 };
 
+const MAIN_COLOR: AnsiColor = AnsiColor::Red;
+const SECONDARY_COLOR: AnsiColor = AnsiColor::Yellow;
+const HELP_STYLES: Styles = Styles::styled()
+    .header(MAIN_COLOR.on_default().bold())
+    .usage(MAIN_COLOR.on_default().bold())
+    .placeholder(SECONDARY_COLOR.on_default())
+    .literal(SECONDARY_COLOR.on_default());
+
 #[derive(clap::Parser, Debug)]
-#[command(about, version, author)]
+#[command(about, version, author, styles = HELP_STYLES)]
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
