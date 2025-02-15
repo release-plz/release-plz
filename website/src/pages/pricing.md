@@ -29,7 +29,7 @@ it remains sustainable, up-to-date and secure.
 
 ## 📬 Stay Updated
 
-Stay updated on Release-plz news by following the author on
-[Twitter](https://twitter.com/MarcoIeni), [GitHub](https://github.com/MarcoIeni),
-[LinkedIn](https://linkedin.com/in/MarcoIeni),
-[Mastodon](https://hachyderm.io/@MarcoIeni) and [YouTube](https://www.youtube.com/MarcoIeni).
+Stay updated on Release-plz news by following it on
+[Twitter](https://x.com/release_plz_dev), [GitHub](https://github.com/release-plz),
+[LinkedIn](https://www.linkedin.com/company/release-plz/),
+[Mastodon](https://hachyderm.io/@release_plz) and [BlueSky](https://bsky.app/profile/release-plz.dev).
