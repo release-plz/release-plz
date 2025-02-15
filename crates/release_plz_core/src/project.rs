@@ -89,15 +89,10 @@ impl Project {
         // This also helps when a changelog contains changes from different crates
         // (i.e. they have the changelog_path config).
         // In this case, the changes of one crate comes before the changes of its dependenies.
-        let packages_refs: Vec<&Package> = packages.iter().collect();
-        let ordered = release_order(&packages_refs)
-            .context("cannot determine release order")?
-            .into_iter()
-            .cloned()
-            .collect();
+        let ordered_packages = ordered_packages(&packages)?;
 
         Ok(Self {
-            packages: ordered,
+            packages: ordered_packages,
             release_metadata,
             root,
             manifest_dir,
@@ -221,6 +216,17 @@ See https://doc.rust-lang.org/cargo/reference/manifest.html\n",
         error_message.push_str("\nNote: to disable this check, set the `--no-toml-check` flag.");
         anyhow::bail!(error_message);
     }
+}
+
+fn ordered_packages(packages: &[Package]) -> anyhow::Result<Vec<Package>> {
+    let packages_refs: Vec<&Package> = packages.iter().collect();
+    let ordered = release_order(&packages_refs)
+        .context("cannot determine release order")?
+        .into_iter()
+        .cloned()
+        .collect();
+
+    Ok(ordered)
 }
 
 fn check_local_dependencies(package: &Package) -> Vec<String> {
