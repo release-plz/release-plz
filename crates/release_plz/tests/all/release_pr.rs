@@ -2,7 +2,7 @@ use crate::helpers::{
     package::{PackageType, TestPackage},
     test_context::TestContext,
 };
-use cargo_utils::LocalManifest;
+use cargo_utils::{LocalManifest, CARGO_TOML};
 
 fn assert_cargo_semver_checks_is_installed() {
     if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
@@ -267,6 +267,19 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         )
         .trim()
     );
+
+    context.merge_release_pr().await;
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "0.1.1"
+        edition = "2021"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library = { version = "0.1.1", path = "../library", registry = "test-registry" }
+    "#]]
+    .assert_eq(&fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap());
 }
 
 #[tokio::test]
