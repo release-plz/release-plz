@@ -22,6 +22,8 @@ use super::{
     TEST_REGISTRY,
 };
 
+const CRATES_DIR: &str = "crates";
+
 /// It contains the universe in which release-plz runs.
 pub struct TestContext {
     pub gitea: GiteaContext,
@@ -54,7 +56,7 @@ impl TestContext {
     }
 
     pub fn package_path(&self, package_name: &str) -> Utf8PathBuf {
-        self.repo_dir().join("crates").join(package_name)
+        self.repo_dir().join(CRATES_DIR).join(package_name)
     }
 
     pub fn push_all_changes(&self, commit_message: &str) {
@@ -77,12 +79,11 @@ impl TestContext {
     }
 
     pub async fn new_workspace_with_packages(crates: &[TestPackage]) -> Self {
-        let crates_dir = "crates";
         let context = Self::init_context().await;
         let root_cargo_toml = {
             let quoted_crates: Vec<String> = crates
                 .iter()
-                .map(|c| format!("\"{crates_dir}/{}\"", &c.name))
+                .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
             format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
