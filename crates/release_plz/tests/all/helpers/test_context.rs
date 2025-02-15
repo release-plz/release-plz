@@ -6,7 +6,6 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     Package,
 };
-use cargo_utils::LocalManifest;
 use git_cmd::Repo;
 use release_plz_core::{
     fs_utils::{canonicalize_utf8, Utf8TempDir},
@@ -19,6 +18,7 @@ use tracing::info;
 use super::{
     fake_utils,
     gitea::{gitea_address, GiteaContext},
+    package::TestPackage,
     TEST_REGISTRY,
 };
 
@@ -60,26 +60,44 @@ impl TestContext {
 
     pub async fn new() -> Self {
         let context = Self::init_context().await;
-        cargo_init(context.repo.directory());
+        let package = TestPackage::new(&context.gitea.repo);
+        package.cargo_init(context.repo.directory());
         context.generate_cargo_lock();
         context.push_all_changes("cargo init");
         context
     }
 
     pub async fn new_workspace(crates: &[&str]) -> Self {
+        let packages: Vec<TestPackage> = crates.iter().map(TestPackage::new).collect();
+        Self::new_workspace_with_packages(&packages).await
+    }
+
+    pub async fn new_workspace_with_packages(crates: &[TestPackage]) -> Self {
+        let crates_dir = "crates";
         let context = Self::init_context().await;
         let root_cargo_toml = {
-            let quoted_crates: Vec<String> = crates.iter().map(|c| format!("\"{c}\"")).collect();
+            let quoted_crates: Vec<String> = crates
+                .iter()
+                .map(|c| format!("\"{crates_dir}/{}\"", &c.name))
+                .collect();
             let crates_list = quoted_crates.join(",");
             format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
+        let crate_dir = |package_name| context.repo.directory().join(crates_dir).join(package_name);
+
         for package in crates {
-            let crate_dir = context.repo.directory().join(package);
-            fs_err::create_dir_all(&crate_dir).unwrap();
-            cargo_init(&crate_dir);
+            let crate_directory = crate_dir(&package.name);
+            fs_err::create_dir_all(&crate_directory).unwrap();
+            package.cargo_init(&crate_directory);
         }
+
+        // add dependencies after all writing all Cargo.toml files
+        for package in crates {
+            package.write_dependencies(&crate_dir(&package.name));
+        }
+
         context.generate_cargo_lock();
         context.push_all_changes("cargo init");
         context
@@ -199,15 +217,6 @@ fn log_level() -> String {
     }
 }
 
-fn cargo_init(crate_dir: &Utf8Path) {
-    assert_cmd::Command::new("cargo")
-        .current_dir(crate_dir)
-        .arg("init")
-        .assert()
-        .success();
-    edit_cargo_toml(crate_dir);
-}
-
 fn configure_repo(repo_dir: &Utf8Path, gitea: &GiteaContext) -> Repo {
     let username = gitea.user.username();
     let repo = Repo::new(repo_dir).unwrap();
@@ -220,16 +229,6 @@ fn configure_repo(repo_dir: &Utf8Path, gitea: &GiteaContext) -> Repo {
     create_cargo_config(repo_dir, username);
 
     repo
-}
-
-fn edit_cargo_toml(repo_dir: &Utf8Path) {
-    let cargo_toml_path = repo_dir.join("Cargo.toml");
-    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    let mut registry_array = toml_edit::Array::new();
-    registry_array.push(TEST_REGISTRY);
-    cargo_toml.data["package"]["publish"] =
-        toml_edit::Item::Value(toml_edit::Value::Array(registry_array));
-    cargo_toml.write().unwrap();
 }
 
 fn create_cargo_config(repo_dir: &Utf8Path, username: &str) {
