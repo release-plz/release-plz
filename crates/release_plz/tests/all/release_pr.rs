@@ -16,9 +16,9 @@ async fn release_plz_opens_pr_with_default_config() {
     let context = TestContext::new().await;
 
     context.run_release_pr().success();
+    let today = today();
 
     let opened_prs = context.opened_release_prs().await;
-    let today = today();
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.1.0");
     let username = context.gitea.user.username();
@@ -78,9 +78,9 @@ async fn release_plz_opens_pr_without_breaking_changes() {
     );
 
     context.run_release_pr().success();
+    let today = today();
 
     let opened_prs = context.opened_release_prs().await;
-    let today = today();
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
     let username = context.gitea.user.username();
@@ -137,9 +137,9 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     write_lib_file("pub fn bar() {}", "edit lib with breaking change");
 
     context.run_release_pr().success();
+    let today = today();
 
     let opened_prs = context.opened_release_prs().await;
-    let today = today();
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
     let username = context.gitea.user.username();
@@ -218,8 +218,8 @@ async fn release_plz_updates_binary_when_library_changes() {
     context.push_all_changes("edit library");
 
     context.run_release_pr().success();
-    let opened_prs = context.opened_release_prs().await;
     let today = today();
+    let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
 
     let open_pr = &opened_prs[0];
@@ -296,9 +296,9 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     let context = TestContext::new_workspace(&[one, two]).await;
 
     context.run_release_pr().success();
+    let today = today();
 
     let opened_prs = context.opened_release_prs().await;
-    let today = today();
     assert_eq!(opened_prs.len(), 1);
 
     let open_pr = &opened_prs[0];
@@ -373,12 +373,12 @@ Changes:
 
     context.write_release_plz_toml(config);
     context.run_release_pr().success();
+    let today = today();
 
     let expected_title = format!("release: {} 0.1.0", context.gitea.repo);
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, expected_title);
-    let today = today();
     let package = &context.gitea.repo;
     let username = context.gitea.user.username();
     assert_eq!(
