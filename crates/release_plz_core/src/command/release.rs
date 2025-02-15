@@ -530,6 +530,7 @@ async fn release_packages(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
+    // Packages are already ordered by release order.
     let packages = project.publishable_packages();
     let mut package_releases: Vec<PackageRelease> = vec![];
     for package in packages {
