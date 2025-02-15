@@ -53,6 +53,10 @@ impl TestContext {
         }
     }
 
+    pub fn package_path(&self, package_name: &str) -> Utf8PathBuf {
+        self.repo_dir().join("crates").join(package_name)
+    }
+
     pub fn push_all_changes(&self, commit_message: &str) {
         self.repo.add_all_and_commit(commit_message).unwrap();
         self.repo.git(&["push"]).unwrap();
@@ -85,17 +89,16 @@ impl TestContext {
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
-        let crate_dir = |package_name| context.repo.directory().join(crates_dir).join(package_name);
-
         for package in crates {
-            let crate_directory = crate_dir(&package.name);
-            fs_err::create_dir_all(&crate_directory).unwrap();
-            package.cargo_init(&crate_directory);
+            let crate_dir = context.package_path(&package.name);
+            fs_err::create_dir_all(&crate_dir).unwrap();
+            package.cargo_init(&crate_dir);
         }
 
         // add dependencies after all writing all Cargo.toml files
         for package in crates {
-            package.write_dependencies(&crate_dir(&package.name));
+            let crate_dir = context.package_path(&package.name);
+            package.write_dependencies(&crate_dir);
         }
 
         context.generate_cargo_lock();

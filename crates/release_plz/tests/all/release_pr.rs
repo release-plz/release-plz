@@ -212,12 +212,7 @@ async fn release_plz_updates_binary_when_library_changes() {
     context.merge_release_pr().await;
     context.run_release().success();
 
-    let lib_file = context
-        .repo_dir()
-        .join("crates")
-        .join(library)
-        .join("src")
-        .join("aa.rs");
+    let lib_file = context.package_path(library).join("src").join("aa.rs");
     fs_err::write(&lib_file, "pub fn foo() {}").unwrap();
     context.push_all_changes("edit library");
 
