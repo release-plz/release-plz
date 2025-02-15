@@ -269,6 +269,8 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     );
 
     context.merge_release_pr().await;
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
     expect_test::expect![[r#"
         [package]
         name = "binary"
@@ -279,7 +281,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         [dependencies]
         library = { version = "0.1.1", path = "../library", registry = "test-registry" }
     "#]]
-    .assert_eq(&fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap());
+    .assert_eq(&binary_cargo_toml);
 }
 
 #[tokio::test]
