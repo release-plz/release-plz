@@ -11,7 +11,9 @@ use tracing::debug;
 use crate::{
     copy_to_temp_dir,
     fs_utils::{self, strip_prefix},
-    manifest_dir, new_manifest_dir_path, root_repo_path_from_manifest_dir,
+    manifest_dir, new_manifest_dir_path,
+    release_order::release_order,
+    root_repo_path_from_manifest_dir,
     tmp_repo::TempRepo,
     workspace_packages, Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder,
 };
@@ -83,8 +85,19 @@ impl Project {
             );
         }
 
+        // Order crates so that they are analyzed in the order that they are released.
+        // This also helps when a changelog contains changes from different crates
+        // (i.e. they have the changelog_path config).
+        // In this case, the changes of one crate comes before the changes of its dependenies.
+        let packages_refs: Vec<&Package> = packages.iter().collect();
+        let ordered = release_order(&packages_refs)
+            .context("cannot determine release order")?
+            .into_iter()
+            .cloned()
+            .collect();
+
         Ok(Self {
-            packages,
+            packages: ordered,
             release_metadata,
             root,
             manifest_dir,
@@ -96,6 +109,7 @@ impl Project {
         &self.root
     }
 
+    /// Packages that can be published. They are already ordered by release order.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()
