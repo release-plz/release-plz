@@ -212,6 +212,7 @@ async fn release_plz_updates_binary_when_library_changes() {
     context.merge_release_pr().await;
     context.run_release().success();
 
+    // Update the library.
     let lib_file = context.package_path(library).join("src").join("aa.rs");
     fs_err::write(&lib_file, "pub fn foo() {}").unwrap();
     context.push_all_changes("edit library");
@@ -226,6 +227,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
+    // The binary depends on the library, so release-plz should update its version.
     assert_eq!(
         open_pr.body.as_ref().unwrap().trim(),
         format!(
@@ -269,6 +271,8 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     );
 
     context.merge_release_pr().await;
+
+    // Check if the binary has the new version.
     let binary_cargo_toml =
         fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
     expect_test::expect![[r#"
