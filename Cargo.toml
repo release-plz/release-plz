@@ -22,7 +22,7 @@ crates-index = { version = "3.3.0", features = ["git", "sparse", "git-https"] }
 dirs = "6.0.0"
 dunce = "1.0.5"
 expect-test = "1.5.0"
-fake = "3.0.1"
+fake = "4.0.0"
 fs-err = "3.0.0"
 git-cliff-core = { version = "2.7.0", default-features = false }
 git-conventional = "0.12.9"
