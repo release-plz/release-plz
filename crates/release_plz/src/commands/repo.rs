@@ -3,7 +3,7 @@ use release_plz_core::RepoUrl;
 
 use crate::config::Config;
 
-use super::manifest_command::ManifestCommand;
+use super::manifest::ManifestCommand;
 
 /// Command that acts on a repo.
 pub trait RepoCommand: ManifestCommand {

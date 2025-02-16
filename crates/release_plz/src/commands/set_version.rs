@@ -9,8 +9,21 @@ use release_plz_core::set_version::{SetVersionRequest, SetVersionSpec, VersionCh
 
 use crate::config::Config;
 
-use super::{config_command::ConfigCommand, manifest_command::ManifestCommand};
+use super::{config::ConfigCommand, manifest::ManifestCommand};
 
+/// Edit the version of a package in Cargo.toml and changelog.
+///
+/// Specify a version with the syntax `<package_name>@<version>`. E.g. `release-plz set-version
+/// my-cli@1.2.3`
+///
+/// Seperate versions with a space to set multiple versions. E.g. `release-plz set-version
+/// my-core@1.2.3 my-cli@2.0.0`
+///
+/// For single package projects, you can omit `<package_name>@`. E.g. `release-plz set-version
+/// 1.2.3`
+///
+/// Note that this command is meant to edit the versions of the packages of your workspace, not the
+/// version of your dependencies.
 #[derive(clap::Parser, Debug)]
 pub struct SetVersion {
     /// New version of the package you want to update. Format: `<package_name>@<version-req>`.
@@ -38,6 +51,12 @@ impl ConfigCommand for SetVersion {
 }
 
 impl SetVersion {
+    pub fn run(self) -> anyhow::Result<()> {
+        let config = self.config()?;
+        let request = self.set_version_request(&config)?;
+        release_plz_core::set_version::set_version(&request)
+    }
+
     fn parse_versions(self) -> anyhow::Result<SetVersionSpec> {
         let is_single_package = self.versions.len() == 1 && !self.versions[0].contains('@');
         if is_single_package {

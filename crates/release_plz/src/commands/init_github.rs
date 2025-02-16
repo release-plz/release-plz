@@ -1,4 +1,36 @@
-mod gh;
+use std::path::{Path, PathBuf};
+
+use clap::builder::PathBufValueParser;
+
+use super::manifest::ManifestCommand;
+
+/// Initialize release-plz for the current GitHub repository.
+///
+/// Stores the necessary tokens in the GitHub repository secrets and generates the release-plz.yml
+/// GitHub Actions workflow file.
+#[derive(clap::Parser, Debug)]
+pub struct InitGithub {
+    /// Path to the Cargo.toml of the project you want to update.
+    /// If not provided, release-plz will use the Cargo.toml of the current directory.
+    /// Both Cargo workspaces and single packages are supported.
+    #[arg(long, value_parser = PathBufValueParser::new())]
+    manifest_path: Option<PathBuf>,
+    /// If set, don't check if the toml files contain `description` and `license` fields, which are mandatory for crates.io.
+    #[arg(long)]
+    pub no_toml_check: bool,
+}
+
+impl InitGithub {
+    pub fn run(self) -> anyhow::Result<()> {
+        init(&self.manifest_path(), !self.no_toml_check)
+    }
+}
+
+impl ManifestCommand for InitGithub {
+    fn optional_manifest(&self) -> Option<&Path> {
+        self.manifest_path.as_deref()
+    }
+}
 
 use std::io::Write;
 
@@ -220,6 +252,68 @@ impl ReleaseMetadataBuilder for NoopReleaseMetadataBuilder {
             release_name_template: None,
             tag_name_template: None,
         })
+    }
+}
+
+mod gh {
+    use std::{process::Command, vec};
+
+    use anyhow::Context;
+
+    fn gh() -> Command {
+        Command::new("gh")
+    }
+
+    fn gh_repo_view(query: &[&str]) -> anyhow::Result<String> {
+        let mut args = vec!["repo", "view", "--json"];
+        args.extend(query);
+
+        let output = gh().args(args).output().context("error while running gh")?;
+        let stdout = get_stdout_if_success(output)?;
+        Ok(stdout)
+    }
+
+    pub fn repo_url() -> anyhow::Result<String> {
+        gh_repo_view(&["url", "-q", ".url"]).context("error while retrieving current repository")
+    }
+
+    /// Store secret reading it from stdin.
+    pub fn store_secret(token_name: &str) -> anyhow::Result<()> {
+        let output = gh()
+            .arg("secret")
+            .arg("set")
+            .arg(token_name)
+            .spawn()
+            .context("error while spawning gh to set repository secret")?
+            .wait_with_output()
+            .context("error while waiting gh to set repository secret")?;
+        get_stdout_if_success(output).context("error while setting repository secret")?;
+        println!();
+        Ok(())
+    }
+
+    pub fn is_gh_installed() -> bool {
+        gh().arg("version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    pub fn default_branch() -> anyhow::Result<String> {
+        gh_repo_view(&["defaultBranchRef", "--jq", ".defaultBranchRef.name"])
+            .context("error while retrieving default branch")
+    }
+
+    fn get_stdout_if_success(output: std::process::Output) -> anyhow::Result<String> {
+        if !output.status.success() {
+            let stderr = String::from_utf8(output.stderr).unwrap_or_default();
+            anyhow::bail!("gh failed: {stderr}");
+        }
+        let stdout = String::from_utf8(output.stdout)
+            .context("error while reading gh stdout")?
+            .trim()
+            .to_string();
+        Ok(stdout)
     }
 }
 

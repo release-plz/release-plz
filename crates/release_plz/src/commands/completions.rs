@@ -1,20 +1,25 @@
+use std::io::stdout;
+
 use clap::CommandFactory;
 use clap_complete::Shell;
 
+use crate::CliArgs;
+
+/// Generate command autocompletions for various shells.
 #[derive(clap::Parser, Debug)]
-pub struct GenerateCompletions {
+pub struct Completions {
     /// Shell option
     #[arg(default_value = "bash")]
     shell: Shell,
 }
 
-impl GenerateCompletions {
-    pub fn print(&self) {
+impl Completions {
+    pub fn run(&self) {
         clap_complete::generate(
             self.shell,
-            &mut super::CliArgs::command(),
+            &mut CliArgs::command(),
             "release-plz",
-            &mut std::io::stdout(),
+            &mut stdout(),
         );
     }
 }

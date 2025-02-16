@@ -16,13 +16,11 @@ use secrecy::SecretString;
 
 use crate::config::Config;
 
-use super::{
-    config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
-};
+use super::{config::ConfigCommand, manifest::ManifestCommand, repo::RepoCommand};
 
-/// Update your project locally, without opening a PR.
-/// If `repo_url` contains a GitHub URL, release-plz uses it to add a release
-/// link in the changelog.
+/// Update packages version and changelogs based on commit messages locally, without a PR.
+///
+/// If `repo_url` contains a GitHub URL, release-plz uses it to add a release link in the changelog.
 #[derive(clap::Parser, Debug)]
 pub struct Update {
     /// Path to the Cargo.toml of the project you want to update.
@@ -136,6 +134,15 @@ impl ConfigCommand for Update {
 }
 
 impl Update {
+    pub async fn run(self) -> anyhow::Result<()> {
+        let cargo_metadata = self.cargo_metadata()?;
+        let config = self.config()?;
+        let update_request = self.update_request(&config, cargo_metadata)?;
+        let updates = release_plz_core::update(&update_request).await?;
+        println!("{}", updates.0.summary());
+        Ok(())
+    }
+
     pub fn git_backend(&self, repo: RepoUrl) -> anyhow::Result<Option<GitBackend>> {
         let Some(token) = self.git_token.clone() else {
             return Ok(None);
