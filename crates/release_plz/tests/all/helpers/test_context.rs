@@ -125,7 +125,7 @@ impl TestContext {
     pub fn run_update(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env("RUST_LOG", log_level())
+            .env("RELEASE_PLZ_LOG", log_level())
             .arg("update")
             .arg("--verbose")
             .arg("--registry")
@@ -136,7 +136,7 @@ impl TestContext {
     pub fn run_release_pr(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env("RUST_LOG", log_level())
+            .env("RELEASE_PLZ_LOG", log_level())
             .arg("release-pr")
             .arg("--verbose")
             .arg("--git-token")
@@ -153,7 +153,7 @@ impl TestContext {
     pub fn run_release(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env("RUST_LOG", log_level())
+            .env("RELEASE_PLZ_LOG", log_level())
             .arg("release")
             .arg("--verbose")
             .arg("--git-token")
@@ -207,7 +207,7 @@ pub fn run_set_version(directory: &Utf8Path, change: &str) {
     let change: Vec<_> = change.split(' ').collect();
     super::cmd::release_plz_cmd()
         .current_dir(directory)
-        .env("RUST_LOG", log_level())
+        .env("RELEASE_PLZ_LOG", log_level())
         .arg("set-version")
         .args(&change)
         .assert();
@@ -215,7 +215,7 @@ pub fn run_set_version(directory: &Utf8Path, change: &str) {
 
 fn log_level() -> String {
     if std::env::var("ENABLE_LOGS").is_ok() {
-        std::env::var("RUST_LOG").unwrap_or("DEBUG,hyper=INFO".to_string())
+        std::env::var("RELEASE_PLZ_LOG").unwrap_or("DEBUG,hyper=INFO".to_string())
     } else {
         "ERROR".to_string()
     }

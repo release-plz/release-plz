@@ -673,6 +673,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-verbosity-flag"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2678fade3b77aa3a8ff3aae87e9c008d3fb00473a41c71fbf74e91c8c7b37e84"
+dependencies = [
+ "clap",
+ "tracing-core",
+]
+
+[[package]]
 name = "clap_builder"
 version = "4.5.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4431,6 +4441,7 @@ dependencies = [
  "cargo_utils",
  "chrono",
  "clap",
+ "clap-verbosity-flag",
  "clap_complete",
  "dirs 6.0.0",
  "expect-test",
@@ -4453,7 +4464,6 @@ dependencies = [
  "toml",
  "toml_edit",
  "tracing",
- "tracing-log",
  "tracing-subscriber",
  "url",
 ]

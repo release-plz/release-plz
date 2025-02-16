@@ -17,6 +17,7 @@ use clap::{
     builder::{styling::AnsiColor, Styles},
     ValueEnum,
 };
+use clap_verbosity_flag::{InfoLevel, Verbosity};
 use init::Init;
 use release_plz_core::fs_utils::current_directory;
 use set_version::SetVersion;
@@ -37,15 +38,20 @@ const HELP_STYLES: Styles = Styles::styled()
     .placeholder(SECONDARY_COLOR.on_default())
     .literal(SECONDARY_COLOR.on_default());
 
+/// Release-plz manages versioning, changelogs, and releases for Rust projects.
+///
+/// See the Release-plz website for more information <https://release-plz.ieni.dev/>.
+///
+/// The default log level is INFO. To change it, set the `RELEASE_PLZ_LOG` environment variable or
+/// use the `--verbose` or `--quiet` flags.
 #[derive(clap::Parser, Debug)]
-#[command(about, version, author, styles = HELP_STYLES)]
+#[command(version, author, styles = HELP_STYLES)]
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
-    /// Print source location and additional information in logs.
-    /// To change the log level, use the `RUST_LOG` environment variable.
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
+
+    #[command(flatten, next_help_heading = "Logging Options")]
+    pub verbosity: Verbosity<InfoLevel>,
 }
 
 #[derive(clap::Subcommand, Debug)]
