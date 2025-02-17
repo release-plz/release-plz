@@ -10,10 +10,15 @@ use secrecy::SecretString;
 use crate::config::Config;
 
 use super::{
-    config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
-    OutputType,
+    config::ConfigCommand, manifest::ManifestCommand, print_output, repo::RepoCommand, OutputType,
 };
 
+/// Release the package to the cargo registry.
+///
+/// For each package not published to the cargo registry yet, create and push upstream a tag in the
+/// format of `<package>-v<version>`, and then publish the package to the cargo registry.
+///
+/// You can run this command in the CI on every commit in the main branch.
 #[derive(clap::Parser, Debug)]
 pub struct Release {
     /// Path to the Cargo.toml of the project you want to release.
@@ -86,6 +91,20 @@ impl ConfigCommand for Release {
 }
 
 impl Release {
+    pub async fn run(self) -> anyhow::Result<()> {
+        let cargo_metadata = self.cargo_metadata()?;
+        let config = self.config()?;
+        let self_output = self.output;
+        let request: ReleaseRequest = self.release_request(&config, cargo_metadata)?;
+        let output = release_plz_core::release(&request)
+            .await?
+            .unwrap_or_default();
+        if let Some(output_type) = self_output {
+            print_output(output_type, output);
+        }
+        Ok(())
+    }
+
     pub fn release_request(
         self,
         config: &Config,
