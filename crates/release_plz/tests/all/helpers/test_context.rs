@@ -86,7 +86,7 @@ impl TestContext {
                 .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
-            format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
+            format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n")
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
