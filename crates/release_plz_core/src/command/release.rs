@@ -561,7 +561,6 @@ async fn release_package_if_needed(
             "{} {}: Already published - Tag {} already exists",
             package.name, package.version, &git_tag
         );
-        return Ok(None);
     }
 
     let registry_indexes = registry_indexes(package, input.registry.clone())
@@ -724,21 +723,27 @@ async fn release_package(
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
+    let tag_exists = repo.tag_exists(release_info.git_tag)?;
+    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
     if should_publish {
-        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let output = run_cargo_publish(release_info.package, input, workspace_root)
-            .context("failed to run cargo publish")?;
-        if !output.status.success()
-            || !output.stderr.contains("Uploading")
-            || output.stderr.contains("error:")
-        {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                release_info.package.name,
-                output.stderr
-            );
+        let package_is_published =
+            is_published(index, release_info.package, input.publish_timeout, token).await?;
+
+        if !package_is_published {
+            // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
+            let output = run_cargo_publish(release_info.package, input, workspace_root)
+                .context("failed to run cargo publish")?;
+            if !output.status.success()
+                || !output.stderr.contains("Uploading")
+                || output.stderr.contains("error:")
+            {
+                anyhow::bail!(
+                    "failed to publish {}: {}",
+                    release_info.package.name,
+                    output.stderr
+                );
+            }
         }
     }
 
@@ -747,7 +752,7 @@ async fn release_package(
             release_info,
             should_publish,
             should_create_git_tag,
-            should_create_git_relase,
+            should_create_git_release,
         );
         Ok(false)
     } else {
@@ -755,7 +760,7 @@ async fn release_package(
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if should_create_git_tag {
+        if should_create_git_tag && !tag_exists {
             // Use same tag message of cargo-release
             let message = format!(
                 "chore: Release package {} version {}",
@@ -774,7 +779,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if should_create_git_relase {
+        if should_create_git_release {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
@@ -789,7 +794,11 @@ async fn release_package(
                 latest: release_config.latest,
                 pre_release: is_pre_release,
             };
-            git_client.create_release(&git_release_info).await?;
+
+            let release_exists = git_client.release_exists(&git_release_info).await?;
+            if !release_exists {
+                git_client.create_release(&git_release_info).await?;
+            }
         }
 
         info!(

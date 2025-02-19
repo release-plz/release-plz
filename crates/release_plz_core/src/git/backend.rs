@@ -313,6 +313,41 @@ impl GitClient {
         .context("Failed to create release")
     }
 
+    pub async fn release_exists(&self, release_info: &GitReleaseInfo) -> anyhow::Result<bool> {
+        match self.backend {
+            BackendType::Github | BackendType::Gitea => {
+                self.github_release_exists(release_info).await
+            }
+            BackendType::Gitlab => self.gitlab_release_exists(release_info).await,
+        }
+        .context("Failed to lookup release")
+    }
+
+    pub async fn github_release_exists(
+        &self,
+        release_info: &GitReleaseInfo,
+    ) -> anyhow::Result<bool> {
+        let response = self.client
+            .get(format!("{}/releases/tags/{}", self.repo_url(), &release_info.git_tag))
+            .send()
+            .await?
+            .error_for_status()
+            .map_err(|e| {
+                if let Some(status) = e.status() {
+                    if status == reqwest::StatusCode::FORBIDDEN {
+                        return anyhow::anyhow!(e).context(
+                            "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release or https://release-plz.dev/docs/github/token"
+                        );
+                    }
+                }
+                anyhow::anyhow!(e)
+            })?;
+
+        let release_exists_for_git_tag = response.status() == 200;
+
+        Ok(release_exists_for_git_tag)
+    }
+
     /// Same as Gitea.
     pub async fn create_github_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         if release_info.latest.is_some() && self.backend == BackendType::Gitea {
@@ -343,6 +378,31 @@ impl GitClient {
                 anyhow::anyhow!(e)
             })?;
         Ok(())
+    }
+
+    pub async fn gitlab_release_exists(
+        &self,
+        release_info: &GitReleaseInfo,
+    ) -> anyhow::Result<bool> {
+        let response = self.client
+            .get(format!("{}/releases/{}", self.remote.base_url, &release_info.git_tag))
+            .send()
+            .await?
+            .error_for_status()
+            .map_err(|e| {
+                if let Some(status) = e.status() {
+                    if status == reqwest::StatusCode::FORBIDDEN {
+                        return anyhow::anyhow!(e).context(
+                            "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release#gitlab",
+                        );
+                    }
+                }
+                anyhow::anyhow!(e)
+            })?;
+
+        let release_exists_for_git_tag = response.status() == 200;
+
+        Ok(release_exists_for_git_tag)
     }
 
     pub async fn create_gitlab_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
