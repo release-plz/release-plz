@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.5...release_plz_core-v0.32.6) - 2025-02-19
+
+### Fixed
+
+- support env var override for registry index (#2033)
+
 ## [0.32.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.4...release_plz_core-v0.32.5) - 2025-02-09
 
 ### Fixed
