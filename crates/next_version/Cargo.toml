@@ -1,6 +1,6 @@
 [package]
 name = "next_version"
-version = "0.2.21"
+version = "0.2.22"
 edition.workspace = true
 description = "Determine next semantic version based on conventional commits"
 license.workspace = true
@@ -14,4 +14,4 @@ workspace = true
 [dependencies]
 regex.workspace = true
 semver.workspace = true
-conventional_commit_parser.workspace = true
+git-conventional.workspace = true

@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
@@ -169,8 +170,51 @@ impl Workspace {
     /// Get the publish timeout. Defaults to 30 minutes.
     pub fn publish_timeout(&self) -> anyhow::Result<Duration> {
         let publish_timeout = self.publish_timeout.as_deref().unwrap_or("30m");
-        duration_str::parse(publish_timeout)
-            .map_err(|e| anyhow::anyhow!("invalid publish_timeout {publish_timeout}: {e}"))
+        parse_duration(publish_timeout)
+            .with_context(|| format!("invalid publish_timeout '{publish_timeout}'"))
+    }
+}
+
+/// Parse the duration from the input string.
+/// The code is simple enough that it's not worth adding a dependency.
+fn parse_duration(input: &str) -> anyhow::Result<Duration> {
+    let (number_str, unit) = parse_duration_unit(input)?;
+
+    let number = number_str
+        .parse::<u64>()
+        .context("invalid duration number")?;
+
+    match unit {
+        DurationUnit::Seconds => Ok(Duration::from_secs(number)),
+        DurationUnit::Minutes => Ok(Duration::from_secs(number * 60)),
+        DurationUnit::Hours => Ok(Duration::from_secs(number * 60 * 60)),
+    }
+}
+
+enum DurationUnit {
+    Seconds,
+    Minutes,
+    Hours,
+}
+
+fn parse_duration_unit(input: &str) -> anyhow::Result<(&str, DurationUnit)> {
+    if let Some(stripped) = input.strip_suffix('s') {
+        Ok((stripped, DurationUnit::Seconds))
+    } else if let Some(stripped) = input.strip_suffix('m') {
+        Ok((stripped, DurationUnit::Minutes))
+    } else if let Some(stripped) = input.strip_suffix('h') {
+        Ok((stripped, DurationUnit::Hours))
+    } else if let Some(last_char) = input.chars().last() {
+        if last_char.is_ascii_alphabetic() {
+            anyhow::bail!(
+                "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
+            )
+        } else {
+            // Default to seconds if no unit specified
+            Ok((input, DurationUnit::Seconds))
+        }
+    } else {
+        anyhow::bail!("input cannot be empty");
     }
 }
 
@@ -725,5 +769,25 @@ unknown = false"#;
             unknown field `unknown`
         "#]]
         .assert_eq(&error);
+    }
+
+    #[test]
+    fn test_parse_duration() {
+        assert_eq!(parse_duration("30s").unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_duration("5m").unwrap(), Duration::from_secs(300));
+        assert_eq!(parse_duration("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(parse_duration("60").unwrap(), Duration::from_secs(60)); // Default to seconds
+        assert_eq!(
+            parse_duration("").unwrap_err().to_string(),
+            "input cannot be empty"
+        );
+        assert_eq!(
+            parse_duration("30x").unwrap_err().to_string(),
+            "'x' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
+        );
+        assert_eq!(
+            parse_duration("-30s").unwrap_err().to_string(),
+            "invalid duration number"
+        );
     }
 }

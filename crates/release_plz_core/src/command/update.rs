@@ -51,12 +51,13 @@ impl PackagesUpdate {
 #[derive(Serialize, Deserialize)]
 pub struct ReleaseInfo {
     package: String,
-    title: Option<String>,
-    changelog: Option<String>,
+    pub title: Option<String>,
+    pub changelog: Option<String>,
     previous_version: String,
     next_version: String,
     /// Summary of breaking changes of the release
     breaking_changes: Option<String>,
+    semver_check: String,
 }
 
 impl PackagesUpdate {
@@ -85,42 +86,6 @@ impl PackagesUpdate {
             .collect()
     }
 
-    /// Return the list of changes in the changelog of the updated packages
-    pub fn changes(&self, project_contains_multiple_pub_packages: bool) -> String {
-        self.updates
-            .iter()
-            .map(|(package, update)| match update.last_changes() {
-                Ok(Some(release)) => {
-                    let entry_prefix = if project_contains_multiple_pub_packages {
-                        format!("## `{}`\n", package.name)
-                    } else {
-                        "".to_string()
-                    };
-                    format!(
-                        "{}<blockquote>\n\n## {}\n\n{}\n</blockquote>\n\n",
-                        entry_prefix,
-                        release.title(),
-                        release.notes()
-                    )
-                }
-                Ok(None) => {
-                    warn!(
-                        "no changes detected in changelog of package {}",
-                        package.name
-                    );
-                    "".to_string()
-                }
-                Err(e) => {
-                    warn!(
-                        "can't determine changes in changelog of package {}: {e:?}",
-                        package.name
-                    );
-                    "".to_string()
-                }
-            })
-            .collect()
-    }
-
     pub fn breaking_changes(&self) -> String {
         self.updates
             .iter()
@@ -136,20 +101,35 @@ impl PackagesUpdate {
             .collect()
     }
 
+    /// Return info about releases of the updated packages
     pub fn releases(&self) -> Vec<ReleaseInfo> {
         self.updates
             .iter()
             .map(|(package, update)| {
-                let changelog = update.last_changes().unwrap_or(None);
-                let (changelog_title, changelog_notes) = changelog.map_or((None, None), |c| {
-                    (Some(c.title().to_string()), Some(c.notes().to_string()))
-                });
-
-                let breaking_changes = match &update.semver_check {
-                    SemverCheck::Incompatible(incompatibilities) => {
-                        Some(incompatibilities.to_string())
+                let (changelog_title, changelog_notes) = match update.last_changes() {
+                    Err(e) => {
+                        warn!(
+                            "can't determine changes in changelog of package {}: {e:?}",
+                            package.name
+                        );
+                        (None, None)
                     }
-                    SemverCheck::Compatible | SemverCheck::Skipped => None,
+                    Ok(Some(c)) => (Some(c.title().to_string()), Some(c.notes().to_string())),
+                    Ok(None) => {
+                        warn!(
+                            "no changes detected in changelog of package {}",
+                            package.name
+                        );
+                        (None, None)
+                    }
+                };
+
+                let (semver_check, breaking_changes) = match &update.semver_check {
+                    SemverCheck::Incompatible(incompatibilities) => {
+                        ("incompatible", Some(incompatibilities.to_string()))
+                    }
+                    SemverCheck::Compatible => ("compatible", None),
+                    SemverCheck::Skipped => ("skipped", None),
                 };
 
                 ReleaseInfo {
@@ -159,6 +139,7 @@ impl PackagesUpdate {
                     next_version: update.version.to_string(),
                     previous_version: package.version.to_string(),
                     breaking_changes,
+                    semver_check: semver_check.to_string(),
                 }
             })
             .collect()
@@ -359,138 +340,4 @@ fn update_dependencies(
         local_manifest.write()?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn changelog_is_printed_correctly_in_workspace() {
-        test_logs::init();
-        let changelog = r#"
-# Changelog
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-## [1.1.1] - 2015-05-15
-
-### Fixed
-- myfix
-
-### Other
-- simple update
-
-## [1.1.0] - 1970-01-01
-
-### fix bugs
-- my awesomefix
-
-### other
-- complex update
-        "#
-        .to_string();
-        let pkgs = PackagesUpdate::new(vec![
-            (
-                fake_package::FakePackage::new("foo").into(),
-                UpdateResult {
-                    version: Version::parse("0.2.0").unwrap(),
-                    changelog: Some(changelog.clone()),
-                    semver_check: SemverCheck::Compatible,
-                },
-            ),
-            (
-                fake_package::FakePackage::new("bar").into(),
-                UpdateResult {
-                    version: Version::parse("0.2.0").unwrap(),
-                    changelog: Some(changelog),
-                    semver_check: SemverCheck::Compatible,
-                },
-            ),
-        ]);
-        expect_test::expect![[r#"
-            ## `foo`
-            <blockquote>
-
-            ## [1.1.1] - 2015-05-15
-
-            ### Fixed
-            - myfix
-
-            ### Other
-            - simple update
-            </blockquote>
-
-            ## `bar`
-            <blockquote>
-
-            ## [1.1.1] - 2015-05-15
-
-            ### Fixed
-            - myfix
-
-            ### Other
-            - simple update
-            </blockquote>
-
-        "#]]
-        .assert_eq(&pkgs.changes(true));
-    }
-
-    #[test]
-    fn changelog_is_printed_correctly() {
-        test_logs::init();
-        let changelog = r#"
-# Changelog
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-## [1.1.1] - 2015-05-15
-
-### Fixed
-- myfix
-
-### Other
-- simple update
-
-## [1.1.0] - 1970-01-01
-
-### fix bugs
-- my awesomefix
-
-### other
-- complex update
-        "#
-        .to_string();
-        let pkgs = PackagesUpdate::new(vec![(
-            fake_package::FakePackage::new("foo").into(),
-            UpdateResult {
-                version: Version::parse("0.2.0").unwrap(),
-                changelog: Some(changelog),
-                semver_check: SemverCheck::Compatible,
-            },
-        )]);
-        expect_test::expect![[r#"
-            <blockquote>
-
-            ## [1.1.1] - 2015-05-15
-
-            ### Fixed
-            - myfix
-
-            ### Other
-            - simple update
-            </blockquote>
-
-        "#]]
-        .assert_eq(&pkgs.changes(false));
-    }
 }

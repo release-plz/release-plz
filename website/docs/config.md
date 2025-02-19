@@ -366,8 +366,9 @@ pr_name = "release: {{ package }} {{ version }}"
 release-plz creates.
 
 By default it contains the summary of package updates, the changelog for each package, a section
-for breaking changes, and a footer with credits for release-plz. The text is trimmed to a length
-of 65536, because that's the limit imposed by Github.
+for breaking changes, and a footer with credits for release-plz. If the text is longer than
+65536 characters, the changelog isn't inclued.
+This limit is imposed by Github.
 
 Here is an example of how you can customize the PR body template:
 
@@ -402,8 +403,52 @@ to check for their existence.
 - `{{ release.changelog }}` - the generated changelog. *(Optional)*.
 - `{{ release.previous_version }}` - the previous version of the package.
 - `{{ release.next_version }}` - the version of the package being released.
+- `{{ release.semver_check }}` - the semver check outcome.
+  One of: "compatible", "incompatible", "skipped".
 - `{{ release.breaking_changes }}` - the summary of the breaking changes of the package being
   released. *(Optional)*.
+
+The default PR body template is the following:
+
+````toml
+[workspace]
+pr_body = """
+{% macro get_changes(releases, type="text") %}
+{%- for release in releases %}
+{%- if release.title and release.changelog %}{% if releases | length > 1 %}
+## `{{ release.package }}`
+{% endif %}
+<blockquote>
+
+## {{ release.title }}
+
+{{ release.changelog }}
+</blockquote>{% endif %}
+{% endfor %}
+{% endmacro -%}
+
+{% set changes = self::get_changes(releases=releases) %}
+
+## 🤖 New release
+{% for release in releases %}
+* `{{ release.package }}`: {% if release.previous_version and release.previous_version != release.next_version %}{{ release.previous_version }} -> {% endif %}{{ release.next_version }}{% if release.semver_check == "incompatible" %} (⚠ API breaking changes){% elif release.semver_check == "compatible" %} (✓ API compatible changes){% endif %}
+{%- endfor %}
+{%- for release in releases %}{% if release.breaking_changes %}
+
+### ⚠ `{{ release.package }}` breaking changes
+
+```text
+{{ release.breaking_changes }}
+```{% endif %}{% endfor %}
+{% if changes %}
+<details><summary><i><b>Changelog</b></i></summary><p>
+{{ changes }}
+</p></details>
+{% endif %}
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).
+"""
+````
 
 #### The `pr_branch_prefix` field
 
@@ -577,8 +622,9 @@ You can use this if you think it is too noisy to raise PRs on every commit.
 
 Examples:
 
-- With `release_commits = "^feat:"`, release-plz will update the package only if there's a new feature.
-- With `release_commits = "^(feat:|docs:)"`, release-plz will update the package only if there's a
+- With `release_commits = "^feat[(:]"`, release-plz will update the package only if there's a new feature.
+  The regex matches strings starting with `feat:` or `feat(`.
+- With `release_commits = "^(feat|docs)[(:]`, release-plz will update the package only if there's a
   new feature or a documentation change.
 
 By default, release-plz updates the package on every commit.

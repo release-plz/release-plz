@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.20](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.19...git_cmd-v0.6.20) - 2025-02-01
+
+### Other
+
+- update Cargo.lock dependencies
+
+## [0.6.19](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.18...git_cmd-v0.6.19) - 2025-01-23
+
+### Other
+
+- add error messages (#1994)
+
 ## [0.6.18](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.17...git_cmd-v0.6.18) - 2025-01-14
 
 ### Added

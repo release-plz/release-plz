@@ -1,14 +1,18 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // Extend everything from config:recommended, except for ignoreModulesAndTests,
+  // which disables docker-compose updates.
   extends: [
-    'config:recommended',
+    ':dependencyDashboard',
+    ':semanticPrefixFixDepsChoreOthers',
+    'group:monorepos',
+    'group:recommended',
+    'replacements:all',
+    'workarounds:all',
     'helpers:pinGitHubActionDigests',
     ':maintainLockFilesWeekly',
   ],
   automerge: true,
-  'docker-compose': {
-    fileMatch: ['tests/docker-compose.yml'],
-  },
   packageRules: [
     {
       matchManagers: [

@@ -22,7 +22,7 @@ use anyhow::{bail, Context};
 use cargo::core::dependency::Dependency;
 use cargo::core::Package;
 use cargo::sources::source::{QueryKind, Source};
-use cargo::sources::{PathSource, SourceConfigMap};
+use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
 
 use walkdir::WalkDir;
 
@@ -71,16 +71,59 @@ impl Cloner {
         ClonerBuilder::new()
     }
 
+    #[allow(dead_code)]
+    /// Queries info of the specified crate without downloading it.
+    pub fn query_latest_package(&self, name: &str) -> CargoResult<Option<IndexSummary>> {
+        let _lock = self.acquire_cargo_package_cache_lock()?;
+        let mut src = self.get_source()?;
+        query_latest_package_summary(&mut src, name, None)
+    }
+
+    fn clone_from_summary_into(
+        &self,
+        summary: &IndexSummary,
+        dest_path: &Utf8Path,
+        src: &mut impl Source,
+    ) -> CargoResult<Package> {
+        let name = summary.as_summary().name();
+
+        self.config.shell().note(format!(
+            "Downloading {} {}",
+            name,
+            summary.as_summary().version()
+        ))?;
+        let pkg = Box::new(src).download_now(summary.package_id(), &self.config)?;
+
+        if self.use_git {
+            let repo = pkg
+                .manifest()
+                .metadata()
+                .repository
+                .as_ref()
+                .with_context(|| {
+                    format!(
+                        "Cannot clone {} from git repo because \
+                        repository is not specified in package's manifest.",
+                        &name
+                    )
+                })?;
+
+            clone_git_repo(repo, dest_path)?;
+        } else {
+            clone_directory(to_utf8_path(pkg.root())?, dest_path)
+                .context("failed to clone directory")?;
+        }
+
+        Ok(pkg)
+    }
+
     /// Clone the specified crates from registry or git repository.
     /// Each crate is cloned in a subdirectory named as the crate name.
     /// Returns the cloned crates and the path where they are cloned.
     /// If a crate doesn't exist, is not returned.
     pub fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
-        let _lock = self
-            .config
-            .acquire_package_cache_lock(CacheLockMode::DownloadExclusive)?;
-
-        let mut src = get_source(self.srcid, &self.config)?;
+        let _lock = self.acquire_cargo_package_cache_lock()?;
+        let mut src = self.get_source()?;
         let mut cloned_pkgs = vec![];
 
         for crate_ in crates {
@@ -102,15 +145,30 @@ impl Cloner {
         Ok(cloned_pkgs)
     }
 
-    fn clone_in<'a, T>(
+    fn acquire_cargo_package_cache_lock(&self) -> CargoResult<cargo::util::cache_lock::CacheLock> {
+        self.config
+            .acquire_package_cache_lock(CacheLockMode::DownloadExclusive)
+    }
+
+    fn get_source(&self) -> CargoResult<Box<dyn Source + '_>> {
+        let mut source = if self.srcid.is_path() {
+            let path = self.srcid.url().to_file_path().expect("path must be valid");
+            Box::new(PathSource::new(&path, self.srcid, &self.config))
+        } else {
+            let map = SourceConfigMap::new(&self.config)?;
+            map.load(self.srcid, &HashSet::default())?
+        };
+
+        source.invalidate_cache();
+        Ok(source)
+    }
+
+    fn clone_in(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
-        src: &mut T,
-    ) -> CargoResult<Option<Package>>
-    where
-        T: Source + 'a,
-    {
+        src: &mut impl Source,
+    ) -> CargoResult<Option<Package>> {
         if !dest_path.exists() {
             fs_err::create_dir_all(dest_path)?;
         }
@@ -131,103 +189,66 @@ impl Cloner {
         self.clone_single(crate_, dest_path, src)
     }
 
-    fn clone_single<'a, T>(
+    /// Clone one crate.
+    fn clone_single(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
-        src: &mut T,
-    ) -> CargoResult<Option<Package>>
-    where
-        T: Source + 'a,
-    {
-        let pkg = match select_pkg(&self.config, src, &crate_.name, crate_.version.as_deref())? {
-            Some(pkg) => {
-                if self.use_git {
-                    let repo = &pkg.manifest().metadata().repository;
+        src: &mut impl Source,
+    ) -> CargoResult<Option<Package>> {
+        let name = &crate_.name;
+        let vers = crate_.version.as_deref();
+        let latest = query_latest_package_summary(src, name, vers)?;
 
-                    if repo.is_none() {
-                        bail!(
-                    "Cannot clone {} from git repo because it is not specified in package's manifest.",
-                    &crate_.name
-                )
-                    }
-
-                    clone_git_repo(repo.as_ref().unwrap(), dest_path)?;
-                } else {
-                    clone_directory(to_utf8_path(pkg.root())?, dest_path)
-                        .context("failed to clone directory")?;
-                }
+        let pkg = match latest {
+            Some(l) => {
+                let pkg = self.clone_from_summary_into(&l, dest_path, src)?;
                 Some(pkg)
             }
-            None => None,
+            None => {
+                warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*"));
+                None
+            }
         };
         Ok(pkg)
     }
 }
 
-fn get_source<'a>(srcid: SourceId, config: &'a GlobalContext) -> CargoResult<Box<dyn Source + 'a>> {
-    let mut source = if srcid.is_path() {
-        let path = srcid.url().to_file_path().expect("path must be valid");
-        Box::new(PathSource::new(&path, srcid, config))
-    } else {
-        let map = SourceConfigMap::new(config)?;
-        map.load(srcid, &HashSet::default())?
-    };
-
-    source.invalidate_cache();
-    Ok(source)
-}
-
-fn select_pkg<'a, T>(
-    config: &GlobalContext,
-    src: &mut T,
+fn query_latest_package_summary(
+    src: &mut impl Source,
     name: &str,
     vers: Option<&str>,
-) -> CargoResult<Option<Package>>
-where
-    T: Source + 'a,
-{
+) -> CargoResult<Option<IndexSummary>> {
     let dep = Dependency::parse(name, vers, src.source_id())?;
-    let mut summaries = vec![];
+    let mut latest_summary: Option<IndexSummary> = None;
     loop {
         let query_result = src.query(&dep, QueryKind::Exact, &mut |summary| {
-            summaries.push(summary);
+            let is_summary_newer = latest_summary.as_ref().map_or(true, |latest| {
+                latest.as_summary().version() < summary.as_summary().version()
+            });
+            if is_summary_newer {
+                latest_summary = Some(summary);
+            };
         });
         match query_result {
             std::task::Poll::Ready(res) => match res {
                 Ok(()) => break,
                 Err(err) => {
-                    return package_from_query_err(err);
+                    return none_or_query_err(err);
                 }
             },
             std::task::Poll::Pending => match src.block_until_ready() {
                 Ok(()) => {}
                 Err(err) => {
-                    return package_from_query_err(err);
+                    return none_or_query_err(err);
                 }
             },
         }
     }
-
-    let latest = summaries.iter().max_by_key(|s| s.as_summary().version());
-
-    let pkg = match latest {
-        Some(l) => {
-            config
-                .shell()
-                .note(format!("Downloading {} {}", name, l.as_summary().version()))?;
-            let pkg = Box::new(src).download_now(l.package_id(), config)?;
-            Some(pkg)
-        }
-        None => {
-            warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*"));
-            None
-        }
-    };
-    Ok(pkg)
+    Ok(latest_summary)
 }
 
-fn package_from_query_err(err: anyhow::Error) -> CargoResult<Option<Package>> {
+fn none_or_query_err<T>(err: anyhow::Error) -> CargoResult<Option<T>> {
     if err.to_string().contains("failed to fetch") {
         // I observed this error happens when the cargo registry contains no crates.
         // If this isn't the case, open an issue.
@@ -282,4 +303,35 @@ fn clone_git_repo(repo: &str, to: &Utf8Path) -> CargoResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use fake::Fake;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    #[ignore = "requires network"]
+    fn query_latest_package_works_for_existing() {
+        let package_name = "rand";
+        let temp_dir = tempdir().unwrap();
+        let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
+        let cloner = ClonerBuilder::new()
+            .with_directory(directory)
+            .build()
+            .unwrap();
+
+        let rand = cloner
+            .query_latest_package(package_name)
+            .unwrap()
+            .unwrap()
+            .into_summary();
+        assert_eq!(rand.name(), package_name);
+
+        // Generate random string 15 characters long.
+        let package: String = 15.fake();
+        assert!(cloner.query_latest_package(&package).unwrap().is_none());
+    }
 }

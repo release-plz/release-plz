@@ -802,17 +802,16 @@ impl GitClient {
         };
 
         let response = self.client.get(url).send().await?;
-        if response.status() == 404 {
-            debug!("No associated PRs for commit {commit}");
+        if response.status() == StatusCode::NOT_FOUND
+            // GitHub returns 422 if the commit doesn't exist/hasn't been pushed to the remote repository.
+            || (response.status() == StatusCode::UNPROCESSABLE_ENTITY
+                && self.backend == BackendType::Github)
+        {
+            debug!("No associated PRs for commit {commit}. This can happen if the commit is not pushed to the remote repository.");
             return Ok(vec![]);
         }
+        let response = response.error_for_status()?;
         debug!("Associated PR found. Status: {}", response.status());
-        let response = response.error_for_status().map_err(|e| match e.status() {
-            Some(StatusCode::UNPROCESSABLE_ENTITY) => {
-                anyhow::anyhow!("Received the following error from {}: {e:?}. Did you push the commit {commit}?", self.remote.base_url)
-            }
-            _ => anyhow::anyhow!(e),
-        })?;
 
         let prs = match self.backend {
             BackendType::Github => {
@@ -864,18 +863,25 @@ impl GitClient {
 
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
         let api_path = self.commits_api_path(commit);
-        let github_commit: GitHubCommit = self
-            .client
-            .get(api_path)
-            .send()
-            .await?
+        let response = self.client.get(api_path).send().await?;
+
+        if let Err(err) = response.error_for_status_ref() {
+            if let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status() {
+                // The user didn't push the commit to the remote repository.
+                // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
+                // I'm not sure why GitHub returns 422 if the commit doesn't exist.
+                return Ok(RemoteCommit { username: None });
+            }
+        }
+
+        let remote_commit: GitHubCommit = response
             .successful_status()
             .await?
             .json()
             .await
             .context("can't parse commits")?;
 
-        let username = github_commit.author.and_then(|author| author.login);
+        let username = remote_commit.author.and_then(|author| author.login);
         Ok(RemoteCommit { username })
     }
 

@@ -12,6 +12,10 @@ When the action runs with `command: release-pr`, it outputs the following proper
     It is the default branch of the repository. E.g. `main`.
   - `html_url`: The URL of the PR.
   - `number`: The number of the PR.
+  - `releases`: Array of packages edited in the PR.
+    Each entry is an object containing:
+    - `package_name`: The name of the edited package.
+    - `version`: The next version of the package. The PR updates the package to this version.
 - `prs_created`: Whether release-plz created any release PR. *Boolean.*
 
 When the action runs with `command: release`, it outputs the following properties:
@@ -123,7 +127,7 @@ jobs:
           PRS_CREATED: ${{ steps.release-plz.outputs.prs_created }}
         run: |
           set -e
-          echo "prs: $PRS" # example: [{"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198}]
+          echo "prs: $PRS" # example: [{"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198, "releases":[{"package_name":"my-package","version":"0.1.0"}]}]
           echo "pr: $PR" # example: {"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198}
           echo "prs_created: $PRS_CREATED" # example: true
 

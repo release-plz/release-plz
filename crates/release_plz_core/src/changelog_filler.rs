@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use git_cliff_core::{config::ChangelogConfig, contributor::RemoteContributor};
 use git_cmd::Repo;
 
-use crate::{diff::Commit, GitClient};
+use crate::{diff::Commit, GitClient, NO_COMMIT_ID};
 
 #[derive(Debug)]
 pub struct RequiredInfo {
@@ -49,12 +49,12 @@ pub async fn fill_commit<'a>(
         if required_info.is_remote_required() {
             let git_client = git_client
                 .context("The changelog template requires information from the remote, but git token wasn't provided")?;
-            let username = if required_info.remote_username {
+            let username = if required_info.remote_username && commit.id != NO_COMMIT_ID {
                 git_client.get_remote_commit(&commit.id).await?.username
             } else {
                 None
             };
-            let pr_number = if required_info.remote_pr_number {
+            let pr_number = if required_info.remote_pr_number && commit.id != NO_COMMIT_ID {
                 let associated_prs = git_client.associated_prs(&commit.id).await?;
                 associated_prs.first().map(|pr| pr.number)
             } else {

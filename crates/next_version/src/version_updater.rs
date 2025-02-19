@@ -8,7 +8,7 @@ use crate::VersionIncrement;
 ///
 /// Useful if you don't like the default increment rules of the crate.
 ///
-// # Example
+/// # Example
 ///
 /// ```
 /// use next_version::VersionUpdater;
@@ -160,6 +160,32 @@ impl VersionUpdater {
     ///     VersionUpdater::new()
     ///         .increment(&version, &commits),
     ///     Version::new(1, 2, 4)
+    /// );
+    /// ```
+    ///
+    /// ### Overriding default behavior
+    ///
+    /// You can also override the default behavior of conventional commits types.
+    /// For example, you can make a `feat` commit trigger a _major_ version increment
+    /// instead of _minor_:
+    ///
+    /// ```rust
+    /// use semver::Version;
+    /// use next_version::VersionUpdater;
+    ///
+    /// let commits = ["feat: incompatible change"];
+    /// let version = Version::new(1, 2, 3);
+    /// assert_eq!(
+    ///     VersionUpdater::new()
+    ///         .with_custom_major_increment_regex("feat")
+    ///         .expect("invalid regex")
+    ///         .increment(&version, &commits),
+    ///     Version::new(2, 0, 0)
+    /// );
+    /// assert_eq!(
+    ///     VersionUpdater::new()
+    ///         .increment(&version, &commits),
+    ///     Version::new(1, 3, 0)
     /// );
     /// ```
     pub fn with_custom_major_increment_regex(
