@@ -14,7 +14,7 @@ base64 = "0.22.1"
 cacache = { version = "13.1.0", features = ["tokio-runtime"], default-features = false}
 camino = "1.1.9"
 cargo_metadata = "0.19.1"
-cargo = { version = "0.85.0", default-features = false }
+cargo = { version = "0.86.0", default-features = false }
 chrono = { version = "0.4.38", default-features = false }
 clap = "4.5.23"
 clap_complete = "4.5.38"
