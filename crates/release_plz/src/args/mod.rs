@@ -46,6 +46,7 @@ pub struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
     /// Print source location and additional information in logs.
+    ///
     /// The default log level is INFO.
     /// `-v` sets the log level to DEBUG.
     /// `-vv` sets the log level to TRACE.
