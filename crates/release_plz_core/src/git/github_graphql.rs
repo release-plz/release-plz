@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use base64::prelude::*;
 use cargo_metadata::camino::Utf8PathBuf;
 use git_cmd::Repo;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::{debug, trace};
 use url::Url;
 
-use crate::git::backend::Remote;
 use crate::GitClient;
+use crate::git::backend::Remote;
 
 /// Commit all the changes (except typestates) that are present in the repository
 /// using GitHub's [GraphQL api](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch).

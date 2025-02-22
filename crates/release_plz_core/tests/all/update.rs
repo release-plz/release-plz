@@ -1,5 +1,5 @@
 use cargo_metadata::semver::Version;
-use release_plz_core::{read_package, CHANGELOG_HEADER};
+use release_plz_core::{CHANGELOG_HEADER, read_package};
 
 use crate::helpers::{comparison_test::ComparisonTest, user_mock};
 

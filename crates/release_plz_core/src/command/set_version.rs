@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 
 use anyhow::Context;
 use cargo_metadata::{
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
-    Metadata, Package,
 };
-use cargo_utils::{canonical_local_manifest, workspace_members, LocalManifest};
+use cargo_utils::{LocalManifest, canonical_local_manifest, workspace_members};
 
-use crate::{changelog_parser::last_release_from_str, PackagePath as _, CHANGELOG_FILENAME};
+use crate::{CHANGELOG_FILENAME, PackagePath as _, changelog_parser::last_release_from_str};
 
 pub struct SetVersionRequest {
     /// The manifest of the project you want to update.

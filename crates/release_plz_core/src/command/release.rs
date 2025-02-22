@@ -3,9 +3,9 @@ use std::{collections::BTreeMap, time::Duration};
 use anyhow::Context;
 use cargo::util::VersionExt;
 use cargo_metadata::{
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
-    Metadata, Package,
 };
 use crates_index::{GitIndex, SparseIndex};
 use git_cmd::Repo;
@@ -15,14 +15,14 @@ use tracing::{debug, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    cargo::{is_published, run_cargo, wait_until_published, CargoIndex, CargoRegistry, CmdOutput},
+    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote,
+    cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
     cargo_hash_kind::get_hash_kind,
     changelog_parser,
     git::backend::GitClient,
-    pr_parser::{prs_from_text, Pr},
+    pr_parser::{Pr, prs_from_text},
     release_order::release_order,
-    GitBackend, PackagePath, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX,
 };
 
 #[derive(Debug)]

@@ -17,10 +17,10 @@ use std::collections::HashSet;
 
 use std::process::Command;
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 
-use cargo::core::dependency::Dependency;
 use cargo::core::Package;
+use cargo::core::dependency::Dependency;
 use cargo::sources::source::{QueryKind, Source};
 use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
 

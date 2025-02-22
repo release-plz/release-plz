@@ -1,5 +1,5 @@
 use tracing_log::LogTracer;
-use tracing_subscriber::{filter, layer::SubscriberExt, EnvFilter, FmtSubscriber};
+use tracing_subscriber::{EnvFilter, FmtSubscriber, filter, layer::SubscriberExt};
 
 /// Use `info` level by default, but you can customize it with `RUST_LOG` environment variable.
 pub fn init(verbose: bool) {
