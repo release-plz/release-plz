@@ -1030,14 +1030,14 @@ mod tests {
         // Store the previous value of the var, if defined.
         let previous_val = env::var(key.as_ref()).ok();
 
-        env::set_var(key.as_ref(), value.as_ref());
+        unsafe { env::set_var(key.as_ref(), value.as_ref()) };
         (f)();
 
         // Reset or clear the var after the test.
         if let Some(previous_val) = previous_val {
-            env::set_var(key.as_ref(), previous_val);
+            unsafe { env::set_var(key.as_ref(), previous_val) };
         } else {
-            env::remove_var(key.as_ref());
+            unsafe { env::remove_var(key.as_ref()) };
         }
     }
 
