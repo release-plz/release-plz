@@ -147,6 +147,7 @@ impl TestContext {
             .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(120))
             .assert()
     }
 
@@ -166,6 +167,7 @@ impl TestContext {
             .arg(format!("Bearer {}", &self.gitea.token))
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(120))
             .assert()
     }
 
