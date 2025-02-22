@@ -1,6 +1,6 @@
-use tracing::{level_filters::LevelFilter, Level};
+use tracing::{Level, level_filters::LevelFilter};
 use tracing_subscriber::{
-    filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 /// Intialize the logging using the tracing crate
