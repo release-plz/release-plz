@@ -10,7 +10,7 @@ fn cargo_version_from_stdout(stdout: &str) -> anyhow::Result<Version> {
         .nth(2)
         .with_context(|| format!("failed to parse cargo version from cargo stdout `{stdout}`"))?;
     let version = Version::parse(version)
-        .with_context(|| format!("failed to parse cargo version from `{version}`"))?;
+        .with_context(|| format!("failed to parse cargo version from version `{version}`"))?;
     Ok(version)
 }
 
