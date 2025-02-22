@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.121](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.120...release-plz-v0.3.121) - 2025-02-22
+
+### Added
+
+- support rust 2024 edition (#2084)
+
+### Fixed
+
+- clippy lint (#2082)
+- support env var override for registry index (#2033)
+
+### Other
+
+- test that binary is updated if library changes ([#2069](https://github.com/release-plz/release-plz/pull/2069))
+- Run some tests in CI that were ignored (#2065)
+- add style to the command line (#2059)
+
 ## [0.3.120](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.119...release-plz-v0.3.120) - 2025-02-09
 
 ### Fixed
