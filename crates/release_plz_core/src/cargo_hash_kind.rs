@@ -30,7 +30,7 @@ pub fn get_hash_kind() -> anyhow::Result<crates_index::HashKind> {
 fn get_hash_kind_from_stdout(output: &str) -> crates_index::HashKind {
     match cargo_version_from_stdout(output) {
         Ok(version) => {
-            if version <= Version::new(1, 85, 0) {
+            if version < Version::new(1, 85, 0) {
                 crates_index::HashKind::Legacy
             } else {
                 // With edition 2024 (cargo 1.85.0) the hash kind changed.
