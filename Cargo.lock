@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "cargo_utils"
-version = "0.1.64"
+version = "0.1.65"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -1564,7 +1564,7 @@ dependencies = [
 
 [[package]]
 name = "git_cmd"
-version = "0.6.20"
+version = "0.6.21"
 dependencies = [
  "anyhow",
  "camino",
@@ -4013,7 +4013,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "release-plz"
-version = "0.3.121"
+version = "0.3.122"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4051,7 +4051,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.32.6"
+version = "0.32.7"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4200,9 +4200,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.10"
+version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d34b5020fcdea098ef7d95e9f89ec15952123a4a039badd09fabebe9e963e839"
+checksum = "da5349ae27d3887ca812fb375b45a4fbb36d8d12d2df394968cd86e35683fe73"
 dependencies = [
  "cc",
  "cfg-if",
