@@ -16,6 +16,7 @@ use url::Url;
 
 use crate::{
     cargo::{is_published, run_cargo, wait_until_published, CargoIndex, CargoRegistry, CmdOutput},
+    cargo_hash_kind::get_hash_kind,
     changelog_parser,
     git::backend::GitClient,
     pr_parser::{prs_from_text, Pr},
@@ -534,9 +535,10 @@ async fn release_packages(
     let packages = project.publishable_packages();
     let release_order = release_order(&packages).context("cannot determine release order")?;
     let mut package_releases: Vec<PackageRelease> = vec![];
+    let hash_kind = get_hash_kind()?;
     for package in release_order {
         if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client).await?
+            release_package_if_needed(input, project, package, repo, git_client, &hash_kind).await?
         {
             package_releases.push(pkg_release);
         }
@@ -553,6 +555,7 @@ async fn release_package_if_needed(
     package: &Package,
     repo: &Repo,
     git_client: &GitClient,
+    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string());
     let release_name = project.release_name(&package.name, &package.version.to_string());
@@ -564,7 +567,7 @@ async fn release_package_if_needed(
         return Ok(None);
     }
 
-    let registry_indexes = registry_indexes(package, input.registry.clone())
+    let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
         .context("can't determine registry indexes")?;
     let mut package_was_released = false;
     let changelog = last_changelog_entry(input, package);
@@ -667,6 +670,7 @@ fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::backend::Pr
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
+    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
@@ -684,9 +688,10 @@ fn registry_indexes(
         .into_iter()
         .map(|(registry, u)| {
             if u.to_string().starts_with("sparse+") {
-                SparseIndex::from_url(u.as_str()).map(CargoIndex::Sparse)
+                SparseIndex::from_url_with_hash_kind(u.as_str(), hash_kind).map(CargoIndex::Sparse)
             } else {
-                GitIndex::from_url(&format!("registry+{u}")).map(CargoIndex::Git)
+                GitIndex::from_url_with_hash_kind(&format!("registry+{u}"), hash_kind)
+                    .map(CargoIndex::Git)
             }
             .map(|index| CargoRegistry {
                 name: Some(registry),

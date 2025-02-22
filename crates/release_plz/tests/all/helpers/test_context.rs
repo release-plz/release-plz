@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{process::Command, time::Duration};
 
 use crate::helpers::gitea::CARGO_INDEX_REPO;
 use assert_cmd::assert::Assert;
@@ -147,6 +147,7 @@ impl TestContext {
             .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(300))
             .assert()
     }
 
@@ -166,6 +167,7 @@ impl TestContext {
             .arg(format!("Bearer {}", &self.gitea.token))
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(300))
             .assert()
     }
 

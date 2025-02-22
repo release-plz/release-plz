@@ -279,7 +279,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         [package]
         name = "binary"
         version = "0.1.1"
-        edition = "2021"
+        edition = "2024"
         publish = ["test-registry"]
 
         [dependencies]
