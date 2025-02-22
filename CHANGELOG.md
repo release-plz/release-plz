@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.122](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.121...release-plz-v0.3.122) - 2025-02-22
+
+### Fixed
+
+- don't error if package already published (#2085)
+
+### Other
+
+- use edition 2024 (#2086)
+- enable more clippy lints (#1971)
+
 ## [0.3.121](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.120...release-plz-v0.3.121) - 2025-02-22
 
 ### Added
