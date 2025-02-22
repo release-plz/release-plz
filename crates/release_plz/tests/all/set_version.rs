@@ -1,6 +1,6 @@
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::CARGO_TOML;
-use release_plz_core::{copy_to_temp_dir, CHANGELOG_FILENAME};
+use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir};
 
 use crate::helpers::test_context::run_set_version;
 

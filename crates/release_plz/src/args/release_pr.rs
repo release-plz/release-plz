@@ -1,4 +1,4 @@
-use super::{update::Update, OutputType};
+use super::{OutputType, update::Update};
 
 #[derive(clap::Parser, Debug)]
 pub struct ReleasePr {

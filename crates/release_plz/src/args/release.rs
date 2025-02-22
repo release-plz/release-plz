@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use clap::{
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
     ValueEnum,
+    builder::{NonEmptyStringValueParser, PathBufValueParser},
 };
 use release_plz_core::{GitBackend, GitHub, GitLab, Gitea, ReleaseRequest};
 use secrecy::SecretString;
@@ -10,8 +10,8 @@ use secrecy::SecretString;
 use crate::config::Config;
 
 use super::{
-    config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
-    OutputType,
+    OutputType, config_command::ConfigCommand, manifest_command::ManifestCommand,
+    repo_command::RepoCommand,
 };
 
 #[derive(clap::Parser, Debug)]

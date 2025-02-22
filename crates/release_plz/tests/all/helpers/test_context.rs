@@ -3,23 +3,22 @@ use std::{process::Command, time::Duration};
 use crate::helpers::gitea::CARGO_INDEX_REPO;
 use assert_cmd::assert::Assert;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 use git_cmd::Repo;
 use release_plz_core::{
-    fs_utils::{canonicalize_utf8, Utf8TempDir},
-    GitBackend, GitClient, GitPr, Gitea, RepoUrl, DEFAULT_BRANCH_PREFIX,
+    DEFAULT_BRANCH_PREFIX, GitBackend, GitClient, GitPr, Gitea, RepoUrl,
+    fs_utils::{Utf8TempDir, canonicalize_utf8},
 };
 use secrecy::SecretString;
 
 use tracing::info;
 
 use super::{
-    fake_utils,
-    gitea::{gitea_address, GiteaContext},
+    TEST_REGISTRY, fake_utils,
+    gitea::{GiteaContext, gitea_address},
     package::TestPackage,
-    TEST_REGISTRY,
 };
 
 const CRATES_DIR: &str = "crates";
