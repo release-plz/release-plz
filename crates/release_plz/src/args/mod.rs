@@ -39,10 +39,7 @@ const HELP_STYLES: Styles = Styles::styled()
 
 /// Release-plz manages versioning, changelogs, and releases for Rust projects.
 ///
-/// See the Release-plz website for more information <https://release-plz.ieni.dev/>.
-///
-/// The default log level is INFO. To change it, set the `RELEASE_PLZ_LOG` environment variable or
-/// use the `--verbose` or `--quiet` flags.
+/// See the Release-plz website for more information <https://release-plz.dev/>.
 #[derive(clap::Parser, Debug)]
 #[command(version, author, styles = HELP_STYLES)]
 pub struct CliArgs {
