@@ -2,11 +2,13 @@ use crate::helpers::{
     package::{PackageType, TestPackage},
     test_context::TestContext,
 };
-use cargo_utils::{LocalManifest, CARGO_TOML};
+use cargo_utils::{CARGO_TOML, LocalManifest};
 
 fn assert_cargo_semver_checks_is_installed() {
     if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
-        panic!("cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks");
+        panic!(
+            "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
+        );
     }
 }
 
@@ -279,7 +281,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         [package]
         name = "binary"
         version = "0.1.1"
-        edition = "2021"
+        edition = "2024"
         publish = ["test-registry"]
 
         [dependencies]

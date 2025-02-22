@@ -1,25 +1,24 @@
-use std::process::Command;
+use std::{process::Command, time::Duration};
 
 use crate::helpers::gitea::CARGO_INDEX_REPO;
 use assert_cmd::assert::Assert;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 use git_cmd::Repo;
 use release_plz_core::{
-    fs_utils::{canonicalize_utf8, Utf8TempDir},
-    GitBackend, GitClient, GitPr, Gitea, RepoUrl, DEFAULT_BRANCH_PREFIX,
+    DEFAULT_BRANCH_PREFIX, GitBackend, GitClient, GitPr, Gitea, RepoUrl,
+    fs_utils::{Utf8TempDir, canonicalize_utf8},
 };
 use secrecy::SecretString;
 
 use tracing::info;
 
 use super::{
-    fake_utils,
-    gitea::{gitea_address, GiteaContext},
+    TEST_REGISTRY, fake_utils,
+    gitea::{GiteaContext, gitea_address},
     package::TestPackage,
-    TEST_REGISTRY,
 };
 
 const CRATES_DIR: &str = "crates";
@@ -86,7 +85,7 @@ impl TestContext {
                 .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
-            format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
+            format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n")
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
@@ -147,6 +146,7 @@ impl TestContext {
             .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(300))
             .assert()
     }
 
@@ -166,6 +166,7 @@ impl TestContext {
             .arg(format!("Bearer {}", &self.gitea.token))
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(300))
             .assert()
     }
 

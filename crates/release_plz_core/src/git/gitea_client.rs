@@ -1,6 +1,6 @@
-use crate::git::backend::Remote;
 use crate::RepoUrl;
-use anyhow::{bail, Context};
+use crate::git::backend::Remote;
+use anyhow::{Context, bail};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use secrecy::{ExposeSecret, SecretString};

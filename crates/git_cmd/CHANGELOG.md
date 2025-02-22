@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.21](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.20...git_cmd-v0.6.21) - 2025-02-22
+
+### Other
+
+- use edition 2024 (#2086)
+
 ## [0.6.20](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.19...git_cmd-v0.6.20) - 2025-02-01
 
 ### Other

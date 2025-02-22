@@ -283,7 +283,9 @@ impl<'a> ChangelogBuilder<'a> {
                 // commits are already sorted from newest to oldest, we don't need to do anything
             }
             Some(other) => {
-                warn!("Invalid setting for sort_commits: '{other}'. Valid values are 'newest' and 'oldest'.");
+                warn!(
+                    "Invalid setting for sort_commits: '{other}'. Valid values are 'newest' and 'oldest'."
+                );
             }
         }
 

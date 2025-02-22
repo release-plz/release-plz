@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use cargo_metadata::{camino::Utf8Path, Metadata, Package};
+use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 
 pub fn get_manifest_metadata(
     manifest_path: &Utf8Path,

@@ -3,7 +3,7 @@ use std::path::Path;
 use camino::Utf8Path;
 use tracing::{debug, instrument};
 
-use crate::{git_in_dir, Repo};
+use crate::{Repo, git_in_dir};
 
 impl Repo {
     #[instrument(skip(directory))]

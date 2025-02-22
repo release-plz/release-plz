@@ -1,11 +1,11 @@
 use crate::semver_check::SemverCheck;
+use crate::{PackagePath, UpdateRequest, UpdateResult, tmp_repo::TempRepo};
 use crate::{fs_utils, root_repo_path_from_manifest_dir};
-use crate::{tmp_repo::TempRepo, PackagePath, UpdateRequest, UpdateResult};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
-use cargo_metadata::{semver::Version, Package};
+use cargo_metadata::{Package, semver::Version};
 use cargo_utils::LocalManifest;
-use cargo_utils::{upgrade_requirement, CARGO_TOML};
+use cargo_utils::{CARGO_TOML, upgrade_requirement};
 use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
 use std::iter;

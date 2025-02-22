@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use anyhow::Context;
-use cargo_metadata::{camino::Utf8Path, Package};
+use cargo_metadata::{Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use itertools::Itertools;
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
-use crate::{cargo_vcs_info, download, next_ver, PackagePath};
+use crate::{PackagePath, cargo_vcs_info, download, next_ver};
 
 pub struct PackagesCollection {
     packages: BTreeMap<String, RegistryPackage>,

@@ -1,10 +1,10 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
 license = "MIT OR Apache-2.0"
-edition = "2021"
+edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1.0.94"
@@ -14,7 +14,7 @@ base64 = "0.22.1"
 cacache = { version = "13.1.0", features = ["tokio-runtime"], default-features = false}
 camino = "1.1.9"
 cargo_metadata = "0.19.1"
-cargo = { version = "0.85.0", default-features = false }
+cargo = { version = "0.86.0", default-features = false }
 chrono = { version = "0.4.38", default-features = false }
 clap = "4.5.23"
 clap_complete = "4.5.38"
@@ -23,7 +23,7 @@ crates-index = { version = "3.3.0", features = ["git", "sparse", "git-https"] }
 dirs = "6.0.0"
 dunce = "1.0.5"
 expect-test = "1.5.0"
-fake = "3.0.1"
+fake = "4.0.0"
 fs-err = "3.0.0"
 git-cliff-core = { version = "2.7.0", default-features = false }
 git-conventional = "0.12.9"
@@ -88,16 +88,20 @@ let_unit_value = "warn"
 linkedlist = "warn"
 lossy_float_literal = "warn"
 macro_use_imports = "warn"
+manual_ignore_case_cmp = "warn"
 manual_let_else = "warn"
 manual_ok_or = "warn"
+map_all_any_identity = "warn"
 map_err_ignore = "warn"
 map_flatten = "warn"
+map_with_unused_argument_over_ranges = "warn"
 match_bool = "warn"
 match_on_vec_items = "warn"
 match_same_arms = "warn"
 match_wildcard_for_single_variants = "warn"
 mem_forget = "warn"
 mut_mut = "warn"
+needless_as_bytes = "warn"
 needless_continue = "warn"
 needless_pass_by_value = "warn"
 option_option = "warn"
@@ -106,6 +110,7 @@ range_minus_one = "warn"
 range_plus_one = "warn"
 rc_buffer = "warn"
 ref_option_ref = "warn"
+regex_creation_in_loops = "warn"
 rest_pat_in_fully_bound_structs = "warn"
 same_functions_in_if_condition = "warn"
 semicolon_if_nothing_returned = "warn"
@@ -115,6 +120,8 @@ trivially_copy_pass_by_ref = "warn"
 type_repetition_in_bounds = "warn"
 unicode_not_nfc = "warn"
 uninlined_format_args = "warn"
+unnecessary_literal_bound = "warn"
+unnecessary_map_or = "warn"
 unneeded_field_pattern = "warn"
 unreadable_literal = "warn"
 unsafe_derive_deserialize = "warn"
@@ -126,6 +133,7 @@ zero_sized_map_values = "warn"
 
 # Allowing optional lints has no effect, but we list them to
 # make clear that we reviewed them and we decided to allow them
+arbitrary_source_item_ordering = "allow"
 decimal_literal_representation = "allow"
 map_unwrap_or = "allow"
 needless_raw_string_hashes = "allow"

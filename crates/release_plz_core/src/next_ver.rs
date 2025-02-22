@@ -1,32 +1,32 @@
 use crate::diff::Commit;
 use crate::{
+    CHANGELOG_FILENAME, ChangelogBuilder, PackagesToUpdate, PackagesUpdate, Project, Remote,
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser::{self, ChangelogRelease},
     copy_dir::copy_dir,
     diff::Diff,
-    fs_utils::{strip_prefix, Utf8TempDir},
+    fs_utils::{Utf8TempDir, strip_prefix},
     is_readme_updated, local_readme_override, lock_compare,
     package_compare::are_packages_equal,
-    package_path::{manifest_dir, PackagePath},
+    package_path::{PackagePath, manifest_dir},
     registry_packages::{self, PackagesCollection, RegistryPackage},
     repo_url::RepoUrl,
     semver_check::{self, SemverCheck},
     tmp_repo::TempRepo,
     toml_compare::are_toml_dependencies_updated,
     version::NextVersionFromDiff,
-    ChangelogBuilder, PackagesToUpdate, PackagesUpdate, Project, Remote, CHANGELOG_FILENAME,
 };
-use crate::{fs_utils, get_cargo_package_files};
 use crate::{GitBackend, GitClient};
+use crate::{fs_utils, get_cargo_package_files};
 use anyhow::Context;
 use cargo::util::VersionExt;
 use cargo_metadata::TargetKind;
 use cargo_metadata::{
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
-    Metadata, Package,
 };
-use cargo_utils::{canonical_local_manifest, upgrade_requirement, LocalManifest, CARGO_TOML};
+use cargo_utils::{CARGO_TOML, LocalManifest, canonical_local_manifest, upgrade_requirement};
 use chrono::NaiveDate;
 use git_cliff_core::contributor::RemoteContributor;
 use git_cmd::{self, Repo};
@@ -930,7 +930,9 @@ impl Updater<'_> {
             anyhow::ensure!(
                 registry_package.package.version == package.version,
                 "package `{}` has a different version ({}) with respect to the registry package ({}), but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish the new version of this package.",
-                package.name, package.version, registry_package.package.version
+                package.name,
+                package.version,
+                registry_package.package.version
             );
         }
         self.get_package_diff(
@@ -989,7 +991,9 @@ impl Updater<'_> {
                         &current_commit_hash,
                     )
                 {
-                    debug!("next version calculated starting from commits after `{current_commit_hash}`");
+                    debug!(
+                        "next version calculated starting from commits after `{current_commit_hash}`"
+                    );
                     if diff.commits.is_empty() {
                         // Even if the packages are equal, the Cargo.lock or Cargo.toml of the
                         // workspace might have changed.
@@ -1007,7 +1011,10 @@ impl Updater<'_> {
                     // We can process the next package.
                     break;
                 } else if registry_package.package.version != package.version {
-                    info!("{}: the local package has already a different version with respect to the registry package, so release-plz will not update it", package.name);
+                    info!(
+                        "{}: the local package has already a different version with respect to the registry package, so release-plz will not update it",
+                        package.name
+                    );
                     diff.set_version_unpublished();
                     break;
                 } else if are_changed_files_in_pkg()? {
@@ -1333,14 +1340,20 @@ fn is_commit_too_old(
 ) -> bool {
     if let Some(tag_commit) = tag_commit.as_ref() {
         if repository.is_ancestor(current_commit_hash, tag_commit) {
-            debug!("stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) tagged with the previous version.", current_commit_hash, tag_commit);
+            debug!(
+                "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) tagged with the previous version.",
+                current_commit_hash, tag_commit
+            );
             return true;
         }
     }
 
     if let Some(published_commit) = published_at_commit.as_ref() {
         if repository.is_ancestor(current_commit_hash, published_commit) {
-            debug!("stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) where the previous version was published.", current_commit_hash, published_commit);
+            debug!(
+                "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) where the previous version was published.",
+                current_commit_hash, published_commit
+            );
             return true;
         }
     }
@@ -1361,7 +1374,9 @@ fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
     if run_semver_check && contains_library(package) {
         let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
         if !is_cargo_semver_checks_installed {
-            warn!("cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check");
+            warn!(
+                "cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check"
+            );
         }
         return is_cargo_semver_checks_installed;
     }

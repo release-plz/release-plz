@@ -14,8 +14,8 @@ use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use clap::{
-    builder::{styling::AnsiColor, Styles},
     ValueEnum,
+    builder::{Styles, styling::AnsiColor},
 };
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use init::Init;
