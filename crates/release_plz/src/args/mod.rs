@@ -17,11 +17,10 @@ use clap::{
     ValueEnum,
     builder::{Styles, styling::AnsiColor},
 };
-use clap_verbosity_flag::{InfoLevel, Verbosity};
 use init::Init;
 use release_plz_core::fs_utils::current_directory;
 use set_version::SetVersion;
-use tracing::info;
+use tracing::{info, level_filters::LevelFilter};
 
 use crate::config::Config;
 
@@ -49,9 +48,28 @@ const HELP_STYLES: Styles = Styles::styled()
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
+    /// Print source location and additional information in logs.
+    /// The default log level is INFO.
+    /// `-v` sets the log level to DEBUG.
+    /// `-vv` sets the log level to TRACE.
+    /// To change the log level, you can also use the `RELEASE_PLZ_LOG` environment variable. E.g. `RELEASE_PLZ_LOG=DEBUG`.
+    #[arg(
+        short,
+        long,
+        global = true,
+        action = clap::ArgAction::Count,
+    )]
+    verbose: u8,
+}
 
-    #[command(flatten, next_help_heading = "Logging Options")]
-    pub verbosity: Verbosity<InfoLevel>,
+impl CliArgs {
+    pub fn verbosity(&self) -> LevelFilter {
+        match self.verbose {
+            0 => LevelFilter::INFO,
+            1 => LevelFilter::DEBUG,
+            _ => LevelFilter::TRACE,
+        }
+    }
 }
 
 #[derive(clap::Subcommand, Debug)]
