@@ -22,7 +22,7 @@ fn set_version_updates_version_in_workspace() {
         [package]
         name = "one"
         version = "0.1.1"
-        edition = "2021"
+        edition = "2024"
 
         [dependencies]
     "#]]
@@ -33,7 +33,7 @@ fn set_version_updates_version_in_workspace() {
         [package]
         name = "two"
         version = "0.3.0"
-        edition = "2021"
+        edition = "2024"
 
         [dependencies]
     "#]]
