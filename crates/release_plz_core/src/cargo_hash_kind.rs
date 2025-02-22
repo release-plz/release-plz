@@ -7,7 +7,7 @@ use crate::{cargo::run_cargo, fs_utils};
 fn cargo_version_from_stdout(stdout: &str) -> anyhow::Result<Version> {
     let version = stdout
         .split_whitespace()
-        .nth(2)
+        .nth(1)
         .with_context(|| format!("failed to parse cargo version from cargo stdout `{stdout}`"))?;
     let version = Version::parse(version)
         .with_context(|| format!("failed to parse cargo version from version `{version}`"))?;
