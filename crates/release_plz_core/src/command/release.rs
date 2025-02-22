@@ -739,11 +739,25 @@ async fn release_package(
             || !output.stderr.contains("Uploading")
             || output.stderr.contains("error:")
         {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                release_info.package.name,
-                output.stderr
-            );
+            if output.stderr.contains(&format!(
+                "crate version `{}` is already uploaded",
+                &release_info.package.version,
+            )) {
+                // The crate was published while `cargo publish` was running.
+                // Note that the crate wasn't published yet when `cargo publish` started,
+                // otherwise `cargo` would have returned the error "crate {package}@{version} already exists"
+                info!(
+                    "skipping publish of {} {}: already published",
+                    release_info.package.name, release_info.package.version
+                );
+                return Ok(false);
+            } else {
+                anyhow::bail!(
+                    "failed to publish {}: {}",
+                    release_info.package.name,
+                    output.stderr
+                );
+            }
         }
     }
 
