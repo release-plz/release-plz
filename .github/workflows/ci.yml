@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@716fb8f756560d6f767650920c8ff20aad9bd48c # v2.47.3
+        uses: taiki-e/install-action@ad0904967b4c8e3005f6ed2efa1fa74dd9a05f32 # v2.48.13
         with:
           tool: cargo-semver-checks
       - name: Start containers
@@ -40,16 +40,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: aarch64-pc-windows-msvc
-            os: windows-2022
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: x86_64-apple-darwin
-            os: macos-13
-          - target: x86_64-pc-windows-msvc
-            os: windows-2022
-          - target: x86_64-apple-darwin
-            os: macos-13
+          - os: windows-2022
+          - os: ubuntu-22.04
+          - os: macos-14
+          - os: macos-13
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -57,7 +51,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@716fb8f756560d6f767650920c8ff20aad9bd48c # v2.47.3
+        uses: taiki-e/install-action@ad0904967b4c8e3005f6ed2efa1fa74dd9a05f32 # v2.48.13
         with:
           tool: cargo-semver-checks
       - name: Install Rust toolchain

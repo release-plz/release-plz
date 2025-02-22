@@ -15,7 +15,7 @@ jobs:
       # Generating a GitHub token, so that PRs and tags created by
       # the release-plz-action can trigger actions workflows.
       - name: Generate GitHub token
-        uses: actions/create-github-app-token@c1a285145b9d317df6ced56c09f525b5c2b6f755 # v1.11.1
+        uses: actions/create-github-app-token@0d564482f06ca65fa9e77e2510873638c82206f2 # v1.11.5
         id: generate-token
         with:
           app-id: ${{ secrets.APP_ID }}
@@ -29,7 +29,9 @@ jobs:
           # `true` is the default value.
           persist-credentials: true
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: dtolnay/rust-toolchain@c5a29ddb4d9d194e7c84ec8c3fba61b1c31fee8c
+        with:
+          toolchain: stable
       - name: Run release-plz
         uses: release-plz/action@main
         with:
@@ -51,7 +53,7 @@ jobs:
       # Generating a GitHub token, so that PRs and tags created by
       # the release-plz-action can trigger actions workflows.
       - name: Generate GitHub token
-        uses: actions/create-github-app-token@c1a285145b9d317df6ced56c09f525b5c2b6f755 # v1.11.1
+        uses: actions/create-github-app-token@0d564482f06ca65fa9e77e2510873638c82206f2 # v1.11.5
         id: generate-token
         with:
           app-id: ${{ secrets.APP_ID }}
@@ -65,7 +67,9 @@ jobs:
           # `true` is the default value.
           persist-credentials: true
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: dtolnay/rust-toolchain@c5a29ddb4d9d194e7c84ec8c3fba61b1c31fee8c
+        with:
+          toolchain: stable
       - name: Run release-plz
         uses: release-plz/action@main
         with:

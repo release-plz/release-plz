@@ -1,6 +1,6 @@
 [package]
 name = "test_logs"
-version = "0.1.30"
+version = "0.1.31"
 edition.workspace = true
 description = "Library to see logs in tests"
 license.workspace = true
@@ -12,7 +12,6 @@ categories = ["development-tools", "development-tools::testing"]
 workspace = true
 
 [dependencies]
-once_cell.workspace = true
 tracing-log.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing.workspace = true

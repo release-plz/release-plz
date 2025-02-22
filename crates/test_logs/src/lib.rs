@@ -1,10 +1,11 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use tracing_log::LogTracer;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 pub fn init() {
     // Only initialize once logs once
-    Lazy::force(&TEST_LOGS);
+    LazyLock::force(&TEST_LOGS);
 }
 
 /// Initialize logs if `ENABLE_LOGS` environment variable is set.
@@ -25,4 +26,4 @@ fn _init() {
     }
 }
 
-static TEST_LOGS: Lazy<()> = Lazy::new(_init);
+static TEST_LOGS: LazyLock<()> = LazyLock::new(_init);

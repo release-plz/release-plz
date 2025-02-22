@@ -1,5 +1,4 @@
 use crate::diff::Commit;
-use crate::get_cargo_package_files;
 use crate::{
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser::{self, ChangelogRelease},
@@ -17,6 +16,7 @@ use crate::{
     version::NextVersionFromDiff,
     ChangelogBuilder, PackagesToUpdate, PackagesUpdate, Project, Remote, CHANGELOG_FILENAME,
 };
+use crate::{fs_utils, get_cargo_package_files};
 use crate::{GitBackend, GitClient};
 use anyhow::Context;
 use cargo::util::VersionExt;
@@ -33,11 +33,11 @@ use git_cmd::{self, Repo};
 use next_version::{NextVersion, VersionUpdater};
 use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
 use regex::Regex;
-use std::path::PathBuf;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    io,
     path::Path,
+    path::PathBuf,
+    sync::LazyLock,
 };
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, warn};
@@ -280,8 +280,8 @@ impl UpdateRequest {
         }
     }
 
-    pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> io::Result<Self> {
-        let registry_manifest = Utf8Path::canonicalize_utf8(registry_manifest)?;
+    pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> anyhow::Result<Self> {
+        let registry_manifest = fs_utils::canonicalize_utf8(registry_manifest)?;
         Ok(Self {
             registry_manifest: Some(registry_manifest),
             ..self
@@ -419,8 +419,21 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
+
+    let repo_is_clean_result = repository.repo.is_clean();
     if !input.allow_dirty {
-        repository.repo.is_clean()?;
+        repo_is_clean_result?;
+    } else if repo_is_clean_result.is_err() {
+        // Stash uncommitted changes so we can freely check out other commits.
+        // This function is ran inside a temporary repository, so this has no
+        // effects on the original repository of the user.
+        repository.repo.git(&[
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "uncommitted changes stashed by release-plz",
+        ])?;
     }
     let packages_to_update = updater
         .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
@@ -633,7 +646,9 @@ impl Updater<'_> {
             .map(|&p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
-                    .context("failed to retrieve difference between packages")?;
+                    .with_context(|| {
+                        format!("failed to retrieve difference of package {}", p.name)
+                    })?;
                 Ok((p, diff))
             })
             .collect();
@@ -695,7 +710,10 @@ impl Updater<'_> {
                         &mut all_commits,
                         git_client.as_ref(),
                     )
-                    .await?;
+                    .await
+                    .context(
+                        "Failed to fetch the commit information required by the changelog template",
+                    )?;
                 }
             }
         }
@@ -811,10 +829,10 @@ impl Updater<'_> {
 
         let pr_link = repo_url.map(|r| r.git_pr_link());
 
-        lazy_static::lazy_static! {
+        static PR_RE: LazyLock<Regex> = LazyLock::new(|| {
             // match PR/issue numbers, e.g. `#123`
-            static ref PR_RE: Regex = Regex::new("#(\\d+)").unwrap();
-        }
+            Regex::new("#(\\d+)").unwrap()
+        });
         let changelog = {
             let cfg = self.req.get_package_config(package.name.as_str());
             let changelog_req = cfg
@@ -890,17 +908,18 @@ impl Updater<'_> {
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package);
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        if let Err(err) = repository.checkout_last_commit_at_paths(&paths_to_check) {
-            if err
-                .to_string()
-                .contains("Your local changes to the following files would be overwritten")
-            {
-                return Err(err.context("The allow-dirty option can't be used in this case"));
-            } else {
-                info!("{}: there are no commits", package.name);
-                return Ok(diff);
-            }
-        }
+        repository
+            .checkout_last_commit_at_paths(&paths_to_check)
+            .map_err(|err| {
+                if err
+                    .to_string()
+                    .contains("Your local changes to the following files would be overwritten")
+                {
+                    err.context("The allow-dirty option can't be used in this case")
+                } else {
+                    err.context("Failed to retrieve the last commit of local repository.")
+                }
+            })?;
 
         let git_tag = self
             .project
@@ -1066,7 +1085,7 @@ impl Updater<'_> {
                 NO_COMMIT_ID.to_string(),
                 "chore: update Cargo.toml dependencies".to_string(),
             ));
-        } else if are_lock_dependencies_updated()? {
+        } else if contains_executable(package) && are_lock_dependencies_updated()? {
             diff.commits.push(Commit::new(
                 NO_COMMIT_ID.to_string(),
                 "chore: update Cargo.lock dependencies".to_string(),
@@ -1339,7 +1358,7 @@ fn pathbufs_to_check(package_path: &Utf8Path, package: &Package) -> Vec<Utf8Path
 /// Check if release-plz should check the semver compatibility of the package.
 /// - `run_semver_check` is true if the user wants to run the semver check.
 fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
-    if run_semver_check && is_library(package) {
+    if run_semver_check && contains_library(package) {
         let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
         if !is_cargo_semver_checks_installed {
             warn!("cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check");
@@ -1388,11 +1407,17 @@ fn is_example_package(package: &Package) -> bool {
         .all(|t| t.kind == [TargetKind::Example])
 }
 
-fn is_library(package: &Package) -> bool {
-    package
-        .targets
-        .iter()
-        .any(|t| t.kind.contains(&TargetKind::Lib))
+fn contains_executable(package: &Package) -> bool {
+    contains_target_kind(package, &TargetKind::Bin)
+}
+
+fn contains_library(package: &Package) -> bool {
+    contains_target_kind(package, &TargetKind::Lib)
+}
+
+fn contains_target_kind(package: &Package, target_kind: &TargetKind) -> bool {
+    // We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
+    package.targets.iter().any(|t| t.kind.contains(target_kind))
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {

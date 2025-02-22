@@ -16,6 +16,7 @@ use url::Url;
 
 use crate::{
     cargo::{is_published, run_cargo, wait_until_published, CargoIndex, CargoRegistry, CmdOutput},
+    cargo_hash_kind::get_hash_kind,
     changelog_parser,
     git::backend::GitClient,
     pr_parser::{prs_from_text, Pr},
@@ -534,9 +535,10 @@ async fn release_packages(
     let packages = project.publishable_packages();
     let release_order = release_order(&packages).context("cannot determine release order")?;
     let mut package_releases: Vec<PackageRelease> = vec![];
+    let hash_kind = get_hash_kind()?;
     for package in release_order {
         if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client).await?
+            release_package_if_needed(input, project, package, repo, git_client, &hash_kind).await?
         {
             package_releases.push(pkg_release);
         }
@@ -553,6 +555,7 @@ async fn release_package_if_needed(
     package: &Package,
     repo: &Repo,
     git_client: &GitClient,
+    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string());
     let release_name = project.release_name(&package.name, &package.version.to_string());
@@ -564,7 +567,7 @@ async fn release_package_if_needed(
         return Ok(None);
     }
 
-    let registry_indexes = registry_indexes(package, input.registry.clone())
+    let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
         .context("can't determine registry indexes")?;
     let mut package_was_released = false;
     let changelog = last_changelog_entry(input, package);
@@ -667,6 +670,7 @@ fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::backend::Pr
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
+    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
@@ -684,9 +688,10 @@ fn registry_indexes(
         .into_iter()
         .map(|(registry, u)| {
             if u.to_string().starts_with("sparse+") {
-                SparseIndex::from_url(u.as_str()).map(CargoIndex::Sparse)
+                SparseIndex::from_url_with_hash_kind(u.as_str(), hash_kind).map(CargoIndex::Sparse)
             } else {
-                GitIndex::from_url(&format!("registry+{u}")).map(CargoIndex::Git)
+                GitIndex::from_url_with_hash_kind(&format!("registry+{u}"), hash_kind)
+                    .map(CargoIndex::Git)
             }
             .map(|index| CargoRegistry {
                 name: Some(registry),
@@ -722,34 +727,54 @@ async fn release_package(
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
-    let publish = input.is_publish_enabled(&release_info.package.name);
-    if publish {
+    let should_publish = input.is_publish_enabled(&release_info.package.name);
+    let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
+
+    if should_publish {
+        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(release_info.package, input, workspace_root)
             .context("failed to run cargo publish")?;
         if !output.status.success()
             || !output.stderr.contains("Uploading")
             || output.stderr.contains("error:")
         {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                release_info.package.name,
-                output.stderr
-            );
+            if output.stderr.contains(&format!(
+                "crate version `{}` is already uploaded",
+                &release_info.package.version,
+            )) {
+                // The crate was published while `cargo publish` was running.
+                // Note that the crate wasn't published yet when `cargo publish` started,
+                // otherwise `cargo` would have returned the error "crate {package}@{version} already exists"
+                info!(
+                    "skipping publish of {} {}: already published",
+                    release_info.package.name, release_info.package.version
+                );
+                return Ok(false);
+            } else {
+                anyhow::bail!(
+                    "failed to publish {}: {}",
+                    release_info.package.name,
+                    output.stderr
+                );
+            }
         }
     }
 
     if input.dry_run {
-        info!(
-            "{} {}: aborting upload due to dry run",
-            release_info.package.name, release_info.package.version
+        log_dry_run_info(
+            release_info,
+            should_publish,
+            should_create_git_tag,
+            should_create_git_relase,
         );
         Ok(false)
     } else {
-        if publish {
+        if should_publish {
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if input.is_git_tag_enabled(&release_info.package.name) {
+        if should_create_git_tag {
             // Use same tag message of cargo-release
             let message = format!(
                 "chore: Release package {} version {}",
@@ -768,7 +793,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if input.is_git_release_enabled(&release_info.package.name) {
+        if should_create_git_relase {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
@@ -791,6 +816,39 @@ async fn release_package(
             release_info.package.name, release_info.package.version
         );
         Ok(true)
+    }
+}
+
+/// Traces the steps that would have been taken had release been run without dry-run.
+fn log_dry_run_info(
+    release_info: &ReleaseInfo,
+    should_publish: bool,
+    should_create_git_tag: bool,
+    should_create_git_release: bool,
+) {
+    let prefix = format!(
+        "{} {}:",
+        release_info.package.name, release_info.package.version
+    );
+
+    let mut items_to_skip = vec![];
+
+    if should_publish {
+        items_to_skip.push("cargo registry upload".to_string());
+    }
+
+    if should_create_git_tag {
+        items_to_skip.push(format!("creation of tag '{}'", release_info.git_tag));
+    }
+
+    if should_create_git_release {
+        items_to_skip.push("creation of git release".to_string());
+    }
+
+    if items_to_skip.is_empty() {
+        info!("{prefix} no release method enabled");
+    } else {
+        info!("{prefix} due to dry, skipping the following: {items_to_skip:?}",);
     }
 }
 
@@ -946,19 +1004,41 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 #[cfg(test)]
 mod tests {
     use std::env;
-    use std::sync::Mutex;
-
-    use lazy_static::lazy_static;
+    use std::ffi::OsStr;
+    use std::sync::{LazyLock, Mutex};
 
     use fake_package::metadata::fake_metadata;
 
     use super::*;
 
-    lazy_static! {
-        // Trick to avoid the tests to run concurrently.
-        // It's used to not affect environment variables used in other tests
-        // since tests run concurrently by default and share the same environment context.
-        static ref NO_PARALLEL: Mutex<()> = Mutex::default();
+    // Trick to avoid the tests to run concurrently.
+    // It's used to not affect environment variables used in other tests
+    // since tests run concurrently by default and share the same environment context.
+    static NO_PARALLEL: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
+
+    fn with_env_var<K, V, F>(key: K, value: V, f: F)
+    where
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+        F: FnOnce(),
+    {
+        // Prevents concurrent runs where environment changes are made.
+        // Caller assumes all environment changes are reset to their state
+        // prior to calling this function when this guard is dropped.
+        let _guard = NO_PARALLEL.lock().unwrap();
+
+        // Store the previous value of the var, if defined.
+        let previous_val = env::var(key.as_ref()).ok();
+
+        env::set_var(key.as_ref(), value.as_ref());
+        (f)();
+
+        // Reset or clear the var after the test.
+        if let Some(previous_val) = previous_val {
+            env::set_var(key.as_ref(), previous_val);
+        } else {
+            env::remove_var(key.as_ref());
+        }
     }
 
     #[test]
@@ -995,25 +1075,45 @@ mod tests {
 
     #[test]
     fn release_request_registry_token_env_works() {
-        let _guard = NO_PARALLEL.lock().unwrap();
-
         let registry_name = "my_registry";
         let token = "t0p$eCrEt";
         let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
 
-        let old_value = env::var(&token_env_var);
-        env::set_var(&token_env_var, token);
+        with_env_var(&token_env_var, token, || {
+            let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);
+            let registry_token = request.find_registry_token(Some(registry_name)).unwrap();
 
-        let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);
-        let registry_token = request.find_registry_token(Some(registry_name)).unwrap();
+            assert!(registry_token.is_some());
+            assert_eq!(token, registry_token.unwrap().expose_secret());
+        });
+    }
 
-        if let Ok(old) = old_value {
-            env::set_var(&token_env_var, old);
-        } else {
-            env::remove_var(&token_env_var);
-        }
+    #[test]
+    fn should_reference_env_var_provided_index() {
+        use cargo_utils::registry_url;
 
-        assert!(registry_token.is_some());
-        assert_eq!(token, registry_token.unwrap().expose_secret());
+        let registry_name = "my_registry";
+        let mock_index = "https://example.com/git/index";
+        let mock_index_url = Url::parse(mock_index).unwrap();
+
+        let index_env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry_name.to_uppercase());
+
+        let fake_metadata = fake_metadata();
+        let fake_manifest_path = fake_metadata.workspace_root.as_ref();
+
+        with_env_var(&index_env_var, mock_index, || {
+            let maybe_registry_index =
+                registry_url(fake_manifest_path, Some(registry_name)).unwrap();
+
+            // assert the registry index is properly overriden
+            assert_eq!(maybe_registry_index, mock_index_url);
+        });
+
+        let non_overriden_maybe_registry_index =
+            registry_url(fake_manifest_path, Some(registry_name)).ok();
+
+        // assert the index is inherited from the workspace after the env var
+        // is cleared.
+        assert_eq!(non_overriden_maybe_registry_index, None);
     }
 }

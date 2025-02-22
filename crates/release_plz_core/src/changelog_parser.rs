@@ -1,6 +1,7 @@
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use regex::Regex;
+use std::sync::LazyLock;
 
 /// Parse the header from a changelog.
 /// The changelog header is a string at the begin of the changelog that:
@@ -8,10 +9,12 @@ use regex::Regex;
 /// - ends with `## Unreleased`, `## [Unreleased]` or `## ..anything..`
 ///   (in the ..anything.. case, `## ..anything..` is not included in the header)
 pub fn parse_header(changelog: &str) -> Option<String> {
-    lazy_static::lazy_static! {
-        static ref FIRST_RE: Regex = Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*)(## Unreleased|## \[Unreleased\]|## unreleased|## \[unreleased\])(.*?)(\n)").unwrap();
-        static ref SECOND_RE: Regex = Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*?)(\n## )").unwrap();
-    }
+    static FIRST_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*)(## Unreleased|## \[Unreleased\]|## unreleased|## \[unreleased\])(.*?)(\n)").unwrap()
+    });
+    static SECOND_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*?)(\n## )").unwrap()
+    });
 
     if let Some(captures) = FIRST_RE.captures(changelog) {
         return Some(captures[0].to_string());

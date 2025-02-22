@@ -6,6 +6,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.5...release_plz_core-v0.32.6) - 2025-02-22
+
+### Added
+
+- support rust 2024 edition (#2084)
+
+### Fixed
+
+- clippy lint (#2082)
+- support env var override for registry index (#2033)
+
+## [0.32.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.4...release_plz_core-v0.32.5) - 2025-02-09
+
+### Fixed
+
+- Bring back breaking change description in pr body (#2055)
+- Show previous version in PR body (#2054)
+- Check semver breaking changes on packages containing both library and binary (#2053)
+- Show in pr body when semver check passed ([#2057](https://github.com/release-plz/release-plz/pull/2057))
+
+### Other
+
+- hint to install cargo semver checks to run tests (#2056)
+- remove direct dipendency on lazy_static (#2049)
+
+## [0.32.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.3...release_plz_core-v0.32.4) - 2025-02-09
+
+### Fixed
+
+- Don't fail if you can't fetch associated PRs from the remote because the commit hasn't been pushed (#2045)
+
+## [0.32.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.2...release_plz_core-v0.32.3) - 2025-02-08
+
+### Fixed
+
+- correctly detect if package is executable (#2041)
+
+## [0.32.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.1...release_plz_core-v0.32.2) - 2025-02-08
+
+### Added
+
+- add releases to release-pr json output (#2031)
+
+### Fixed
+
+- don't fail if commit wasn't pushed to remote (#2037)
+- correctly detect if package contains executable (#2024)
+
+## [0.32.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.0...release_plz_core-v0.32.1) - 2025-02-01
+
+### Fixed
+
+- don't update libraries versions on Cargo.lock update (#2016)
+
+## [0.32.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.31.1...release_plz_core-v0.32.0) - 2025-02-01
+
+### Added
+
+- Download packages from different registries in parallel to improve performance (#2005)
+
+### Fixed
+
+- Don't try to fetch information from the remote if it's a "filler" commit (#2014)
+
+### Other
+
+- ♻️ refactor: use tera template for default PR body ([#1861](https://github.com/release-plz/release-plz/pull/1861))
+
+## [0.31.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.31.0...release_plz_core-v0.31.1) - 2025-01-23
+
+### Fixed
+
+- don't suppress git error when determining commits to release (#1962)
+- *(core)* Stash uncommited changes in dirty repos during update (#1982)
+- *(core)* Make `release --dry-run` more informative (#1983)
+
+### Other
+
+- allow fetching latest package summaries from cargo registry ([#1984](https://github.com/release-plz/release-plz/pull/1984))
+
+## [0.31.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.13...release_plz_core-v0.31.0) - 2025-01-14
+
+### Added
+
+- allow adding labels to Gitea release PR (#1937)
+
+### Fixed
+
+- use dunce to canonicalize package paths (#1975)
+- Fix `release-plz init` local dependency check (#1978)
+
+### Other
+
+- refactor to remove duplicate string (#1964)
+
 ## [0.30.13](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.30.12...release_plz_core-v0.30.13) - 2024-12-19
 
 ### Fixed

@@ -1,4 +1,5 @@
 use cargo_metadata::camino::Utf8Path;
+use cargo_metadata::semver::Version;
 use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
@@ -84,6 +85,29 @@ pub struct ReleasePr {
     pub html_url: Url,
     /// Number
     pub number: u64,
+    /// Releases of the packages that are going to be published.
+    pub releases: Vec<PrPackageRelease>,
+}
+
+impl ReleasePr {
+    pub fn new(git_pr: &GitPr, base_branch: String) -> Self {
+        Self {
+            head_branch: git_pr.branch().to_string(),
+            base_branch,
+            html_url: git_pr.html_url.clone(),
+            number: git_pr.number,
+            releases: vec![],
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct PrPackageRelease {
+    /// The name of the package.
+    package_name: String,
+    /// The next version of the package.
+    /// The PR updates the package to this version.
+    version: Version,
 }
 
 /// Open a pull request with the next packages versions of a local rust project
@@ -192,12 +216,12 @@ async fn open_or_update_release_pr(
             project_contains_multiple_pub_packages,
             &release_pr_options.pr_branch_prefix,
             release_pr_options.pr_name,
-            release_pr_options.pr_body,
+            release_pr_options.pr_body.as_deref(),
         )
         .mark_as_draft(release_pr_options.draft)
         .with_labels(release_pr_options.pr_labels)
     };
-    match opened_release_prs.first() {
+    let release_pr = match opened_release_prs.first() {
         Some(opened_pr) => {
             handle_opened_pr(
                 git_client,
@@ -209,7 +233,19 @@ async fn open_or_update_release_pr(
             .await
         }
         None => create_pr(git_client, repo, &new_pr).await,
-    }
+    }?;
+    let release_pr = ReleasePr {
+        releases: packages_to_update
+            .updates()
+            .iter()
+            .map(|(package, update)| PrPackageRelease {
+                package_name: package.name.clone(),
+                version: update.version.clone(),
+            })
+            .collect(),
+        ..release_pr
+    };
+    Ok(release_pr)
 }
 
 async fn handle_opened_pr(
@@ -237,12 +273,7 @@ async fn handle_opened_pr(
         )
         .await
         {
-            Ok(()) => ReleasePr {
-                number: opened_pr.number,
-                head_branch: opened_pr.branch().to_string(),
-                html_url: opened_pr.html_url.clone(),
-                base_branch: new_pr.base_branch.clone(),
-            },
+            Ok(()) => ReleasePr::new(opened_pr, new_pr.base_branch.clone()),
             Err(e) => {
                 tracing::error!("cannot update release pr {}: {:?}. I'm closing the old release pr and opening a new one", opened_pr.number, e);
                 git_client
@@ -276,12 +307,7 @@ async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Resu
     debug!("changes committed to release branch {}", pr.branch);
 
     let git_pr = git_client.open_pr(pr).await.context("Failed to open PR")?;
-    Ok(ReleasePr {
-        number: git_pr.number,
-        head_branch: git_pr.branch().to_string(),
-        html_url: git_pr.html_url,
-        base_branch: pr.base_branch.clone(),
-    })
+    Ok(ReleasePr::new(&git_pr, pr.base_branch.clone()))
 }
 
 async fn update_pr(

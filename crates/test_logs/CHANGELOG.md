@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.31](https://github.com/release-plz/release-plz/compare/test_logs-v0.1.30...test_logs-v0.1.31) - 2025-02-09
+
+### Other
+
+- remove direct dependency on once_cell (#2050)
+
 ## [0.1.30](https://github.com/release-plz/release-plz/compare/test_logs-v0.1.29...test_logs-v0.1.30) - 2024-12-07
 
 ### Other

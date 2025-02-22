@@ -217,10 +217,12 @@ impl Repo {
 
     fn last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
         self.nth_commit_at_paths(1, paths)
+            .context("failed to get message of last commit")
     }
 
     fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
         self.nth_commit_at_paths(2, paths)
+            .context("failed to get message of previous commit")
     }
 
     pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
@@ -233,6 +235,22 @@ impl Repo {
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         self.git(&["checkout", object])
             .context("failed to checkout")?;
+        Ok(())
+    }
+
+    /// Adds a detached git worktree at the given path checked out at the given object.
+    pub fn add_worktree(&self, path: impl AsRef<str>, object: &str) -> anyhow::Result<()> {
+        self.git(&["worktree", "add", "--detach", path.as_ref(), object])
+            .context("failed to create git worktree")?;
+
+        Ok(())
+    }
+
+    /// Removes a worktree that was created for this repository at the given path.
+    pub fn remove_worktree(&self, path: impl AsRef<str>) -> anyhow::Result<()> {
+        self.git(&["worktree", "remove", path.as_ref()])
+            .context("failed to remove worktree")?;
+
         Ok(())
     }
 
@@ -302,6 +320,19 @@ impl Repo {
     /// Get the commit hash of the given tag
     pub fn get_tag_commit(&self, tag: &str) -> Option<String> {
         self.git(&["rev-list", "-n", "1", tag]).ok()
+    }
+
+    /// Returns all the tags in the repository in an unspecified order.
+    pub fn get_all_tags(&self) -> Vec<String> {
+        match self
+            .git(&["tag", "--list"])
+            .ok()
+            .as_ref()
+            .map(|output| output.trim())
+        {
+            None | Some("") => vec![],
+            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
+        }
     }
 
     /// Check if a commit comes before another one.
@@ -535,6 +566,22 @@ D  crates/git_cmd/CHANGELOG.md
         }
         repo.tag("v1.0.0", "test").unwrap();
         assert!(!repo.tag_exists("v2.0.0").unwrap());
+    }
+
+    #[test]
+    fn tags_are_retrieved() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        repo.tag("v1.0.0", "test").unwrap();
+        let file1 = repository_dir.as_ref().join("file1.txt");
+        {
+            fs_err::write(file1, b"Hello, file1!").unwrap();
+            repo.add_all_and_commit("file1").unwrap();
+        }
+        repo.tag("v1.0.1", "test2").unwrap();
+        let tags = repo.get_all_tags();
+        assert_eq!(tags, vec!["v1.0.0", "v1.0.1"]);
     }
 
     #[test]

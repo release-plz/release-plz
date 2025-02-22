@@ -20,7 +20,8 @@
     "dependencies": {
         "@docusaurus/core": "^3.6.1",
         "@docusaurus/preset-classic": "^3.6.1",
-        "@easyops-cn/docusaurus-search-local": "^0.47.0",
+        "@docusaurus/theme-mermaid": "^3.7.0",
+        "@easyops-cn/docusaurus-search-local": "^0.48.0",
         "@mdx-js/react": "^3.0.1",
         "clsx": "^2.1.1",
         "prettier": "^3.3.3",
@@ -30,9 +31,9 @@
     },
     "devDependencies": {
         "@docusaurus/module-type-aliases": "^3.6.1",
-        "markdownlint-cli": "^0.43.0",
+        "markdownlint-cli": "^0.44.0",
         "sharp": "0.33.5",
-        "tsx": "4.19.2"
+        "tsx": "4.19.3"
     },
     "browserslist": {
         "production": [

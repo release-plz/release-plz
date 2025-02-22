@@ -89,7 +89,14 @@ Stdout will contain info about the release PR:
       "head_branch": "<head_branch>",
       "base_branch": "<base_branch>",
       "html_url": "<html_url>",
-      "number": <pr_number>
+      "number": <pr_number>,
+      "releases": [
+        {
+          "package_name": "<package_name>",
+          "version": "<package_version>"
+        }
+      ]
+
     }
   ]
 }
@@ -104,7 +111,13 @@ Example:
       "head_branch": "release-plz-2024-04-03T21-57-37Z",
       "base_branch": "main",
       "html_url": "http://localhost:3000/zodpwlgr/xcpayeoa/pulls/1",
-      "number": 1
+      "number": 1,
+      "releases": [
+        {
+          "package_name": "my_package",
+          "version": "1.0.3"
+        }
+      ]
     }
   ]
 }
