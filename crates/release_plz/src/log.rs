@@ -3,22 +3,25 @@ use tracing_subscriber::{
     EnvFilter, filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
-/// Intialize the logging using the tracing crate
+/// Intialize the logging using the tracing crate.
 ///
-/// Uses the `INFO` level by default, but you can customize it with `RELEASE_PLZ_LOG` environment
+/// You can customize the log level with the `RELEASE_PLZ_LOG` environment
 /// variable. If the `RELEASE_PLZ_LOG` environment variable is not set, falls back to the `RUST_LOG`
-/// environment variable or the default log level (INFO).
-pub fn init(verbosity: LevelFilter) {
+/// environment variable.
+///
+/// If verbosity is set, the logs will show more information.
+///
+/// To maximize logs readability in CI, logs are written in one line
+/// (we don't split them in multiple lines).
+pub fn init(verbosity: Option<LevelFilter>) {
     let env_filter = EnvFilter::try_from_env("RELEASE_PLZ_LOG").unwrap_or_else(|_| {
         EnvFilter::builder()
-            .with_default_directive(verbosity.into())
+            .with_default_directive(verbosity.unwrap_or(LevelFilter::INFO).into())
             .from_env_lossy()
     });
 
     // disable spans below WARN level span unless using user has increased verbosity
-    let verbose = env_filter
-        .max_level_hint()
-        .is_some_and(|level| level > Level::INFO);
+    let verbose = verbosity.is_some();
 
     let ignore_info_spans = filter_fn(move |metadata| {
         let is_trace_or_debug = || metadata.level() < &Level::INFO;

@@ -10,7 +10,7 @@ mod update;
 
 use std::path::Path;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use clap::{
@@ -61,12 +61,15 @@ pub struct CliArgs {
 }
 
 impl CliArgs {
-    pub fn verbosity(&self) -> LevelFilter {
-        match self.verbose {
-            0 => LevelFilter::INFO,
-            1 => LevelFilter::DEBUG,
-            _ => LevelFilter::TRACE,
-        }
+    pub fn verbosity(&self) -> anyhow::Result<Option<LevelFilter>> {
+        let level = match self.verbose {
+            0 => None,
+            1 => Some(LevelFilter::INFO),
+            2 => Some(LevelFilter::DEBUG),
+            3 => Some(LevelFilter::TRACE),
+            _ => bail!("invalid verbosity level. Use -v, -vv, or -vvv."),
+        };
+        Ok(level)
     }
 }
 
