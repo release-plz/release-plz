@@ -18,7 +18,7 @@ use crate::args::{CliArgs, Command, manifest_command::ManifestCommand as _};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
-    log::init(args.verbose);
+    log::init(args.verbosity()?);
     run(args).await.map_err(|e| {
         error!("{:?}", e);
         e
