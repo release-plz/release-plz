@@ -35,15 +35,16 @@ is having issues to:
 
 By default, Release-plz shows logs at the `INFO` level.
 
-The `--verbose` (`-v`) flag can be used to increase the verbosity of the logs. It can be specified
-multiple times to increase the verbosity even more.
+The `--verbose` (`-v`) flag can be used to increase the verbosity of the logs.
+It can be specified multiple times to increase the verbosity even more.
 
 ```bash
-release-plz --verbose # Show debug logs
-release-plz -vv # Show trace logs
+release-plz --verbose # (or -v) Make logs verbose
+release-plz -vv # Show verbose debug logs
+release-plz -vvv # Show verbose trace logs
 ```
 
-Release-plz can also be configured using the `RELEASE_PLZ_LOG` environment variable.
+Release-plz log level can also be configured using the `RELEASE_PLZ_LOG` environment variable.
 
 ```bash
 RELEASE_PLZ_LOG=debug release-plz
