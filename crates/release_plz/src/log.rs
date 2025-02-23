@@ -20,7 +20,6 @@ pub fn init(verbosity: Option<LevelFilter>) {
             .from_env_lossy()
     });
 
-    // disable spans below WARN level span unless using user has increased verbosity
     let verbose = verbosity.is_some();
 
     let ignore_info_spans = filter_fn(move |metadata| {
