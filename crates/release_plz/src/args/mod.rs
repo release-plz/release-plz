@@ -47,10 +47,12 @@ pub struct CliArgs {
     pub command: Command,
     /// Print source location and additional information in logs.
     ///
-    /// The default log level is INFO.
-    /// `-v` sets the log level to DEBUG.
-    /// `-vv` sets the log level to TRACE.
-    /// To change the log level, you can also use the `RELEASE_PLZ_LOG` environment variable. E.g. `RELEASE_PLZ_LOG=DEBUG`.
+    /// If this option is unspecified, logs are printed at the INFO level without verbosity.
+    /// `-v` adds verbosity to logs.
+    /// `-vv` adds verbosity and sets the log level to DEBUG.
+    /// `-vvv` adds verbosity and sets the log level to TRACE.
+    /// To change the log level without setting verbosity, use the `RELEASE_PLZ_LOG`
+    /// environment variable. E.g. `RELEASE_PLZ_LOG=DEBUG`.
     #[arg(
         short,
         long,
