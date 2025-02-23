@@ -19,9 +19,13 @@ pub fn init(verbosity: LevelFilter) {
     let verbose = env_filter
         .max_level_hint()
         .is_some_and(|level| level > Level::INFO);
+
     let ignore_info_spans = filter_fn(move |metadata| {
-        verbose || !metadata.is_span() || metadata.level() < &Level::INFO
+        let is_trace_or_debug = || metadata.level() < &Level::INFO;
+        // If it's not a span, it's an event. We keep events.
+        verbose || !metadata.is_span() || is_trace_or_debug()
     });
+
     fmt()
         .with_env_filter(env_filter)
         .with_writer(std::io::stderr)
