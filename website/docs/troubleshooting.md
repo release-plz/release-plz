@@ -40,13 +40,13 @@ It can be specified multiple times to increase the verbosity even more.
 
 ```bash
 release-plz --verbose # (or -v) Make logs verbose
-release-plz -vv # Show verbose debug logs
-release-plz -vvv # Show verbose trace logs
+release-plz -vv # Show verbose DEBUG logs
+release-plz -vvv # Show verbose TRACE logs
 ```
 
 Release-plz log level can also be configured using the `RELEASE_PLZ_LOG` environment variable.
 
 ```bash
-RELEASE_PLZ_LOG=debug release-plz
-RELEASE_PLZ_LOG=trace release-plz
+RELEASE_PLZ_LOG=DEBUG release-plz
+RELEASE_PLZ_LOG=TRACE release-plz
 ```
