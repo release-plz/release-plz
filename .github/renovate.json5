@@ -20,7 +20,7 @@
       ],
       // At 06:XX on Monday.
       schedule: '* 6 * * 1',
-      groupName: 'Github Actions updates',
+      groupName: 'Github Actions',
     },
     {
       matchCategories: [
