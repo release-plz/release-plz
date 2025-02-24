@@ -24,14 +24,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@ad0904967b4c8e3005f6ed2efa1fa74dd9a05f32 # v2.48.13
+        uses: taiki-e/install-action@e03236526ace47fa2e04bebcfc6da471ebd4690c # v2.49.0
         with:
           tool: cargo-semver-checks
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: actions-rust-lang/setup-rust-toolchain@b38f618be2096d3fc834d239085766ecdc8f4b62
       - name: Run tests
         run: cargo test --all-features --workspace
 
@@ -51,11 +51,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@ad0904967b4c8e3005f6ed2efa1fa74dd9a05f32 # v2.48.13
+        uses: taiki-e/install-action@e03236526ace47fa2e04bebcfc6da471ebd4690c # v2.49.0
         with:
           tool: cargo-semver-checks
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: actions-rust-lang/setup-rust-toolchain@b38f618be2096d3fc834d239085766ecdc8f4b62
       - name: Run tests
         run: cargo test --no-default-features --features all-static --workspace
 
@@ -68,7 +68,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: actions-rust-lang/setup-rust-toolchain@b38f618be2096d3fc834d239085766ecdc8f4b62
         with:
           components: rustfmt
       - name: Check formatting
@@ -83,7 +83,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: actions-rust-lang/setup-rust-toolchain@b38f618be2096d3fc834d239085766ecdc8f4b62
         with:
           components: clippy
       - name: Clippy check
@@ -98,7 +98,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
+        uses: actions-rust-lang/setup-rust-toolchain@b38f618be2096d3fc834d239085766ecdc8f4b62
       - name: Check documentation
         env:
           RUSTDOCFLAGS: -D warnings
