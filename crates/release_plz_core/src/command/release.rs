@@ -15,15 +15,14 @@ use tracing::{debug, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, ReleaseMetadata,
-    ReleaseMetadataBuilder, Remote,
+    CHANGELOG_FILENAME, CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, DEFAULT_BRANCH_PREFIX,
+    GitBackend, GitBackend, PackagePath, PackagePath, Project, Project, ReleaseMetadata,
+    ReleaseMetadata, ReleaseMetadataBuilder, ReleaseMetadataBuilder, Remote, Remote,
     cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
     cargo_hash_kind::get_hash_kind,
     changelog_parser,
     git::backend::GitClient,
     pr_parser::{Pr, prs_from_text},
-    GitBackend, PackagePath, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX,
 };
 
 #[derive(Debug)]
