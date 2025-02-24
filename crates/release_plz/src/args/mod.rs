@@ -10,17 +10,17 @@ mod update;
 
 use std::path::Path;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use clap::{
-    builder::{styling::AnsiColor, Styles},
     ValueEnum,
+    builder::{Styles, styling::AnsiColor},
 };
 use init::Init;
 use release_plz_core::fs_utils::current_directory;
 use set_version::SetVersion;
-use tracing::info;
+use tracing::{info, level_filters::LevelFilter};
 
 use crate::config::Config;
 
@@ -37,15 +37,42 @@ const HELP_STYLES: Styles = Styles::styled()
     .placeholder(SECONDARY_COLOR.on_default())
     .literal(SECONDARY_COLOR.on_default());
 
+/// Release-plz manages versioning, changelogs, and releases for Rust projects.
+///
+/// See the Release-plz website for more information <https://release-plz.dev/>.
 #[derive(clap::Parser, Debug)]
-#[command(about, version, author, styles = HELP_STYLES)]
+#[command(version, author, styles = HELP_STYLES)]
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
     /// Print source location and additional information in logs.
-    /// To change the log level, use the `RUST_LOG` environment variable.
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
+    ///
+    /// If this option is unspecified, logs are printed at the INFO level without verbosity.
+    /// `-v` adds verbosity to logs.
+    /// `-vv` adds verbosity and sets the log level to DEBUG.
+    /// `-vvv` adds verbosity and sets the log level to TRACE.
+    /// To change the log level without setting verbosity, use the `RELEASE_PLZ_LOG`
+    /// environment variable. E.g. `RELEASE_PLZ_LOG=DEBUG`.
+    #[arg(
+        short,
+        long,
+        global = true,
+        action = clap::ArgAction::Count,
+    )]
+    verbose: u8,
+}
+
+impl CliArgs {
+    pub fn verbosity(&self) -> anyhow::Result<Option<LevelFilter>> {
+        let level = match self.verbose {
+            0 => None,
+            1 => Some(LevelFilter::INFO),
+            2 => Some(LevelFilter::DEBUG),
+            3 => Some(LevelFilter::TRACE),
+            _ => bail!("invalid verbosity level. Use -v, -vv, or -vvv."),
+        };
+        Ok(level)
+    }
 }
 
 #[derive(clap::Subcommand, Debug)]

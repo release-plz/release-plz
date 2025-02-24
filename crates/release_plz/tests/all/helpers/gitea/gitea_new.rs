@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::helpers::{fake_utils, reqwest_utils::ReqwestUtils};
 
-use super::{GiteaContext, GiteaUser, CARGO_INDEX_REPO};
+use super::{CARGO_INDEX_REPO, GiteaContext, GiteaUser};
 
 impl GiteaContext {
     pub async fn new(repo: String) -> Self {

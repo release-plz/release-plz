@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use anyhow::{anyhow, Context};
-use cargo_metadata::{camino::Utf8PathBuf, Package};
+use anyhow::{Context, anyhow};
+use cargo_metadata::{Package, camino::Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use tracing::{info, instrument, warn};
 

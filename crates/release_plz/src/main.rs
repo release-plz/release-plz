@@ -6,19 +6,19 @@ pub mod init;
 mod log;
 mod update_checker;
 
-use args::{config_command::ConfigCommand as _, OutputType};
+use args::{OutputType, config_command::ConfigCommand as _};
 use clap::Parser;
 use config::Config;
 use release_plz_core::{ReleasePrRequest, ReleaseRequest, UpdateRequest};
 use serde::Serialize;
 use tracing::error;
 
-use crate::args::{manifest_command::ManifestCommand as _, CliArgs, Command};
+use crate::args::{CliArgs, Command, manifest_command::ManifestCommand as _};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
-    log::init(args.verbose);
+    log::init(args.verbosity()?);
     run(args).await.map_err(|e| {
         error!("{:?}", e);
         e

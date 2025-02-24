@@ -51,7 +51,9 @@ fn actions_file() -> Utf8PathBuf {
 }
 
 fn greet() {
-    println!("👋 This process will guide you in setting up release-plz in your GitHub repository, using `gh` (the GitHub CLI) to store the necessary tokens in your repository secrets.");
+    println!(
+        "👋 This process will guide you in setting up release-plz in your GitHub repository, using `gh` (the GitHub CLI) to store the necessary tokens in your repository secrets."
+    );
 }
 
 fn store_cargo_token() -> anyhow::Result<()> {
@@ -69,7 +71,9 @@ fn enable_pr_permissions(repo_url: &str) -> anyhow::Result<()> {
 }
 
 fn store_github_token() -> anyhow::Result<&'static str> {
-    let should_create_token = ask_confirmation("👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.")?;
+    let should_create_token = ask_confirmation(
+        "👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.",
+    )?;
 
     let github_token = if should_create_token {
         println!("
@@ -195,7 +199,8 @@ jobs:
 fn ensure_gh_is_installed() -> anyhow::Result<()> {
     anyhow::ensure!(
         gh::is_gh_installed(),
-        "❌ gh cli is not installed. I need it to store GitHub actions repository secrets. Please install it from https://docs.github.com/en/github-cli/github-cli/quickstart");
+        "❌ gh cli is not installed. I need it to store GitHub actions repository secrets. Please install it from https://docs.github.com/en/github-cli/github-cli/quickstart"
+    );
     Ok(())
 }
 

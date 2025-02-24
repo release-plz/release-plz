@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use git_cliff_core::{config::ChangelogConfig, contributor::RemoteContributor};
 use git_cmd::Repo;
 
-use crate::{diff::Commit, GitClient, NO_COMMIT_ID};
+use crate::{GitClient, NO_COMMIT_ID, diff::Commit};
 
 #[derive(Debug)]
 pub struct RequiredInfo {

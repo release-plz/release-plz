@@ -2,24 +2,24 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     DependencyKind, Metadata, Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::CARGO_TOML;
 use tracing::debug;
 
 use crate::{
-    copy_to_temp_dir,
+    PackagePath as _,
+    tera::{PACKAGE_VAR, VERSION_VAR, tera_context, tera_var},
+};
+use crate::{
+    Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
     fs_utils::{self, strip_prefix},
     manifest_dir, new_manifest_dir_path,
     release_order::release_order,
     root_repo_path_from_manifest_dir,
     tmp_repo::TempRepo,
-    workspace_packages, Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder,
-};
-use crate::{
-    tera::{tera_context, tera_var, PACKAGE_VAR, VERSION_VAR},
-    PackagePath as _,
+    workspace_packages,
 };
 
 #[derive(Debug)]
@@ -72,7 +72,10 @@ impl Project {
                     });
             release_metadata.is_some()
         });
-        anyhow::ensure!(!packages.is_empty(), "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}");
+        anyhow::ensure!(
+            !packages.is_empty(),
+            "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
+        );
 
         let contains_multiple_pub_packages = packages.len() > 1;
 

@@ -1,6 +1,6 @@
 // Copied from [cargo-clone](https://github.com/JanLikar/cargo-clone/blob/89ba4da215663ffb3b8c93a674f3002937eafec4/cargo-clone-core/src/source.rs)
 
-use cargo::{core::SourceId, CargoResult, GlobalContext};
+use cargo::{CargoResult, GlobalContext, core::SourceId};
 use std::fmt;
 
 /// Where to clone the crate from.

@@ -26,7 +26,7 @@ impl NextVersionFromDiff for Version {
 mod tests {
     use crate::diff::Commit;
 
-    use crate::{semver_check::SemverCheck, NO_COMMIT_ID};
+    use crate::{NO_COMMIT_ID, semver_check::SemverCheck};
 
     use super::*;
 

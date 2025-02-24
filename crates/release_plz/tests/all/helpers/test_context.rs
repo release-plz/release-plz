@@ -1,28 +1,28 @@
-use std::process::Command;
+use std::{process::Command, time::Duration};
 
 use crate::helpers::gitea::CARGO_INDEX_REPO;
 use assert_cmd::assert::Assert;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 use git_cmd::Repo;
 use release_plz_core::{
-    fs_utils::{canonicalize_utf8, Utf8TempDir},
-    GitBackend, GitClient, GitPr, Gitea, RepoUrl, DEFAULT_BRANCH_PREFIX,
+    DEFAULT_BRANCH_PREFIX, GitBackend, GitClient, GitPr, Gitea, RepoUrl,
+    fs_utils::{Utf8TempDir, canonicalize_utf8},
 };
 use secrecy::SecretString;
 
 use tracing::info;
 
 use super::{
-    fake_utils,
-    gitea::{gitea_address, GiteaContext},
+    TEST_REGISTRY, fake_utils,
+    gitea::{GiteaContext, gitea_address},
     package::TestPackage,
-    TEST_REGISTRY,
 };
 
 const CRATES_DIR: &str = "crates";
+const RELEASE_PLZ_LOG: &str = "RELEASE_PLZ_LOG";
 
 /// It contains the universe in which release-plz runs.
 pub struct TestContext {
@@ -86,7 +86,7 @@ impl TestContext {
                 .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
-            format!("[workspace]\nresolver = \"2\"\nmembers = [{crates_list}]\n")
+            format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n")
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
@@ -125,7 +125,7 @@ impl TestContext {
     pub fn run_update(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env("RUST_LOG", log_level())
+            .env(RELEASE_PLZ_LOG, log_level())
             .arg("update")
             .arg("--verbose")
             .arg("--registry")
@@ -136,7 +136,7 @@ impl TestContext {
     pub fn run_release_pr(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env("RUST_LOG", log_level())
+            .env(RELEASE_PLZ_LOG, log_level())
             .arg("release-pr")
             .arg("--verbose")
             .arg("--git-token")
@@ -147,13 +147,14 @@ impl TestContext {
             .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(300))
             .assert()
     }
 
     pub fn run_release(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env("RUST_LOG", log_level())
+            .env(RELEASE_PLZ_LOG, log_level())
             .arg("release")
             .arg("--verbose")
             .arg("--git-token")
@@ -166,6 +167,7 @@ impl TestContext {
             .arg(format!("Bearer {}", &self.gitea.token))
             .arg("--output")
             .arg("json")
+            .timeout(Duration::from_secs(300))
             .assert()
     }
 
@@ -207,7 +209,7 @@ pub fn run_set_version(directory: &Utf8Path, change: &str) {
     let change: Vec<_> = change.split(' ').collect();
     super::cmd::release_plz_cmd()
         .current_dir(directory)
-        .env("RUST_LOG", log_level())
+        .env(RELEASE_PLZ_LOG, log_level())
         .arg("set-version")
         .args(&change)
         .assert();
@@ -215,7 +217,7 @@ pub fn run_set_version(directory: &Utf8Path, change: &str) {
 
 fn log_level() -> String {
     if std::env::var("ENABLE_LOGS").is_ok() {
-        std::env::var("RUST_LOG").unwrap_or("DEBUG,hyper=INFO".to_string())
+        std::env::var(RELEASE_PLZ_LOG).unwrap_or("DEBUG,hyper=INFO".to_string())
     } else {
         "ERROR".to_string()
     }
