@@ -47,7 +47,7 @@ impl Project {
     pub fn new(
         local_manifest: &Utf8Path,
         single_package: Option<&str>,
-        overrides: &HashSet<String>,
+        overrides: &HashSet<&str>,
         metadata: &Metadata,
         release_metadata_builder: &dyn ReleaseMetadataBuilder,
     ) -> anyhow::Result<Self> {
@@ -261,15 +261,15 @@ fn create_missing_version_error_message(package_name: &str, dependencies: Vec<St
 
 fn check_overrides_typos(
     packages: &[Package],
-    overrides: &HashSet<String>,
+    overrides: &HashSet<&str>,
 ) -> Result<(), anyhow::Error> {
-    let package_names: HashSet<_> = packages.iter().map(|p| p.name.clone()).collect();
+    let package_names: HashSet<&str> = packages.iter().map(|p| p.name.as_str()).collect();
     check_for_typos(&package_names, overrides)?;
     Ok(())
 }
 
 /// Check for typos in the package names based on the overrides
-fn check_for_typos(packages: &HashSet<String>, overrides: &HashSet<String>) -> anyhow::Result<()> {
+fn check_for_typos(packages: &HashSet<&str>, overrides: &HashSet<&str>) -> anyhow::Result<()> {
     let diff: Vec<_> = overrides.difference(packages).collect();
 
     if diff.is_empty() {
@@ -353,7 +353,7 @@ mod tests {
     fn get_project(
         local_manifest: &Utf8Path,
         single_package: Option<&str>,
-        overrides: &HashSet<String>,
+        overrides: &HashSet<&str>,
         is_release_enabled: bool,
         tag_name: Option<String>,
         release_name: Option<String>,
@@ -372,8 +372,8 @@ mod tests {
 
     #[test]
     fn test_for_typos() {
-        let packages: HashSet<String> = vec!["foo".to_string()].into_iter().collect();
-        let overrides: HashSet<String> = vec!["bar".to_string()].into_iter().collect();
+        let packages: HashSet<&str> = ["foo"].into();
+        let overrides: HashSet<&str> = ["bar"].into();
         let result = check_for_typos(&packages, &overrides);
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn test_successful_override() {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
-        let overrides = (["typo_test".to_string()]).into();
+        let overrides = (["typo_test"]).into();
         let result = get_project(local_manifest, None, &overrides, true, None, None);
         assert!(result.is_ok());
     }
@@ -401,7 +401,7 @@ mod tests {
     fn test_typo_in_crate_names() {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
         let single_package = None;
-        let overrides = vec!["typo_tesst".to_string()].into_iter().collect();
+        let overrides = ["typo_tesst"].into();
         let result = get_project(local_manifest, single_package, &overrides, true, None, None);
         assert!(result.is_err());
         assert_eq!(

@@ -9,8 +9,8 @@ use clap::{
 };
 use git_cliff_core::config::Config as GitCliffConfig;
 use release_plz_core::{
-    ChangelogRequest, GitBackend, GitHub, GitLab, Gitea, RepoUrl, UpdateRequest,
-    fs_utils::to_utf8_path,
+    ChangelogRequest, GitBackend, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
+    update_request::UpdateRequest,
 };
 use secrecy::SecretString;
 

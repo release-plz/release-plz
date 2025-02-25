@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Duration,
+};
 
 use anyhow::Context;
 use cargo::util::VersionExt;
@@ -231,6 +234,10 @@ impl PackagesConfig {
 
     fn set(&mut self, package_name: String, config: ReleaseConfig) {
         self.overrides.insert(package_name, config);
+    }
+
+    pub fn overridden_packages(&self) -> HashSet<&str> {
+        self.overrides.keys().map(|s| s.as_str()).collect()
     }
 }
 
@@ -487,7 +494,7 @@ pub struct PackageRelease {
 /// Release the project as it is.
 #[instrument(skip(input))]
 pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> {
-    let overrides = input.packages_config.overrides.keys().cloned().collect();
+    let overrides = input.packages_config.overridden_packages();
     let project = Project::new(
         &input.local_manifest(),
         None,

@@ -1,5 +1,11 @@
-use crate::semver_check::SemverCheck;
-use crate::{PackagePath, UpdateRequest, UpdateResult, tmp_repo::TempRepo};
+mod changelog_update;
+mod package_dependencies;
+mod packages_update;
+mod update_config;
+pub mod update_request;
+pub mod updater;
+
+use crate::{PackagePath, tmp_repo::TempRepo};
 use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
@@ -10,46 +16,16 @@ use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
 use std::iter;
 use tracing::{info, warn};
+use update_request::UpdateRequest;
 
 use tracing::{debug, instrument};
 
-pub type PackagesToUpdate = Vec<(Package, UpdateResult)>;
-
-#[derive(Clone, Debug, Default)]
-pub struct PackagesUpdate {
-    updates: PackagesToUpdate,
-    /// New workspace version. If None, the workspace version is not updated.
-    /// See cargo [docs](https://doc.rust-lang.org/cargo/reference/workspaces.html#root-package).
-    workspace_version: Option<Version>,
-}
-
-impl PackagesUpdate {
-    pub fn new(updates: PackagesToUpdate) -> Self {
-        Self {
-            updates,
-            workspace_version: None,
-        }
-    }
-
-    pub fn with_workspace_version(&mut self, workspace_version: Version) {
-        self.workspace_version = Some(workspace_version);
-    }
-
-    pub fn updates(&self) -> &[(Package, UpdateResult)] {
-        &self.updates
-    }
-
-    pub fn updates_mut(&mut self) -> &mut PackagesToUpdate {
-        &mut self.updates
-    }
-
-    pub fn workspace_version(&self) -> Option<&Version> {
-        self.workspace_version.as_ref()
-    }
-}
+pub use packages_update::*;
+pub use update_config::*;
 
 #[derive(Serialize, Deserialize)]
 pub struct ReleaseInfo {
+    /// Package name
     package: String,
     pub title: Option<String>,
     pub changelog: Option<String>,
@@ -60,93 +36,7 @@ pub struct ReleaseInfo {
     semver_check: String,
 }
 
-impl PackagesUpdate {
-    pub fn summary(&self) -> String {
-        let updates = self.updates_summary();
-        let breaking_changes = self.breaking_changes();
-        format!("{updates}\n{breaking_changes}")
-    }
-
-    fn updates_summary(&self) -> String {
-        self.updates
-            .iter()
-            .map(|(package, update)| {
-                if package.version == update.version {
-                    format!("\n* `{}`: {}", package.name, package.version)
-                } else {
-                    format!(
-                        "\n* `{}`: {} -> {}{}",
-                        package.name,
-                        package.version,
-                        update.version,
-                        update.semver_check.outcome_str()
-                    )
-                }
-            })
-            .collect()
-    }
-
-    pub fn breaking_changes(&self) -> String {
-        self.updates
-            .iter()
-            .map(|(package, update)| match &update.semver_check {
-                SemverCheck::Incompatible(incompatibilities) => {
-                    format!(
-                        "\n### ⚠️ `{}` breaking changes\n\n```{}```\n",
-                        package.name, incompatibilities
-                    )
-                }
-                SemverCheck::Compatible | SemverCheck::Skipped => "".to_string(),
-            })
-            .collect()
-    }
-
-    /// Return info about releases of the updated packages
-    pub fn releases(&self) -> Vec<ReleaseInfo> {
-        self.updates
-            .iter()
-            .map(|(package, update)| {
-                let (changelog_title, changelog_notes) = match update.last_changes() {
-                    Err(e) => {
-                        warn!(
-                            "can't determine changes in changelog of package {}: {e:?}",
-                            package.name
-                        );
-                        (None, None)
-                    }
-                    Ok(Some(c)) => (Some(c.title().to_string()), Some(c.notes().to_string())),
-                    Ok(None) => {
-                        warn!(
-                            "no changes detected in changelog of package {}",
-                            package.name
-                        );
-                        (None, None)
-                    }
-                };
-
-                let (semver_check, breaking_changes) = match &update.semver_check {
-                    SemverCheck::Incompatible(incompatibilities) => {
-                        ("incompatible", Some(incompatibilities.to_string()))
-                    }
-                    SemverCheck::Compatible => ("compatible", None),
-                    SemverCheck::Skipped => ("skipped", None),
-                };
-
-                ReleaseInfo {
-                    package: package.name.clone(),
-                    title: changelog_title,
-                    changelog: changelog_notes,
-                    next_version: update.version.to_string(),
-                    previous_version: package.version.to_string(),
-                    breaking_changes,
-                    semver_check: semver_check.to_string(),
-                }
-            })
-            .collect()
-    }
-}
-
-/// Update a local rust project
+/// Update a local Rust project.
 #[instrument(skip_all)]
 pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
     let (packages_to_update, repository) = crate::next_versions(input)
@@ -160,7 +50,7 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
     let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
     update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
     update_changelogs(input, &packages_to_update)?;
-    if !packages_to_update.updates.is_empty() {
+    if !packages_to_update.updates().is_empty() {
         let local_manifest_dir = input.local_manifest_dir()?;
         update_cargo_lock(local_manifest_dir, input.should_update_dependencies())?;
 
@@ -182,8 +72,7 @@ fn update_manifests(
     // Distinguish packages type to avoid updating the version of packages that inherit the workspace version
     let (workspace_pkgs, independent_pkgs): (PackagesToUpdate, PackagesToUpdate) =
         packages_to_update
-            .updates
-            .clone()
+            .updates_clone()
             .into_iter()
             .partition(|(p, _)| {
                 let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
@@ -223,7 +112,7 @@ fn update_versions(
     packages_to_update: &PackagesUpdate,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    for (package, update) in &packages_to_update.updates {
+    for (package, update) in packages_to_update.updates() {
         let package_path = package.package_path()?;
         set_version(
             all_packages,
@@ -240,7 +129,7 @@ fn update_changelogs(
     update_request: &UpdateRequest,
     local_packages: &PackagesUpdate,
 ) -> anyhow::Result<()> {
-    for (package, update) in &local_packages.updates {
+    for (package, update) in local_packages.updates() {
         if let Some(changelog) = update.changelog.as_ref() {
             let changelog_path = update_request.changelog_path(package);
             fs_err::write(&changelog_path, changelog).context("cannot write changelog")?;
