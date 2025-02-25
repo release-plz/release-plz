@@ -107,7 +107,7 @@ impl Project {
         &self.root
     }
 
-    /// Packages that can be published. They are already ordered by release order.
+    /// Packages that can be published, ordered by release order.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()
