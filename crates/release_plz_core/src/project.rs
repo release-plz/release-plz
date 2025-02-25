@@ -15,7 +15,9 @@ use crate::{
 use crate::{
     Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
     fs_utils::{self, strip_prefix},
-    manifest_dir, new_manifest_dir_path, root_repo_path_from_manifest_dir,
+    manifest_dir, new_manifest_dir_path,
+    release_order::release_order,
+    root_repo_path_from_manifest_dir,
     tmp_repo::TempRepo,
     workspace_packages,
 };
@@ -86,8 +88,14 @@ impl Project {
             );
         }
 
+        // Order packages so that they are analyzed in the order that they are released.
+        // This also helps when a changelog contains changes from different packages
+        // (i.e. the packages have the same changelog_path config).
+        // In this case, the changes of one package come before the changes of its dependencies.
+        let ordered_packages = ordered_packages(&packages)?;
+
         Ok(Self {
-            packages,
+            packages: ordered_packages,
             release_metadata,
             root,
             manifest_dir,
@@ -99,6 +107,7 @@ impl Project {
         &self.root
     }
 
+    /// Packages that can be published, ordered by release order.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()
@@ -210,6 +219,17 @@ See https://doc.rust-lang.org/cargo/reference/manifest.html\n",
         error_message.push_str("\nNote: to disable this check, set the `--no-toml-check` flag.");
         anyhow::bail!(error_message);
     }
+}
+
+fn ordered_packages(packages: &[Package]) -> anyhow::Result<Vec<Package>> {
+    let packages_refs: Vec<&Package> = packages.iter().collect();
+    let ordered = release_order(&packages_refs)
+        .context("cannot determine release order")?
+        .into_iter()
+        .cloned()
+        .collect();
+
+    Ok(ordered)
 }
 
 fn check_local_dependencies(package: &Package) -> Vec<String> {

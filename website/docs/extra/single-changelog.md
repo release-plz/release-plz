@@ -54,6 +54,11 @@ body = """
 The difference with the default changelog body configuration is that the header now also contains
 the `{{package}}`.
 
+The entries will be order depending on the release order: if `package_a` depends on `package_b`,
+the changes of `package_a` are listed after `package_b`.
+For example, if you have a workspace with various libraries and one binary that depends on all the
+libraries, the changes of the binary will be placed first.
+
 In this way, `package_a` and `package_b` changelogs are in the same file.
 Note that the changelog will contain duplicate changes.
 If you want to merge updates of different packages into one, check

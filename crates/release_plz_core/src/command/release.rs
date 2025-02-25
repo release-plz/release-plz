@@ -22,7 +22,6 @@ use crate::{
     changelog_parser,
     git::backend::GitClient,
     pr_parser::{Pr, prs_from_text},
-    release_order::release_order,
 };
 
 #[derive(Debug)]
@@ -532,11 +531,11 @@ async fn release_packages(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
+    // Packages are already ordered by release order.
     let packages = project.publishable_packages();
-    let release_order = release_order(&packages).context("cannot determine release order")?;
     let mut package_releases: Vec<PackageRelease> = vec![];
     let hash_kind = get_hash_kind()?;
-    for package in release_order {
+    for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, git_client, &hash_kind).await?
         {
