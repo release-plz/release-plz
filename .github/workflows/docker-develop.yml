@@ -1,10 +1,9 @@
-name: Docker
+name: Build Docker image
 
 on:
   push:
     branches:
-      # todo restore this after testing
-      - docker-build-no-qemu
+      - main
 
 jobs:
   build-and-push:
