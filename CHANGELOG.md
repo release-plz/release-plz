@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.123](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.122...release-plz-v0.3.123) - 2025-02-25
+
+### Added
+
+- edit changelog order to respect release order (#2070)
+
+### Other
+
+- split next_ver module (#2095)
+- simplify logging setup (#2071)
+
 ## [0.3.122](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.121...release-plz-v0.3.122) - 2025-02-22
 
 ### Fixed
