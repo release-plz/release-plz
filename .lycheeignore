@@ -1,4 +1,5 @@
 https://linkedin.com/*
 https://twitter.com/*
+https://x.com/*
 # When the changelog is committed, release-plz didn't create the tag yet
 https://github.com/release-plz/release-plz/compare/*
