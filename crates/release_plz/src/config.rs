@@ -2,8 +2,8 @@ use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    GitReleaseConfig, ReleaseRequest, UpdateRequest, fs_utils::to_utf8_path,
-    set_version::SetVersionRequest,
+    GitReleaseConfig, ReleaseRequest, fs_utils::to_utf8_path, set_version::SetVersionRequest,
+    update_request::UpdateRequest,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -5,7 +5,7 @@ use cargo_utils::{CARGO_TOML, get_manifest_metadata};
 use chrono::NaiveDate;
 use release_plz_core::{
     CHANGELOG_FILENAME, ChangelogRequest, GitBackend, GitHub, Gitea, ReleasePrRequest, RepoUrl,
-    UpdateRequest, are_packages_equal, copy_to_temp_dir, fs_utils::Utf8TempDir,
+    are_packages_equal, copy_to_temp_dir, fs_utils::Utf8TempDir, update_request::UpdateRequest,
 };
 use secrecy::SecretString;
 use url::Url;

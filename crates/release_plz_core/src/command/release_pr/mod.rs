@@ -14,9 +14,11 @@ use crate::git::backend::{
 use crate::git::github_graphql;
 use crate::pr::{DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX, Pr};
 use crate::{
-    PackagesUpdate, UpdateRequest, copy_to_temp_dir, new_manifest_dir_path, new_project_root,
+    PackagesUpdate, copy_to_temp_dir, new_manifest_dir_path, new_project_root,
     publishable_packages_from_manifest, root_repo_path_from_manifest_dir, update,
 };
+
+use super::update_request::UpdateRequest;
 
 #[derive(Debug)]
 pub struct ReleasePrRequest {
