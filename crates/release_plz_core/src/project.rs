@@ -88,10 +88,10 @@ impl Project {
             );
         }
 
-        // Order crates so that they are analyzed in the order that they are released.
-        // This also helps when a changelog contains changes from different crates
-        // (i.e. they have the same changelog_path config).
-        // In this case, the changes of one crate come before the changes of its dependencies.
+        // Order packages so that they are analyzed in the order that they are released.
+        // This also helps when a changelog contains changes from different packages
+        // (i.e. the packages have the same changelog_path config).
+        // In this case, the changes of one package come before the changes of its dependencies.
         let ordered_packages = ordered_packages(&packages)?;
 
         Ok(Self {
