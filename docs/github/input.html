@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.7.0">
 <title data-rh="true">Input variables | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/github/input"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Input variables | Release-plz"><meta data-rh="true" name="description" content="The GitHub action accepts the following input variables:"><meta data-rh="true" property="og:description" content="The GitHub action accepts the following input variables:"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/github/input"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/github/input" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/github/input" hreflang="x-default"><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.2759b9c7.css">
-<script src="/assets/js/runtime~main.26b51a9c.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.db863548.js" defer="defer"></script>
 <script src="/assets/js/main.6d68a5f6.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -12,21 +12,23 @@
 <p>The GitHub action accepts the following input variables:</p>
 <ul>
 <li><code>command</code>: The release-plz command to run. Accepted values: <code>release-pr</code>,
-<code>release</code>. (By default it runs both commands).</li>
+<code>release</code>. <em>(By default it runs both commands).</em></li>
 <li><code>registry</code>: Registry where the packages are stored.
 The registry name needs to be present in the Cargo config.
 If unspecified, the <code>publish</code> field of the package manifest is used.
 If the <code>publish</code> field is empty, crates.io is used.</li>
 <li><code>manifest_path</code>: Path to the Cargo.toml of the project you want to update.
-Both Cargo workspaces and single packages are supported. (Defaults to the root
-directory).</li>
-<li><code>version</code>: Release-plz version to use. E.g. <code>0.3.70</code>. (Default: latest version).</li>
-<li><code>config</code>: Release-plz config file location. (Defaults to
-<code>release-plz.toml</code> or <code>.release-plz.toml</code>).</li>
+Both Cargo workspaces and single packages are supported.
+<em>(Defaults to the root directory).</em></li>
+<li><code>version</code>: Release-plz version to use. E.g. <code>0.3.70</code>. <em>(Default: latest version).</em></li>
+<li><code>config</code>: Release-plz config file location.
+<em>(Defaults to <code>release-plz.toml</code> or <code>.release-plz.toml</code>).</em></li>
 <li><code>token</code>: Token used to publish to the cargo registry.
 Override the <code>CARGO_REGISTRY_TOKEN</code> environment variable, or the <code>CARGO_REGISTRIES_&lt;NAME&gt;_TOKEN</code>
 environment variable, used for registry specified in the <code>registry</code> input variable.</li>
-<li><code>backend</code>: Forge backend. Valid values: <code>github</code>, <code>gitea</code>. (Defaults to <code>github</code>).</li>
+<li><code>backend</code>: Forge backend. Valid values: <code>github</code>, <code>gitea</code>. <em>(Defaults to <code>github</code>).</em></li>
+<li><code>verbose</code>: Print module and source location in logs.
+I.e. adds the <code>-v</code> flag to the command. <em>(Defaults to <code>false</code>).</em></li>
 </ul>
 <p>You can specify the input variables by using the <code>with</code> keyword.
 For example:</p>
