@@ -57,6 +57,7 @@ body = """
     - {{ timestamp | date(format="%Y-%m-%d") }}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}
+
     {% for commit in commits %}
         {%- if commit.scope -%}
             - *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}\
@@ -180,6 +181,7 @@ body = """
 | unique(attribute="message")
 | group_by(attribute="group") %}
     ### {{ group | striptags | trim | upper_first }}
+
     {% for commit in commits
     | filter(attribute="scope")
     | sort(attribute="scope") %}
@@ -303,6 +305,7 @@ body = """
     - {{ timestamp | date(format="%Y-%m-%d") }}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}
+
     {% for commit in commits %}
         {%- if commit.scope -%}
             - *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}\
