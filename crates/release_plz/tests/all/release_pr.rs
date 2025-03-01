@@ -1,6 +1,6 @@
 use crate::helpers::{
     package::{PackageType, TestPackage},
-    test_context::TestContext,
+    test_context::TestContext, today,
 };
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
@@ -649,9 +649,4 @@ fn move_readme(context: &TestContext, message: &str) {
     cargo_toml.write().unwrap();
 
     context.push_all_changes(message);
-}
-
-fn today() -> String {
-    // The changelogs specify the release date in UTC.
-    chrono::Utc::now().format("%Y-%m-%d").to_string()
 }

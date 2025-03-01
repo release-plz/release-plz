@@ -2,7 +2,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
     package::{PackageType, TestPackage},
-    test_context::TestContext,
+    test_context::TestContext, today,
 };
 
 #[tokio::test]
@@ -358,6 +358,7 @@ async fn pr_link_is_expanded() {
 
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
+    let today = today();
     assert_eq!(
         changelog.trim(),
         format!(
@@ -371,7 +372,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - 2025-03-01
+## [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
 
 ### Added
 
