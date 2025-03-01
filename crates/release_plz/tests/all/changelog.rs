@@ -2,7 +2,8 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
     package::{PackageType, TestPackage},
-    test_context::TestContext, today,
+    test_context::TestContext,
+    today,
 };
 
 #[tokio::test]
