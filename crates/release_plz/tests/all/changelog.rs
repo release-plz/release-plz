@@ -301,6 +301,7 @@ async fn raw_message_contains_entire_commit_message() {
 
     let new_file = context.repo_dir().join("new.rs");
     fs_err::write(&new_file, "// hi").unwrap();
+    // in the `raw_message` you should see the entire message, including `commit body`
     context.push_all_changes("feat: new file\n\ncommit body");
 
     context.run_update().success();
