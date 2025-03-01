@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.32](https://github.com/release-plz/release-plz/compare/test_logs-v0.1.31...test_logs-v0.1.32) - 2025-03-01
+
+### Other
+
+- add new line to changelog header (#2098)
+
 ## [0.1.31](https://github.com/release-plz/release-plz/compare/test_logs-v0.1.30...test_logs-v0.1.31) - 2025-02-09
 
 ### Other
