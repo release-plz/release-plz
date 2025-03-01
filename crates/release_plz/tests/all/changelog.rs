@@ -340,11 +340,17 @@ async fn raw_message_contains_entire_commit_message() {
 async fn pr_link_is_expanded() {
     let context = TestContext::new().await;
 
-    let new_file = context.repo_dir().join("new.rs");
-    fs_err::write(&new_file, "// hi").unwrap();
-    // in the `raw_message` you should see the entire message, including `commit body`
-    context.push_to_pr("feat: new file").await;
-    context.merge_all_prs().await;
+    let open_and_merge_pr = async |file, commit, branch| {
+        let new_file = context.repo_dir().join(file);
+        fs_err::write(&new_file, "// hi").unwrap();
+        // in the `raw_message` you should see the entire message, including `commit body`
+        context.push_to_pr(commit, branch).await;
+        context.merge_all_prs().await;
+    };
+
+    // make sure PR is expanded for both conventional and non-conventional commits
+    open_and_merge_pr("new1.rs", "feat: new file", "pr1").await;
+    open_and_merge_pr("new2.rs", "non-conventional commit", "pr2").await;
 
     context.run_update().success();
 
@@ -373,6 +379,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- non-conventional commit ([#2](https://localhost/{username}/{package}/pulls/2))
 - cargo init
 - Initial commit"#,
         )

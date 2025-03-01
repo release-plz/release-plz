@@ -64,13 +64,13 @@ impl TestContext {
         self.repo.git(&["push"]).unwrap();
     }
 
-    pub async fn push_to_pr(&self, commit_message: &str) {
-        self.repo.git(&["checkout", "-b", "my-pr"]).unwrap();
+    pub async fn push_to_pr(&self, commit_message: &str, branch: &str) {
+        self.repo.git(&["checkout", "-b", branch]).unwrap();
         self.repo.add_all_and_commit(commit_message).unwrap();
-        self.repo.git(&["push", "origin", "my-pr"]).unwrap();
+        self.repo.git(&["push", "origin", branch]).unwrap();
         let pr = Pr {
             base_branch: "main".to_string(),
-            branch: "my-pr".to_string(),
+            branch: branch.to_string(),
             title: commit_message.to_string(),
             body: "This is my pull request".to_string(),
             draft: false,
