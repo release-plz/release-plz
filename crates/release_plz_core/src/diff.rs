@@ -24,14 +24,12 @@ pub struct Commit {
     pub author: Signature,
     pub committer: Signature,
     pub remote: RemoteContributor,
-    pub raw_message: String,
 }
 
 impl Commit {
     pub fn new(id: String, message: String) -> Self {
         Self {
             id,
-            raw_message: message.clone(),
             message,
             ..Self::default()
         }
@@ -49,7 +47,6 @@ impl Commit {
             message: self.message.clone(),
             author: self.author.clone(),
             committer: self.committer.clone(),
-            raw_message: Some(self.raw_message.clone()),
             remote,
             ..Default::default()
         }
