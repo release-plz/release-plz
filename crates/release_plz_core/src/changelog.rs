@@ -9,7 +9,7 @@ use git_cliff_core::{
 };
 use regex::Regex;
 use serde::Serialize;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::changelog_parser;
 
