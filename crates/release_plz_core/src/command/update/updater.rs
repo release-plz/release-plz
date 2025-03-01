@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
-    sync::LazyLock,
 };
 
 use anyhow::Context as _;
@@ -16,7 +15,6 @@ use git_cliff_core::contributor::RemoteContributor;
 use git_cmd::Repo;
 use next_version::NextVersion as _;
 use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
-use regex::Regex;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
@@ -387,12 +385,6 @@ impl Updater<'_> {
             repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
         };
 
-        let pr_link = repo_url.map(|r| r.git_pr_link());
-
-        static PR_RE: LazyLock<Regex> = LazyLock::new(|| {
-            // match PR/issue numbers, e.g. `#123`
-            Regex::new("#(\\d+)").unwrap()
-        });
         let changelog = {
             let cfg = self.req.get_package_config(package.name.as_str());
             let changelog_req = cfg
@@ -409,19 +401,6 @@ impl Updater<'_> {
                             message: line.to_string(),
                             ..c
                         })
-                    }
-                })
-                // replace #123 with [#123](https://link_to_pr).
-                // If the number refers to an issue, GitHub redirects the PR link to the issue link.
-                .map(|c| {
-                    if let Some(pr_link) = &pr_link {
-                        let result = PR_RE.replace_all(&c.message, format!("[#$1]({pr_link}/$1)"));
-                        Commit {
-                            message: result.to_string(),
-                            ..c
-                        }
-                    } else {
-                        c
                     }
                 })
                 .collect();
@@ -873,6 +852,9 @@ fn get_changelog(
                 contributors: get_contributors(&commits),
             };
             changelog_builder = changelog_builder.with_remote(remote);
+
+            let pr_link = repo_url.git_pr_link();
+            changelog_builder = changelog_builder.with_pr_link(pr_link);
         }
         let is_package_published = next_version != &package.version;
 
