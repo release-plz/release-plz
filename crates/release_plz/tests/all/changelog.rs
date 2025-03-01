@@ -284,3 +284,53 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
     "#]]
     .assert_eq(&changelog);
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn raw_message_contains_entire_commit_message() {
+    let context = TestContext::new().await;
+    let config = r#"
+    [changelog]
+    body = """
+    {% for commit in commits %}
+    raw_message: {{ commit.raw_message }}
+    message: {{ commit.message }}
+    {% endfor -%}"""
+    "#;
+    context.write_release_plz_toml(config);
+
+    let new_file = context.repo_dir().join("new.rs");
+    fs_err::write(&new_file, "// hi").unwrap();
+    // in the `raw_message` you should see the entire message, including `commit body`
+    context.push_all_changes("feat: new file\n\ncommit body");
+
+    context.run_update().success();
+
+    let changelog = fs_err::read_to_string(context.repo.directory().join("CHANGELOG.md")).unwrap();
+
+    expect_test::expect![[r#"
+        # Changelog
+
+        All notable changes to this project will be documented in this file.
+
+        The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+        and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+        ## [Unreleased]
+
+        raw_message: feat: new file
+
+        commit body
+        message: new file
+
+        raw_message: add config file
+        message: add config file
+
+        raw_message: cargo init
+        message: cargo init
+
+        raw_message: Initial commit
+        message: Initial commit
+    "#]]
+    .assert_eq(&changelog);
+}
