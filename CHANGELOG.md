@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.124](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.123...release-plz-v0.3.124) - 2025-03-01
+
+### Fixed
+
+- restore pr link expansion on non-conventional commits (#2102)
+
+### Other
+
+- test raw_message feature ([#2101](https://github.com/release-plz/release-plz/pull/2101))
+- add new line to changelog header (#2098)
+
 ## [0.3.123](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.122...release-plz-v0.3.123) - 2025-02-25
 
 ### Added

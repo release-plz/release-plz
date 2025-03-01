@@ -1,6 +1,6 @@
 [package]
 name = "test_logs"
-version = "0.1.31"
+version = "0.1.32"
 edition.workspace = true
 description = "Library to see logs in tests"
 license.workspace = true
