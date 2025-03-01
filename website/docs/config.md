@@ -985,6 +985,15 @@ commit_preprocessors = [
 ]
 ```
 
+The default is the following:
+
+```toml
+commit_preprocessors = [
+  # Replace the issue/PR number with the link.
+  { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/me/my-proj/pull/${1}))"}
+]
+```
+
 ##### Using external commands
 
 Custom OS commands can also be used to edit the commit messages.
