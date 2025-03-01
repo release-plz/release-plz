@@ -8,7 +8,7 @@ use cargo_metadata::{
 };
 use git_cmd::Repo;
 use release_plz_core::{
-    DEFAULT_BRANCH_PREFIX, GitBackend, GitClient, GitPr, Gitea, RepoUrl,
+    DEFAULT_BRANCH_PREFIX, GitBackend, GitClient, GitPr, Gitea, Pr, RepoUrl,
     fs_utils::{Utf8TempDir, canonicalize_utf8},
 };
 use secrecy::SecretString;
@@ -64,6 +64,23 @@ impl TestContext {
         self.repo.git(&["push"]).unwrap();
     }
 
+    pub async fn push_to_pr(&self, commit_message: &str, branch: &str) {
+        self.repo.git(&["checkout", "-b", branch]).unwrap();
+        self.repo.add_all_and_commit(commit_message).unwrap();
+        self.repo.git(&["push", "origin", branch]).unwrap();
+        let pr = Pr {
+            base_branch: "main".to_string(),
+            branch: branch.to_string(),
+            title: commit_message.to_string(),
+            body: "This is my pull request".to_string(),
+            draft: false,
+            labels: vec![],
+        };
+        self.git_client.open_pr(&pr).await.unwrap();
+        // go back to main
+        self.repo.git(&["checkout", "-"]).unwrap();
+    }
+
     pub async fn new() -> Self {
         let context = Self::init_context().await;
         let package = TestPackage::new(&context.gitea.repo);
@@ -105,6 +122,14 @@ impl TestContext {
         context.generate_cargo_lock();
         context.push_all_changes("cargo init");
         context
+    }
+
+    pub async fn merge_all_prs(&self) {
+        let opened_prs = self.git_client.opened_prs("").await.unwrap();
+        for pr in opened_prs {
+            self.gitea.merge_pr_retrying(pr.number).await;
+        }
+        self.repo.git(&["pull"]).unwrap();
     }
 
     pub async fn merge_release_pr(&self) {
