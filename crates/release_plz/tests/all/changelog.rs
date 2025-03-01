@@ -334,3 +334,48 @@ async fn raw_message_contains_entire_commit_message() {
     "#]]
     .assert_eq(&changelog);
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn pr_link_is_expanded() {
+    let context = TestContext::new().await;
+
+    let new_file = context.repo_dir().join("new.rs");
+    fs_err::write(&new_file, "// hi").unwrap();
+    // in the `raw_message` you should see the entire message, including `commit body`
+    context.push_to_pr("feat: new file").await;
+    context.merge_all_prs().await;
+
+    context.run_update().success();
+
+    let changelog = fs_err::read_to_string(context.repo.directory().join("CHANGELOG.md")).unwrap();
+
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    assert_eq!(
+        changelog.trim(),
+        format!(
+            r#"
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - 2025-03-01
+
+### Added
+
+- new file ([#1](https://localhost/{username}/{package}/pulls/1))
+
+### Other
+
+- cargo init
+- Initial commit"#,
+        )
+        .trim()
+    );
+}
