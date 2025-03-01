@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.22](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.21...git_cmd-v0.6.22) - 2025-03-01
+
+### Other
+
+- add new line to changelog header (#2098)
+
 ## [0.6.21](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.20...git_cmd-v0.6.21) - 2025-02-22
 
 ### Other
