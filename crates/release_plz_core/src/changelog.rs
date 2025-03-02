@@ -361,7 +361,7 @@ fn default_git_config(pr_link: Option<&str>) -> GitConfig {
             // Replace #123 with [#123](https://link_to_pr).
             // If the number refers to an issue, GitHub redirects the PR link to the issue link.
             vec![TextProcessor {
-                pattern: Regex::new(r"\((#[0-9]+)\)").expect("invalid regex"),
+                pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
                 replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
                 replace_command: None,
             }]
