@@ -11,7 +11,7 @@ use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::camino::Utf8PathBuf;
 pub use cloner_builder::*;
 pub use source::*;
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 use std::collections::HashSet;
 
@@ -87,11 +87,10 @@ impl Cloner {
     ) -> CargoResult<Package> {
         let name = summary.as_summary().name();
 
-        self.config.shell().note(format!(
-            "Downloading {} {}",
-            name,
-            summary.as_summary().version()
-        ))?;
+        info!(
+            "Downloading {name} {version}",
+            version = summary.as_summary().version()
+        );
         let pkg = Box::new(src).download_now(summary.package_id(), &self.config)?;
 
         if self.use_git {
@@ -173,9 +172,7 @@ impl Cloner {
             fs_err::create_dir_all(dest_path)?;
         }
 
-        self.config
-            .shell()
-            .verbose(|s| s.note(format!("Cloning into {:?}", &self.directory)))?;
+        debug!("Cloning into {:?}", self.directory);
 
         // Cloning into an existing directory is only allowed if the directory is empty.
         let is_empty = dest_path.read_dir()?.next().is_none();
