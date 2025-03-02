@@ -3,7 +3,7 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use git_cliff_core::{
     changelog::Changelog as GitCliffChangelog,
     commit::Commit,
-    config::{Bump, ChangelogConfig, CommitParser, Config, GitConfig, RemoteConfig},
+    config::{Bump, ChangelogConfig, CommitParser, Config, GitConfig, RemoteConfig, TextProcessor},
     contributor::RemoteContributor,
     release::Release,
 };
@@ -34,6 +34,7 @@ pub struct Changelog<'a> {
     release_link: Option<String>,
     package: String,
     remote: Option<Remote>,
+    pr_link: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -95,7 +96,7 @@ impl Changelog<'_> {
         let user_config = self.config.clone().unwrap_or(default_git_cliff_config());
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
-            git: apply_defaults_to_git_config(user_config.git),
+            git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
             remote: user_config.remote,
             bump: Bump::default(),
         }
@@ -165,8 +166,8 @@ fn apply_defaults_to_changelog_config(
 }
 
 /// Apply release-plz defaults
-fn apply_defaults_to_git_config(git: GitConfig) -> GitConfig {
-    let default_git_config = default_git_config();
+fn apply_defaults_to_git_config(git: GitConfig, pr_link: Option<&str>) -> GitConfig {
+    let default_git_config = default_git_config(pr_link);
 
     GitConfig {
         conventional_commits: git
@@ -178,6 +179,9 @@ fn apply_defaults_to_git_config(git: GitConfig) -> GitConfig {
         commit_parsers: git.commit_parsers.or(default_git_config.commit_parsers),
         filter_commits: git.filter_commits.or(default_git_config.filter_commits),
         sort_commits: git.sort_commits.or(default_git_config.sort_commits),
+        commit_preprocessors: git
+            .commit_preprocessors
+            .or(default_git_config.commit_preprocessors),
         ..git
     }
 }
@@ -206,6 +210,7 @@ pub struct ChangelogBuilder<'a> {
     release_date: Option<NaiveDate>,
     release_link: Option<String>,
     package: String,
+    pr_link: Option<String>,
 }
 
 impl<'a> ChangelogBuilder<'a> {
@@ -223,12 +228,20 @@ impl<'a> ChangelogBuilder<'a> {
             remote: None,
             release_link: None,
             package: package.into(),
+            pr_link: None,
         }
     }
 
     pub fn with_previous_version(self, previous_version: impl Into<String>) -> Self {
         Self {
             previous_version: Some(previous_version.into()),
+            ..self
+        }
+    }
+
+    pub fn with_pr_link(self, pr_link: impl Into<String>) -> Self {
+        Self {
+            pr_link: Some(pr_link.into()),
             ..self
         }
     }
@@ -266,8 +279,8 @@ impl<'a> ChangelogBuilder<'a> {
             .config
             .clone()
             .map(|c| c.git)
-            .unwrap_or_else(default_git_config);
-        git_config = apply_defaults_to_git_config(git_config);
+            .unwrap_or_else(|| default_git_config(self.pr_link.as_deref()));
+        git_config = apply_defaults_to_git_config(git_config, self.pr_link.as_deref());
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
             .commits
@@ -315,6 +328,7 @@ impl<'a> ChangelogBuilder<'a> {
             release_link: self.release_link,
             config: self.config,
             package: self.package,
+            pr_link: self.pr_link,
         }
     }
 
@@ -329,7 +343,7 @@ impl<'a> ChangelogBuilder<'a> {
     }
 }
 
-fn default_git_config() -> GitConfig {
+fn default_git_config(pr_link: Option<&str>) -> GitConfig {
     GitConfig {
         conventional_commits: Some(true),
         filter_unconventional: Some(false),
@@ -343,7 +357,15 @@ fn default_git_config() -> GitConfig {
         ignore_tags: None,
         limit_commits: None,
         sort_commits: Some("newest".to_string()),
-        commit_preprocessors: None,
+        commit_preprocessors: pr_link.map(|pr_link| {
+            // Replace #123 with [#123](https://link_to_pr).
+            // If the number refers to an issue, GitHub redirects the PR link to the issue link.
+            vec![TextProcessor {
+                pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
+                replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
+                replace_command: None,
+            }]
+        }),
         link_parsers: None,
         ..Default::default()
     }
