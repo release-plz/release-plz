@@ -586,9 +586,9 @@ dependencies = [
 
 [[package]]
 name = "cargo_metadata"
-version = "0.19.1"
+version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8769706aad5d996120af43197bf46ef6ad0fda35216b4505f926a365a232d924"
+checksum = "dd5eb614ed4c27c5d706420e4320fbe3216ab31fa1c33cd8246ac36dae4479ba"
 dependencies = [
  "camino",
  "cargo-platform 0.1.9",
@@ -1496,7 +1496,7 @@ dependencies = [
  "lazy-regex",
  "lazy_static",
  "log",
- "next_version 0.2.22",
+ "next_version 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex",
  "rust-embed",
  "secrecy 0.8.0",
@@ -3292,9 +3292,7 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.2.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d59c81b2258608b1c9b8285c9752494e5d890352c21a5f5facf7ad18296d1874"
+version = "0.2.23"
 dependencies = [
  "git-conventional",
  "regex",
@@ -3304,6 +3302,8 @@ dependencies = [
 [[package]]
 name = "next_version"
 version = "0.2.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "386c591e281b737360a54fd94b0d5fa882b90e7aade775da597ca2115ab12bc7"
 dependencies = [
  "git-conventional",
  "regex",
