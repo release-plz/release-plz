@@ -43,7 +43,7 @@ pub struct Release {
     /// When you pass this flag, `release-plz` adds the `--allow-dirty` flag to `cargo publish`.
     #[arg(long)]
     pub allow_dirty: bool,
-    /// GitHub/Gitea/Gitlab repository url where your project is hosted.
+    /// GitHub/Gitea/GitLab repository url where your project is hosted.
     /// It is used to create the git release.
     /// It defaults to the url of the default remote.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]

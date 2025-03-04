@@ -17,7 +17,7 @@ The GitHub action accepts the following input variables:
 - `token`: Token used to publish to the cargo registry.
   Override the `CARGO_REGISTRY_TOKEN` environment variable, or the `CARGO_REGISTRIES_<NAME>_TOKEN`
   environment variable, used for registry specified in the `registry` input variable.
-- `backend`: Forge backend. Valid values: `github`, `gitea`. *(Defaults to `github`).*
+- `backend`: Forge backend. Valid values: `github`, `gitea`, `gitlab`. *(Defaults to `github`).*
 - `verbose`: Print module and source location in logs.
   I.e. adds the `-v` flag to the command. *(Defaults to `false`).*
 
