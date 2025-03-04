@@ -877,11 +877,11 @@ async fn get_contributors(
         .unwrap_or(vec![])
         .iter()
         .filter_map(|pr| {
-            let username = pr.user.login.clone();
+            let username = &pr.user.login;
             // Only include this contributor if we haven't seen their username before
-            unique_usernames.insert(username.clone()).then(|| {
+            unique_usernames.insert(username).then(|| {
                 git_cliff_core::contributor::RemoteContributor {
-                    username: Some(username),
+                    username: Some(username.clone()),
                     ..Default::default()
                 }
             })
