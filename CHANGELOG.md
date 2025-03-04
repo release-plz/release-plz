@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.126](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.125...release-plz-v0.3.126) - 2025-03-04
+
+### Fixed
+
+- deduplicate contributors ([#2110](https://github.com/release-plz/release-plz/pull/2110))
+
 ## [0.3.125](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.124...release-plz-v0.3.125) - 2025-03-04
 
 ### Other
