@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.125](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.124...release-plz-v0.3.125) - 2025-03-04
+
+### Other
+
+- document GitLab support ([#2109](https://github.com/release-plz/release-plz/pull/2109))
+- use git-cliff to expand the PR link ([#2103](https://github.com/release-plz/release-plz/pull/2103))
+
 ## [0.3.124](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.123...release-plz-v0.3.124) - 2025-03-01
 
 ### Fixed
