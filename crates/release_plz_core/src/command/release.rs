@@ -867,17 +867,27 @@ async fn get_contributors(
         .iter()
         .map(|pr| pr.number)
         .collect::<Vec<_>>();
+
+    let mut unique_usernames = std::collections::HashSet::new();
+
     let contributors = git_client
         .get_prs_info(&prs_number)
         .await
         .inspect_err(|e| tracing::warn!("failed to retrieve contributors: {e}"))
         .unwrap_or(vec![])
         .iter()
-        .map(|pr| git_cliff_core::contributor::RemoteContributor {
-            username: Some(pr.user.login.clone()),
-            ..Default::default()
+        .filter_map(|pr| {
+            let username = pr.user.login.clone();
+            // Only include this contributor if we haven't seen their username before
+            unique_usernames.insert(username.clone()).then(|| {
+                git_cliff_core::contributor::RemoteContributor {
+                    username: Some(username),
+                    ..Default::default()
+                }
+            })
         })
         .collect::<Vec<_>>();
+
     contributors
 }
 
