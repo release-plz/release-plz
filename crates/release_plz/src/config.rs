@@ -147,7 +147,7 @@ pub struct Workspace {
     /// Timeout for the publishing process
     pub publish_timeout: Option<String>,
     /// # Repo URL
-    /// GitHub/Gitea repository url where your project is hosted.
+    /// GitHub/Gitea/GitLab repository url where your project is hosted.
     /// It is used to generate the changelog release link.
     /// It defaults to the url of the default remote.
     pub repo_url: Option<Url>,
@@ -329,7 +329,7 @@ pub struct PackageConfig {
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
     /// # Git Release Enable
-    /// Publish the GitHub/Gitea release for the created git tag.
+    /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
     pub git_release_enable: Option<bool>,
     /// # Git Release Body

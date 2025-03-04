@@ -311,7 +311,7 @@
         },
         "git_release_enable": {
           "title": "Git Release Enable",
-          "description": "Publish the GitHub/Gitea release for the created git tag. Enabled by default.",
+          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag. Enabled by default.",
           "type": [
             "boolean",
             "null"
@@ -565,7 +565,7 @@
         },
         "git_release_enable": {
           "title": "Git Release Enable",
-          "description": "Publish the GitHub/Gitea release for the created git tag. Enabled by default.",
+          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag. Enabled by default.",
           "type": [
             "boolean",
             "null"
@@ -731,7 +731,7 @@
         },
         "repo_url": {
           "title": "Repo URL",
-          "description": "GitHub/Gitea repository url where your project is hosted. It is used to generate the changelog release link. It defaults to the url of the default remote.",
+          "description": "GitHub/Gitea/GitLab repository url where your project is hosted. It is used to generate the changelog release link. It defaults to the url of the default remote.",
           "type": [
             "string",
             "null"
