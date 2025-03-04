@@ -870,7 +870,7 @@ async fn get_contributors(
 
     let mut unique_usernames = std::collections::HashSet::new();
 
-    let contributors = git_client
+    git_client
         .get_prs_info(&prs_number)
         .await
         .inspect_err(|e| tracing::warn!("failed to retrieve contributors: {e}"))
@@ -886,9 +886,7 @@ async fn get_contributors(
                 }
             })
         })
-        .collect::<Vec<_>>();
-
-    contributors
+        .collect()
 }
 
 fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
