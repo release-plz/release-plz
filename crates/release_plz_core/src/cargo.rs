@@ -1,6 +1,7 @@
 use anyhow::Context;
 use cargo_metadata::{Package, camino::Utf8Path};
 use crates_index::{Crate, GitIndex, SparseIndex};
+use rayon::vec;
 use tracing::{debug, info};
 
 use http::{Version, header};
@@ -11,11 +12,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::fs_utils;
+
 pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    pub index: CargoIndex,
 }
 
 pub enum CargoIndex {
@@ -57,19 +59,39 @@ pub struct CmdOutput {
 }
 
 pub async fn is_published(
-    index: &mut CargoIndex,
+    registry: Option<String>,
     package: &Package,
     timeout: Duration,
     token: &Option<SecretString>,
 ) -> anyhow::Result<bool> {
+    let current_dir = fs_utils::current_directory()?;
     tokio::time::timeout(timeout, async {
-        match index {
-            CargoIndex::Git(index) => is_published_git(index, package),
-            CargoIndex::Sparse(index) => is_in_cache_sparse(index, package, token).await,
-        }
+        is_package_published(registry, package)
     })
     .await?
     .with_context(|| format!("timeout while publishing {}", package.name))
+}
+
+pub fn is_package_published(registry: Option<String>, package: &Package) -> anyhow::Result<bool> {
+    let current_dir = fs_utils::current_directory()?;
+    let mut args = vec!["info"];
+    if let Some(registry) = &registry {
+        args.push("--registry");
+        args.push(registry);
+    }
+    let package_id = &format!("{}@{}", &package.name, &package.version);
+    args.push(&package_id);
+    let output = run_cargo(&current_dir, &args)?;
+    if output.status.success() {
+        return Ok(true);
+    }
+    if output
+        .stderr
+        .contains(&format!("could not find `{package_id}` in registry"))
+    {
+        return Ok(false);
+    }
+    anyhow::bail!("failed to check if package is published: {}", output.stderr)
 }
 
 pub fn is_published_git(index: &mut GitIndex, package: &Package) -> anyhow::Result<bool> {
