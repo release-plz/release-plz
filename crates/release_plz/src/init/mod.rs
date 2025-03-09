@@ -2,7 +2,7 @@ mod gh;
 
 use std::io::Write;
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use release_plz_core::{Project, ReleaseMetadata, ReleaseMetadataBuilder};
 use std::collections::HashSet;
@@ -30,16 +30,42 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
 
     // get the repo url early to verify that the github repository is configured correctly
     let repo_url = gh::repo_url()?;
+    let repo_id = parse_repo_id(&repo_url)?;
 
     greet();
     store_cargo_token()?;
 
     enable_pr_permissions(&repo_url)?;
     let github_token = store_github_token()?;
-    write_actions_yaml(github_token)?;
+    write_actions_yaml(github_token, &repo_id)?;
 
     print_recap(&repo_url);
     Ok(())
+}
+
+fn parse_repo_id(github_url: &str) -> anyhow::Result<String> {
+    let invalid_url_msg = "invalid GitHub URL";
+
+    let Some(rest) = github_url.split_once("github.com/") else {
+        return Err(anyhow!(invalid_url_msg));
+    };
+
+    let mut segments = rest.1.split('/');
+
+    let org = segments.next().ok_or_else(|| anyhow!(invalid_url_msg))?;
+    let repo = segments
+        .next()
+        .ok_or_else(|| anyhow!(invalid_url_msg))
+        // remove query params
+        .map(|rest| {
+            rest.split_once('?')
+                // only want what's left of `?`
+                .map(|(left, _)| left)
+                // if there are no query params just take the entire thing
+                .unwrap_or(rest)
+        })?;
+
+    Ok(format!("{org}/{repo}"))
 }
 
 fn actions_file_parent() -> Utf8PathBuf {
@@ -119,16 +145,16 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
     Ok(input != "n")
 }
 
-fn write_actions_yaml(github_token: &str) -> anyhow::Result<()> {
+fn write_actions_yaml(github_token: &str, repo_id: &str) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
-    let action_yaml = action_yaml(&branch, github_token);
+    let action_yaml = action_yaml(&branch, github_token, repo_id);
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str) -> String {
+fn action_yaml(branch: &str, github_token: &str, repo_id: &str) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if is_default_token {
@@ -165,6 +191,7 @@ jobs:
         uses: release-plz/action@v0.5
         with:
           command: release
+          repo: {repo_id}
         env:
           GITHUB_TOKEN: {github_token_secret}
           CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}
@@ -189,6 +216,7 @@ jobs:
         uses: release-plz/action@v0.5
         with:
           command: release-pr
+          repo: {repo_id}
         env:
           GITHUB_TOKEN: {github_token_secret}
           CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}
@@ -259,6 +287,7 @@ mod tests {
                     uses: release-plz/action@v0.5
                     with:
                       command: release
+                      repo: some_org/some_repo
                     env:
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -283,11 +312,12 @@ mod tests {
                     uses: release-plz/action@v0.5
                     with:
                       command: release-pr
+                      repo: some_org/some_repo
                     env:
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", GITHUB_TOKEN));
+        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "some_org/some_repo"));
     }
 
     #[test]
@@ -318,6 +348,7 @@ mod tests {
                     uses: release-plz/action@v0.5
                     with:
                       command: release
+                      repo: some_org/some_repo
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -343,10 +374,22 @@ mod tests {
                     uses: release-plz/action@v0.5
                     with:
                       command: release-pr
+                      repo: some_org/some_repo
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN));
+        .assert_eq(&action_yaml(
+            "main",
+            CUSTOM_GITHUB_TOKEN,
+            "some_org/some_repo",
+        ));
+    }
+
+    #[test]
+    fn parse_repo_id_works() {
+        let github_url = "https://github.com/release-plz/release-plz?tab=readme-ov-file";
+        let id = parse_repo_id(github_url).unwrap();
+        assert_eq!(id, "release-plz/release-plz");
     }
 }
