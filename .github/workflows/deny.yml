@@ -20,6 +20,6 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@13fd9ef18c30518efe066a8ac36cd629cc377507 # v2.0.5
+      - uses: EmbarkStudios/cargo-deny-action@4de59db63a066737e557c2c4dd3d1f70206de781 # v2.0.10
         with:
           rust-version: 1.85.0
