@@ -87,11 +87,6 @@ impl Cloner {
     ) -> CargoResult<Package> {
         let name = summary.as_summary().name();
 
-        self.config.shell().note(format!(
-            "Downloading {} {}",
-            name,
-            summary.as_summary().version()
-        ))?;
         let pkg = Box::new(src).download_now(summary.package_id(), &self.config)?;
 
         if self.use_git {
@@ -172,10 +167,6 @@ impl Cloner {
         if !dest_path.exists() {
             fs_err::create_dir_all(dest_path)?;
         }
-
-        self.config
-            .shell()
-            .verbose(|s| s.note(format!("Cloning into {:?}", &self.directory)))?;
 
         // Cloning into an existing directory is only allowed if the directory is empty.
         let is_empty = dest_path.read_dir()?.next().is_none();
