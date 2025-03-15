@@ -111,6 +111,27 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 ```
 
+:::tip
+To avoid release-plz failing in forks, add the following `if` statement to each job:
+
+```yaml
+    if: ${{ github.repository_owner == 'YOUR_ORG' }}
+```
+
+For example:
+
+```yaml
+jobs:
+  release-plz-release:
+    name: Release-plz release
+    runs-on: ubuntu-latest
+# highlight-start
+    if: ${{ github.repository_owner == 'marco' }}
+# highlight-end
+```
+
+:::
+
 <details>
 <summary>Workflow explanation</summary>
 
