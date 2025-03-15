@@ -120,7 +120,7 @@ To avoid release-plz failing in forks, add the following `if` statement to each 
 
 For example:
 
-```diff
+```yaml
 jobs:
   release-plz-release:
     name: Release-plz release
@@ -129,6 +129,7 @@ jobs:
     if: ${{ github.repository_owner == 'marco' }}
 # highlight-end
 ```
+
 :::
 
 <details>
