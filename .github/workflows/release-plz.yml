@@ -9,6 +9,7 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'release-plz' }}
     permissions:
       contents: write
     steps:
@@ -43,6 +44,7 @@ jobs:
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'release-plz' }}
     permissions:
       contents: write
       pull-requests: write

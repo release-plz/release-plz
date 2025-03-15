@@ -121,14 +121,15 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
 
 fn write_actions_yaml(github_token: &str) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
-    let action_yaml = action_yaml(&branch, github_token);
+    let owner = gh::repo_owner()?;
+    let action_yaml = action_yaml(&branch, github_token, &owner);
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str) -> String {
+fn action_yaml(branch: &str, github_token: &str, owner: &str) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if is_default_token {
@@ -152,6 +153,7 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == '{owner}' }}
     permissions:
       contents: write
     steps:
@@ -172,6 +174,7 @@ jobs:
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == '{owner}' }}
     permissions:
       pull-requests: write
       contents: write
@@ -246,6 +249,7 @@ mod tests {
               release-plz-release:
                 name: Release-plz release
                 runs-on: ubuntu-latest
+                if: ${ github.repository_owner == 'owner' }
                 permissions:
                   contents: write
                 steps:
@@ -266,6 +270,7 @@ mod tests {
               release-plz-pr:
                 name: Release-plz PR
                 runs-on: ubuntu-latest
+                if: ${ github.repository_owner == 'owner' }
                 permissions:
                   pull-requests: write
                   contents: write
@@ -287,7 +292,7 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", GITHUB_TOKEN));
+        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner"));
     }
 
     #[test]
@@ -304,6 +309,7 @@ mod tests {
               release-plz-release:
                 name: Release-plz release
                 runs-on: ubuntu-latest
+                if: ${ github.repository_owner == 'owner' }
                 permissions:
                   contents: write
                 steps:
@@ -325,6 +331,7 @@ mod tests {
               release-plz-pr:
                 name: Release-plz PR
                 runs-on: ubuntu-latest
+                if: ${ github.repository_owner == 'owner' }
                 permissions:
                   pull-requests: write
                   contents: write
@@ -347,6 +354,6 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN));
+        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner"));
     }
 }
