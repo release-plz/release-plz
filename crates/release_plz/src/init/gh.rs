@@ -20,7 +20,8 @@ pub fn repo_url() -> anyhow::Result<String> {
 }
 
 pub fn repo_owner() -> anyhow::Result<String> {
-    gh_repo_view(&["owner", "-q", ".owner.login"]).context("error while retrieving repository owner")
+    gh_repo_view(&["owner", "-q", ".owner.login"])
+        .context("error while retrieving repository owner")
 }
 
 /// Store secret reading it from stdin.
