@@ -57,9 +57,9 @@ walkdir = "2.5.0"
 wiremock = "0.6.2"
 
 [workspace.lints.rust]
-ambiguous-negative-literals = "warn"
-closure-returning-async-block = "warn"
-explicit-outlives-requirements = "warn"
+ambiguous_negative_literals = "warn"
+closure_returning_async_block = "warn"
+explicit_outlives_requirements = "warn"
 if_let_rescope = "warn"
 impl_trait_overcaptures = "warn"
 impl_trait_redundant_captures = "warn"
