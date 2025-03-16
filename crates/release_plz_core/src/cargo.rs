@@ -56,6 +56,13 @@ pub struct CmdOutput {
     pub stderr: String,
 }
 
+/// Check if the package is published in the index.
+///
+/// Unfortunately, the `cargo` cli doesn't provide a way
+/// to programmatically detect if a package at a certain version is published.
+/// There's `cargo info` but it is a human-focused command with very few
+/// compatibility guarantees around its behavior.
+/// Therefore, we use the [`crates_index`] crate to check if the package is already published.
 pub async fn is_published(
     index: &mut CargoIndex,
     package: &Package,
