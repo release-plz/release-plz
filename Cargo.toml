@@ -73,8 +73,8 @@ single_use_lifetimes = "warn"
 trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unit_bindings = "warn"
-unused = "warn"
 unsafe_attr_outside_unsafe = "warn"
+unused = "warn"
 unused_import_braces = "warn"
 
 [workspace.lints.clippy]
