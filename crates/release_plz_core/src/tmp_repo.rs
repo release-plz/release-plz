@@ -3,6 +3,7 @@ use git_cmd::Repo;
 
 use crate::fs_utils::Utf8TempDir;
 
+#[derive(Debug)]
 pub struct TempRepo {
     // temporary directory that will be deleted in the `Drop` method
     _temp_dir: Utf8TempDir,

@@ -322,7 +322,6 @@ fn override_packages_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ReleaseMetadataBuilder;
     use cargo_utils::get_manifest_metadata;
 
     struct ReleaseMetadataBuilderStub {

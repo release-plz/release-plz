@@ -23,7 +23,7 @@ use tracing::{debug, instrument};
 pub use packages_update::*;
 pub use update_config::*;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ReleaseInfo {
     /// Package name
     package: String,

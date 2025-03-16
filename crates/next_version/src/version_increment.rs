@@ -150,7 +150,6 @@ impl VersionIncrement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use regex::Regex;
 
     #[test]
     fn returns_true_for_matching_custom_type() {

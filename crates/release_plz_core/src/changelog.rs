@@ -201,6 +201,7 @@ fn default_git_cliff_config() -> Config {
     }
 }
 
+#[derive(Debug)]
 pub struct ChangelogBuilder<'a> {
     commits: Vec<Commit<'a>>,
     version: String,

@@ -50,6 +50,7 @@ pub fn last_release_from_str(changelog: &str) -> anyhow::Result<Option<Changelog
     Ok(last_release)
 }
 
+#[derive(Debug)]
 pub struct ChangelogRelease {
     title: String,
     notes: String,

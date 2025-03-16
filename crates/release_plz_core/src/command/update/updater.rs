@@ -36,6 +36,7 @@ use super::{
     update_request::UpdateRequest,
 };
 
+#[derive(Debug)]
 pub struct Updater<'a> {
     pub project: &'a Project,
     pub req: &'a UpdateRequest,
