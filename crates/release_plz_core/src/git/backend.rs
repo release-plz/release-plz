@@ -60,7 +60,7 @@ impl Remote {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PrCommit {
     pub author: Option<Author>,
     pub sha: String,
@@ -221,7 +221,7 @@ pub struct GitLabMrEdit {
     state_event: Option<String>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Debug)]
 pub struct PrEdit {
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,

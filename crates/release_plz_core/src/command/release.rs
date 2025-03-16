@@ -474,12 +474,12 @@ pub struct GitRelease {
     pub backend: GitBackend,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Debug)]
 pub struct Release {
     releases: Vec<PackageRelease>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct PackageRelease {
     package_name: String,
     prs: Vec<Pr>,
@@ -897,6 +897,7 @@ fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
     GitClient::new(git_release.backend.clone())
 }
 
+#[derive(Debug)]
 pub struct GitReleaseInfo {
     pub git_tag: String,
     pub release_name: String,

@@ -8,6 +8,7 @@ use tempfile::{TempDir, tempdir};
 
 use crate::{PackagePath, cargo_vcs_info, download, next_ver};
 
+#[derive(Debug)]
 pub struct PackagesCollection {
     packages: BTreeMap<String, RegistryPackage>,
     /// Packages might be downloaded and stored in a temporary directory.
@@ -15,6 +16,7 @@ pub struct PackagesCollection {
     _temp_dir: Option<TempDir>,
 }
 
+#[derive(Debug)]
 pub struct RegistryPackage {
     pub package: Package,
     /// The SHA1 hash of the commit when the package was published.

@@ -18,7 +18,6 @@ use cargo_metadata::{
     semver::Version,
 };
 use chrono::NaiveDate;
-use git_cmd::{self};
 use std::path::PathBuf;
 use toml_edit::TableLike;
 use tracing::instrument;
