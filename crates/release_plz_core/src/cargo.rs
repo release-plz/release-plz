@@ -57,6 +57,7 @@ pub struct CmdOutput {
 }
 
 /// Check if the package is published in the index.
+///
 /// Unfortunately, the `cargo` cli doesn't provide a way
 /// to programmatically detect if a package at a certain version is published.
 /// There's `cargo info` but it is a human-focused command with very few
