@@ -30,7 +30,7 @@ jobs:
           # `true` is the default value.
           persist-credentials: true
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@c5a29ddb4d9d194e7c84ec8c3fba61b1c31fee8c
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1
         with:
           toolchain: stable
       - name: Run release-plz
@@ -69,7 +69,7 @@ jobs:
           # `true` is the default value.
           persist-credentials: true
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@c5a29ddb4d9d194e7c84ec8c3fba61b1c31fee8c
+        uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1
         with:
           toolchain: stable
       - name: Run release-plz
