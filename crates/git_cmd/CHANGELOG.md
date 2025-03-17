@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.23](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.22...git_cmd-v0.6.23) - 2025-03-17
+
+### Other
+
+- add more rust lints ([#2135](https://github.com/release-plz/release-plz/pull/2135))
+
 ## [0.6.22](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.21...git_cmd-v0.6.22) - 2025-03-01
 
 ### Other

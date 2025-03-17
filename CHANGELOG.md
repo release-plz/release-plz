@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.127](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.126...release-plz-v0.3.127) - 2025-03-17
+
+### Fixed
+
+- escape the curly braces in the template for init ([#2138](https://github.com/release-plz/release-plz/pull/2138))
+
+### Other
+
+- add more rust lints ([#2135](https://github.com/release-plz/release-plz/pull/2135))
+- explain why we use the `crates_index` crate ([#2134](https://github.com/release-plz/release-plz/pull/2134))
+
 ## [0.3.126](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.125...release-plz-v0.3.126) - 2025-03-15
 
 ### Fixed
