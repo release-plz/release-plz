@@ -153,7 +153,7 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == '{owner}' }}
+    if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
       contents: write
     steps:
@@ -174,7 +174,7 @@ jobs:
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == '{owner}' }}
+    if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
       pull-requests: write
       contents: write
@@ -249,7 +249,7 @@ mod tests {
               release-plz-release:
                 name: Release-plz release
                 runs-on: ubuntu-latest
-                if: ${ github.repository_owner == 'owner' }
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   contents: write
                 steps:
@@ -270,7 +270,7 @@ mod tests {
               release-plz-pr:
                 name: Release-plz PR
                 runs-on: ubuntu-latest
-                if: ${ github.repository_owner == 'owner' }
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
@@ -309,7 +309,7 @@ mod tests {
               release-plz-release:
                 name: Release-plz release
                 runs-on: ubuntu-latest
-                if: ${ github.repository_owner == 'owner' }
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   contents: write
                 steps:
@@ -331,7 +331,7 @@ mod tests {
               release-plz-pr:
                 name: Release-plz PR
                 runs-on: ubuntu-latest
-                if: ${ github.repository_owner == 'owner' }
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
