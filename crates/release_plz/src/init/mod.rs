@@ -84,7 +84,7 @@ fn store_github_token() -> anyhow::Result<&'static str> {
    2. Under \"Only selected repositories\", select the repositories where you want to use the PAT, to give release-plz write access.
    3. Under \"Repository permissions\", assign \"Contents\" and \"Pull requests\" read and write permissions.
 
-   If you have doubts, check the documentation: https://release-plz.dev/docs/github/token#use-a-personal-access-token");
+   If you have doubts, check the documentation: https://release-plz.dev/docs/github/token#use-a-personal-access-token.");
 
         // GitHub custom token
         let release_plz_token: &str = CUSTOM_GITHUB_TOKEN;
@@ -208,7 +208,7 @@ jobs:
 fn ensure_gh_is_installed() -> anyhow::Result<()> {
     anyhow::ensure!(
         gh::is_gh_installed(),
-        "❌ gh cli is not installed. I need it to store GitHub actions repository secrets. Please install it from https://docs.github.com/en/github-cli/github-cli/quickstart"
+        "❌ gh cli is not installed. I need it to store GitHub actions repository secrets. Please install it from https://docs.github.com/en/github-cli/github-cli/quickstart."
     );
     Ok(())
 }
