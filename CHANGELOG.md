@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.128](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.127...release-plz-v0.3.128) - 2025-03-22
+
+### Other
+
+- *(init)* explain how to create the PAT ([#2141](https://github.com/release-plz/release-plz/pull/2141))
+
 ## [0.3.127](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.126...release-plz-v0.3.127) - 2025-03-17
 
 ### Fixed
