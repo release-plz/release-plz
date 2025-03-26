@@ -204,14 +204,15 @@ async fn release_plz_updates_binary_when_library_changes() {
     let binary = "binary";
     let library1 = "library1";
     let library2 = "library2";
+    // dependency chain: binary -> library2 -> library1
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library1}"), format!("../{library2}")]),
-        TestPackage::new(library1).with_type(PackageType::Lib),
+            .with_path_dependencies(vec![format!("../{library2}")]),
         TestPackage::new(library2)
             .with_type(PackageType::Lib)
             .with_path_dependencies(vec![format!("../{library1}")]),
+        TestPackage::new(library1).with_type(PackageType::Lib),
     ])
     .await;
 
@@ -242,7 +243,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
-* `{library2}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `{library2}`: 0.1.0 -> 0.1.1
 * `{binary}`: 0.1.0 -> 0.1.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
@@ -257,6 +258,9 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 - edit library
 </blockquote>
+
+
+</p></details>
 
 ## `{library2}`
 
