@@ -8,7 +8,7 @@ pub trait PackageDependencies {
     /// Returns the `updated_packages` which should be updated in the dependencies of the package.
     fn dependencies_to_update<'a>(
         &self,
-        updated_packages: &'a [(&Package, &Version)],
+        updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
     ) -> anyhow::Result<Vec<&'a Package>>;
@@ -17,7 +17,7 @@ pub trait PackageDependencies {
 impl PackageDependencies for Package {
     fn dependencies_to_update<'a>(
         &self,
-        updated_packages: &'a [(&Package, &Version)],
+        updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
     ) -> anyhow::Result<Vec<&'a Package>> {
