@@ -53,6 +53,7 @@ fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error>
         .hidden(false)
         // Don't consider `.ignore` files.
         .ignore(false)
+        .git_global(false)
         .build();
     for entry in walker {
         let entry = entry.context("invalid entry")?;
