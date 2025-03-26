@@ -303,7 +303,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         publish = ["test-registry"]
 
         [dependencies]
-        library = { version = "0.1.1", path = "../library", registry = "test-registry" }
+        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
     "#]]
     .assert_eq(&binary_cargo_toml);
 }
