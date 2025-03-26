@@ -202,12 +202,17 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_updates_binary_when_library_changes() {
     let binary = "binary";
-    let library = "library";
+    let library1 = "library1";
+    let library2 = "library2";
+    // dependency chain: binary -> library2 -> library1
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library}")]),
-        TestPackage::new(library).with_type(PackageType::Lib),
+            .with_path_dependencies(vec![format!("../{library2}")]),
+        TestPackage::new(library2)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library1}")]),
+        TestPackage::new(library1).with_type(PackageType::Lib),
     ])
     .await;
 
@@ -216,7 +221,7 @@ async fn release_plz_updates_binary_when_library_changes() {
     context.run_release().success();
 
     // Update the library.
-    let lib_file = context.package_path(library).join("src").join("aa.rs");
+    let lib_file = context.package_path(library1).join("src").join("aa.rs");
     fs_err::write(&lib_file, "pub fn foo() {}").unwrap();
     context.push_all_changes("edit library");
 
@@ -237,20 +242,32 @@ async fn release_plz_updates_binary_when_library_changes() {
             r#"
 ## 🤖 New release
 
-* `{library}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `{library2}`: 0.1.0 -> 0.1.1
 * `{binary}`: 0.1.0 -> 0.1.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
-## `{library}`
+## `{library1}`
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.1.1) - {today}
+## [0.1.1](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
 
 ### Other
 
 - edit library
+</blockquote>
+
+## `{library2}`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
+
+### Other
+
+- updated the following local packages: {library1}
 </blockquote>
 
 ## `{binary}`
@@ -261,7 +278,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 ### Other
 
-- updated the following local packages: {library}
+- updated the following local packages: {library2}
 </blockquote>
 
 
@@ -286,7 +303,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         publish = ["test-registry"]
 
         [dependencies]
-        library = { version = "0.1.1", path = "../library", registry = "test-registry" }
+        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
     "#]]
     .assert_eq(&binary_cargo_toml);
 }

@@ -122,10 +122,10 @@ impl Updater<'_> {
             }
         }
 
-        let changed_packages: Vec<(&Package, &Version)> = packages_to_update
+        let changed_packages: Vec<(&Package, Version)> = packages_to_update
             .updates()
             .iter()
-            .map(|(p, u)| (p, &u.version))
+            .map(|(p, u)| (p, u.version.clone()))
             .collect();
         let dependent_packages =
             self.dependent_packages_update(&packages_to_check_for_deps, &changed_packages)?;
@@ -291,24 +291,63 @@ impl Updater<'_> {
     fn dependent_packages_update(
         &self,
         packages_to_check_for_deps: &[&Package],
-        changed_packages: &[(&Package, &Version)],
+        initial_changed_packages: &[(&Package, Version)],
     ) -> anyhow::Result<PackagesToUpdate> {
         let workspace_manifest = LocalManifest::try_new(self.req.local_manifest())?;
         let workspace_dependencies = workspace_manifest.get_workspace_dependency_table();
 
         let mut old_changelogs = OldChangelogs::new();
         let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
-        let packages_to_update = packages_to_check_for_deps
+
+        // Track which packages have been processed
+        let mut processed: HashSet<String> = initial_changed_packages
             .iter()
-            .filter_map(|p| {
-                p.dependencies_to_update(changed_packages, workspace_dependencies, workspace_dir)
-                    .ok()
-                    .filter(|deps| !deps.is_empty())
-                    .map(|deps| (p, deps))
-            })
-            .map(|(&p, deps)| self.calculate_package_update_result(&deps, p, &mut old_changelogs))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(packages_to_update)
+            .map(|(p, _)| p.name.clone())
+            .collect();
+
+        let mut result = Vec::new();
+
+        // Keep a copy of all packages that have changed so far
+        let mut all_changed_packages: Vec<(&Package, Version)> = initial_changed_packages.to_vec();
+
+        // Continue updating packages until no more dependencies to update are found
+        loop {
+            let mut any_package_updated = false;
+
+            for p in packages_to_check_for_deps {
+                // Skip packages we've already processed in previous iterations
+                if processed.contains(&p.name) {
+                    continue;
+                }
+
+                // Check if this package depends on any changed package
+                if let Ok(deps) = p.dependencies_to_update(
+                    &all_changed_packages,
+                    workspace_dependencies,
+                    workspace_dir,
+                ) {
+                    if !deps.is_empty() {
+                        // This package depends on changed packages, so it needs to be updated
+                        let update =
+                            self.calculate_package_update_result(&deps, p, &mut old_changelogs)?;
+
+                        result.push(update.clone());
+
+                        // Mark as changed so packages depending on it will be updated in the next iteration
+                        all_changed_packages.push((p, update.1.version.clone()));
+                        processed.insert(p.name.clone());
+                        any_package_updated = true;
+                    }
+                }
+            }
+
+            // If no packages were updated in this iteration, we're done
+            if !any_package_updated {
+                break;
+            }
+        }
+
+        Ok(result)
     }
 
     fn calculate_package_update_result(
