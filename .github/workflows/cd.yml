@@ -73,6 +73,13 @@ jobs:
           tar: all
           zip: windows
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  draft-announcement:
+    name: Draft social media announcement
+    needs: upload-assets
+    if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
+    runs-on: ubuntu-24.04
+    steps:
       # We use typefully to cross-post the release announcement
       # to release-plz social media accounts.
       # This job prepares the announcement draft. Marco needs to login to
@@ -85,7 +92,7 @@ jobs:
           curl -X POST "https://api.typefully.com/v1/drafts/"
           -H "Content-Type: application/json"
           -H "X-API-KEY: ${{ secrets.TYPEFULLY_API_KEY }}"
-          -d '{
-            "content": "🤖 New release: ${RELEASE_NAME}\n\n${RELEASE_BODY}",
-            "threadify": true
-          }'
+          -d "{
+            \"content\": \"🤖 New release: ${RELEASE_NAME}\n\n${RELEASE_BODY}\",
+            \"threadify\": true
+          }"
