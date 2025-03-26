@@ -278,7 +278,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 ### Other
 
-- updated the following local packages: {library1}, {library2}
+- updated the following local packages: {library2}
 </blockquote>
 
 
