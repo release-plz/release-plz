@@ -259,9 +259,6 @@ async fn release_plz_updates_binary_when_library_changes() {
 - edit library
 </blockquote>
 
-
-</p></details>
-
 ## `{library2}`
 
 <blockquote>
@@ -272,9 +269,6 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 - updated the following local packages: {library1}
 </blockquote>
-
-
-</p></details>
 
 ## `{binary}`
 
