@@ -53,6 +53,8 @@ fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error>
         .hidden(false)
         // Don't consider `.ignore` files.
         .ignore(false)
+        // Ignore the global `.gitignore` as it might cause issues.
+        // For example, if it contains `.git/`, we will fail in recognizing the git directory later.
         .git_global(false)
         .build();
     for entry in walker {
