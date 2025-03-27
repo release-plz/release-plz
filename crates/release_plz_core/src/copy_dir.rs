@@ -49,13 +49,8 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
 #[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
 fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error> {
     let walker = ignore::WalkBuilder::new(from)
-        // Read hidden files
-        .hidden(false)
-        // Don't consider `.ignore` files.
-        .ignore(false)
-        // Ignore the global `.gitignore` as it might cause issues.
-        // For example, if it contains `.git/`, we will fail in recognizing the git directory later.
-        .git_global(false)
+        // Copy all files without filtering. The is crucial to keep the Git repository unmodified.
+        .standard_filters(false)
         .build();
     for entry in walker {
         let entry = entry.context("invalid entry")?;
