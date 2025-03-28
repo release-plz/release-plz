@@ -6,7 +6,6 @@ mod changelog_filler;
 mod changelog_parser;
 mod clone;
 mod command;
-mod copy_dir;
 mod diff;
 mod download;
 pub mod fs_utils;

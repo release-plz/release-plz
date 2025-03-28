@@ -108,6 +108,13 @@ impl Repo {
         Ok(changed_files)
     }
 
+    /// Clones a Git repository locally, including submodules.
+    pub fn local_clone(&self, from: &Utf8Path, to: &Utf8Path) -> Result<(), anyhow::Error> {
+        debug!("git clone --recurse-submodules {} {}", from, to);
+        self.git(&["clone", "--recurse-submodules", from.as_str(), to.as_str()])?;
+        Ok(())
+    }
+
     /// Get files changed in the current commit
     pub fn files_of_current_commit(&self) -> anyhow::Result<HashSet<Utf8PathBuf>> {
         let output = self.git(&["show", "--oneline", "--name-only", "--pretty=format:"])?;
