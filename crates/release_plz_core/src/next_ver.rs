@@ -3,7 +3,6 @@ use crate::updater::Updater;
 use crate::{
     PackagesUpdate, Project,
     changelog_parser::{self, ChangelogRelease},
-    copy_dir::copy_dir,
     fs_utils::{Utf8TempDir, strip_prefix},
     package_path::manifest_dir,
     registry_packages::{self},
@@ -20,6 +19,7 @@ use cargo_metadata::{
 use chrono::NaiveDate;
 use std::path::PathBuf;
 use toml_edit::TableLike;
+use tracing::debug;
 use tracing::instrument;
 
 // Used to indicate that this is a dummy commit with no corresponding ID available.
@@ -183,11 +183,25 @@ fn is_example_package(package: &Package) -> bool {
         .all(|t| t.kind == [TargetKind::Example])
 }
 
-pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
-    let tmp_dir = Utf8TempDir::new().context("cannot create temporary directory")?;
-    copy_dir(target, tmp_dir.path())
-        .with_context(|| format!("cannot copy directory {target:?} to {tmp_dir:?}"))?;
-    Ok(tmp_dir)
+/// Copies the Git directory in terms of a local Git clone, including submodules.
+pub fn copy_to_temp_dir(source: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
+    let target = Utf8TempDir::new().context("cannot create temporary directory")?;
+    debug!("cloning repository from {} to {}", source, target.path());
+
+    // Within the temporary directory, copy into a directory with the same
+    // name as the top-level source Git repository directory.
+    let source_dir_name = source
+        .components()
+        .last()
+        .with_context(|| format!("invalid path {source:?}"))?;
+
+    let repo = git_cmd::Repo::new(source).context(format!(
+        "failed to find git repository in directory: {source}"
+    ))?;
+
+    repo.local_clone(source, &target.path().join(source_dir_name))?;
+
+    Ok(target)
 }
 
 /// Check if `dependency` (contained in the Cargo.toml at `dependency_package_dir`) refers

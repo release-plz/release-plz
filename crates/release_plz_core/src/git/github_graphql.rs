@@ -165,8 +165,6 @@ mod tests {
 
     use super::*;
 
-    use crate::copy_dir::create_symlink;
-
     #[tokio::test]
     async fn github_commit_query() {
         let temporary = tempdir().unwrap();
@@ -191,9 +189,6 @@ mod tests {
             .await
             .unwrap();
 
-        let type_changed_path = repo_dir.join("type_changed.txt");
-        create_symlink(&unchanged_path, &type_changed_path).unwrap();
-
         repo.add_all_and_commit("initial commit").unwrap();
 
         // apply changes to the repository
@@ -212,14 +207,6 @@ mod tests {
 
         // file removal
         fs_err::tokio::remove_file(&removed_path).await.unwrap();
-
-        // type change (replace symlink with a content it pointed to)
-        fs_err::tokio::remove_file(&type_changed_path)
-            .await
-            .unwrap();
-        fs_err::tokio::write(&type_changed_path, b"unchanged")
-            .await
-            .unwrap();
 
         // check if the commit query is correctly created
         let owner_slash_repo = "owner/repo";
