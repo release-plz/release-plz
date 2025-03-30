@@ -485,7 +485,7 @@ impl Updater<'_> {
             .context("can't checkout head to calculate diff")?;
         let registry_package = registry_packages.get_registry_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
-        let pathbufs_to_check = pathbufs_to_check(&package_path, package);
+        let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         repository
             .checkout_last_commit_at_paths(&paths_to_check)
@@ -537,7 +537,7 @@ impl Updater<'_> {
         tag_commit: Option<&str>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
-        let pathbufs_to_check = pathbufs_to_check(package_path, package);
+        let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         loop {
             let current_commit_message = repository.current_commit_message()?;
@@ -809,14 +809,19 @@ fn get_package_files(
         .filter(|l| l != "Cargo.toml.orig" && l != ".cargo_vcs_info.json")
         .map(|l| {
             let is_crate_path_same_as_git_repo = crate_relative_path == "";
+            let normalized = fs_utils::canonicalize_utf8(&crate_relative_path.join(l))?;
             if is_crate_path_same_as_git_repo {
-                l
+                let prefix = repository.directory();
+                let stripped = normalized
+                    .strip_prefix(repository.directory())
+                    .with_context(|| format!("failed to strip {prefix} from {normalized}"))?;
+                Ok(stripped.to_path_buf())
             } else {
-                crate_relative_path.join(l)
+                Ok(normalized)
             }
         })
         .collect();
-    Ok(sources)
+    sources
 }
 
 /// Check if commit belongs to a previous version of the package.
@@ -850,12 +855,15 @@ fn is_commit_too_old(
     false
 }
 
-fn pathbufs_to_check(package_path: &Utf8Path, package: &Package) -> Vec<Utf8PathBuf> {
+fn pathbufs_to_check(
+    package_path: &Utf8Path,
+    package: &Package,
+) -> anyhow::Result<Vec<Utf8PathBuf>> {
     let mut paths = vec![package_path.to_path_buf()];
-    if let Some(readme_path) = crate::local_readme_override(package, package_path) {
+    if let Some(readme_path) = crate::local_readme_override(package, package_path)? {
         paths.push(readme_path);
     }
-    paths
+    Ok(paths)
 }
 
 fn get_changelog(

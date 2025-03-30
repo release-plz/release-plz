@@ -6,7 +6,7 @@ use cargo_metadata::{
 use cargo_utils::{CARGO_TOML, get_manifest_metadata};
 use tracing::debug;
 
-use crate::cargo::run_cargo;
+use crate::{cargo::run_cargo, fs_utils};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -150,7 +150,7 @@ pub fn is_readme_updated(
     };
 
     let local_package_readme_path = local_readme_override(&package, local_package_path);
-    let are_readmes_equal = match local_package_readme_path {
+    let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
             let registry_package_readme_path = registry_package_path.join("README.md");
             if !registry_package_readme_path.exists() {
@@ -172,11 +172,16 @@ pub fn is_readme_updated(
 pub fn local_readme_override(
     package: &Package,
     local_package_path: &Utf8Path,
-) -> Option<Utf8PathBuf> {
+) -> anyhow::Result<Option<Utf8PathBuf>> {
     package
         .readme
         .as_ref()
-        .map(|readme| local_package_path.join(readme))
+        .map(|readme| {
+            let readme_path = local_package_path.join(readme);
+            fs_utils::canonicalize_utf8(&readme_path)
+                .with_context(|| format!("failed to canonicalize path: {readme_path}"))
+        })
+        .transpose()
 }
 
 fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {
