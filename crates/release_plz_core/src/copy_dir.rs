@@ -3,6 +3,7 @@ use std::{io, path::Path};
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use tracing::{debug, trace};
+use walkdir::WalkDir;
 
 use crate::fs_utils::strip_prefix;
 
@@ -48,31 +49,36 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
 #[tracing::instrument]
 #[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
 fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error> {
-    let walker = ignore::WalkBuilder::new(from)
-        // Read hidden files
-        .hidden(false)
-        // Don't consider `.ignore` files.
-        .ignore(false)
-        // Ignore the global `.gitignore` as it might cause issues.
-        // For example, if it contains `.git/`, we will fail in recognizing the git directory later.
-        .git_global(false)
-        .build();
-    for entry in walker {
-        let entry = entry.context("invalid entry")?;
+    // Include all files tracked by Git, including the .git/ dir.
+    let mut file_list = std::vec::Vec::new();
+    for entry in WalkDir::new(from.join(".git")) {
+        if let Some(path_str) = entry?.path().to_str() {
+            file_list.push(Utf8PathBuf::from(path_str));
+        }
+    }
+    for file_path in &git_cmd::list_tracked_files(from)? {
+        file_list.push(from.join(file_path));
+    }
+
+    for entry in &file_list {
         let destination =
-            destination_path(&to, &entry, from).context("failed to determine destination path")?;
-        let file_type = entry.file_type().context("unknown file type")?;
-        if file_type.is_dir() {
-            if destination == to {
-                continue;
+            destination_path(&to, entry, from).context("failed to determine destination path")?;
+
+        let file_type = std::fs::symlink_metadata(entry)
+            .with_context(|| format!("failed to get metadata for {entry:?}"))?
+            .file_type();
+
+        if let Some(parent) = destination.parent() {
+            if !parent.exists() {
+                trace!("creating directory {:?}", destination);
+                fs_err::create_dir_all(parent)?;
             }
-            trace!("creating directory {:?}", destination);
-            fs_err::create_dir(&destination)?;
-        } else if file_type.is_symlink() {
-            let entry_utf8: &Utf8Path = entry.path().try_into()?;
-            let original_link = Utf8Path::read_link_utf8(entry_utf8)
-                .with_context(|| format!("cannot read link {:?}", entry.path()))?;
-            debug!("found symlink {:?} -> {:?}", entry.path(), original_link);
+        }
+
+        if file_type.is_symlink() {
+            let original_link = Utf8Path::read_link_utf8(entry)
+                .with_context(|| format!("cannot read link {entry:?}"))?;
+            debug!("found symlink {:?} -> {:?}", entry, original_link);
             let original_link = if original_link.is_relative() {
                 original_link
             } else {
@@ -86,22 +92,22 @@ fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error>
                 )
             })?;
         } else if file_type.is_file() {
-            trace!("copying file {:?} to {:?}", entry.path(), &destination);
-            fs_err::copy(entry.path(), &destination).with_context(|| {
-                format!("cannot copy file {:?} to {:?}", entry.path(), &destination)
-            })?;
+            trace!("copying file {:?} to {:?}", entry, &destination);
+            fs_err::copy(entry, &destination)
+                .with_context(|| format!("cannot copy file {:?} to {:?}", entry, &destination))?;
         }
     }
+
     Ok(())
 }
 
 fn destination_path(
     to: &Utf8Path,
-    entry: &ignore::DirEntry,
+    entry: &Utf8Path,
     from: &Utf8Path,
 ) -> anyhow::Result<Utf8PathBuf> {
     let mut dest_path = to.to_path_buf();
-    let relative = strip_prefix(entry.path().try_into()?, from)?;
+    let relative = strip_prefix(entry, from)?;
     dest_path.push(relative);
     Ok(dest_path)
 }

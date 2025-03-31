@@ -388,6 +388,33 @@ impl Repo {
     }
 }
 
+pub fn list_tracked_files(git_root: &Utf8Path) -> anyhow::Result<Vec<String>> {
+    let output = std::process::Command::new("git")
+        .current_dir(git_root)
+        .args([
+            "-c",
+            // Allow for non-ASCII characters in the output.
+            "core.quotepath=false",
+            "ls-files",
+            "--recurse-submodules",
+        ])
+        .output()
+        .context("Failed to execute git ls-files")?;
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!(
+            "git ls-files failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(String::from_utf8(output.stdout)?
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.trim().to_string())
+        .collect())
+}
+
 pub fn is_file_ignored(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
     let file = file.as_str();
 
