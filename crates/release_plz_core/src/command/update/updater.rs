@@ -809,10 +809,10 @@ fn get_package_files(
         .filter(|l| l != "Cargo.toml.orig" && l != ".cargo_vcs_info.json")
         .map(|l| {
             let is_crate_path_same_as_git_repo = crate_relative_path == "";
+            // Normalize path to handle symbolic links correctly.
             let normalized = fs_utils::canonicalize_utf8(&crate_relative_path.join(l))?;
             if is_crate_path_same_as_git_repo {
                 let prefix = repository.directory();
-                // Strip path to handle symbolic links correctly.
                 let stripped = normalized
                     .strip_prefix(prefix)
                     .with_context(|| format!("failed to strip {prefix} from {normalized}"))?;
