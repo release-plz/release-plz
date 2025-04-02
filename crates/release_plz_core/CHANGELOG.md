@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.5...release_plz_core-v0.33.6) - 2025-04-02
+
+### Fixed
+
+- ignore global `.gitignore` when copying to tmp dir ([#2149](https://github.com/release-plz/release-plz/pull/2149))
+
 ## [0.33.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.4...release_plz_core-v0.33.5) - 2025-03-26
 
 ### Fixed
