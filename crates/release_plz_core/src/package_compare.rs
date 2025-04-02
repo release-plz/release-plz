@@ -179,7 +179,6 @@ pub fn local_readme_override(
         .map(|readme| {
             let readme_path = local_package_path.join(readme);
             fs_utils::canonicalize_utf8(&readme_path)
-                .with_context(|| format!("failed to canonicalize path: {readme_path}"))
         })
         .transpose()
 }
