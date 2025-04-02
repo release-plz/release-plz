@@ -813,7 +813,7 @@ fn get_package_files(
             if is_crate_path_same_as_git_repo {
                 let prefix = repository.directory();
                 let stripped = normalized
-                    .strip_prefix(repository.directory())
+                    .strip_prefix(prefix)
                     .with_context(|| format!("failed to strip {prefix} from {normalized}"))?;
                 Ok(stripped.to_path_buf())
             } else {
