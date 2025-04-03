@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.130](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.129...release-plz-v0.3.130) - 2025-04-02
+
+### Fixed
+
+- ignore global `.gitignore` when copying to tmp dir ([#2149](https://github.com/release-plz/release-plz/pull/2149))
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.3.129](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.128...release-plz-v0.3.129) - 2025-03-26
 
 ### Fixed
