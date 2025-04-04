@@ -1,4 +1,8 @@
-use super::{update::Update, OutputType};
+use release_plz_core::ReleasePrRequest;
+
+use crate::config::Config;
+
+use super::{OutputType, update::Update};
 
 #[derive(clap::Parser, Debug)]
 pub struct ReleasePr {
@@ -8,6 +12,28 @@ pub struct ReleasePr {
     /// the release PR, if any.
     #[arg(short, long, value_enum)]
     pub output: Option<OutputType>,
+}
+
+impl ReleasePr {
+    pub fn release_pr_req(
+        &self,
+        config: &Config,
+        cargo_metadata: cargo_metadata::Metadata,
+    ) -> anyhow::Result<ReleasePrRequest> {
+        let pr_branch_prefix = config.workspace.pr_branch_prefix.clone();
+        let pr_name = config.workspace.pr_name.clone();
+        let pr_body = config.workspace.pr_body.clone();
+        let pr_labels = config.workspace.pr_labels.clone();
+        let pr_draft = config.workspace.pr_draft;
+        let update_request = self.update.update_request(config, cargo_metadata)?;
+        let request = ReleasePrRequest::new(update_request)
+            .mark_as_draft(pr_draft)
+            .with_labels(pr_labels)
+            .with_branch_prefix(pr_branch_prefix)
+            .with_pr_name_template(pr_name)
+            .with_pr_body_template(pr_body);
+        Ok(request)
+    }
 }
 
 #[cfg(test)]

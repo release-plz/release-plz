@@ -1,7 +1,7 @@
 use url::Url;
 use wiremock::{
-    matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
 };
 
 pub struct GiteaMockServer {

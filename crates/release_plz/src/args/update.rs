@@ -4,13 +4,13 @@ use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use chrono::NaiveDate;
 use clap::{
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
     ValueEnum,
+    builder::{NonEmptyStringValueParser, PathBufValueParser},
 };
 use git_cliff_core::config::Config as GitCliffConfig;
 use release_plz_core::{
-    fs_utils::to_utf8_path, ChangelogRequest, GitBackend, GitHub, GitLab, Gitea, RepoUrl,
-    UpdateRequest,
+    ChangelogRequest, GitBackend, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
+    update_request::UpdateRequest,
 };
 use secrecy::SecretString;
 
@@ -179,7 +179,10 @@ impl Update {
             Ok(repo_url) => {
                 update = update.with_repo_url(repo_url);
             }
-            Err(e) => tracing::warn!("Cannot determine repo url. The changelog won't contain the release link. Error: {:?}", e),
+            Err(e) => tracing::warn!(
+                "Cannot determine repo url. The changelog won't contain the release link. Error: {:?}",
+                e
+            ),
         }
 
         if let Some(registry_manifest_path) = &self.registry_manifest_path {
@@ -243,7 +246,10 @@ impl Update {
 
         // Parse the configuration file.
         let changelog_config = if path.exists() {
-            anyhow::ensure!(config.changelog.is_default(), "specifying the `[changelog]` configuration has no effect if `changelog_config` path is specified");
+            anyhow::ensure!(
+                config.changelog.is_default(),
+                "specifying the `[changelog]` configuration has no effect if `changelog_config` path is specified"
+            );
             GitCliffConfig::parse(path).context("failed to parse git-cliff config file")?
         } else {
             config

@@ -2,22 +2,24 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     DependencyKind, Metadata, Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::CARGO_TOML;
 use tracing::debug;
 
 use crate::{
-    copy_to_temp_dir,
-    fs_utils::{self, strip_prefix},
-    manifest_dir, new_manifest_dir_path, root_repo_path_from_manifest_dir,
-    tmp_repo::TempRepo,
-    workspace_packages, Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder,
+    PackagePath as _,
+    tera::{PACKAGE_VAR, VERSION_VAR, tera_context, tera_var},
 };
 use crate::{
-    tera::{tera_context, tera_var, PACKAGE_VAR, VERSION_VAR},
-    PackagePath as _,
+    Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
+    fs_utils::{self, strip_prefix},
+    manifest_dir, new_manifest_dir_path,
+    release_order::release_order,
+    root_repo_path_from_manifest_dir,
+    tmp_repo::TempRepo,
+    workspace_packages,
 };
 
 #[derive(Debug)]
@@ -45,7 +47,7 @@ impl Project {
     pub fn new(
         local_manifest: &Utf8Path,
         single_package: Option<&str>,
-        overrides: &HashSet<String>,
+        overrides: &HashSet<&str>,
         metadata: &Metadata,
         release_metadata_builder: &dyn ReleaseMetadataBuilder,
     ) -> anyhow::Result<Self> {
@@ -70,7 +72,10 @@ impl Project {
                     });
             release_metadata.is_some()
         });
-        anyhow::ensure!(!packages.is_empty(), "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}");
+        anyhow::ensure!(
+            !packages.is_empty(),
+            "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
+        );
 
         let contains_multiple_pub_packages = packages.len() > 1;
 
@@ -83,8 +88,14 @@ impl Project {
             );
         }
 
+        // Order packages so that they are analyzed in the order that they are released.
+        // This also helps when a changelog contains changes from different packages
+        // (i.e. the packages have the same changelog_path config).
+        // In this case, the changes of one package come before the changes of its dependencies.
+        let ordered_packages = ordered_packages(&packages)?;
+
         Ok(Self {
-            packages,
+            packages: ordered_packages,
             release_metadata,
             root,
             manifest_dir,
@@ -96,6 +107,7 @@ impl Project {
         &self.root
     }
 
+    /// Packages that can be published, ordered by release order.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()
@@ -209,6 +221,17 @@ See https://doc.rust-lang.org/cargo/reference/manifest.html\n",
     }
 }
 
+fn ordered_packages(packages: &[Package]) -> anyhow::Result<Vec<Package>> {
+    let packages_refs: Vec<&Package> = packages.iter().collect();
+    let ordered = release_order(&packages_refs)
+        .context("cannot determine release order")?
+        .into_iter()
+        .cloned()
+        .collect();
+
+    Ok(ordered)
+}
+
 fn check_local_dependencies(package: &Package) -> Vec<String> {
     //Check if version is specified for local dependencies (has a path entry)
     let mut local_dependencies_missing_version = vec![];
@@ -238,15 +261,15 @@ fn create_missing_version_error_message(package_name: &str, dependencies: Vec<St
 
 fn check_overrides_typos(
     packages: &[Package],
-    overrides: &HashSet<String>,
+    overrides: &HashSet<&str>,
 ) -> Result<(), anyhow::Error> {
-    let package_names: HashSet<_> = packages.iter().map(|p| p.name.clone()).collect();
+    let package_names: HashSet<&str> = packages.iter().map(|p| p.name.as_str()).collect();
     check_for_typos(&package_names, overrides)?;
     Ok(())
 }
 
 /// Check for typos in the package names based on the overrides
-fn check_for_typos(packages: &HashSet<String>, overrides: &HashSet<String>) -> anyhow::Result<()> {
+fn check_for_typos(packages: &HashSet<&str>, overrides: &HashSet<&str>) -> anyhow::Result<()> {
     let diff: Vec<_> = overrides.difference(packages).collect();
 
     if diff.is_empty() {
@@ -299,7 +322,6 @@ fn override_packages_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ReleaseMetadataBuilder;
     use cargo_utils::get_manifest_metadata;
 
     struct ReleaseMetadataBuilderStub {
@@ -330,7 +352,7 @@ mod tests {
     fn get_project(
         local_manifest: &Utf8Path,
         single_package: Option<&str>,
-        overrides: &HashSet<String>,
+        overrides: &HashSet<&str>,
         is_release_enabled: bool,
         tag_name: Option<String>,
         release_name: Option<String>,
@@ -349,8 +371,8 @@ mod tests {
 
     #[test]
     fn test_for_typos() {
-        let packages: HashSet<String> = vec!["foo".to_string()].into_iter().collect();
-        let overrides: HashSet<String> = vec!["bar".to_string()].into_iter().collect();
+        let packages: HashSet<&str> = ["foo"].into();
+        let overrides: HashSet<&str> = ["bar"].into();
         let result = check_for_typos(&packages, &overrides);
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -369,7 +391,7 @@ mod tests {
     #[test]
     fn test_successful_override() {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
-        let overrides = (["typo_test".to_string()]).into();
+        let overrides = (["typo_test"]).into();
         let result = get_project(local_manifest, None, &overrides, true, None, None);
         assert!(result.is_ok());
     }
@@ -378,7 +400,7 @@ mod tests {
     fn test_typo_in_crate_names() {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
         let single_package = None;
-        let overrides = vec!["typo_tesst".to_string()].into_iter().collect();
+        let overrides = ["typo_tesst"].into();
         let result = get_project(local_manifest, single_package, &overrides, true, None, None);
         assert!(result.is_err());
         assert_eq!(

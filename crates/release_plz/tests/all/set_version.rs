@@ -1,6 +1,6 @@
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::CARGO_TOML;
-use release_plz_core::{copy_to_temp_dir, CHANGELOG_FILENAME};
+use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir};
 
 use crate::helpers::test_context::run_set_version;
 
@@ -22,7 +22,7 @@ fn set_version_updates_version_in_workspace() {
         [package]
         name = "one"
         version = "0.1.1"
-        edition = "2021"
+        edition = "2024"
 
         [dependencies]
     "#]]
@@ -33,7 +33,7 @@ fn set_version_updates_version_in_workspace() {
         [package]
         name = "two"
         version = "0.3.0"
-        edition = "2021"
+        edition = "2024"
 
         [dependencies]
     "#]]

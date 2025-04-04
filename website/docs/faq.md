@@ -30,11 +30,12 @@ Here are some reasons why you might want to edit the release PR:
   [breaking change](https://www.conventionalcommits.org/en/v1.0.0/#commit-message-with-description-and-breaking-change-footer),
   or if cargo-semver-checks
   [failed](https://github.com/obi1kenobi/cargo-semver-checks#will-cargo-semver-checks-catch-every-semver-violation)
-  to detect a breaking change, you can manually edit the version of the package.
+  to detect a breaking change, you can edit the version of the package manually or with the
+  [set-version](./usage/set-version.md) command.
 
 ## Does the changelog include the commits from the whole repo?
 
-The changelog of each crate includes the commit that changed one of the
+The changelog of each crate includes the commits that changed one of the
 files of the crate or one of its dependencies.
 
 ## What if a commit doesn't follow the conventional-commits format?

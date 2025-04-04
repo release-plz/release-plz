@@ -9,14 +9,16 @@ use tracing::{debug, info, instrument};
 use url::Url;
 
 use crate::git::backend::{
-    contributors_from_commits, validate_labels, BackendType, GitClient, GitPr, PrEdit,
+    BackendType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
 };
 use crate::git::github_graphql;
-use crate::pr::{Pr, DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX};
+use crate::pr::{DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX, Pr};
 use crate::{
-    copy_to_temp_dir, new_manifest_dir_path, new_project_root, publishable_packages_from_manifest,
-    root_repo_path_from_manifest_dir, update, PackagesUpdate, UpdateRequest,
+    PackagesUpdate, copy_to_temp_dir, new_manifest_dir_path, new_project_root,
+    publishable_packages_from_manifest, root_repo_path_from_manifest_dir, update,
 };
+
+use super::update_request::UpdateRequest;
 
 #[derive(Debug)]
 pub struct ReleasePrRequest {
@@ -275,7 +277,11 @@ async fn handle_opened_pr(
         {
             Ok(()) => ReleasePr::new(opened_pr, new_pr.base_branch.clone()),
             Err(e) => {
-                tracing::error!("cannot update release pr {}: {:?}. I'm closing the old release pr and opening a new one", opened_pr.number, e);
+                tracing::error!(
+                    "cannot update release pr {}: {:?}. I'm closing the old release pr and opening a new one",
+                    opened_pr.number,
+                    e
+                );
                 git_client
                     .close_pr(opened_pr.number)
                     .await

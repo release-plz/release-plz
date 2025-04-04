@@ -30,7 +30,7 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
     anyhow::ensure!(from.is_dir(), "not a directory: {:?}", from);
     let dir_name = from
         .components()
-        .last()
+        .next_back()
         .with_context(|| format!("invalid path {from:?}"))?;
     let to = to.as_ref().join(dir_name);
     debug!("copying directory from {:?} to {:?}", from, to);
@@ -53,6 +53,9 @@ fn copy_directory(from: &Utf8Path, to: Utf8PathBuf) -> Result<(), anyhow::Error>
         .hidden(false)
         // Don't consider `.ignore` files.
         .ignore(false)
+        // Ignore the global `.gitignore` as it might cause issues.
+        // For example, if it contains `.git/`, we will fail in recognizing the git directory later.
+        .git_global(false)
         .build();
     for entry in walker {
         let entry = entry.context("invalid entry")?;

@@ -6,19 +6,18 @@ pub mod init;
 mod log;
 mod update_checker;
 
-use args::{config_command::ConfigCommand as _, OutputType};
+use args::{OutputType, config_command::ConfigCommand as _};
 use clap::Parser;
-use config::Config;
-use release_plz_core::{ReleasePrRequest, ReleaseRequest, UpdateRequest};
+use release_plz_core::ReleaseRequest;
 use serde::Serialize;
 use tracing::error;
 
-use crate::args::{manifest_command::ManifestCommand as _, CliArgs, Command};
+use crate::args::{CliArgs, Command, manifest_command::ManifestCommand as _};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
-    log::init(args.verbose);
+    log::init(args.verbosity()?);
     run(args).await.map_err(|e| {
         error!("{:?}", e);
         e
@@ -33,8 +32,8 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
             let cargo_metadata = cmd_args.cargo_metadata()?;
             let config = cmd_args.config()?;
             let update_request = cmd_args.update_request(&config, cargo_metadata)?;
-            let updates = release_plz_core::update(&update_request).await?;
-            println!("{}", updates.0.summary());
+            let (packages_update, _temp_repo) = release_plz_core::update(&update_request).await?;
+            println!("{}", packages_update.summary());
         }
         Command::ReleasePr(cmd_args) => {
             anyhow::ensure!(
@@ -43,8 +42,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
             );
             let cargo_metadata = cmd_args.update.cargo_metadata()?;
             let config = cmd_args.update.config()?;
-            let update_request = cmd_args.update.update_request(&config, cargo_metadata)?;
-            let request = get_release_pr_req(&config, update_request)?;
+            let request = cmd_args.release_pr_req(&config, cargo_metadata)?;
             let release_pr = release_plz_core::release_pr(&request).await?;
             if let Some(output_type) = cmd_args.output {
                 let prs = match release_pr {
@@ -80,24 +78,6 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-fn get_release_pr_req(
-    config: &Config,
-    update_request: UpdateRequest,
-) -> anyhow::Result<ReleasePrRequest> {
-    let pr_branch_prefix = config.workspace.pr_branch_prefix.clone();
-    let pr_name = config.workspace.pr_name.clone();
-    let pr_body = config.workspace.pr_body.clone();
-    let pr_labels = config.workspace.pr_labels.clone();
-    let pr_draft = config.workspace.pr_draft;
-    let request = ReleasePrRequest::new(update_request)
-        .mark_as_draft(pr_draft)
-        .with_labels(pr_labels)
-        .with_branch_prefix(pr_branch_prefix)
-        .with_pr_name_template(pr_name)
-        .with_pr_body_template(pr_body);
-    Ok(request)
 }
 
 fn print_output(output_type: OutputType, output: impl Serialize) {

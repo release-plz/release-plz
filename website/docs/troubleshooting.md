@@ -33,7 +33,20 @@ is having issues to:
 
 ## See `DEBUG` logs
 
-Release-plz uses the `RUST_LOG` environment variable to filter the level of the printed logs.
-By default, release-plz shows logs at the `info` level, or more severe.
-To see debug logs, use `RUST_LOG=debug release-plz`.
-If you want something even more details, use `RUST_LOG=trace release-plz`
+By default, Release-plz shows logs at the `INFO` level.
+
+The `--verbose` (`-v`) flag can be used to increase the verbosity of the logs.
+It can be specified multiple times to increase the verbosity even more.
+
+```bash
+release-plz --verbose # (or -v) Make logs verbose
+release-plz -vv # Show verbose DEBUG logs
+release-plz -vvv # Show verbose TRACE logs
+```
+
+Release-plz log level can also be configured using the `RELEASE_PLZ_LOG` environment variable.
+
+```bash
+RELEASE_PLZ_LOG=DEBUG release-plz
+RELEASE_PLZ_LOG=TRACE release-plz
+```

@@ -1,6 +1,6 @@
 use crate::{
-    tera::{render_template, PACKAGE_VAR, RELEASES_VAR, VERSION_VAR},
     PackagesUpdate, ReleaseInfo,
+    tera::{PACKAGE_VAR, RELEASES_VAR, VERSION_VAR, render_template},
 };
 use chrono::SecondsFormat;
 

@@ -1,10 +1,87 @@
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.33.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.5...release_plz_core-v0.33.6) - 2025-04-02
+
+### Fixed
+
+- ignore global `.gitignore` when copying to tmp dir ([#2149](https://github.com/release-plz/release-plz/pull/2149))
+
+## [0.33.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.4...release_plz_core-v0.33.5) - 2025-03-26
+
+### Fixed
+
+- update a package if dependency of its dependency was updated ([#2150](https://github.com/release-plz/release-plz/pull/2150))
+
+## [0.33.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.3...release_plz_core-v0.33.4) - 2025-03-17
+
+### Other
+
+- add more rust lints ([#2135](https://github.com/release-plz/release-plz/pull/2135))
+- explain why we use the `crates_index` crate ([#2134](https://github.com/release-plz/release-plz/pull/2134))
+
+## [0.33.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.2...release_plz_core-v0.33.3) - 2025-03-15
+
+### Fixed
+
+- deduplicate contributors ([#2110](https://github.com/release-plz/release-plz/pull/2110))
+
+### Other
+
+- remove verbose cargo logs ([#2129](https://github.com/release-plz/release-plz/pull/2129))
+
+## [0.33.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.1...release_plz_core-v0.33.2) - 2025-03-04
+
+### Other
+
+- use git-cliff to expand the PR link ([#2103](https://github.com/release-plz/release-plz/pull/2103))
+
+## [0.33.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.0...release_plz_core-v0.33.1) - 2025-03-01
+
+### Fixed
+
+- restore pr link expansion on non-conventional commits (#2102)
+
+### Other
+
+- add new line to changelog header (#2098)
+
+## [0.33.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.7...release_plz_core-v0.33.0) - 2025-02-25
+
+### Added
+
+- edit changelog order to respect release order (#2070)
+
+### Other
+
+- split next_ver module (#2095)
+
+## [0.32.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.6...release_plz_core-v0.32.7) - 2025-02-22
+
+### Fixed
+
+- don't error if package already published (#2085)
+
+### Other
+
+- use edition 2024 (#2086)
+
+## [0.32.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.5...release_plz_core-v0.32.6) - 2025-02-22
+
+### Added
+
+- support rust 2024 edition (#2084)
+
+### Fixed
+
+- clippy lint (#2082)
+- support env var override for registry index (#2033)
 
 ## [0.32.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.32.4...release_plz_core-v0.32.5) - 2025-02-09
 

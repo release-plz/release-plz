@@ -1,10 +1,23 @@
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.24](https://github.com/release-plz/release-plz/compare/next_version-v0.2.23...next_version-v0.2.24) - 2025-03-17
+
+### Other
+
+- add more rust lints ([#2135](https://github.com/release-plz/release-plz/pull/2135))
+
+## [0.2.23](https://github.com/release-plz/release-plz/compare/next_version-v0.2.22...next_version-v0.2.23) - 2025-03-01
+
+### Other
+
+- add new line to changelog header (#2098)
 
 ## [0.2.22](https://github.com/release-plz/release-plz/compare/next_version-v0.2.21...next_version-v0.2.22) - 2025-02-02
 

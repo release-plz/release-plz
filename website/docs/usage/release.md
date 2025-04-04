@@ -32,12 +32,12 @@ To learn more, run `release-plz release --help`.
 GitHub is the default release-plz backend. You can use the `--backend` flag to
 specify a different backend.
 
-### Gitlab
+### GitLab
 
-`release-plz release` also supports creating releases for repositories hosted on Gitlab with
+`release-plz release` also supports creating releases for repositories hosted on GitLab with
 the `--backend gitlab` option:
 
-You need to create a token in your Gitlab repo (Settings/Access Tokens) with the following
+You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
 permissions:
 
 - Role: `Maintainer` or higher
@@ -45,7 +45,7 @@ permissions:
   - `api` (to create a release)
   - `write_repository` (to create tag)
 
-See the Gitlab [project access tokens](https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html)
+See the GitLab [project access tokens](https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html)
 docs.
 
 Then you can run `release-plz release` with the following arguments:

@@ -26,7 +26,7 @@ If there's already an open release PR:
   release-plz closes the PR to preserve the git history.
   The update mechanism is simple: overwrite everything and force-push. 💥
   Reasoning: changes done by bots are not valuable, so we can overwrite them.
-  (Not available on Gitea).
+  (Not available on Gitea and GitLab).
 - Otherwise, release-plz closes the old PR and opens a new one.
   This is done to preserve the git history of maintainers' changes.
   Release-plz also closes the release PR when it cannot update it
@@ -57,12 +57,12 @@ than making a commit locally and pushing the changes.
 This allows having a [Verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
 commit without specifying a GPG signature.
 
-## Gitlab
+## GitLab
 
-`release-plz release-pr` also supports creating PRs for repositories hosted on Gitlab with
+`release-plz release-pr` also supports creating PRs for repositories hosted on GitLab with
 the `--backend gitlab` option.
 
-You need to create a token in your Gitlab repo (Settings/Access Tokens) with the following
+You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
 permissions:
 
 - Role: `Maintainer` or higher
@@ -70,7 +70,7 @@ permissions:
   - `api` (to read/create/update a release-pr)
   - `write_repository` (to push the release-plz branch)
 
-See the Gitlab [project access tokens](https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html)
+See the GitLab [project access tokens](https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html)
 docs.
 
 Then you can run `release-plz release-pr` with the following arguments:

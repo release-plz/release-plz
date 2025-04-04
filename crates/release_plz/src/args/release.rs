@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use clap::{
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
     ValueEnum,
+    builder::{NonEmptyStringValueParser, PathBufValueParser},
 };
 use release_plz_core::{GitBackend, GitHub, GitLab, Gitea, ReleaseRequest};
 use secrecy::SecretString;
@@ -10,8 +10,8 @@ use secrecy::SecretString;
 use crate::config::Config;
 
 use super::{
-    config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
-    OutputType,
+    OutputType, config_command::ConfigCommand, manifest_command::ManifestCommand,
+    repo_command::RepoCommand,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -43,7 +43,7 @@ pub struct Release {
     /// When you pass this flag, `release-plz` adds the `--allow-dirty` flag to `cargo publish`.
     #[arg(long)]
     pub allow_dirty: bool,
-    /// GitHub/Gitea/Gitlab repository url where your project is hosted.
+    /// GitHub/Gitea/GitLab repository url where your project is hosted.
     /// It is used to create the git release.
     /// It defaults to the url of the default remote.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]

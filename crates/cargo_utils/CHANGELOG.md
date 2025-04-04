@@ -1,10 +1,29 @@
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.66](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.65...cargo_utils-v0.1.66) - 2025-03-01
+
+### Other
+
+- add new line to changelog header (#2098)
+
+## [0.1.65](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.64...cargo_utils-v0.1.65) - 2025-02-22
+
+### Other
+
+- use edition 2024 (#2086)
+
+## [0.1.64](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.63...cargo_utils-v0.1.64) - 2025-02-22
+
+### Fixed
+
+- support env var override for registry index (#2033)
 
 ## [0.1.63](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.62...cargo_utils-v0.1.63) - 2025-01-23
 

@@ -9,7 +9,7 @@ use itertools::Itertools;
 use reqwest::header::HeaderMap;
 use reqwest::{Response, Url};
 use reqwest_middleware::ClientBuilder;
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -60,7 +60,7 @@ impl Remote {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct PrCommit {
     pub author: Option<Author>,
     pub sha: String,
@@ -221,7 +221,7 @@ pub struct GitLabMrEdit {
     state_event: Option<String>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Debug)]
 pub struct PrEdit {
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
@@ -807,7 +807,9 @@ impl GitClient {
             || (response.status() == StatusCode::UNPROCESSABLE_ENTITY
                 && self.backend == BackendType::Github)
         {
-            debug!("No associated PRs for commit {commit}. This can happen if the commit is not pushed to the remote repository.");
+            debug!(
+                "No associated PRs for commit {commit}. This can happen if the commit is not pushed to the remote repository."
+            );
             return Ok(vec![]);
         }
         let response = response.error_for_status()?;

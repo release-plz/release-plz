@@ -32,7 +32,7 @@ const FeatureList = [
         Release-plz opens a PR with the changes to <code>CHANGELOG.md</code>,{" "}
         <code>Cargo.toml</code>{" "}
         and <code>Cargo.lock</code>. When you merge the PR, release-plz creates the tag and the
-        release on GitHub/Gitea and publishes the crate to crates.io.
+        release on GitHub/Gitea/GitLab and publishes the crate to crates.io.
       </>
     ),
   },

@@ -1,9 +1,9 @@
 use anyhow::Context;
-use cargo_metadata::{camino::Utf8Path, Package};
+use cargo_metadata::{Package, camino::Utf8Path};
 use crates_index::{Crate, GitIndex, SparseIndex};
 use tracing::{debug, info};
 
-use http::{header, Version};
+use http::{Version, header};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
@@ -56,6 +56,13 @@ pub struct CmdOutput {
     pub stderr: String,
 }
 
+/// Check if the package is published in the index.
+///
+/// Unfortunately, the `cargo` cli doesn't provide a way
+/// to programmatically detect if a package at a certain version is published.
+/// There's `cargo info` but it is a human-focused command with very few
+/// compatibility guarantees around its behavior.
+/// Therefore, we use the [`crates_index`] crate to check if the package is already published.
 pub async fn is_published(
     index: &mut CargoIndex,
     package: &Package,
@@ -197,7 +204,11 @@ pub async fn wait_until_published(
         if is_published {
             break;
         } else if timeout < now.elapsed() {
-            anyhow::bail!("timeout of {:?} elapsed while publishing the package {}. You can increase this timeout by editing the `publish_timeout` field in the `release-plz.toml` file", timeout, package.name)
+            anyhow::bail!(
+                "timeout of {:?} elapsed while publishing the package {}. You can increase this timeout by editing the `publish_timeout` field in the `release-plz.toml` file",
+                timeout,
+                package.name
+            )
         }
 
         if !logged {

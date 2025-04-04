@@ -36,7 +36,7 @@ fn generate_schema_json() -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::generate_schema::{generate_schema_json, FILE, FOLDER};
+    use crate::generate_schema::{FILE, FOLDER, generate_schema_json};
     use pretty_assertions::assert_eq;
     use std::env;
     use std::path::{Path, PathBuf};

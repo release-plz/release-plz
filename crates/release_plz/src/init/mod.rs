@@ -51,7 +51,9 @@ fn actions_file() -> Utf8PathBuf {
 }
 
 fn greet() {
-    println!("👋 This process will guide you in setting up release-plz in your GitHub repository, using `gh` (the GitHub CLI) to store the necessary tokens in your repository secrets.");
+    println!(
+        "👋 This process will guide you in setting up release-plz in your GitHub repository, using `gh` (the GitHub CLI) to store the necessary tokens in your repository secrets."
+    );
 }
 
 fn store_cargo_token() -> anyhow::Result<()> {
@@ -69,12 +71,20 @@ fn enable_pr_permissions(repo_url: &str) -> anyhow::Result<()> {
 }
 
 fn store_github_token() -> anyhow::Result<&'static str> {
-    let should_create_token = ask_confirmation("👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.")?;
+    let should_create_token = ask_confirmation(
+        "👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.",
+    )?;
 
     let github_token = if should_create_token {
         println!("
 👉 Paste your GitHub PAT.
-💡 Create a GitHub PAT following these instructions: https://release-plz.dev/docs/github/token#use-a-personal-access-token");
+💡 Create a GitHub PAT following these instructions:
+
+   1. Go to https://github.com/settings/personal-access-tokens/new.
+   2. Under \"Only selected repositories\", select the repositories where you want to use the PAT, to give release-plz write access.
+   3. Under \"Repository permissions\", assign \"Contents\" and \"Pull requests\" read and write permissions.
+
+   If you have doubts, check the documentation: https://release-plz.dev/docs/github/token#use-a-personal-access-token.");
 
         // GitHub custom token
         let release_plz_token: &str = CUSTOM_GITHUB_TOKEN;
@@ -117,14 +127,15 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
 
 fn write_actions_yaml(github_token: &str) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
-    let action_yaml = action_yaml(&branch, github_token);
+    let owner = gh::repo_owner()?;
+    let action_yaml = action_yaml(&branch, github_token, &owner);
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str) -> String {
+fn action_yaml(branch: &str, github_token: &str, owner: &str) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if is_default_token {
@@ -148,6 +159,7 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
+    if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
       contents: write
     steps:
@@ -168,6 +180,7 @@ jobs:
   release-plz-pr:
     name: Release-plz PR
     runs-on: ubuntu-latest
+    if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
       pull-requests: write
       contents: write
@@ -195,7 +208,8 @@ jobs:
 fn ensure_gh_is_installed() -> anyhow::Result<()> {
     anyhow::ensure!(
         gh::is_gh_installed(),
-        "❌ gh cli is not installed. I need it to store GitHub actions repository secrets. Please install it from https://docs.github.com/en/github-cli/github-cli/quickstart");
+        "❌ gh cli is not installed. I need it to store GitHub actions repository secrets. Please install it from https://docs.github.com/en/github-cli/github-cli/quickstart."
+    );
     Ok(())
 }
 
@@ -241,6 +255,7 @@ mod tests {
               release-plz-release:
                 name: Release-plz release
                 runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   contents: write
                 steps:
@@ -261,6 +276,7 @@ mod tests {
               release-plz-pr:
                 name: Release-plz PR
                 runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
@@ -282,7 +298,7 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", GITHUB_TOKEN));
+        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner"));
     }
 
     #[test]
@@ -299,6 +315,7 @@ mod tests {
               release-plz-release:
                 name: Release-plz release
                 runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   contents: write
                 steps:
@@ -320,6 +337,7 @@ mod tests {
               release-plz-pr:
                 name: Release-plz PR
                 runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
@@ -342,6 +360,6 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN));
+        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner"));
     }
 }

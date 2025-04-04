@@ -1,11 +1,14 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Duration,
+};
 
 use anyhow::Context;
 use cargo::util::VersionExt;
 use cargo_metadata::{
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
-    Metadata, Package,
 };
 use crates_index::{GitIndex, SparseIndex};
 use git_cmd::Repo;
@@ -15,13 +18,13 @@ use tracing::{debug, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    cargo::{is_published, run_cargo, wait_until_published, CargoIndex, CargoRegistry, CmdOutput},
+    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote,
+    cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
+    cargo_hash_kind::get_hash_kind,
     changelog_parser,
     git::backend::GitClient,
-    pr_parser::{prs_from_text, Pr},
-    release_order::release_order,
-    GitBackend, PackagePath, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX,
+    pr_parser::{Pr, prs_from_text},
 };
 
 #[derive(Debug)]
@@ -231,6 +234,10 @@ impl PackagesConfig {
 
     fn set(&mut self, package_name: String, config: ReleaseConfig) {
         self.overrides.insert(package_name, config);
+    }
+
+    pub fn overridden_packages(&self) -> HashSet<&str> {
+        self.overrides.keys().map(|s| s.as_str()).collect()
     }
 }
 
@@ -467,12 +474,12 @@ pub struct GitRelease {
     pub backend: GitBackend,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Debug)]
 pub struct Release {
     releases: Vec<PackageRelease>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct PackageRelease {
     package_name: String,
     prs: Vec<Pr>,
@@ -487,7 +494,7 @@ pub struct PackageRelease {
 /// Release the project as it is.
 #[instrument(skip(input))]
 pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> {
-    let overrides = input.packages_config.overrides.keys().cloned().collect();
+    let overrides = input.packages_config.overridden_packages();
     let project = Project::new(
         &input.local_manifest(),
         None,
@@ -531,12 +538,13 @@ async fn release_packages(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
+    // Packages are already ordered by release order.
     let packages = project.publishable_packages();
-    let release_order = release_order(&packages).context("cannot determine release order")?;
     let mut package_releases: Vec<PackageRelease> = vec![];
-    for package in release_order {
+    let hash_kind = get_hash_kind()?;
+    for package in packages {
         if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client).await?
+            release_package_if_needed(input, project, package, repo, git_client, &hash_kind).await?
         {
             package_releases.push(pkg_release);
         }
@@ -553,6 +561,7 @@ async fn release_package_if_needed(
     package: &Package,
     repo: &Repo,
     git_client: &GitClient,
+    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string());
     let release_name = project.release_name(&package.name, &package.version.to_string());
@@ -564,7 +573,7 @@ async fn release_package_if_needed(
         return Ok(None);
     }
 
-    let registry_indexes = registry_indexes(package, input.registry.clone())
+    let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
         .context("can't determine registry indexes")?;
     let mut package_was_released = false;
     let changelog = last_changelog_entry(input, package);
@@ -667,6 +676,7 @@ fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::backend::Pr
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
+    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
@@ -684,9 +694,10 @@ fn registry_indexes(
         .into_iter()
         .map(|(registry, u)| {
             if u.to_string().starts_with("sparse+") {
-                SparseIndex::from_url(u.as_str()).map(CargoIndex::Sparse)
+                SparseIndex::from_url_with_hash_kind(u.as_str(), hash_kind).map(CargoIndex::Sparse)
             } else {
-                GitIndex::from_url(&format!("registry+{u}")).map(CargoIndex::Git)
+                GitIndex::from_url_with_hash_kind(&format!("registry+{u}"), hash_kind)
+                    .map(CargoIndex::Git)
             }
             .map(|index| CargoRegistry {
                 name: Some(registry),
@@ -734,11 +745,25 @@ async fn release_package(
             || !output.stderr.contains("Uploading")
             || output.stderr.contains("error:")
         {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                release_info.package.name,
-                output.stderr
-            );
+            if output.stderr.contains(&format!(
+                "crate version `{}` is already uploaded",
+                &release_info.package.version,
+            )) {
+                // The crate was published while `cargo publish` was running.
+                // Note that the crate wasn't published yet when `cargo publish` started,
+                // otherwise `cargo` would have returned the error "crate {package}@{version} already exists"
+                info!(
+                    "skipping publish of {} {}: already published",
+                    release_info.package.name, release_info.package.version
+                );
+                return Ok(false);
+            } else {
+                anyhow::bail!(
+                    "failed to publish {}: {}",
+                    release_info.package.name,
+                    output.stderr
+                );
+            }
         }
     }
 
@@ -842,18 +867,26 @@ async fn get_contributors(
         .iter()
         .map(|pr| pr.number)
         .collect::<Vec<_>>();
-    let contributors = git_client
+
+    let mut unique_usernames = std::collections::HashSet::new();
+
+    git_client
         .get_prs_info(&prs_number)
         .await
         .inspect_err(|e| tracing::warn!("failed to retrieve contributors: {e}"))
         .unwrap_or(vec![])
         .iter()
-        .map(|pr| git_cliff_core::contributor::RemoteContributor {
-            username: Some(pr.user.login.clone()),
-            ..Default::default()
+        .filter_map(|pr| {
+            let username = &pr.user.login;
+            // Only include this contributor if we haven't seen their username before
+            unique_usernames.insert(username).then(|| {
+                git_cliff_core::contributor::RemoteContributor {
+                    username: Some(username.clone()),
+                    ..Default::default()
+                }
+            })
         })
-        .collect::<Vec<_>>();
-    contributors
+        .collect()
 }
 
 fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
@@ -864,6 +897,7 @@ fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
     GitClient::new(git_release.backend.clone())
 }
 
+#[derive(Debug)]
 pub struct GitReleaseInfo {
     pub git_tag: String,
     pub release_name: String,
@@ -1011,14 +1045,14 @@ mod tests {
         // Store the previous value of the var, if defined.
         let previous_val = env::var(key.as_ref()).ok();
 
-        env::set_var(key.as_ref(), value.as_ref());
+        unsafe { env::set_var(key.as_ref(), value.as_ref()) };
         (f)();
 
         // Reset or clear the var after the test.
         if let Some(previous_val) = previous_val {
-            env::set_var(key.as_ref(), previous_val);
+            unsafe { env::set_var(key.as_ref(), previous_val) };
         } else {
-            env::remove_var(key.as_ref());
+            unsafe { env::remove_var(key.as_ref()) };
         }
     }
 

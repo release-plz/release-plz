@@ -17,10 +17,10 @@ use std::collections::HashSet;
 
 use std::process::Command;
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 
-use cargo::core::dependency::Dependency;
 use cargo::core::Package;
+use cargo::core::dependency::Dependency;
 use cargo::sources::source::{QueryKind, Source};
 use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
 
@@ -87,11 +87,6 @@ impl Cloner {
     ) -> CargoResult<Package> {
         let name = summary.as_summary().name();
 
-        self.config.shell().note(format!(
-            "Downloading {} {}",
-            name,
-            summary.as_summary().version()
-        ))?;
         let pkg = Box::new(src).download_now(summary.package_id(), &self.config)?;
 
         if self.use_git {
@@ -173,10 +168,6 @@ impl Cloner {
             fs_err::create_dir_all(dest_path)?;
         }
 
-        self.config
-            .shell()
-            .verbose(|s| s.note(format!("Cloning into {:?}", &self.directory)))?;
-
         // Cloning into an existing directory is only allowed if the directory is empty.
         let is_empty = dest_path.read_dir()?.next().is_none();
         if !is_empty {
@@ -223,7 +214,7 @@ fn query_latest_package_summary(
     let mut latest_summary: Option<IndexSummary> = None;
     loop {
         let query_result = src.query(&dep, QueryKind::Exact, &mut |summary| {
-            let is_summary_newer = latest_summary.as_ref().map_or(true, |latest| {
+            let is_summary_newer = latest_summary.as_ref().is_none_or(|latest| {
                 latest.as_summary().version() < summary.as_summary().version()
             });
             if is_summary_newer {

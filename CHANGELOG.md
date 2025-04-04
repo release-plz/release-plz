@@ -1,10 +1,112 @@
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.3.130](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.129...release-plz-v0.3.130) - 2025-04-02
+
+### Fixed
+
+- ignore global `.gitignore` when copying to tmp dir ([#2149](https://github.com/release-plz/release-plz/pull/2149))
+
+### Other
+
+- update Cargo.lock dependencies
+
+## [0.3.129](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.128...release-plz-v0.3.129) - 2025-03-26
+
+### Fixed
+
+- update a package if dependency of its dependency was updated ([#2150](https://github.com/release-plz/release-plz/pull/2150))
+
+## [0.3.128](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.127...release-plz-v0.3.128) - 2025-03-22
+
+### Other
+
+- *(init)* explain how to create the PAT ([#2141](https://github.com/release-plz/release-plz/pull/2141))
+
+## [0.3.127](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.126...release-plz-v0.3.127) - 2025-03-17
+
+### Fixed
+
+- escape the curly braces in the template for init ([#2138](https://github.com/release-plz/release-plz/pull/2138))
+
+### Other
+
+- add more rust lints ([#2135](https://github.com/release-plz/release-plz/pull/2135))
+- explain why we use the `crates_index` crate ([#2134](https://github.com/release-plz/release-plz/pull/2134))
+
+## [0.3.126](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.125...release-plz-v0.3.126) - 2025-03-15
+
+### Fixed
+
+- deduplicate contributors ([#2110](https://github.com/release-plz/release-plz/pull/2110))
+
+### Other
+
+- don't run action in forks ([#2128](https://github.com/release-plz/release-plz/pull/2128))
+- remove verbose cargo logs ([#2129](https://github.com/release-plz/release-plz/pull/2129))
+
+## [0.3.125](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.124...release-plz-v0.3.125) - 2025-03-04
+
+### Other
+
+- document GitLab support ([#2109](https://github.com/release-plz/release-plz/pull/2109))
+- use git-cliff to expand the PR link ([#2103](https://github.com/release-plz/release-plz/pull/2103))
+
+## [0.3.124](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.123...release-plz-v0.3.124) - 2025-03-01
+
+### Fixed
+
+- restore pr link expansion on non-conventional commits (#2102)
+
+### Other
+
+- test raw_message feature ([#2101](https://github.com/release-plz/release-plz/pull/2101))
+- add new line to changelog header (#2098)
+
+## [0.3.123](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.122...release-plz-v0.3.123) - 2025-02-25
+
+### Added
+
+- edit changelog order to respect release order (#2070)
+
+### Other
+
+- split next_ver module (#2095)
+- simplify logging setup (#2071)
+
+## [0.3.122](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.121...release-plz-v0.3.122) - 2025-02-22
+
+### Fixed
+
+- don't error if package already published (#2085)
+
+### Other
+
+- use edition 2024 (#2086)
+- enable more clippy lints (#1971)
+
+## [0.3.121](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.120...release-plz-v0.3.121) - 2025-02-22
+
+### Added
+
+- support rust 2024 edition (#2084)
+
+### Fixed
+
+- clippy lint (#2082)
+- support env var override for registry index (#2033)
+
+### Other
+
+- test that binary is updated if library changes ([#2069](https://github.com/release-plz/release-plz/pull/2069))
+- Run some tests in CI that were ignored (#2065)
+- add style to the command line (#2059)
 
 ## [0.3.120](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.119...release-plz-v0.3.120) - 2025-02-09
 

@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 
 use crate::fs_utils;

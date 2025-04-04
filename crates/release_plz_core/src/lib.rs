@@ -1,4 +1,5 @@
 mod cargo;
+mod cargo_hash_kind;
 mod cargo_vcs_info;
 mod changelog;
 mod changelog_filler;
@@ -28,7 +29,7 @@ mod version;
 
 pub use changelog::*;
 pub use command::*;
-pub use download::{read_package, PackageDownloader};
+pub use download::{PackageDownloader, read_package};
 pub use git::backend::{GitBackend, GitClient, GitPr};
 pub use git::gitea_client::Gitea;
 pub use git::github_client::GitHub;
@@ -36,6 +37,6 @@ pub use git::gitlab_client::GitLab;
 pub use next_ver::*;
 pub use package_compare::*;
 pub use package_path::*;
-pub use pr::DEFAULT_BRANCH_PREFIX;
+pub use pr::{DEFAULT_BRANCH_PREFIX, Pr};
 pub use project::*;
 pub use repo_url::*;

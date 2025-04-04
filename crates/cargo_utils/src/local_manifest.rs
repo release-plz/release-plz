@@ -6,12 +6,12 @@ use std::{
 
 use anyhow::Context;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     Metadata,
+    camino::{Utf8Path, Utf8PathBuf},
 };
 use semver::Version;
 
-use crate::{to_utf8_pathbuf, DepTable, Manifest, CARGO_TOML};
+use crate::{CARGO_TOML, DepTable, Manifest, to_utf8_pathbuf};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum FeatureStatus {

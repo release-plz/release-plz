@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 
 use anyhow::Context;
 use cargo_metadata::{
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
-    Metadata, Package,
 };
-use cargo_utils::{canonical_local_manifest, workspace_members, LocalManifest};
+use cargo_utils::{LocalManifest, canonical_local_manifest, workspace_members};
 
-use crate::{changelog_parser::last_release_from_str, PackagePath as _, CHANGELOG_FILENAME};
+use crate::{CHANGELOG_FILENAME, PackagePath as _, changelog_parser::last_release_from_str};
 
+#[derive(Debug)]
 pub struct SetVersionRequest {
     /// The manifest of the project you want to update.
     manifest: Utf8PathBuf,
@@ -33,6 +34,7 @@ impl SetVersionRequest {
     }
 }
 
+#[derive(Debug)]
 pub enum SetVersionSpec {
     /// Used for projects with a single package.
     /// In this case there's no need to specify the package name.
@@ -42,6 +44,7 @@ pub enum SetVersionSpec {
     Workspace(BTreeMap<String, VersionChange>),
 }
 
+#[derive(Debug)]
 pub struct VersionChange {
     version: Version,
     /// This path needs to be a relative path to the Cargo.toml of the project.

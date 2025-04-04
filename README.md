@@ -7,7 +7,7 @@
 Release-plz helps you release your Rust packages by automating:
 
 - CHANGELOG generation (with [git-cliff](https://git-cliff.org)).
-- Creation of GitHub/Gitea releases.
+- Creation of GitHub/Gitea/GitLab releases.
 - Publishing to a cargo registry (`crates.io` by default).
 - Version bumps in `Cargo.toml`.
 
@@ -28,7 +28,7 @@ release-plz:
 
 - Creates a git tag named `<package_name>-v<version>` (e.g. `tokio-v1.8.1`).
 - Publishes the package to the cargo registry by running `cargo publish`.
-- Publishes a GitHub/Gitea release based on the git tag.
+- Publishes a GitHub/Gitea/GitLab release based on the git tag.
 
 ## 📚 Docs
 
@@ -39,7 +39,7 @@ Learn how to use release-plz in the [docs](https://release-plz.dev/).
 There are two ways to run release-plz:
 
 - [GitHub Action](https://release-plz.dev/docs/github): Run Release-plz from CI. The action both updates and releases your packages.
-- [CLI](https://release-plz.dev/docs/usage): Run release-plz from your terminal or other CI systems (Gitea supported).
+- [CLI](https://release-plz.dev/docs/usage): Run release-plz from your terminal or other CI systems (Gitea and GitLab supported).
 
 ## 💖 Users
 

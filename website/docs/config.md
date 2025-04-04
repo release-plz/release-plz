@@ -962,7 +962,8 @@ commit_preprocessors = [
   # Replace multiple spaces with a single space.
   { pattern = "  +", replace = " "}
 
-  # Replace the issue number with the link.
+  # Replace the issue number with the link. `\\(` is used to escape the `(` character.
+  # ${1} contains the issue number.
   { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/me/my-proj/issues/${1}))"}
 
   # Replace the issue link with the number.
@@ -982,6 +983,15 @@ commit_preprocessors = [
 
   # Hyperlink bare commit hashes like "abcd1234" in commit logs, with short commit hash as description.
   { pattern = "([ \\n])(([a-f0-9]{7})[a-f0-9]*)", replace = "${1}commit # [${3}](https://github.com/me/my-proj/commit/${2})"}
+]
+```
+
+The default is the following, where the PR URL is set based on your `repo_url`:
+
+```toml
+commit_preprocessors = [
+  # Replace the issue/PR number with the link.
+  { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/me/my-proj/pull/${1}))"}
 ]
 ```
 

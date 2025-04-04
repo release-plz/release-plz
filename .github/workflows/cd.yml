@@ -55,12 +55,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@97db979bf844c838b06022f305ca480d01b4d5fe
-      - uses: taiki-e/setup-cross-toolchain-action@dd27a7558a45f6b00c1098e61fa074a038c287f6 # v1.28.1
+        uses: actions-rust-lang/setup-rust-toolchain@9399c7bb15d4c7d47b27263d024f0a4978346ba4
+      - uses: taiki-e/setup-cross-toolchain-action@0d2c6fcce937ba2ba77abf40e06449b74d60fa04 # v1.28.3
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@ad0904967b4c8e3005f6ed2efa1fa74dd9a05f32 # v2.48.13
+      - uses: taiki-e/install-action@2c41309d51ede152b6f2ee6bf3b71e6dc9a8b7df # v2.49.27
         with:
           tool: cross
         if: contains(matrix.target, '-musl')
@@ -73,6 +73,13 @@ jobs:
           tar: all
           zip: windows
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  draft-announcement:
+    name: Draft social media announcement
+    needs: upload-assets
+    if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
+    runs-on: ubuntu-24.04
+    steps:
       # We use typefully to cross-post the release announcement
       # to release-plz social media accounts.
       # This job prepares the announcement draft. Marco needs to login to
@@ -85,7 +92,7 @@ jobs:
           curl -X POST "https://api.typefully.com/v1/drafts/"
           -H "Content-Type: application/json"
           -H "X-API-KEY: ${{ secrets.TYPEFULLY_API_KEY }}"
-          -d '{
-            "content": "🤖 New release: ${RELEASE_NAME}\n\n${RELEASE_BODY}",
-            "threadify": true
-          }'
+          -d "{
+            \"content\": \"🤖 New release: ${RELEASE_NAME}\n\n${RELEASE_BODY}\",
+            \"threadify\": true
+          }"
