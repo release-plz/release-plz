@@ -30,7 +30,7 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
     anyhow::ensure!(from.is_dir(), "not a directory: {:?}", from);
     let dir_name = from
         .components()
-        .last()
+        .next_back()
         .with_context(|| format!("invalid path {from:?}"))?;
     let to = to.as_ref().join(dir_name);
     debug!("copying directory from {:?} to {:?}", from, to);
