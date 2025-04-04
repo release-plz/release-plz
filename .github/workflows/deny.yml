@@ -22,4 +22,4 @@ jobs:
           persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@34899fc7ba81ca6268d5947a7a16b4649013fea1 # v2.0.11
         with:
-          rust-version: 1.85.0
+          rust-version: 1.86.0
