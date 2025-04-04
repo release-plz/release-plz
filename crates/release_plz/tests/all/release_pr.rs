@@ -738,7 +738,7 @@ fn symlink_readme(context: &TestContext, readme_path: &str, symlink_path: &str) 
     use std::env::{current_dir, set_current_dir};
 
     let current_dir = current_dir().unwrap();
-    // There's some quirky behavior with respect to absolute/relative paths when using symlinks in these tests.
+    // There's some weird behavior with respect to absolute/relative paths when using symlinks in these tests.
     // Explicitly setting the directory so the relative paths are tracked correctly seems to be the easiest way
     // to make this work.
     set_current_dir(context.repo_dir()).unwrap();
