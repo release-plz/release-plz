@@ -724,10 +724,7 @@ fn move_readme(context: &TestContext, message: &str) {
     let new_readme_path = context.repo_dir().join(&new_readme);
     fs_err::rename(old_readme_path, new_readme_path).unwrap();
 
-    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
-    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    cargo_toml.data["package"]["readme"] = toml_edit::value(new_readme);
-    cargo_toml.write().unwrap();
+    update_readme_in_cargo_toml(context, &new_readme);
 
     context.push_all_changes(message);
 }
@@ -755,8 +752,12 @@ fn symlink_readme(context: &TestContext, readme_path: &str, symlink_path: &str) 
         set_current_dir(current_dir).unwrap();
     }
 
+    update_readme_in_cargo_toml(context, symlink_path);
+}
+
+fn update_readme_in_cargo_toml(context: &TestContext, readme_path: &str) {
     let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
     let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    cargo_toml.data["package"]["readme"] = toml_edit::value(symlink_path);
+    cargo_toml.data["package"]["readme"] = toml_edit::value(readme_path);
     cargo_toml.write().unwrap();
 }
