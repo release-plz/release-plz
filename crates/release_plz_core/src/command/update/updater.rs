@@ -802,7 +802,7 @@ fn get_package_files(
 ) -> anyhow::Result<HashSet<Utf8PathBuf>> {
     // Get relative path of the crate with respect to the repository because we need to compare
     // files with the git output.
-    let prefix = repository.directory();
+    let repository_dir = repository.directory();
 
     crate::get_cargo_package_files(package_path)?
         .into_iter()
@@ -813,8 +813,8 @@ fn get_package_files(
             let file_path = package_path.join(file);
             let normalized = fs_utils::canonicalize_utf8(&file_path)?;
             let relative_path = normalized
-                .strip_prefix(prefix)
-                .with_context(|| format!("failed to strip {prefix} from {normalized}"))?;
+                .strip_prefix(repository_dir)
+                .with_context(|| format!("failed to strip {repository_dir} from {normalized}"))?;
             Ok(relative_path.to_path_buf())
         })
         .collect()
