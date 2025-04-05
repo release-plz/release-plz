@@ -535,6 +535,71 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 }
 
 #[tokio::test]
+#[cfg(unix)]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_detects_symlink_package_changes() {
+    let context = TestContext::new().await;
+    let readme = "README.md";
+    let readme_symlink = "README_SYMLINK.md";
+    symlink_readme(&context, readme, readme_symlink);
+    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+
+    // By default, all files are included in the package.
+    // We need this test to verify that the changes are tracked correctly if the original
+    // (non-symlinked) README is not part of the package.
+    cargo_toml.data["package"]["include"] = toml_edit::value(toml_edit::Array::from_iter(["/src"]));
+    cargo_toml.write().unwrap();
+
+    context.push_all_changes("symlink readme");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+
+    let expected_tag = "v0.1.0";
+
+    context.run_release().success();
+
+    let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
+    assert_eq!(gitea_release.name, expected_tag);
+
+    let full_readme_path = context.repo_dir().join(readme);
+    fs_err::write(full_readme_path, "cool stuff").unwrap();
+    context.push_all_changes("feat: update readme");
+
+    let outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    let open_pr = &opened_prs[0];
+    let expected_stdout = serde_json::json!({
+        "prs": [{
+            "base_branch": "main",
+            "head_branch": open_pr.branch(),
+            "html_url": open_pr.html_url,
+            "number": open_pr.number,
+            "releases": [{
+                "package_name": context.gitea.repo,
+                "version": "0.1.1"
+            }]
+        }]
+    });
+    outcome.stdout(format!("{expected_stdout}\n"));
+    context.merge_release_pr().await;
+
+    let expected_tag = "v0.1.1";
+
+    context.run_release().success();
+
+    let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
+    assert_eq!(gitea_release.name, expected_tag);
+    expect_test::expect![[r#"
+        ### Added
+
+        - update readme"#]]
+    .assert_eq(&gitea_release.body);
+}
+
+#[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
     let context = TestContext::new().await;
@@ -661,10 +726,40 @@ fn move_readme(context: &TestContext, message: &str) {
     let new_readme_path = context.repo_dir().join(&new_readme);
     fs_err::rename(old_readme_path, new_readme_path).unwrap();
 
-    let cargo_toml_path = context.repo_dir().join("Cargo.toml");
-    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    cargo_toml.data["package"]["readme"] = toml_edit::value(new_readme);
-    cargo_toml.write().unwrap();
+    update_readme_in_cargo_toml(context, &new_readme);
 
     context.push_all_changes(message);
+}
+
+#[cfg(unix)]
+fn symlink_readme(context: &TestContext, readme_path: &str, symlink_path: &str) {
+    use fs_err::os::unix::fs;
+    use std::{
+        env::{current_dir, set_current_dir},
+        sync::{LazyLock, Mutex},
+    };
+
+    // Trick to avoid the tests to run concurrently.
+    // It's used to not affect the current directory of the other tests.
+    static NO_PARALLEL: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
+
+    let current_dir = current_dir().unwrap();
+    // There's some weird behavior with respect to absolute/relative paths when using symlinks in these tests.
+    // Explicitly setting the directory so the relative paths are tracked correctly seems to be the easiest way
+    // to make this work.
+    {
+        let _guard = NO_PARALLEL.lock().unwrap();
+        set_current_dir(context.repo_dir()).unwrap();
+        fs::symlink(readme_path, symlink_path).unwrap();
+        set_current_dir(current_dir).unwrap();
+    }
+
+    update_readme_in_cargo_toml(context, symlink_path);
+}
+
+fn update_readme_in_cargo_toml(context: &TestContext, readme_path: &str) {
+    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["readme"] = toml_edit::value(readme_path);
+    cargo_toml.write().unwrap();
 }
