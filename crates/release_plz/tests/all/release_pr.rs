@@ -545,7 +545,9 @@ async fn release_plz_detects_symlink_package_changes() {
     let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
     let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
 
-    // Exclude irrelevant files from the package to ensure changes are being tracked explicitly
+    // By default, all files are included in the package.
+    // We need this test to verify that the changes are tracked correctly if the original
+    // (non-symlinked) README is not part of the package.
     cargo_toml.data["package"]["include"] = toml_edit::value(toml_edit::Array::from_iter(["/src"]));
     cargo_toml.write().unwrap();
 
