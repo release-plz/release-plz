@@ -170,6 +170,7 @@ pub struct GitLabMr {
     pub title: String,
     pub description: String,
     pub labels: Vec<String>,
+    pub remove_source_branch: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -182,6 +183,7 @@ impl From<GitPr> for GitLabMr {
         let desc = value.body.unwrap_or_default();
         let labels: Vec<String> = value.labels.into_iter().map(|l| l.name).collect();
 
+        // spec: https://docs.gitlab.com/api/merge_requests/#create-mr
         GitLabMr {
             author: GitLabAuthor {
                 username: value.user.login,
@@ -193,6 +195,9 @@ impl From<GitPr> for GitLabMr {
             title: value.title,
             description: desc,
             labels,
+            // default the flag indicating to remove the source branch when
+            // merging to true. Can be manually overridden before merging.
+            remove_source_branch: true,
         }
     }
 }
