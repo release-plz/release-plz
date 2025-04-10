@@ -195,8 +195,8 @@ impl From<GitPr> for GitLabMr {
             title: value.title,
             description: desc,
             labels,
-            // default the flag indicating to remove the source branch when
-            // merging to true. Can be manually overridden before merging.
+            // By default, remove the source branch when merging the PR.
+            // The checkbox can be unchecked in the UI before merging.
             remove_source_branch: true,
         }
     }
