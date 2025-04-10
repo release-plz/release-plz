@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.7.0">
 <title data-rh="true">FAQ | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/faq"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="FAQ | Release-plz"><meta data-rh="true" name="description" content="What packages does release-plz publish?"><meta data-rh="true" property="og:description" content="What packages does release-plz publish?"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/faq"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/faq" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/faq" hreflang="x-default"><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.2759b9c7.css">
-<script src="/assets/js/runtime~main.61b9de1e.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.15501e18.js" defer="defer"></script>
 <script src="/assets/js/main.3368433a.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -34,10 +34,11 @@ Note: you don&#x27;t need to edit the collabsible changelog in the PR descriptio
 <a href="https://www.conventionalcommits.org/en/v1.0.0/#commit-message-with-description-and-breaking-change-footer" target="_blank" rel="noopener noreferrer">breaking change</a>,
 or if cargo-semver-checks
 <a href="https://github.com/obi1kenobi/cargo-semver-checks#will-cargo-semver-checks-catch-every-semver-violation" target="_blank" rel="noopener noreferrer">failed</a>
-to detect a breaking change, you can manually edit the version of the package.</li>
+to detect a breaking change, you can edit the version of the package manually or with the
+<a href="/docs/usage/set-version">set-version</a> command.</li>
 </ul>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="does-the-changelog-include-the-commits-from-the-whole-repo">Does the changelog include the commits from the whole repo?<a href="#does-the-changelog-include-the-commits-from-the-whole-repo" class="hash-link" aria-label="Direct link to Does the changelog include the commits from the whole repo?" title="Direct link to Does the changelog include the commits from the whole repo?">​</a></h2>
-<p>The changelog of each crate includes the commit that changed one of the
+<p>The changelog of each crate includes the commits that changed one of the
 files of the crate or one of its dependencies.</p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="what-if-a-commit-doesnt-follow-the-conventional-commits-format">What if a commit doesn&#x27;t follow the conventional-commits format?<a href="#what-if-a-commit-doesnt-follow-the-conventional-commits-format" class="hash-link" aria-label="Direct link to What if a commit doesn&#x27;t follow the conventional-commits format?" title="Direct link to What if a commit doesn&#x27;t follow the conventional-commits format?">​</a></h2>
 <p>By default, it will be listed under the section <code>### Other</code>.
