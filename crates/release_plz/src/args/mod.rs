@@ -8,6 +8,7 @@ pub(crate) mod repo_command;
 mod set_version;
 mod update;
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Context, bail};
@@ -175,4 +176,32 @@ fn first_file_contents<'a>(
     }
 
     Ok(None)
+}
+
+/// Checks for inconsistency in the `publish` fields in the workspace metadata and release-plz config.
+///
+/// If there is no inconsistency, returns Ok(())
+///
+/// # Errors
+///
+/// Errors if any package is marked as non-published in metadata but set to published in release-plz config.
+fn check_publish_fields(
+    publish_fields: &BTreeMap<String, bool>,
+    metadata: &cargo_metadata::Metadata,
+) -> anyhow::Result<()> {
+    for package in &metadata.packages {
+        if let Some(should_publish) = publish_fields.get(&package.name) {
+            let is_publish_empty = match &package.publish {
+                Some(p) if p.is_empty() => true,
+                _ => false,
+            };
+            if is_publish_empty && *should_publish {
+                anyhow::bail!(
+                    "Package `{}` is set to non-published in Cargo metadata, but marked as published in config.",
+                    package.name
+                );
+            }
+        }
+    }
+    Ok(())
 }

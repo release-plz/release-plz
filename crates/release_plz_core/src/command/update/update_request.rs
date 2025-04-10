@@ -260,4 +260,11 @@ impl PackagesConfig {
     pub fn overridden_packages(&self) -> HashSet<&str> {
         self.overrides.keys().map(|s| s.as_str()).collect()
     }
+
+    pub fn publish_fields(&self) -> BTreeMap<String, bool> {
+        self.overrides
+            .iter()
+            .map(|(package_name, config)| (package_name.clone(), config.generic.publish))
+            .collect()
+    }
 }

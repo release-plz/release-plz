@@ -387,6 +387,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
+            publish: config.publish != Some(false),
         }
     }
 }
