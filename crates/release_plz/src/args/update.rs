@@ -194,6 +194,10 @@ impl Update {
                 })?;
         }
         update = config.fill_update_config(self.no_changelog, update);
+        super::check_publish_fields(
+            &update.packages_config().publish_fields(),
+            update.cargo_metadata(),
+        )?;
         {
             let release_date = self
                 .release_date
