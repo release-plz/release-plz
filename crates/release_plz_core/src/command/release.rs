@@ -199,6 +199,30 @@ impl ReleaseRequest {
             .or(cargo_utils::registry_token(self.registry.as_deref())?);
         Ok(token)
     }
+
+    /// Checks for inconsistency in the `publish` fields in the workspace metadata and release-plz config.
+    ///
+    /// If there is no inconsistency, returns Ok(())
+    ///
+    /// # Errors
+    ///
+    /// Errors if any package is marked as non-published in metadata but set to published in release-plz config.
+    pub fn check_publish_fields(&self) -> anyhow::Result<()> {
+        let publish_fields = self.packages_config.publish_fields();
+
+        for package in &self.metadata.packages {
+            if let Some(should_publish) = publish_fields.get(&package.name) {
+                let is_publish_empty = matches!(&package.publish, Some(p) if p.is_empty());
+                if is_publish_empty && *should_publish {
+                    anyhow::bail!(
+                        "Package `{}` is set to non-published in Cargo metadata, but to published in config.",
+                        package.name
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl ReleaseMetadataBuilder for ReleaseRequest {
@@ -238,6 +262,15 @@ impl PackagesConfig {
 
     pub fn overridden_packages(&self) -> HashSet<&str> {
         self.overrides.keys().map(|s| s.as_str()).collect()
+    }
+
+    pub fn publish_fields(&self) -> BTreeMap<String, bool> {
+        self.overrides
+            .iter()
+            .map(|(package_name, release_config)| {
+                (package_name.clone(), release_config.publish().is_enabled())
+            })
+            .collect()
     }
 }
 
@@ -1130,5 +1163,19 @@ mod tests {
         // assert the index is inherited from the workspace after the env var
         // is cleared.
         assert_eq!(non_overriden_maybe_registry_index, None);
+    }
+
+    #[test]
+    fn check_publish_fields_works() {
+        let mut request = ReleaseRequest::new(fake_metadata());
+        request = request.with_package_config(
+            "fake_package".to_string(),
+            ReleaseConfig {
+                publish: PublishConfig { enabled: true },
+                ..Default::default()
+            },
+        );
+
+        assert!(request.check_publish_fields().is_err());
     }
 }
