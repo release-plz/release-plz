@@ -346,21 +346,16 @@ impl GitClient {
     }
 
     pub async fn create_gitlab_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
-        // spec: https://docs.gitlab.com/api/merge_requests/#create-mr
         #[derive(Serialize)]
         pub struct GitlabReleaseOption<'a> {
             name: &'a str,
             tag_name: &'a str,
             description: &'a str,
-            remove_source_branch: bool,
         }
         let gitlab_release_options = GitlabReleaseOption {
             name: &release_info.release_name,
             tag_name: &release_info.git_tag,
             description: &release_info.release_body,
-            // By default, remove the source branch when merging the PR.
-            // The checkbox can be unchecked in the UI before merging.
-            remove_source_branch: true,
         };
         self.client
             .post(format!("{}/releases", self.remote.base_url))
@@ -543,8 +538,13 @@ impl GitClient {
                 "target_branch": pr.base_branch,
                 "source_branch": pr.branch,
                 "draft": pr.draft,
+                "remove_source_branch": true
             }),
         };
+
+        // Notes on Gitlab:
+        // By default, remove the source branch when merging the PR.
+        // The checkbox can be unchecked in the UI before merging.
 
         let rep = self
             .client
