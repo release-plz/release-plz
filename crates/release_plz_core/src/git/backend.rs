@@ -170,7 +170,6 @@ pub struct GitLabMr {
     pub title: String,
     pub description: String,
     pub labels: Vec<String>,
-    pub remove_source_branch: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -183,7 +182,6 @@ impl From<GitPr> for GitLabMr {
         let desc = value.body.unwrap_or_default();
         let labels: Vec<String> = value.labels.into_iter().map(|l| l.name).collect();
 
-        // spec: https://docs.gitlab.com/api/merge_requests/#create-mr
         GitLabMr {
             author: GitLabAuthor {
                 username: value.user.login,
@@ -195,9 +193,6 @@ impl From<GitPr> for GitLabMr {
             title: value.title,
             description: desc,
             labels,
-            // By default, remove the source branch when merging the PR.
-            // The checkbox can be unchecked in the UI before merging.
-            remove_source_branch: true,
         }
     }
 }
@@ -351,16 +346,21 @@ impl GitClient {
     }
 
     pub async fn create_gitlab_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
+        // spec: https://docs.gitlab.com/api/merge_requests/#create-mr
         #[derive(Serialize)]
         pub struct GitlabReleaseOption<'a> {
             name: &'a str,
             tag_name: &'a str,
             description: &'a str,
+            remove_source_branch: bool,
         }
         let gitlab_release_options = GitlabReleaseOption {
             name: &release_info.release_name,
             tag_name: &release_info.git_tag,
             description: &release_info.release_body,
+            // By default, remove the source branch when merging the PR.
+            // The checkbox can be unchecked in the UI before merging.
+            remove_source_branch: true,
         };
         self.client
             .post(format!("{}/releases", self.remote.base_url))
