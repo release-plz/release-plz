@@ -18,8 +18,8 @@ use tracing::{debug, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, ReleaseMetadata,
-    ReleaseMetadataBuilder, Remote,
+    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, Publishable as _,
+    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
     cargo_hash_kind::get_hash_kind,
     changelog_parser,
@@ -199,6 +199,31 @@ impl ReleaseRequest {
             .or(cargo_utils::registry_token(self.registry.as_deref())?);
         Ok(token)
     }
+
+    /// Checks for inconsistency in the `publish` fields in the workspace metadata and release-plz config.
+    ///
+    /// If there is no inconsistency, returns Ok(())
+    ///
+    /// # Errors
+    ///
+    /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
+    /// but has `publish = true` in the release-plz configuration.
+    pub fn check_publish_fields(&self) -> anyhow::Result<()> {
+        let publish_fields = self.packages_config.publish_overrides_fields();
+
+        for package in &self.metadata.packages {
+            if !package.is_publishable() {
+                if let Some(should_publish) = publish_fields.get(&package.name) {
+                    anyhow::ensure!(
+                        !should_publish,
+                        "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
+                        package.name
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl ReleaseMetadataBuilder for ReleaseRequest {
@@ -238,6 +263,19 @@ impl PackagesConfig {
 
     pub fn overridden_packages(&self) -> HashSet<&str> {
         self.overrides.keys().map(|s| s.as_str()).collect()
+    }
+
+    // Return the `publish` fields explicitly set in the
+    // `[[package]]` section of the release-plz config.
+    // I.e. `publish` isn't inherited from the `[workspace]` section of the
+    // release-plz config.
+    pub fn publish_overrides_fields(&self) -> BTreeMap<String, bool> {
+        self.overrides
+            .iter()
+            .map(|(package_name, release_config)| {
+                (package_name.clone(), release_config.publish().is_enabled())
+            })
+            .collect()
     }
 }
 
@@ -1130,5 +1168,20 @@ mod tests {
         // assert the index is inherited from the workspace after the env var
         // is cleared.
         assert_eq!(non_overriden_maybe_registry_index, None);
+    }
+
+    #[test]
+    fn check_publish_fields_works() {
+        // fake_metadata() has `publish = false` in the Cargo.toml
+        let mut request = ReleaseRequest::new(fake_metadata());
+        request = request.with_package_config(
+            "fake_package".to_string(),
+            ReleaseConfig {
+                publish: PublishConfig { enabled: true },
+                ..Default::default()
+            },
+        );
+
+        assert!(request.check_publish_fields().is_err());
     }
 }

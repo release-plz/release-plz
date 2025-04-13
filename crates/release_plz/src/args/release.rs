@@ -135,6 +135,8 @@ impl Release {
 
         req = req.with_branch_prefix(config.workspace.pr_branch_prefix.clone());
 
+        req.check_publish_fields()?;
+
         Ok(req)
     }
 }
