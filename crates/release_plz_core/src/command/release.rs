@@ -209,7 +209,7 @@ impl ReleaseRequest {
     /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
     /// but has `publish = true` in the release-plz configuration.
     pub fn check_publish_fields(&self) -> anyhow::Result<()> {
-        let publish_fields = self.packages_config.publish_fields();
+        let publish_fields = self.packages_config.publish_overrides_fields();
 
         for package in &self.metadata.packages {
             if !package.is_publishable() {
@@ -265,7 +265,11 @@ impl PackagesConfig {
         self.overrides.keys().map(|s| s.as_str()).collect()
     }
 
-    pub fn publish_fields(&self) -> BTreeMap<String, bool> {
+    // Return the `publish` fields explicitly set in the
+    // `[[package]]` section of the release-plz config.
+    // I.e. `publish` isn't inherited from the `[workspace]` section of the
+    // release-plz config.
+    pub fn publish_overrides_fields(&self) -> BTreeMap<String, bool> {
         self.overrides
             .iter()
             .map(|(package_name, release_config)| {
