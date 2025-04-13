@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.8](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.7...release_plz_core-v0.33.8) - 2025-04-13
+
+### Added
+
+- default "remove_source_branch=true" when creating MR in GitLab ([#2173](https://github.com/release-plz/release-plz/pull/2173))
+
+### Fixed
+
+- fail early if publish = false in Cargo.toml and publish = true in release-plz config ([#2176](https://github.com/release-plz/release-plz/pull/2176))
+
 ## [0.33.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.6...release_plz_core-v0.33.7) - 2025-04-10
 
 ### Fixed
