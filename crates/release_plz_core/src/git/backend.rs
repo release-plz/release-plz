@@ -538,13 +538,11 @@ impl GitClient {
                 "target_branch": pr.base_branch,
                 "source_branch": pr.branch,
                 "draft": pr.draft,
+                // By default, remove the source branch when merging the PR.
+                // The checkbox can be unchecked in the UI before merging.
                 "remove_source_branch": true
             }),
         };
-
-        // Notes on Gitlab:
-        // By default, remove the source branch when merging the PR.
-        // The checkbox can be unchecked in the UI before merging.
 
         let rep = self
             .client
