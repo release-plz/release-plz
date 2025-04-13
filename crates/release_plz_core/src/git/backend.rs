@@ -532,12 +532,16 @@ impl GitClient {
                 "head": pr.branch,
                 "draft": pr.draft,
             }),
+            // Docs: https://docs.gitlab.com/api/merge_requests/#create-mr
             BackendType::Gitlab => json!({
                 "title": pr.title,
                 "description": pr.body,
                 "target_branch": pr.base_branch,
                 "source_branch": pr.branch,
                 "draft": pr.draft,
+                // By default, remove the source branch when merging the PR.
+                // The checkbox can be unchecked in the UI before merging.
+                "remove_source_branch": true
             }),
         };
 

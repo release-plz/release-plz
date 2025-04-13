@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.6...release_plz_core-v0.33.7) - 2025-04-10
+
+### Fixed
+
+- canonicalize paths when comparing package contents ([#2156](https://github.com/release-plz/release-plz/pull/2156))
+- fix `last` clippy lint and ignore security vulnerabilities ([#2166](https://github.com/release-plz/release-plz/pull/2166))
+
 ## [0.33.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.33.5...release_plz_core-v0.33.6) - 2025-04-02
 
 ### Fixed
