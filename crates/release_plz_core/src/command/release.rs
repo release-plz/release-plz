@@ -18,8 +18,8 @@ use tracing::{debug, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, ReleaseMetadata,
-    ReleaseMetadataBuilder, Remote,
+    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, Publishable as _,
+    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
     cargo_hash_kind::get_hash_kind,
     changelog_parser,
@@ -206,16 +206,17 @@ impl ReleaseRequest {
     ///
     /// # Errors
     ///
-    /// Errors if any package is marked as non-published in metadata but set to published in release-plz config.
+    /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
+    /// but has `publish = true` in the release-plz configuration.
     pub fn check_publish_fields(&self) -> anyhow::Result<()> {
         let publish_fields = self.packages_config.publish_fields();
 
         for package in &self.metadata.packages {
-            if let Some(should_publish) = publish_fields.get(&package.name) {
-                let is_publish_empty = matches!(&package.publish, Some(p) if p.is_empty());
-                if is_publish_empty && *should_publish {
-                    anyhow::bail!(
-                        "Package `{}` is set to non-published in Cargo metadata, but to published in config.",
+            if !package.is_publishable() {
+                if let Some(should_publish) = publish_fields.get(&package.name) {
+                    anyhow::ensure!(
+                        !should_publish,
+                        "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
                         package.name
                     );
                 }
