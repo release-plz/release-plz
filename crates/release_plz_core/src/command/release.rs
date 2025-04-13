@@ -1172,6 +1172,7 @@ mod tests {
 
     #[test]
     fn check_publish_fields_works() {
+        // fake_metadata() has `publish = false` in the Cargo.toml
         let mut request = ReleaseRequest::new(fake_metadata());
         request = request.with_package_config(
             "fake_package".to_string(),
