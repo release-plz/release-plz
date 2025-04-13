@@ -4,7 +4,7 @@ use clap::{
     ValueEnum,
     builder::{NonEmptyStringValueParser, PathBufValueParser},
 };
-use release_plz_core::{GitBackend, GitHub, GitLab, Gitea, ReleaseRequest};
+use release_plz_core::{GitForge, GitHub, GitLab, Gitea, ReleaseRequest};
 use secrecy::SecretString;
 
 use crate::config::Config;
@@ -51,9 +51,9 @@ pub struct Release {
     /// Git token used to publish the GitHub/Gitea/GitLab release.
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
     pub git_token: Option<String>,
-    /// Kind of git backend
-    #[arg(long, value_enum, default_value_t = ReleaseGitBackendKind::Github)]
-    backend: ReleaseGitBackendKind,
+    /// Kind of git forge
+    #[arg(long, alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
+    forge: ReleaseGitForgeKind,
     /// Path to the release-plz config file.
     /// Default: `./release-plz.toml`.
     /// If no config file is found, the default configuration is used.
@@ -70,7 +70,7 @@ pub struct Release {
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReleaseGitBackendKind {
+pub enum ReleaseGitForgeKind {
     #[value(name = "github")]
     Github,
     #[value(name = "gitea")]
@@ -95,15 +95,13 @@ impl Release {
             let git_token = SecretString::from(git_token.clone());
             let repo_url = self.get_repo_url(config)?;
             let release = release_plz_core::GitRelease {
-                backend: match self.backend {
-                    ReleaseGitBackendKind::Gitea => {
-                        GitBackend::Gitea(Gitea::new(repo_url, git_token)?)
+                forge: match self.forge {
+                    ReleaseGitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo_url, git_token)?),
+                    ReleaseGitForgeKind::Github => {
+                        GitForge::Github(GitHub::new(repo_url.owner, repo_url.name, git_token))
                     }
-                    ReleaseGitBackendKind::Github => {
-                        GitBackend::Github(GitHub::new(repo_url.owner, repo_url.name, git_token))
-                    }
-                    ReleaseGitBackendKind::Gitlab => {
-                        GitBackend::Gitlab(GitLab::new(repo_url, git_token)?)
+                    ReleaseGitForgeKind::Gitlab => {
+                        GitForge::Gitlab(GitLab::new(repo_url, git_token)?)
                     }
                 },
             };
@@ -214,7 +212,7 @@ mod tests {
             dry_run: false,
             repo_url: None,
             git_token: None,
-            backend: ReleaseGitBackendKind::Github,
+            forge: ReleaseGitForgeKind::Github,
             config: None,
             output: None,
         }

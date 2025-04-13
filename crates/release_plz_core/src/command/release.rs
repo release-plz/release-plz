@@ -18,12 +18,12 @@ use tracing::{debug, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitBackend, PackagePath, Project, Publishable as _,
+    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
     ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
     cargo_hash_kind::get_hash_kind,
     changelog_parser,
-    git::backend::GitClient,
+    git::forge::GitClient,
     pr_parser::{Pr, prs_from_text},
 };
 
@@ -508,8 +508,8 @@ impl GitTagConfig {
 
 #[derive(Debug)]
 pub struct GitRelease {
-    /// Kind of Git Backend.
-    pub backend: GitBackend,
+    /// Kind of Git Forge.
+    pub forge: GitForge,
 }
 
 #[derive(Serialize, Default, Debug)]
@@ -699,7 +699,7 @@ async fn should_release(
     }
 }
 
-fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::backend::PrCommit) -> bool {
+fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::forge::PrCommit) -> bool {
     let branches_of_commit = repo.get_branches_of_commit(&commit.sha);
     if let Ok(branches) = branches_of_commit {
         branches.contains(&repo.original_branch().to_string())
@@ -931,8 +931,8 @@ fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
     let git_release = input
         .git_release
         .as_ref()
-        .context("git release not configured. Did you specify git-token and backend?")?;
-    GitClient::new(git_release.backend.clone())
+        .context("git release not configured. Did you specify git-token and forge?")?;
+    GitClient::new(git_release.forge.clone())
 }
 
 #[derive(Debug)]

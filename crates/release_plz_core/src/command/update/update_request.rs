@@ -10,7 +10,7 @@ use cargo_metadata::{
 };
 use regex::Regex;
 
-use crate::{ChangelogRequest, GitBackend, GitClient, PackagePath as _, RepoUrl, fs_utils};
+use crate::{ChangelogRequest, GitClient, GitForge, PackagePath as _, RepoUrl, fs_utils};
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
@@ -44,7 +44,7 @@ pub struct UpdateRequest {
     /// Release Commits
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
-    git: Option<GitBackend>,
+    git: Option<GitForge>,
 }
 
 impl UpdateRequest {
@@ -99,7 +99,7 @@ impl UpdateRequest {
         })
     }
 
-    pub fn with_git_client(self, git: GitBackend) -> Self {
+    pub fn with_git_client(self, git: GitForge) -> Self {
         Self {
             git: Some(git),
             ..self

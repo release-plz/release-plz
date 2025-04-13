@@ -40,9 +40,9 @@ Instead, release-plz overrides the existing release PR with the changes of the s
 ## Gitea
 
 `release-plz release-pr` also supports creating PRs for repositories hosted on
-Gitea with the `--backend` option:
+Gitea with the `--forge` or `backend` option:
 
-`release-plz release-pr --git-token <gitea application token> --backend gitea`
+`release-plz release-pr --git-token <gitea application token> --forge gitea`
 
 The token needs to have the following permissions:
 
@@ -60,7 +60,7 @@ commit without specifying a GPG signature.
 ## GitLab
 
 `release-plz release-pr` also supports creating PRs for repositories hosted on GitLab with
-the `--backend gitlab` option.
+the `--forge gitlab` or `--backend gitlab` option.
 
 You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
 permissions:
@@ -75,7 +75,7 @@ docs.
 
 Then you can run `release-plz release-pr` with the following arguments:
 
-`release-plz release-pr --backend gitlab --git-token <gitlab_token>`
+`release-plz release-pr --forge gitlab --git-token <gitlab_token>`
 
 ## Json output
 
