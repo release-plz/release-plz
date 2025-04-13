@@ -532,6 +532,7 @@ impl GitClient {
                 "head": pr.branch,
                 "draft": pr.draft,
             }),
+            // Docs: https://docs.gitlab.com/api/merge_requests/#create-mr
             BackendType::Gitlab => json!({
                 "title": pr.title,
                 "description": pr.body,
