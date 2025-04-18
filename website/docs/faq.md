@@ -54,7 +54,7 @@ To do so, you can:
 - Query the `/pulls` GitHub
   [endpoint](https://docs.github.com/en/free-pro-team@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests).
   For example, release-plz does it
-  [here](https://github.com/release-plz/release-plz/blob/a92629ed10b8bb42dde426c0f0001aebbb6fa70e/crates/release_plz_core/src/git/forge.rs#L238).
+  [here](https://github.com/release-plz/release-plz/blob/a92629ed10b8bb42dde426c0f0001aebbb6fa70e/crates/release_plz_core/src/git/backend.rs#L238).
 - Use `git tag | grep release-plz`.
 
 If none of these options work for you or you want release-plz to output
