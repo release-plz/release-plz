@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.7.0">
 <title data-rh="true">release-pr | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/usage/release-pr"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="release-pr | Release-plz"><meta data-rh="true" name="description" content="The release-plz release-pr command runs release-plz update and"><meta data-rh="true" property="og:description" content="The release-plz release-pr command runs release-plz update and"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/usage/release-pr"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/usage/release-pr" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/usage/release-pr" hreflang="x-default"><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.2759b9c7.css">
-<script src="/assets/js/runtime~main.15501e18.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.deaf292e.js" defer="defer"></script>
 <script src="/assets/js/main.3368433a.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -38,8 +38,8 @@ Release-plz also closes the release PR when it cannot update it
 Instead, release-plz overrides the existing release PR with the changes of the specified package.</p></div></div>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="gitea">Gitea<a href="#gitea" class="hash-link" aria-label="Direct link to Gitea" title="Direct link to Gitea">​</a></h2>
 <p><code>release-plz release-pr</code> also supports creating PRs for repositories hosted on
-Gitea with the <code>--backend</code> option:</p>
-<p><code>release-plz release-pr --git-token &lt;gitea application token&gt; --backend gitea</code></p>
+Gitea with the <code>--forge</code> option:</p>
+<p><code>release-plz release-pr --git-token &lt;gitea application token&gt; --forge gitea</code></p>
 <p>The token needs to have the following permissions:</p>
 <ul>
 <li><code>read:repository</code>, <code>write:repository</code>: to create the release PR.</li>
@@ -53,7 +53,7 @@ This allows having a <a href="https://docs.github.com/en/authentication/managing
 commit without specifying a GPG signature.</p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="gitlab">GitLab<a href="#gitlab" class="hash-link" aria-label="Direct link to GitLab" title="Direct link to GitLab">​</a></h2>
 <p><code>release-plz release-pr</code> also supports creating PRs for repositories hosted on GitLab with
-the <code>--backend gitlab</code> option.</p>
+the <code>--forge gitlab</code> option.</p>
 <p>You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
 permissions:</p>
 <ul>
@@ -68,7 +68,7 @@ permissions:</p>
 <p>See the GitLab <a href="https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html" target="_blank" rel="noopener noreferrer">project access tokens</a>
 docs.</p>
 <p>Then you can run <code>release-plz release-pr</code> with the following arguments:</p>
-<p><code>release-plz release-pr --backend gitlab --git-token &lt;gitlab_token&gt;</code></p>
+<p><code>release-plz release-pr --forge gitlab --git-token &lt;gitlab_token&gt;</code></p>
 <h2 class="anchor anchorWithStickyNavbar_LWe7" id="json-output">Json output<a href="#json-output" class="hash-link" aria-label="Direct link to Json output" title="Direct link to Json output">​</a></h2>
 <p>You can get info about the outcome of this command by appending <code>-o json</code> to the command:
 Stdout will contain info about the release PR:</p>
