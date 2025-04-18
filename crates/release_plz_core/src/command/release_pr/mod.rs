@@ -8,8 +8,8 @@ use serde::Serialize;
 use tracing::{debug, info, instrument};
 use url::Url;
 
-use crate::git::backend::{
-    BackendType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
+use crate::git::forge::{
+    ForgeType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
 };
 use crate::git::github_graphql;
 use crate::pr::{DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX, Pr};
@@ -305,7 +305,7 @@ async fn handle_opened_pr(
 
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
     repo.checkout_new_branch(&pr.branch)?;
-    if matches!(git_client.backend, BackendType::Github) {
+    if matches!(git_client.forge, ForgeType::Github) {
         github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
     } else {
         create_release_branch(repo, &pr.branch, &pr.title)?;
@@ -330,7 +330,7 @@ async fn update_pr(
             repository.original_branch()
         )
     })?;
-    if matches!(git_client.backend, BackendType::Github) {
+    if matches!(git_client.forge, ForgeType::Github) {
         github_force_push(git_client, opened_pr, repository).await?;
     } else {
         force_push(opened_pr, repository)?;

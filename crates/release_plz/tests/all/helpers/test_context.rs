@@ -8,7 +8,7 @@ use cargo_metadata::{
 };
 use git_cmd::Repo;
 use release_plz_core::{
-    DEFAULT_BRANCH_PREFIX, GitBackend, GitClient, GitPr, Gitea, Pr, RepoUrl,
+    DEFAULT_BRANCH_PREFIX, GitClient, GitForge, GitPr, Gitea, Pr, RepoUrl,
     fs_utils::{Utf8TempDir, canonicalize_utf8},
 };
 use secrecy::SecretString;
@@ -166,7 +166,7 @@ impl TestContext {
             .arg("--verbose")
             .arg("--git-token")
             .arg(&self.gitea.token)
-            .arg("--backend")
+            .arg("--forge")
             .arg("gitea")
             .arg("--registry")
             .arg(TEST_REGISTRY)
@@ -184,7 +184,7 @@ impl TestContext {
             .arg("--verbose")
             .arg("--git-token")
             .arg(&self.gitea.token)
-            .arg("--backend")
+            .arg("--forge")
             .arg("gitea")
             .arg("--registry")
             .arg(TEST_REGISTRY)
@@ -291,14 +291,14 @@ git-fetch-with-cli = true
 }
 
 fn git_client(repo_url: &str, token: &str) -> GitClient {
-    let git_backend = GitBackend::Gitea(
+    let git_forge = GitForge::Gitea(
         Gitea::new(
             RepoUrl::new(repo_url).unwrap(),
             SecretString::from(token.to_string()),
         )
         .unwrap(),
     );
-    GitClient::new(git_backend).unwrap()
+    GitClient::new(git_forge).unwrap()
 }
 
 fn git_clone(path: &Utf8Path, repo_url: &str) {

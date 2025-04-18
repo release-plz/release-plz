@@ -9,7 +9,7 @@ use clap::{
 };
 use git_cliff_core::config::Config as GitCliffConfig;
 use release_plz_core::{
-    ChangelogRequest, GitBackend, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
+    ChangelogRequest, GitForge, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
     update_request::UpdateRequest,
 };
 use secrecy::SecretString;
@@ -103,12 +103,12 @@ pub struct Update {
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), visible_alias = "github-token", env, hide_env_values=true)]
     pub git_token: Option<String>,
     /// Kind of git host where your project is hosted.
-    #[arg(long, value_enum, default_value_t = GitBackendKind::Github)]
-    backend: GitBackendKind,
+    #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
+    forge: GitForgeKind,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GitBackendKind {
+pub enum GitForgeKind {
     #[value(name = "github")]
     Github,
     #[value(name = "gitea")]
@@ -136,21 +136,21 @@ impl ConfigCommand for Update {
 }
 
 impl Update {
-    pub fn git_backend(&self, repo: RepoUrl) -> anyhow::Result<Option<GitBackend>> {
+    pub fn git_forge(&self, repo: RepoUrl) -> anyhow::Result<Option<GitForge>> {
         let Some(token) = self.git_token.clone() else {
             return Ok(None);
         };
         let token = SecretString::from(token);
-        Ok(Some(match self.backend {
-            GitBackendKind::Github => {
+        Ok(Some(match self.forge {
+            GitForgeKind::Github => {
                 anyhow::ensure!(
                     repo.is_on_github(),
-                    "Can't create PR: the repository is not hosted in GitHub. Please select a different backend."
+                    "Can't create PR: the repository is not hosted in GitHub. Please select a different forge."
                 );
-                GitBackend::Github(GitHub::new(repo.owner, repo.name, token))
+                GitForge::Github(GitHub::new(repo.owner, repo.name, token))
             }
-            GitBackendKind::Gitea => GitBackend::Gitea(Gitea::new(repo, token)?),
-            GitBackendKind::Gitlab => GitBackend::Gitlab(GitLab::new(repo, token)?),
+            GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
+            GitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),
         }))
     }
 
@@ -219,7 +219,7 @@ impl Update {
             update = update.with_release_commits(release_commits)?;
         }
         if let Some(repo) = update.repo_url() {
-            if let Some(git_client) = self.git_backend(repo.clone())? {
+            if let Some(git_client) = self.git_forge(repo.clone())? {
                 update = update.with_git_client(git_client);
             }
         }
@@ -306,7 +306,7 @@ mod tests {
             allow_dirty: false,
             repo_url: None,
             config: None,
-            backend: GitBackendKind::Github,
+            forge: GitForgeKind::Github,
             git_token: None,
         };
         let config: Config = toml::from_str("").unwrap();

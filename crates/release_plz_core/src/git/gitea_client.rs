@@ -1,5 +1,5 @@
 use crate::RepoUrl;
-use crate::git::backend::Remote;
+use crate::git::forge::Remote;
 use anyhow::{Context, bail};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;

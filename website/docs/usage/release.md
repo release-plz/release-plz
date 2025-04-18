@@ -27,15 +27,15 @@ If all packages are already published, the `release-plz release` command does no
 
 To learn more, run `release-plz release --help`.
 
-## Git Backends
+## Git Forges
 
-GitHub is the default release-plz backend. You can use the `--backend` flag to
-specify a different backend.
+GitHub is the default release-plz forge. You can use the `--forge` flag to
+specify a different forge.
 
 ### GitLab
 
 `release-plz release` also supports creating releases for repositories hosted on GitLab with
-the `--backend gitlab` option:
+the `--forge gitlab` option:
 
 You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
 permissions:
@@ -50,15 +50,15 @@ docs.
 
 Then you can run `release-plz release` with the following arguments:
 
-`release-plz release --backend gitlab --git-token <gitlab_token>`
+`release-plz release --forge gitlab --git-token <gitlab_token>`
 
 ### Gitea
 
-`releases-plz` supports creating releases on Gitea with the `--backend gitea` option.
+`releases-plz` supports creating releases on Gitea with the `--forge gitea` option.
 
 Then you can run `release-plz release` in Gitea CI with the following arguments:
 
-`release-plz release --backend gitea --git-token <gitea_token>`
+`release-plz release --forge gitea --git-token <gitea_token>`
 
 The token needs to have the following permissions:
 

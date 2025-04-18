@@ -16,24 +16,24 @@ use serde_json::json;
 use tracing::{debug, info, instrument};
 
 #[derive(Debug, Clone)]
-pub enum GitBackend {
+pub enum GitForge {
     Github(GitHub),
     Gitea(Gitea),
     Gitlab(GitLab),
 }
 
-impl GitBackend {
+impl GitForge {
     fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         match self {
-            GitBackend::Github(g) => g.default_headers(),
-            GitBackend::Gitea(g) => g.default_headers(),
-            GitBackend::Gitlab(g) => g.default_headers(),
+            GitForge::Github(g) => g.default_headers(),
+            GitForge::Gitea(g) => g.default_headers(),
+            GitForge::Gitlab(g) => g.default_headers(),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackendType {
+pub enum ForgeType {
     Github,
     Gitea,
     Gitlab,
@@ -41,7 +41,7 @@ pub enum BackendType {
 
 #[derive(Debug)]
 pub struct GitClient {
-    pub backend: BackendType,
+    pub forge: ForgeType,
     pub remote: Remote,
     pub client: reqwest_middleware::ClientWithMiddleware,
 }
@@ -267,9 +267,9 @@ impl PrEdit {
 }
 
 impl GitClient {
-    pub fn new(backend: GitBackend) -> anyhow::Result<Self> {
+    pub fn new(forge: GitForge) -> anyhow::Result<Self> {
         let client = {
-            let headers = backend.default_headers()?;
+            let headers = forge.default_headers()?;
             let reqwest_client = reqwest::Client::builder()
                 .user_agent("release-plz")
                 .default_headers(headers)
@@ -283,39 +283,37 @@ impl GitClient {
                 .build()
         };
 
-        let (backend, remote) = match backend {
-            GitBackend::Github(g) => (BackendType::Github, g.remote),
-            GitBackend::Gitea(g) => (BackendType::Gitea, g.remote),
-            GitBackend::Gitlab(g) => (BackendType::Gitlab, g.remote),
+        let (forge, remote) = match forge {
+            GitForge::Github(g) => (ForgeType::Github, g.remote),
+            GitForge::Gitea(g) => (ForgeType::Gitea, g.remote),
+            GitForge::Gitlab(g) => (ForgeType::Gitlab, g.remote),
         };
         Ok(Self {
             remote,
-            backend,
+            forge,
             client,
         })
     }
 
     pub fn per_page(&self) -> &str {
-        match self.backend {
-            BackendType::Github | BackendType::Gitlab => "per_page",
-            BackendType::Gitea => "limit",
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitlab => "per_page",
+            ForgeType::Gitea => "limit",
         }
     }
 
     /// Creates a GitHub/Gitea release.
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => {
-                self.create_github_release(release_info).await
-            }
-            BackendType::Gitlab => self.create_gitlab_release(release_info).await,
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => self.create_github_release(release_info).await,
+            ForgeType::Gitlab => self.create_gitlab_release(release_info).await,
         }
         .context("Failed to create release")
     }
 
     /// Same as Gitea.
     pub async fn create_github_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
-        if release_info.latest.is_some() && self.backend == BackendType::Gitea {
+        if release_info.latest.is_some() && self.forge == ForgeType::Gitea {
             anyhow::bail!("Gitea does not support the `git_release_latest` option");
         }
         let create_release_options = CreateReleaseOption {
@@ -377,11 +375,11 @@ impl GitClient {
     }
 
     pub fn pulls_url(&self) -> String {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => {
                 format!("{}/pulls", self.repo_url())
             }
-            BackendType::Gitlab => {
+            ForgeType::Gitlab => {
                 format!("{}/merge_requests", self.repo_url())
             }
         }
@@ -392,22 +390,22 @@ impl GitClient {
     }
 
     pub fn param_value_pr_state_open(&self) -> &'static str {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => "open",
-            BackendType::Gitlab => "opened",
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => "open",
+            ForgeType::Gitlab => "opened",
         }
     }
 
     fn repo_url(&self) -> String {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => {
                 format!(
                     "{}repos/{}",
                     self.remote.base_url,
                     self.remote.owner_slash_repo()
                 )
             }
-            BackendType::Gitlab => self.remote.base_url.to_string(),
+            ForgeType::Gitlab => self.remote.base_url.to_string(),
         }
     }
 
@@ -455,11 +453,9 @@ impl GitClient {
     }
 
     async fn prs_from_response(&self, resp: Response) -> anyhow::Result<Vec<GitPr>> {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => {
-                resp.json().await.context("failed to parse pr")
-            }
-            BackendType::Gitlab => {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => resp.json().await.context("failed to parse pr"),
+            ForgeType::Gitlab => {
                 let gitlab_mrs: Vec<GitLabMr> =
                     resp.json().await.context("failed to parse gitlab mr")?;
                 let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
@@ -469,11 +465,9 @@ impl GitClient {
     }
 
     async fn pr_from_response(&self, resp: Response) -> anyhow::Result<GitPr> {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => {
-                resp.json().await.context("failed to parse pr")
-            }
-            BackendType::Gitlab => {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => resp.json().await.context("failed to parse pr"),
+            ForgeType::Gitlab => {
                 let gitlab_mr: GitLabMr = resp.json().await.context("failed to parse gitlab mr")?;
                 Ok(gitlab_mr.into())
             }
@@ -492,19 +486,19 @@ impl GitClient {
     }
 
     fn closed_pr_state(&self) -> &'static str {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => "closed",
-            BackendType::Gitlab => "close",
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => "closed",
+            ForgeType::Gitlab => "close",
         }
     }
 
     pub async fn edit_pr(&self, pr_number: u64, pr_edit: PrEdit) -> anyhow::Result<()> {
-        let req = match self.backend {
-            BackendType::Github | BackendType::Gitea => self
+        let req = match self.forge {
+            ForgeType::Github | ForgeType::Gitea => self
                 .client
                 .patch(format!("{}/{}", self.pulls_url(), pr_number))
                 .json(&pr_edit),
-            BackendType::Gitlab => {
+            ForgeType::Gitlab => {
                 let edit_mr: GitLabMrEdit = pr_edit.into();
                 self.client
                     .put(format!("{}/merge_requests/{pr_number}", self.repo_url()))
@@ -524,8 +518,8 @@ impl GitClient {
     pub async fn open_pr(&self, pr: &Pr) -> anyhow::Result<GitPr> {
         debug!("Opening PR in {}", self.remote.owner_slash_repo());
 
-        let json_body = match self.backend {
-            BackendType::Github | BackendType::Gitea => json!({
+        let json_body = match self.forge {
+            ForgeType::Github | ForgeType::Gitea => json!({
                 "title": pr.title,
                 "body": pr.body,
                 "base": pr.base_branch,
@@ -533,7 +527,7 @@ impl GitClient {
                 "draft": pr.draft,
             }),
             // Docs: https://docs.gitlab.com/api/merge_requests/#create-mr
-            BackendType::Gitlab => json!({
+            ForgeType::Gitlab => json!({
                 "title": pr.title,
                 "description": pr.body,
                 "target_branch": pr.base_branch,
@@ -556,11 +550,11 @@ impl GitClient {
             .await
             .context("received unexpected response")?;
 
-        let git_pr: GitPr = match self.backend {
-            BackendType::Github | BackendType::Gitea => {
+        let git_pr: GitPr = match self.forge {
+            ForgeType::Github | ForgeType::Gitea => {
                 rep.json().await.context("Failed to parse PR")?
             }
-            BackendType::Gitlab => {
+            ForgeType::Gitlab => {
                 let gitlab_mr: GitLabMr = rep.json().await.context("Failed to parse Gitlab MR")?;
                 gitlab_mr.into()
             }
@@ -579,10 +573,10 @@ impl GitClient {
             return Ok(());
         }
 
-        match self.backend {
-            BackendType::Github => self.post_github_labels(labels, pr_number).await,
-            BackendType::Gitlab => self.post_gitlab_labels(labels, pr_number).await,
-            BackendType::Gitea => self.post_gitea_labels(labels, pr_number).await,
+        match self.forge {
+            ForgeType::Github => self.post_github_labels(labels, pr_number).await,
+            ForgeType::Gitlab => self.post_gitlab_labels(labels, pr_number).await,
+            ForgeType::Gitea => self.post_gitea_labels(labels, pr_number).await,
         }
     }
 
@@ -718,7 +712,7 @@ impl GitClient {
     }
 
     async fn create_gitea_repository_label(&self, label: &str) -> anyhow::Result<u64> {
-        debug!("Backend Gitea creating label: {label}");
+        debug!("Forge Gitea creating label: {label}");
         let res = self
             .client
             .post(format!("{}/labels", self.repo_url()))
@@ -769,11 +763,11 @@ impl GitClient {
     }
 
     async fn parse_pr_commits(&self, resp: Response) -> anyhow::Result<Vec<PrCommit>> {
-        match self.backend {
-            BackendType::Github | BackendType::Gitea => {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => {
                 resp.json().await.context("failed to parse pr commits")
             }
-            BackendType::Gitlab => {
+            ForgeType::Gitlab => {
                 let gitlab_commits: Vec<GitLabMrCommit> =
                     resp.json().await.context("failed to parse gitlab mr")?;
                 let pr_commits = gitlab_commits
@@ -789,14 +783,14 @@ impl GitClient {
     /// From my tests, Gitea doesn't work yet,
     /// but this implementation should be correct.
     pub async fn associated_prs(&self, commit: &str) -> anyhow::Result<Vec<GitPr>> {
-        let url = match self.backend {
-            BackendType::Github => {
+        let url = match self.forge {
+            ForgeType::Github => {
                 format!("{}/commits/{}/pulls", self.repo_url(), commit)
             }
-            BackendType::Gitea => {
+            ForgeType::Gitea => {
                 format!("{}/commits/{}/pull", self.repo_url(), commit)
             }
-            BackendType::Gitlab => {
+            ForgeType::Gitlab => {
                 format!(
                     "{}/repository/commits/{}/merge_requests",
                     self.repo_url(),
@@ -809,7 +803,7 @@ impl GitClient {
         if response.status() == StatusCode::NOT_FOUND
             // GitHub returns 422 if the commit doesn't exist/hasn't been pushed to the remote repository.
             || (response.status() == StatusCode::UNPROCESSABLE_ENTITY
-                && self.backend == BackendType::Github)
+                && self.forge == ForgeType::Github)
         {
             debug!(
                 "No associated PRs for commit {commit}. This can happen if the commit is not pushed to the remote repository."
@@ -819,19 +813,19 @@ impl GitClient {
         let response = response.error_for_status()?;
         debug!("Associated PR found. Status: {}", response.status());
 
-        let prs = match self.backend {
-            BackendType::Github => {
+        let prs = match self.forge {
+            ForgeType::Github => {
                 let prs: Vec<GitPr> = response
                     .json()
                     .await
                     .context("can't parse associated PRs")?;
                 prs
             }
-            BackendType::Gitea => {
+            ForgeType::Gitea => {
                 let pr: GitPr = response.json().await.context("can't parse associated PR")?;
                 vec![pr]
             }
-            BackendType::Gitlab => {
+            ForgeType::Gitlab => {
                 let gitlab_mrs: Vec<GitLabMr> = response
                     .json()
                     .await
@@ -893,12 +887,12 @@ impl GitClient {
 
     fn commits_api_path(&self, commit: &str) -> String {
         let commits_path = "commits/";
-        let commits_api_path = match self.backend {
-            BackendType::Gitea => {
+        let commits_api_path = match self.forge {
+            ForgeType::Gitea => {
                 format!("git/{commits_path}")
             }
-            BackendType::Github => commits_path.to_string(),
-            BackendType::Gitlab => {
+            ForgeType::Github => commits_path.to_string(),
+            ForgeType::Gitlab => {
                 unimplemented!("Gitlab support for `release-plz release-pr is not implemented yet")
             }
         };
