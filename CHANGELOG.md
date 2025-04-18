@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.133](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.132...release-plz-v0.3.133) - 2025-04-18
+
+### Added
+
+- Alias the `--backend` flag to `--forge` ([#2178](https://github.com/release-plz/release-plz/pull/2178))
+
+### Other
+
+- *(changelog)* stop trimming initial `v` in version ([#2189](https://github.com/release-plz/release-plz/pull/2189))
+
 ## [0.3.132](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.131...release-plz-v0.3.132) - 2025-04-13
 
 ### Added
