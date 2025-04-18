@@ -107,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Expose string functions
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### Added
 
@@ -136,7 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add release script
 ### Changed
 - Expose string functions
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### Added
 - Add README.md
 - Add ability to parse arrays
@@ -242,7 +242,7 @@ link_parsers = [
 
 - chore(release): add release script ([06412ac](06412ac1dd4071006c465dde6597a21d4367a158))
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### ⛰️  Features
 
@@ -274,7 +274,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - refactor(parser): expose string functions (e4fd3cf)
 ### ⚙️ Miscellaneous Tasks
 - chore(release): add release script (06412ac)
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### ⛰️  Features
 - feat(parser): add ability to parse arrays (a140cef)
 ### 🐛 Bug Fixes
@@ -366,7 +366,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * @orhun
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### Added
 
@@ -401,7 +401,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose string functions (by @orhun)
 ### Contributors
 * @orhun
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### Added
 - Add README.md (by @orhun)
 - Add ability to parse arrays (by @orhun)
@@ -410,6 +410,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename help argument due to conflict (by @orhun)
 ### Contributors
 * @orhun
+```
+
+</details>
+
+## Source changes
+
+This configuration links source code changes
+from the new release to the previous one on
+[diff.rs](https://diff.rs/).
+
+<details>
+  <summary>TOML configuration</summary>
+
+```toml
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+"""
+
+body = """
+
+## [{{ version | trim_start_matches(pat="v") }}]\
+    {%- if release_link -%}\
+        ({{ release_link }})\
+    {% endif %} \
+    - {{ timestamp | date(format="%Y-%m-%d") }}
+
+    {% if previous.version -%}\
+        [View diff on diff.rs](https://diff.rs/{{ package }}/{{ previous.version }}/{{ package }}/{{ version }}/Cargo.toml)
+    {%- endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+    {% for commit in commits %}
+        {%- if commit.scope -%}
+            - *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}\
+                {{ commit.message }}\
+                {%- if commit.links %} \
+                    ({% for link in commit.links %}[{{link.text}}]({{link.href}}) {% endfor -%})\
+                {% endif %}
+        {% else -%}
+            - {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}
+        {% endif -%}
+    {% endfor -%}
+{% endfor %}
+"""
+
+commit_parsers = [
+  { message = "^feat", group = "added" },
+  { message = "^changed", group = "changed" },
+  { message = "^deprecated", group = "deprecated" },
+  { message = "^fix", group = "fixed" },
+  { message = "^security", group = "security" },
+  { message = "^.*", group = "other" },
+]
+```
+
+</details>
+
+<details>
+  <summary>Raw Output</summary>
+
+```md
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.0.1](https://github.com/orhun/git-cliff-readme-example/compare/v1.0.0...v1.0.1) - 2021-07-18
+
+[View diff on diff.rs](https://diff.rs/my_crate/1.0.0/my_crate/1.0.1/Cargo.toml)
+
+### Added
+
+- Add release script
+
+### Changed
+
+- Expose string functions
+
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
+
+### Added
+
+- Add README.md
+- Add ability to parse arrays
+- Add tested usage example
+
+### Fixed
+
+- Rename help argument due to conflict
+```
+
+</details>
+
+<details>
+  <summary>Rendered Output</summary>
+
+```mdx-code-block
+# Changelog
+All notable changes to this project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [Unreleased]
+## [1.0.1](https://github.com/orhun/git-cliff-readme-example/compare/v1.0.0...v1.0.1) - 2021-07-18
+[View diff on diff.rs](https://diff.rs/my_crate/1.0.0/my_crate/1.0.1/Cargo.toml)
+### Added
+- Add release script
+### Changed
+- Expose string functions
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
+### Added
+- Add README.md
+- Add ability to parse arrays
+- Add tested usage example
+### Fixed
+- Rename help argument due to conflict
 ```
 
 </details>
