@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 body = """
 
-## [{{ version | trim_start_matches(pat="v") }}]\
+## [{{ version }}]\
     {%- if release_link -%}\
         ({{ release_link }})\
     {% endif %} \
@@ -170,9 +170,9 @@ body = """
 
 {% if version %}\
     {% if previous.version %}\
-        ## [{{ version | trim_start_matches(pat="v") }}]({{ release_link }})
+        ## [{{ version }}]({{ release_link }})
     {% else %}\
-        ## [{{ version | trim_start_matches(pat="v") }}]
+        ## [{{ version }}]
     {% endif %}\
 {% endif %}\
 
@@ -298,7 +298,7 @@ GitHub/Gitea/GitLab username of the contributors.
 [changelog]
 body = """
 
-## [{{ version | trim_start_matches(pat="v") }}]\
+## [{{ version }}]\
     {%- if release_link -%}\
         ({{ release_link }})\
     {% endif %} \
@@ -437,7 +437,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 body = """
 
-## [{{ version | trim_start_matches(pat="v") }}]\
+## [{{ version }}]\
     {%- if release_link -%}\
         ({{ release_link }})\
     {% endif %} \
