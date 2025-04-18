@@ -52,7 +52,7 @@ pub struct Release {
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
     pub git_token: Option<String>,
     /// Kind of git forge
-    #[arg(long, alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
+    #[arg(long, visible_alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
     forge: ReleaseGitForgeKind,
     /// Path to the release-plz config file.
     /// Default: `./release-plz.toml`.

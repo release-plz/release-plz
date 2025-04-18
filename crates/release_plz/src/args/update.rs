@@ -103,7 +103,7 @@ pub struct Update {
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), visible_alias = "github-token", env, hide_env_values=true)]
     pub git_token: Option<String>,
     /// Kind of git host where your project is hosted.
-    #[arg(long, alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
+    #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
     forge: GitForgeKind,
 }
 
