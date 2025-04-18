@@ -60,7 +60,7 @@ commit without specifying a GPG signature.
 ## GitLab
 
 `release-plz release-pr` also supports creating PRs for repositories hosted on GitLab with
-the `--forge gitlab` or `--backend gitlab` option.
+the `--forge gitlab` option.
 
 You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
 permissions:
