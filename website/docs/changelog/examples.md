@@ -414,10 +414,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 </details>
 
-## Visualizing changes
+## Source changes
 
-The changelog could also be configured to link changes
-from the new release to the previous one on diff.rs
+This configuration links source code changes
+from the new release to the previous one on
+[diff.rs](https://diff.rs/).
 
 <details>
   <summary>TOML configuration</summary>
