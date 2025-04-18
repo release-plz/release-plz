@@ -40,7 +40,7 @@ Instead, release-plz overrides the existing release PR with the changes of the s
 ## Gitea
 
 `release-plz release-pr` also supports creating PRs for repositories hosted on
-Gitea with the `--forge` or `backend` option:
+Gitea with the `--forge` option:
 
 `release-plz release-pr --git-token <gitea application token> --forge gitea`
 
