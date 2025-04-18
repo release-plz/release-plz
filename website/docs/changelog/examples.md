@@ -107,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Expose string functions
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### Added
 
@@ -136,7 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add release script
 ### Changed
 - Expose string functions
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### Added
 - Add README.md
 - Add ability to parse arrays
@@ -242,7 +242,7 @@ link_parsers = [
 
 - chore(release): add release script ([06412ac](06412ac1dd4071006c465dde6597a21d4367a158))
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### ⛰️  Features
 
@@ -274,7 +274,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - refactor(parser): expose string functions (e4fd3cf)
 ### ⚙️ Miscellaneous Tasks
 - chore(release): add release script (06412ac)
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### ⛰️  Features
 - feat(parser): add ability to parse arrays (a140cef)
 ### 🐛 Bug Fixes
@@ -366,7 +366,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * @orhun
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### Added
 
@@ -401,7 +401,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose string functions (by @orhun)
 ### Contributors
 * @orhun
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### Added
 - Add README.md (by @orhun)
 - Add ability to parse arrays (by @orhun)
@@ -500,7 +500,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Expose string functions
 
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 
 ### Added
 
@@ -530,7 +530,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add release script
 ### Changed
 - Expose string functions
-## [1.0.0] - 2021-07-18
+## [1.0.0](https://github.com/orhun/git-cliff-readme-example/releases/tag/v1.0.0) - 2021-07-18
 ### Added
 - Add README.md
 - Add ability to parse arrays
