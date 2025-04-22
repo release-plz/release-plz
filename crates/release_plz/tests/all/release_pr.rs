@@ -3,6 +3,7 @@ use crate::helpers::{
     test_context::TestContext,
     today,
 };
+use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
 fn assert_cargo_semver_checks_is_installed() {
@@ -216,6 +217,19 @@ async fn release_plz_updates_binary_when_library_changes() {
     ])
     .await;
 
+    // Set initial versions before first release
+    let mut library2_manifest =
+        LocalManifest::try_new(&context.package_path(library2).join(CARGO_TOML)).unwrap();
+    library2_manifest.set_package_version(&Version::new(0, 2, 0));
+    library2_manifest.write().unwrap();
+
+    let mut binary_manifest =
+        LocalManifest::try_new(&context.package_path(binary).join(CARGO_TOML)).unwrap();
+    binary_manifest.set_package_version(&Version::new(1, 3, 0));
+    binary_manifest.write().unwrap();
+
+    context.push_all_changes("set initial versions");
+
     context.run_release_pr().success();
     context.merge_release_pr().await;
     context.run_release().success();
@@ -231,7 +245,7 @@ async fn release_plz_updates_binary_when_library_changes() {
     assert_eq!(opened_prs.len(), 1);
 
     let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release v0.1.1");
+    assert_eq!(open_pr.title, "chore: release");
 
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
@@ -243,8 +257,8 @@ async fn release_plz_updates_binary_when_library_changes() {
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
-* `{library2}`: 0.1.0 -> 0.1.1
-* `{binary}`: 0.1.0 -> 0.1.1
+* `{library2}`: 0.2.0 -> 0.2.1
+* `{binary}`: 1.3.0 -> 1.3.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
@@ -263,7 +277,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
+## [0.2.1](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.2.1) - {today}
 
 ### Other
 
@@ -274,7 +288,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
+## [1.3.1](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.3.1) - {today}
 
 ### Other
 
@@ -298,12 +312,12 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     expect_test::expect![[r#"
         [package]
         name = "binary"
-        version = "0.1.1"
+        version = "1.3.1"
         edition = "2024"
         publish = ["test-registry"]
 
         [dependencies]
-        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
+        library2 = { version = "0.2.1", path = "../library2", registry = "test-registry" }
     "#]]
     .assert_eq(&binary_cargo_toml);
 }
@@ -719,6 +733,176 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
     }
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_binary_when_library_breaking_changes() {
+    let binary = "binary";
+    let library1 = "library1";
+    let library2 = "library2";
+    let library3 = "library3";
+    // dependency chain: binary -> library3 -> library2 -> library1
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library3}")]),
+        TestPackage::new(library3)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library2}")]),
+        TestPackage::new(library2)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library1}")]),
+        TestPackage::new(library1).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // Set initial versions before first release
+    let mut library2_manifest =
+        LocalManifest::try_new(&context.package_path(library2).join(CARGO_TOML)).unwrap();
+    library2_manifest.set_package_version(&Version::new(0, 2, 0));
+    library2_manifest.write().unwrap();
+
+    let mut library3_manifest =
+        LocalManifest::try_new(&context.package_path(library3).join(CARGO_TOML)).unwrap();
+    library3_manifest.set_package_version(&Version::new(0, 3, 0));
+    library3_manifest.write().unwrap();
+
+    let mut binary_manifest =
+        LocalManifest::try_new(&context.package_path(binary).join(CARGO_TOML)).unwrap();
+    binary_manifest.set_package_version(&Version::new(1, 3, 0));
+    binary_manifest.write().unwrap();
+
+    context.push_all_changes("set initial versions");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Update the library.
+    let lib_file = context.package_path(library1).join("src").join("lib.rs");
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("breaking change in library");
+
+    context.run_release_pr().success();
+    let today = today();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release");
+
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    let expected_body = format!(
+        r#"
+## 🤖 New release
+
+* `{library1}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
+* `{library2}`: 0.2.0 -> 0.3.0 (✓ API compatible changes)
+* `{library3}`: 0.3.0 -> 0.4.0 (✓ API compatible changes)
+* `{binary}`: 1.3.0 -> 1.4.0 (✓ API compatible changes)
+
+### ⚠ `{library1}` breaking changes
+
+```text
+--- failure function_missing: pub fn removed or renamed ---
+
+Description:
+A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.40.0/src/lints/function_missing.ron
+
+Failed in:
+  function library1::add, previously in file /private/var/folders/sz/335x8kc91g55r2nkjktmkv1h0000gq/T/.tmpY912au/library1/src/lib.rs:1
+```
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{library1}`
+
+<blockquote>
+
+## [0.2.0](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.2.0) - {today}
+
+### Other
+
+- breaking change in library
+</blockquote>
+
+## `{library2}`
+
+<blockquote>
+
+## [0.3.0](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.3.0) - {today}
+
+### Other
+
+- updated the following local packages: {library1}
+</blockquote>
+
+## `{library3}`
+
+<blockquote>
+
+## [0.4.0](https://localhost/{username}/{repo}/compare/{library3}-v0.3.0...{library3}-v0.4.0) - {today}
+
+### Other
+
+- updated the following local packages: {library2}
+</blockquote>
+
+## `{binary}`
+
+<blockquote>
+
+## [1.4.0](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.4.0) - {today}
+
+### Other
+
+- updated the following local packages: {library3}
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+    )
+    .trim()
+    .to_string();
+
+    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
+    let actual_lines: Vec<_> = actual_body.lines().collect();
+    let expected_lines: Vec<_> = expected_body.lines().collect();
+    assert_eq!(
+        actual_lines.len(),
+        expected_lines.len(),
+        "Different number of lines"
+    );
+    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
+        if !actual.contains("/private/var/folders/") {
+            assert_eq!(actual, expected);
+        }
+    }
+
+    context.merge_release_pr().await;
+
+    // Check if the binary has the new version.
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "1.4.0"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library3 = { version = "0.4.0", path = "../library3", registry = "test-registry" }
+    "#]]
+    .assert_eq(&binary_cargo_toml);
+}
+
 fn move_readme(context: &TestContext, message: &str) {
     let readme = "README.md";
     let new_readme = format!("NEW_{readme}");
@@ -762,4 +946,144 @@ fn update_readme_in_cargo_toml(context: &TestContext, readme_path: &str) {
     let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
     cargo_toml.data["package"]["readme"] = toml_edit::value(readme_path);
     cargo_toml.write().unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
+    let binary = "binary";
+    let library = "library";
+    // dependency chain: binary -> library
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library}")]),
+        TestPackage::new(library).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // Set initial versions before first release
+    let mut library_manifest =
+        LocalManifest::try_new(&context.package_path(library).join(CARGO_TOML)).unwrap();
+    library_manifest.set_package_version(&Version::new(0, 1, 0));
+    library_manifest.write().unwrap();
+
+    let mut binary_manifest =
+        LocalManifest::try_new(&context.package_path(binary).join(CARGO_TOML)).unwrap();
+    binary_manifest.set_package_version(&Version::new(1, 0, 0));
+    binary_manifest.write().unwrap();
+
+    context.push_all_changes("set initial versions");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Update the library with a breaking change
+    let lib_file = context.package_path(library).join("src").join("lib.rs");
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("breaking change in library");
+
+    // Add release_commits regex that will only match library commits
+    let config = r#"
+    [workspace]
+    release_commits = "^breaking change in library$"
+    "#;
+    context.write_release_plz_toml(config);
+
+    context.run_release_pr().success();
+    let today = today();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release");
+
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    let expected_body = format!(
+        r#"
+## 🤖 New release
+
+* `{library}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
+* `{binary}`: 1.0.0 -> 1.1.0 (✓ API compatible changes)
+
+### ⚠ `{library}` breaking changes
+
+```text
+--- failure function_missing: pub fn removed or renamed ---
+
+Description:
+A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.40.0/src/lints/function_missing.ron
+
+Failed in:
+  function library::add, previously in file /private/var/folders/sz/335x8kc91g55r2nkjktmkv1h0000gq/T/.tmpY912au/library/src/lib.rs:1
+```
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{library}`
+
+<blockquote>
+
+## [0.2.0](https://localhost/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.2.0) - {today}
+
+### Other
+
+- breaking change in library
+</blockquote>
+
+## `{binary}`
+
+<blockquote>
+
+## [1.1.0](https://localhost/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.1.0) - {today}
+
+### Other
+
+- updated the following local packages: {library}
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+    )
+    .trim()
+    .to_string();
+
+    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
+    let actual_lines: Vec<_> = actual_body.lines().collect();
+    let expected_lines: Vec<_> = expected_body.lines().collect();
+    assert_eq!(
+        actual_lines.len(),
+        expected_lines.len(),
+        "Different number of lines"
+    );
+    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
+        if !actual.contains("/private/var/folders/") {
+            assert_eq!(actual, expected);
+        }
+    }
+
+    context.merge_release_pr().await;
+
+    // Check if the binary has the new version.
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "1.1.0"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library = { version = "0.2.0", path = "../library", registry = "test-registry" }
+    "#]]
+    .assert_eq(&binary_cargo_toml);
 }

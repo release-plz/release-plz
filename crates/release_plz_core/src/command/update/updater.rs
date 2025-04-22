@@ -82,6 +82,11 @@ impl Updater<'_> {
 
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
+            if diff.is_version_published {
+                // We need to update this package if one of its dependencies has changed.
+                packages_to_check_for_deps.push(p);
+            }
+
             if let Some(release_commits_regex) = self.req.release_commits() {
                 if !diff.any_commit_matches(release_commits_regex) {
                     info!("{}: no commit matches the `release_commits` regex", p.name);
@@ -116,9 +121,6 @@ impl Updater<'_> {
                 packages_to_update
                     .updates_mut()
                     .push((p.clone(), update_result));
-            } else if diff.is_version_published {
-                // We need to update this package only if one of its dependencies has changed.
-                packages_to_check_for_deps.push(p);
             }
         }
 
@@ -352,19 +354,31 @@ impl Updater<'_> {
 
     fn calculate_package_update_result(
         &self,
-        deps: &[&Package],
+        deps: &HashMap<&Package, SemverCheck>,
         p: &Package,
         old_changelogs: &mut OldChangelogs,
     ) -> anyhow::Result<(Package, UpdateResult)> {
-        let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
+        let dependencies: Vec<&str> = deps.iter().map(|(d, _)| d.name.as_str()).collect();
         let commits = {
             let change = format!(
                 "chore: updated the following local packages: {}",
-                deps.join(", ")
+                dependencies.join(", ")
             );
             vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
         };
-        let next_version = if p.version.is_prerelease() {
+        let mut semver_check = SemverCheck::Skipped;
+        // Increment minor version if a breaking change in a dependency.
+        // Should not be a major version change since presumably the API of this package did not change.
+        let next_version = if deps
+            .values()
+            .any(|check| matches!(check, SemverCheck::Incompatible(_)))
+        {
+            // When a package depends on another package with breaking changes,
+            // we increment its minor version but mark it as having compatible changes
+            // since its own API hasn't changed.
+            semver_check = SemverCheck::Compatible;
+            p.version.increment_minor()
+        } else if p.version.is_prerelease() {
             p.version.increment_prerelease()
         } else {
             p.version.increment_patch()
@@ -373,13 +387,8 @@ impl Updater<'_> {
             "{}: dependencies changed. Next version is {next_version}",
             p.name
         );
-        let update_result = self.calculate_update_result(
-            commits,
-            next_version,
-            p,
-            SemverCheck::Skipped,
-            old_changelogs,
-        )?;
+        let update_result =
+            self.calculate_update_result(commits, next_version, p, semver_check, old_changelogs)?;
         Ok((p.clone(), update_result))
     }
 
