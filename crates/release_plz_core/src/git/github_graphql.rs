@@ -7,7 +7,7 @@ use tracing::{debug, trace};
 use url::Url;
 
 use crate::GitClient;
-use crate::git::backend::Remote;
+use crate::git::forge::Remote;
 
 /// Commit all the changes (except typestates) that are present in the repository
 /// using GitHub's [GraphQL api](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch).

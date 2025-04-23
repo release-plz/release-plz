@@ -183,7 +183,7 @@ Here's how to use a GitHub App to generate a GitHub token:
      # Generating a GitHub token, so that PRs and tags created by
      # the release-plz-action can trigger actions workflows.
      - name: Generate GitHub token
-       uses: actions/create-github-app-token@v1
+       uses: actions/create-github-app-token@v2
        id: generate-token
        with:
          # GitHub App ID secret name
@@ -200,7 +200,7 @@ Here's how to use a GitHub App to generate a GitHub token:
      - name: Install Rust toolchain
        uses: dtolnay/rust-toolchain@stable
      - name: Run release-plz
-       uses: release-plz/action@main
+       uses: release-plz/action@v0.5
        env:
    # highlight-next-line
          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}

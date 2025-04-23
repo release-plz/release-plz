@@ -3,7 +3,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::debug;
 
-use crate::{RepoUrl, git::backend::Remote};
+use crate::{RepoUrl, git::forge::Remote};
 
 #[derive(Debug, Clone)]
 pub struct GitLab {

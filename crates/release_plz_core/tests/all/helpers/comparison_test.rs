@@ -4,7 +4,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use cargo_utils::{CARGO_TOML, get_manifest_metadata};
 use chrono::NaiveDate;
 use release_plz_core::{
-    CHANGELOG_FILENAME, ChangelogRequest, GitBackend, GitHub, Gitea, ReleasePrRequest, RepoUrl,
+    CHANGELOG_FILENAME, ChangelogRequest, GitForge, GitHub, Gitea, ReleasePrRequest, RepoUrl,
     are_packages_equal, copy_to_temp_dir, fs_utils::Utf8TempDir, update_request::UpdateRequest,
 };
 use secrecy::SecretString;
@@ -64,7 +64,7 @@ impl ComparisonTest {
     }
 
     fn github_release_pr_request(&self, base_url: Url) -> ReleasePrRequest {
-        let github = GitBackend::Github(
+        let github = GitForge::Github(
             GitHub::new(
                 OWNER.to_string(),
                 REPO.to_string(),
@@ -86,7 +86,7 @@ impl ComparisonTest {
     fn gitea_release_pr_request(&self, base_url: &Url) -> anyhow::Result<ReleasePrRequest> {
         let url = RepoUrl::new(&format!("{}{OWNER}/{REPO}", base_url.as_str()))
             .context("can't crate url")?;
-        let git = GitBackend::Gitea(Gitea::new(url, SecretString::from("token".to_string()))?);
+        let git = GitForge::Gitea(Gitea::new(url, SecretString::from("token".to_string()))?);
         let update_request = self.update_request().with_git_client(git);
         Ok(ReleasePrRequest::new(update_request))
     }
