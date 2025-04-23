@@ -880,7 +880,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         "Different number of lines"
     );
     for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !actual.contains("/private/var/folders/") {
+        if !actual.contains(".tmp") {
             assert_eq!(actual, expected);
         }
     }
@@ -1065,7 +1065,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         "Different number of lines"
     );
     for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !actual.contains("/private/var/folders/") {
+        if !actual.contains(".tmp") {
             assert_eq!(actual, expected);
         }
     }
