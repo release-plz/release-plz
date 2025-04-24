@@ -27,7 +27,17 @@ release-plz released the new version of your project.
 If you are using release-plz to release your project, you can
 run a CI job on the "tag" or "release" events to build and release the binaries.
 
-Here is an example:
+Here is an example based on release-plz's own
+[`cd.yml` workflow](https://github.com/release-plz/release-plz/blob/main/.github/workflows/cd.yml):
+
+:::info
+To use this in your project, change:
+
+- the repository owner from `"MyOwner"` to your username/organisation.
+- the release name from `"my-bin-v"` to the release name of your binary according to
+  [`git_release_name`](../config.md#the-git_release_name-field).
+
+:::
 
 ```yaml
 name: CD # Continuous Deployment
