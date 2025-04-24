@@ -1,3 +1,7 @@
+---
+toc_max_heading_level: 4
+---
+
 # Configuration
 
 This section describes how you can customize the behavior of release-plz
