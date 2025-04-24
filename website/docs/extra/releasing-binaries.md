@@ -36,6 +36,7 @@ To use this in your project, change:
 - the repository owner from `"MyOwner"` to your username/organisation.
 - the release name from `"my-bin-v"` to the release name of your binary according to
   [`git_release_name`](../config#the-git_release_name-field).
+
 :::
 
 ```yaml
