@@ -865,6 +865,9 @@ link_parsers = [
 ]
 ```
 
+You can find the default configuration and some alternative templates in the
+[changelog examples docs](./changelog/examples.md#release-plz-default).
+
 #### The `header` field
 
 Text at the beginning of the changelog.
