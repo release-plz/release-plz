@@ -375,8 +375,13 @@ impl Updater<'_> {
             "{}: dependencies changed. Next version is {next_version}",
             p.name
         );
-        let update_result =
-            self.calculate_update_result(commits, next_version, p, SemverCheck::Skipped, old_changelogs)?;
+        let update_result = self.calculate_update_result(
+            commits,
+            next_version,
+            p,
+            SemverCheck::Skipped,
+            old_changelogs,
+        )?;
         Ok((p.clone(), update_result))
     }
 
