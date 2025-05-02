@@ -776,9 +776,9 @@ async fn release_plz_updates_binary_when_library_has_breaking_changes() {
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
-* `{library2}`: 0.2.0 -> 0.3.0 (✓ API compatible changes)
-* `{library3}`: 0.3.0 -> 0.4.0 (✓ API compatible changes)
-* `{binary}`: 1.3.0 -> 1.4.0 (✓ API compatible changes)
+* `{library2}`: 0.2.0 -> 0.2.1
+* `{library3}`: 0.3.0 -> 0.3.1
+* `{binary}`: 1.3.0 -> 1.3.1
 
 ### ⚠ `{library1}` breaking changes
 
@@ -811,7 +811,7 @@ Failed in:
 
 <blockquote>
 
-## [0.3.0](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.3.0) - {today}
+## [0.2.1](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.2.1) - {today}
 
 ### Other
 
@@ -822,7 +822,7 @@ Failed in:
 
 <blockquote>
 
-## [0.4.0](https://localhost/{username}/{repo}/compare/{library3}-v0.3.0...{library3}-v0.4.0) - {today}
+## [0.3.1](https://localhost/{username}/{repo}/compare/{library3}-v0.3.0...{library3}-v0.3.1) - {today}
 
 ### Other
 
@@ -833,7 +833,7 @@ Failed in:
 
 <blockquote>
 
-## [1.4.0](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.4.0) - {today}
+## [1.3.1](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.3.1) - {today}
 
 ### Other
 
@@ -871,12 +871,12 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     expect_test::expect![[r#"
         [package]
         name = "binary"
-        version = "1.4.0"
+        version = "1.3.1"
         edition = "2024"
         publish = ["test-registry"]
 
         [dependencies]
-        library3 = { version = "0.4.0", path = "../library3", registry = "test-registry" }
+        library3 = { version = "0.3.1", path = "../library3", registry = "test-registry" }
     "#]]
     .assert_eq(&binary_cargo_toml);
 }
@@ -979,7 +979,7 @@ async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
 ## 🤖 New release
 
 * `{library}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
-* `{binary}`: 1.0.0 -> 1.1.0 (✓ API compatible changes)
+* `{binary}`: 1.0.0 -> 1.0.1
 
 ### ⚠ `{library}` breaking changes
 
@@ -1012,7 +1012,7 @@ Failed in:
 
 <blockquote>
 
-## [1.1.0](https://localhost/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.1.0) - {today}
+## [1.0.1](https://localhost/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.0.1) - {today}
 
 ### Other
 
@@ -1050,7 +1050,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     expect_test::expect![[r#"
         [package]
         name = "binary"
-        version = "1.1.0"
+        version = "1.0.1"
         edition = "2024"
         publish = ["test-registry"]
 
