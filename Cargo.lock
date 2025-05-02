@@ -4862,7 +4862,6 @@ dependencies = [
  "reqwest-middleware",
  "reqwest-retry",
  "secrecy 0.10.3",
- "semver",
  "serde",
  "serde_json",
  "strip-ansi-escapes",

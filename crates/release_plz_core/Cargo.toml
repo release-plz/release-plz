@@ -42,7 +42,6 @@ reqwest = { workspace = true, features = ["json", "gzip", "native-tls-alpn"] }
 reqwest-middleware.workspace = true
 reqwest-retry.workspace = true
 secrecy.workspace = true
-semver.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 toml.workspace = true

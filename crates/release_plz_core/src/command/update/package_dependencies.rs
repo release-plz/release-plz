@@ -71,10 +71,7 @@ impl PackageDependencies for Package {
     }
 }
 
-fn version_change_type(
-    old_version: &semver::Version,
-    new_version: &semver::Version,
-) -> Option<SemverCheck> {
+fn version_change_type(old_version: &Version, new_version: &Version) -> Option<SemverCheck> {
     if new_version.major > old_version.major
         || (old_version.major == 0 && new_version.minor > old_version.minor)
     {
@@ -107,7 +104,7 @@ fn should_update_dependency(dep: &dyn TableLike, next_ver: &Version) -> Option<S
         .expect("filter ensures this")
         .as_str()
         .unwrap_or("*");
-    let old_version = semver::Version::parse(old_req).ok();
+    let old_version = Version::parse(old_req).ok();
     if let Some(old_version) = old_version {
         return version_change_type(&old_version, next_ver);
     }
