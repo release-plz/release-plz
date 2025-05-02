@@ -58,3 +58,34 @@ jobs:
 
 This is the same approach used in the crates.io
 [repository](https://github.com/rust-lang/crates.io/blob/7e52e11c5ddeb33db70f0000bbcdfb01e9b43b0d/.github/workflows/ci.yml#L30C32-L31C1).
+
+## `zizmor` warning
+
+[zizmor](https://github.com/woodruffw/zizmor) is a static analysis tool for GitHub Actions.
+When you run it on the release-plz [workflow](./quickstart.md#3-setup-the-workflow), it will
+emit the [artipacked](https://woodruffw.github.io/zizmor/audits/#artipacked) warning:
+
+```text
+warning[artipacked]: credential persistence through GitHub Actions artifacts
+  --> .github/workflows/release-plz.yml:24:9
+   |
+24 |         - name: Checkout repository
+   |  _________-
+25 | |         uses: actions/checkout@v4
+26 | |         with:
+27 | |           fetch-depth: 0
+   | |________________________- does not set persist-credentials: false
+   |
+   = note: audit confidence → Low
+```
+
+This warning is emitted because the `actions/checkout` action does not set
+`persist-credentials: false` in the `with` section.
+
+Unfortunately, `persist-credentials` needs to be set to `true` (which is the default)
+for the release-plz action to work because release-plz needs the token generated
+by the `actions/checkout` action to run git commands like `git tag` and `git push`.
+Note that this token is different with respect to the one used to call the
+GitHub API.
+
+To solve the warning, you can set `persist-credentials: true` in the `with` section.
