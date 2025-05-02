@@ -755,6 +755,8 @@ async fn release_plz_updates_binary_when_library_has_breaking_changes() {
 
     // Update the library.
     let lib_file = context.package_path(library1).join("src").join("lib.rs");
+    // This is a breaking change because we remove the `add` library
+    // created with `cargo init --lib`.
     fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
     context.push_all_changes("breaking change in library");
 
@@ -949,6 +951,8 @@ async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
 
     // Update the library with a breaking change
     let lib_file = context.package_path(library).join("src").join("lib.rs");
+    // This is a breaking change because we remove the `add` library
+    // created with `cargo init --lib`.
     fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
     context.push_all_changes("breaking change in library");
 
