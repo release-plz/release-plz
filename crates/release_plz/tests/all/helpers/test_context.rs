@@ -5,7 +5,9 @@ use assert_cmd::assert::Assert;
 use cargo_metadata::{
     Package,
     camino::{Utf8Path, Utf8PathBuf},
+    semver::Version,
 };
+use cargo_utils::{CARGO_TOML, LocalManifest};
 use git_cmd::Repo;
 use release_plz_core::{
     DEFAULT_BRANCH_PREFIX, GitClient, GitForge, GitPr, Gitea, Pr, RepoUrl,
@@ -57,6 +59,13 @@ impl TestContext {
 
     pub fn package_path(&self, package_name: &str) -> Utf8PathBuf {
         self.repo_dir().join(CRATES_DIR).join(package_name)
+    }
+
+    pub fn set_package_version(&self, package_name: &str, version: &Version) {
+        let mut manifest =
+            LocalManifest::try_new(&self.package_path(package_name).join(CARGO_TOML)).unwrap();
+        manifest.set_package_version(version);
+        manifest.write().unwrap();
     }
 
     pub fn push_all_changes(&self, commit_message: &str) {

@@ -743,20 +743,9 @@ async fn release_plz_updates_binary_when_library_breaking_changes() {
     .await;
 
     // Set initial versions before first release
-    let mut library2_manifest =
-        LocalManifest::try_new(&context.package_path(library2).join(CARGO_TOML)).unwrap();
-    library2_manifest.set_package_version(&Version::new(0, 2, 0));
-    library2_manifest.write().unwrap();
-
-    let mut library3_manifest =
-        LocalManifest::try_new(&context.package_path(library3).join(CARGO_TOML)).unwrap();
-    library3_manifest.set_package_version(&Version::new(0, 3, 0));
-    library3_manifest.write().unwrap();
-
-    let mut binary_manifest =
-        LocalManifest::try_new(&context.package_path(binary).join(CARGO_TOML)).unwrap();
-    binary_manifest.set_package_version(&Version::new(1, 3, 0));
-    binary_manifest.write().unwrap();
+    context.set_package_version(library2, &Version::new(0, 2, 0));
+    context.set_package_version(library3, &Version::new(0, 3, 0));
+    context.set_package_version(binary, &Version::new(1, 3, 0));
 
     context.push_all_changes("set initial versions");
 
@@ -950,16 +939,8 @@ async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
     .await;
 
     // Set initial versions before first release
-    let mut library_manifest =
-        LocalManifest::try_new(&context.package_path(library).join(CARGO_TOML)).unwrap();
-    library_manifest.set_package_version(&Version::new(0, 1, 0));
-    library_manifest.write().unwrap();
-
-    let mut binary_manifest =
-        LocalManifest::try_new(&context.package_path(binary).join(CARGO_TOML)).unwrap();
-    binary_manifest.set_package_version(&Version::new(1, 0, 0));
-    binary_manifest.write().unwrap();
-
+    context.set_package_version(library, &Version::new(0, 1, 0));
+    context.set_package_version(binary, &Version::new(1, 0, 0));
     context.push_all_changes("set initial versions");
 
     context.run_release_pr().success();
