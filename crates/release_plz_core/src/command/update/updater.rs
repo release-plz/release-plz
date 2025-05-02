@@ -366,19 +366,7 @@ impl Updater<'_> {
             );
             vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
         };
-        let mut semver_check = SemverCheck::Skipped;
-        // Increment minor version if a breaking change in a dependency.
-        // Should not be a major version change since presumably the API of this package did not change.
-        let next_version = if deps
-            .values()
-            .any(|check| matches!(check, SemverCheck::Incompatible(_)))
-        {
-            // When a package depends on another package with breaking changes,
-            // we increment its minor version but mark it as having compatible changes
-            // since its own API hasn't changed.
-            semver_check = SemverCheck::Compatible;
-            p.version.increment_minor()
-        } else if p.version.is_prerelease() {
+        let next_version = if p.version.is_prerelease() {
             p.version.increment_prerelease()
         } else {
             p.version.increment_patch()
@@ -388,7 +376,7 @@ impl Updater<'_> {
             p.name
         );
         let update_result =
-            self.calculate_update_result(commits, next_version, p, semver_check, old_changelogs)?;
+            self.calculate_update_result(commits, next_version, p, SemverCheck::Skipped, old_changelogs)?;
         Ok((p.clone(), update_result))
     }
 
