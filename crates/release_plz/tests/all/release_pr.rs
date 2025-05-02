@@ -1053,6 +1053,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     .assert_eq(&binary_cargo_toml);
 }
 
+/// Check if the line contains a temporary directory or the version of cargo-semver-checks.
 fn does_line_vary(line: &str) -> bool {
     line.contains("cargo-semver-checks/tree") || line.contains(".tmp")
 }
