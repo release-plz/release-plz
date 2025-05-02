@@ -217,19 +217,6 @@ async fn release_plz_updates_binary_when_library_changes() {
     ])
     .await;
 
-    // Set initial versions before first release
-    let mut library2_manifest =
-        LocalManifest::try_new(&context.package_path(library2).join(CARGO_TOML)).unwrap();
-    library2_manifest.set_package_version(&Version::new(0, 2, 0));
-    library2_manifest.write().unwrap();
-
-    let mut binary_manifest =
-        LocalManifest::try_new(&context.package_path(binary).join(CARGO_TOML)).unwrap();
-    binary_manifest.set_package_version(&Version::new(1, 3, 0));
-    binary_manifest.write().unwrap();
-
-    context.push_all_changes("set initial versions");
-
     context.run_release_pr().success();
     context.merge_release_pr().await;
     context.run_release().success();
@@ -245,7 +232,7 @@ async fn release_plz_updates_binary_when_library_changes() {
     assert_eq!(opened_prs.len(), 1);
 
     let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release");
+    assert_eq!(open_pr.title, "chore: release v0.1.1");
 
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
@@ -257,8 +244,8 @@ async fn release_plz_updates_binary_when_library_changes() {
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
-* `{library2}`: 0.2.0 -> 0.2.1
-* `{binary}`: 1.3.0 -> 1.3.1
+* `{library2}`: 0.1.0 -> 0.1.1
+* `{binary}`: 0.1.0 -> 0.1.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
@@ -277,7 +264,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [0.2.1](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.2.1) - {today}
+## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
 
 ### Other
 
@@ -288,7 +275,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [1.3.1](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.3.1) - {today}
+## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
 
 ### Other
 
@@ -312,12 +299,12 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     expect_test::expect![[r#"
         [package]
         name = "binary"
-        version = "1.3.1"
+        version = "0.1.1"
         edition = "2024"
         publish = ["test-registry"]
 
         [dependencies]
-        library2 = { version = "0.2.1", path = "../library2", registry = "test-registry" }
+        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
     "#]]
     .assert_eq(&binary_cargo_toml);
 }
