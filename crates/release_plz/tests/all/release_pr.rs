@@ -956,13 +956,6 @@ async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
     fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
     context.push_all_changes("breaking change in library");
 
-    // Add release_commits regex that will only match library commits
-    let config = r#"
-    [workspace]
-    release_commits = "^breaking change in library$"
-    "#;
-    context.write_release_plz_toml(config);
-
     context.run_release_pr().success();
     let today = today();
     let opened_prs = context.opened_release_prs().await;
