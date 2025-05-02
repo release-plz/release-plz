@@ -88,4 +88,16 @@ by the `actions/checkout` action to run git commands like `git tag` and `git pus
 Note that this token is different with respect to the one used to call the
 GitHub API.
 
-To solve the warning, you can set `persist-credentials: true` in the `with` section.
+To solve the warning, set `persist-credentials: true` in the `with` section
+of the `actions/checkout` action:
+
+```yaml
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+# highlight-start
+          persist-credentials: true
+# highlight-end
+```
