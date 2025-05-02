@@ -1,3 +1,7 @@
+---
+toc_max_heading_level: 4
+---
+
 # Configuration
 
 This section describes how you can customize the behavior of release-plz
@@ -860,6 +864,9 @@ link_parsers = [
     { pattern = "RFC(\\d+)", text = "ietf-rfc$1", href = "https://datatracker.ietf.org/doc/html/rfc$1"}
 ]
 ```
+
+You can find the default configuration and some alternative templates in the
+[changelog examples docs](./changelog/examples.md#release-plz-default).
 
 #### The `header` field
 
