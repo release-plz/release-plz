@@ -722,7 +722,7 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_updates_binary_when_library_breaking_changes() {
+async fn release_plz_updates_binary_when_library_has_breaking_changes() {
     let binary = "binary";
     let library1 = "library1";
     let library2 = "library2";
