@@ -155,7 +155,7 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     // - The line containing the cargo semver checks version because it can change.
     let pr_body = pr_body
         .lines()
-        .filter(|line| !line.contains("lib.rs:1") && !line.contains("cargo-semver-checks/tree"))
+        .filter(|line| !does_line_vary(line))
         .collect::<Vec<_>>()
         .join("\n");
     pretty_assertions::assert_eq!(
@@ -858,7 +858,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         "Different number of lines"
     );
     for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !actual.contains(".tmp") {
+        if !does_line_vary(&actual) {
             assert_eq!(actual, expected);
         }
     }
@@ -1030,7 +1030,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         "Different number of lines"
     );
     for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !actual.contains(".tmp") {
+        if !does_line_vary(actual) {
             assert_eq!(actual, expected);
         }
     }
@@ -1051,4 +1051,8 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         library = { version = "0.2.0", path = "../library", registry = "test-registry" }
     "#]]
     .assert_eq(&binary_cargo_toml);
+}
+
+fn does_line_vary(line: &str) -> bool {
+    line.contains("cargo-semver-checks/tree") || line.contains(".tmp")
 }
