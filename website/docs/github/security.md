@@ -85,8 +85,6 @@ This warning is emitted because the `actions/checkout` action does not set
 Unfortunately, `persist-credentials` needs to be set to `true` (which is the default)
 for the release-plz action to work because release-plz needs the token generated
 by the `actions/checkout` action to run git commands like `git tag` and `git push`.
-Note that this token is different with respect to the one used to call the
-GitHub API.
 
 To solve the warning, set `persist-credentials: true` in the `with` section
 of the `actions/checkout` action:
