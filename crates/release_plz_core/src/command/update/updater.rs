@@ -83,7 +83,7 @@ impl Updater<'_> {
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
             if diff.is_version_published {
-                // We need to update this package if one of its dependencies has changed.
+                // We need to check if one of the dependencies of this package changed.
                 packages_to_check_for_deps.push(p);
             }
 
@@ -281,7 +281,7 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// Return the update to apply to the packages that depend on the `changed_packages`.
+    /// Return the update to apply to the packages that depend on the `initial_changed_packages`.
     ///
     /// ## Args
     ///
@@ -289,7 +289,7 @@ impl Updater<'_> {
     ///   We update them if they depend on any of the `changed_packages`.
     ///   If they don't depend on any of the `changed_packages`, they are not updated
     ///   because they don't contain any new commits.
-    /// - `changed_packages`: The packages that have changed (i.e. contains commits).
+    /// - `initial_changed_packages`: The packages that have changed (i.e. contains commits).
     fn dependent_packages_update(
         &self,
         packages_to_check_for_deps: &[&Package],
