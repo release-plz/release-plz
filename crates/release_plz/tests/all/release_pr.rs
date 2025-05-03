@@ -727,7 +727,9 @@ async fn release_plz_updates_binary_when_library_has_breaking_changes() {
     let library1 = "library1";
     let library2 = "library2";
     let library3 = "library3";
-    // dependency chain: binary -> library3 -> library2 -> library1
+    let library4 = "library4";
+    // Dependency chain: binary -> library3 -> library2 -> library1.
+    // Library4 is a standalone crate.
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
@@ -739,6 +741,7 @@ async fn release_plz_updates_binary_when_library_has_breaking_changes() {
             .with_type(PackageType::Lib)
             .with_path_dependencies(vec![format!("../{library1}")]),
         TestPackage::new(library1).with_type(PackageType::Lib),
+        TestPackage::new(library4).with_type(PackageType::Lib),
     ])
     .await;
 
