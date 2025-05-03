@@ -354,15 +354,15 @@ impl Updater<'_> {
 
     fn calculate_package_update_result(
         &self,
-        deps: &HashMap<&Package, SemverCheck>,
+        deps: &[&Package],
         p: &Package,
         old_changelogs: &mut OldChangelogs,
     ) -> anyhow::Result<(Package, UpdateResult)> {
-        let dependencies: Vec<&str> = deps.iter().map(|(d, _)| d.name.as_str()).collect();
+        let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
         let commits = {
             let change = format!(
                 "chore: updated the following local packages: {}",
-                dependencies.join(", ")
+                deps.join(", ")
             );
             vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
         };

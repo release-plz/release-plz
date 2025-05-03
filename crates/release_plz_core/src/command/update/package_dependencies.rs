@@ -1,9 +1,8 @@
 use cargo_metadata::{Package, camino::Utf8Path, semver::Version};
 use cargo_utils::LocalManifest;
-use std::collections::HashMap;
 use toml_edit::TableLike;
 
-use crate::{PackagePath as _, semver_check::SemverCheck};
+use crate::PackagePath as _;
 
 pub trait PackageDependencies {
     /// Returns the `updated_packages` which should be updated in the dependencies of the package.
@@ -12,7 +11,7 @@ pub trait PackageDependencies {
         updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
-    ) -> anyhow::Result<HashMap<&'a Package, SemverCheck>>;
+    ) -> anyhow::Result<Vec<&'a Package>>;
 }
 
 impl PackageDependencies for Package {
@@ -21,20 +20,17 @@ impl PackageDependencies for Package {
         updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
-    ) -> anyhow::Result<HashMap<&'a Package, SemverCheck>> {
+    ) -> anyhow::Result<Vec<&'a Package>> {
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
         let package_dir = crate::manifest_dir(&package_manifest.path)?.to_owned();
 
-        updated_packages
-            .iter()
-            .filter_map(|(p, next_ver)| {
-                let Ok(canonical_path) = p.canonical_path() else {
-                    return None;
-                };
-                // Find the dependencies that have the same path as the updated package.
-                package_manifest
+        let mut deps_to_update: Vec<&Package> = vec![];
+        for (p, next_ver) in updated_packages {
+            let canonical_path = p.canonical_path()?;
+            // Find the dependencies that have the same path as the updated package.
+            let matching_deps = package_manifest
                 .get_dependency_tables()
                 .flat_map(|t| {
                     t.iter().filter_map(|(name, d)| {
@@ -62,31 +58,16 @@ impl PackageDependencies for Package {
                 .filter(|(toml_base_path, d)| {
                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
                 })
-                .map(|(_, dep)| dep)
-                .filter_map(|dep| should_update_dependency(dep, next_ver))
-                .map(|dependency_update| Ok((*p, dependency_update)))
-                .next()
-            })
-            .collect::<anyhow::Result<HashMap<_, _>>>()
-    }
-}
+                .map(|(_, dep)| dep);
 
-fn version_change_type(old_version: &Version, new_version: &Version) -> Option<SemverCheck> {
-    if new_version.major > old_version.major
-        || (old_version.major == 0 && new_version.minor > old_version.minor)
-    {
-        // Breaking change: major version bump or minor version bump in 0.x series
-        Some(SemverCheck::Incompatible(new_version.to_string()))
-    } else if new_version.major == old_version.major && new_version.minor > old_version.minor {
-        Some(SemverCheck::Compatible)
-    } else if new_version.major == old_version.major
-        && new_version.minor == old_version.minor
-        && new_version.patch > old_version.patch
-    {
-        //TODO: Should this be None?
-        Some(SemverCheck::Compatible)
-    } else {
-        None // No change
+            for dep in matching_deps {
+                if should_update_dependency(dep, next_ver)? {
+                    deps_to_update.push(p);
+                }
+            }
+        }
+
+        Ok(deps_to_update)
     }
 }
 
@@ -98,12 +79,12 @@ fn is_workspace_dependency(d: &dyn TableLike) -> bool {
         && !d.contains_key("path")
 }
 
-fn should_update_dependency(dep: &dyn TableLike, next_ver: &Version) -> Option<SemverCheck> {
+fn should_update_dependency(dep: &dyn TableLike, next_ver: &Version) -> anyhow::Result<bool> {
     let old_req = dep
         .get("version")
         .expect("filter ensures this")
         .as_str()
         .unwrap_or("*");
-    let old_version = Version::parse(old_req).ok();
-    old_version.and_then(|old_version| version_change_type(&old_version, next_ver))
+    let should_update_dep = cargo_utils::upgrade_requirement(old_req, next_ver)?.is_some();
+    Ok(should_update_dep)
 }
