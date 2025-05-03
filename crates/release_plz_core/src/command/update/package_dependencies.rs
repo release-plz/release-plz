@@ -105,8 +105,5 @@ fn should_update_dependency(dep: &dyn TableLike, next_ver: &Version) -> Option<S
         .as_str()
         .unwrap_or("*");
     let old_version = Version::parse(old_req).ok();
-    if let Some(old_version) = old_version {
-        return version_change_type(&old_version, next_ver);
-    }
-    None
+    old_version.and_then(|old_version| version_change_type(&old_version, next_ver))
 }
