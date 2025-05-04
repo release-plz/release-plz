@@ -82,11 +82,6 @@ impl Updater<'_> {
 
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
-            if diff.is_version_published {
-                // We need to check if one of the dependencies of this package changed.
-                packages_to_check_for_deps.push(p);
-            }
-
             if let Some(release_commits_regex) = self.req.release_commits() {
                 if !diff.any_commit_matches(release_commits_regex) {
                     info!("{}: no commit matches the `release_commits` regex", p.name);
@@ -121,6 +116,9 @@ impl Updater<'_> {
                 packages_to_update
                     .updates_mut()
                     .push((p.clone(), update_result));
+            } else if diff.is_version_published {
+                // We need to update this package only if one of its dependencies has changed.
+                packages_to_check_for_deps.push(p);
             }
         }
 
