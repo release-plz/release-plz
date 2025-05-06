@@ -172,3 +172,37 @@ pub fn cargo_home() -> anyhow::Result<PathBuf> {
         .unwrap_or(default_cargo_home);
     Ok(cargo_home)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_registry_env_var_name() {
+        assert_eq!(
+            get_registry_env_var_name("my-registry"),
+            "CARGO_REGISTRIES_MY_REGISTRY_INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("my_registry"),
+            "CARGO_REGISTRIES_MY_REGISTRY_INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("registry1"),
+            "CARGO_REGISTRIES_REGISTRY1_INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("UPPERCASE"),
+            "CARGO_REGISTRIES_UPPERCASE_INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("with-special-chars!@#$%^&*()"),
+            "CARGO_REGISTRIES_WITH_SPECIAL_CHARS__INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("multiple---separators"),
+            "CARGO_REGISTRIES_MULTIPLE_SEPARATORS_INDEX"
+        );
+    }
+}
