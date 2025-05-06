@@ -10,7 +10,26 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 /// Read index for a specific registry using environment variables.
 /// <https://doc.rust-lang.org/cargo/reference/environment-variables.html>
 pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
-    let env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry.to_uppercase());
+    let mut sanitized_name = String::new();
+    let mut last_char_was_separator = false;
+
+    for ch in registry.chars() {
+        if ch.is_alphanumeric() {
+            // Append alphanumeric characters directly
+            sanitized_name.push(ch);
+            last_char_was_separator = false;
+        } else {
+            // If it's not alphanumeric, and the last char wasn't already a separator,
+            // append a single underscore.
+            if !last_char_was_separator {
+                sanitized_name.push('_');
+                last_char_was_separator = true;
+            }
+        }
+    }
+
+    let final_sanitized_name = sanitized_name.to_uppercase();
+    let env_var = format!("CARGO_REGISTRIES_{final_sanitized_name}_INDEX");
 
     std::env::var(env_var).ok()
 }
