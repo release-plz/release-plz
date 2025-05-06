@@ -10,6 +10,18 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 /// Read index for a specific registry using environment variables.
 /// <https://doc.rust-lang.org/cargo/reference/environment-variables.html>
 pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
+    let sanitized_name = sanitize_registry_name(registry);
+    let env_var = format!("CARGO_REGISTRIES_{sanitized_name}_INDEX");
+
+    std::env::var(env_var).ok()
+}
+
+/// Sanitizes the registry name to construct a valid environment variable name.
+/// Mirrors Cargo's behavior:
+/// - Alphanumeric characters are preserved.
+/// - Non-alphanumeric characters are replaced with underscores.
+/// - Consecutive non-alphanumeric characters are collapsed into a single underscore.
+fn sanitize_registry_name(registry: &str) -> String {
     let mut sanitized_name = String::new();
     let mut last_char_was_separator = false;
 
@@ -28,10 +40,7 @@ pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
         }
     }
 
-    let final_sanitized_name = sanitized_name.to_uppercase();
-    let env_var = format!("CARGO_REGISTRIES_{final_sanitized_name}_INDEX");
-
-    std::env::var(env_var).ok()
+    sanitized_name.to_uppercase()
 }
 
 /// Find the URL of a registry
