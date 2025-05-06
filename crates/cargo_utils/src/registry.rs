@@ -173,7 +173,6 @@ pub fn cargo_home() -> anyhow::Result<PathBuf> {
     Ok(cargo_home)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
