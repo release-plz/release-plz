@@ -10,7 +10,9 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 /// Read index for a specific registry using environment variables.
 /// <https://doc.rust-lang.org/cargo/reference/environment-variables.html>
 pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
-    let Ok(env_var) = get_registry_env_var_name(registry) else { return None };
+    let Ok(env_var) = get_registry_env_var_name(registry) else {
+        return None;
+    };
     std::env::var(env_var).ok()
 }
 
