@@ -10,36 +10,34 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 /// Read index for a specific registry using environment variables.
 /// <https://doc.rust-lang.org/cargo/reference/environment-variables.html>
 pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
-    let env_var = get_registry_env_var_name(registry);
+    let env_var = match get_registry_env_var_name(registry) {
+        Ok(env_var) => env_var,
+        Err(_) => return None,
+    };
     std::env::var(env_var).ok()
 }
 
 /// Sanitizes the registry name to construct a valid environment variable name.
 /// Mirrors Cargo's behavior:
 /// - Alphanumeric characters are preserved.
-/// - Non-alphanumeric characters are replaced with underscores.
-/// - Consecutive non-alphanumeric characters are collapsed into a single underscore.
-fn get_registry_env_var_name(registry: &str) -> String {
-    let mut sanitized_name = String::new();
-    let mut last_char_was_separator = false;
+/// - Hyphens (-) are converted to underscores (_).
+/// - Existing underscores (_) are preserved.
+/// - Any other non-alphanumeric character is invalid and will cause an error.
+fn get_registry_env_var_name(registry: &str) -> anyhow::Result<String> {
+    let mut sanitized_name = String::with_capacity(registry.len());
 
     for ch in registry.chars() {
-        if ch.is_alphanumeric() {
-            // Append alphanumeric characters directly
+        if ch.is_alphanumeric() || ch == '_' {
             sanitized_name.push(ch);
-            last_char_was_separator = false;
+        } else if ch == '-' {
+            sanitized_name.push('_');
         } else {
-            // If it's not alphanumeric, and the last char wasn't already a separator,
-            // append a single underscore.
-            if !last_char_was_separator {
-                sanitized_name.push('_');
-                last_char_was_separator = true;
-            }
+            anyhow::bail!("Invalid character in registry name: '{}'", ch);
         }
     }
 
     let sanitized_name = sanitized_name.to_uppercase();
-    format!("CARGO_REGISTRIES_{sanitized_name}_INDEX")
+    Ok(format!("CARGO_REGISTRIES_{sanitized_name}_INDEX"))
 }
 
 /// Find the URL of a registry
@@ -180,28 +178,46 @@ mod tests {
     #[test]
     fn test_get_registry_env_var_name() {
         assert_eq!(
-            get_registry_env_var_name("my-registry"),
+            get_registry_env_var_name("my-registry").unwrap(),
             "CARGO_REGISTRIES_MY_REGISTRY_INDEX"
         );
         assert_eq!(
-            get_registry_env_var_name("my_registry"),
+            get_registry_env_var_name("my_registry").unwrap(),
             "CARGO_REGISTRIES_MY_REGISTRY_INDEX"
         );
         assert_eq!(
-            get_registry_env_var_name("registry1"),
+            get_registry_env_var_name("registry1").unwrap(),
             "CARGO_REGISTRIES_REGISTRY1_INDEX"
         );
         assert_eq!(
-            get_registry_env_var_name("UPPERCASE"),
+            get_registry_env_var_name("UPPERCASE").unwrap(),
             "CARGO_REGISTRIES_UPPERCASE_INDEX"
         );
         assert_eq!(
-            get_registry_env_var_name("with-special-chars!@#$%^&*()"),
-            "CARGO_REGISTRIES_WITH_SPECIAL_CHARS__INDEX"
+            get_registry_env_var_name("-leading-dash").unwrap(),
+            "CARGO_REGISTRIES__LEADING_DASH_INDEX"
         );
         assert_eq!(
-            get_registry_env_var_name("multiple---separators"),
-            "CARGO_REGISTRIES_MULTIPLE_SEPARATORS_INDEX"
+            get_registry_env_var_name("trailing-dash-").unwrap(),
+            "CARGO_REGISTRIES_TRAILING_DASH__INDEX"
         );
+        assert_eq!(
+            get_registry_env_var_name("multiple---dashes").unwrap(),
+            "CARGO_REGISTRIES_MULTIPLE___DASHES_INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("mixed-dashes-and_underscores").unwrap(),
+            "CARGO_REGISTRIES_MIXED_DASHES_AND_UNDERSCORES_INDEX"
+        );
+        assert_eq!(
+            get_registry_env_var_name("---").unwrap(),
+            "CARGO_REGISTRIES_____INDEX"
+        );
+
+        // Invalid characters should fail
+        assert!(get_registry_env_var_name("with-special-chars!").is_err());
+        assert!(get_registry_env_var_name("invalid+char").is_err());
+        assert!(get_registry_env_var_name("has@symbol").is_err());
+        assert!(get_registry_env_var_name("space not allowed").is_err());
     }
 }
