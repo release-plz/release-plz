@@ -356,7 +356,7 @@ When using a custom template:
 - `{{ version }}` is populated only when releasing a single package or multiple packages with the
   same version.
 
-If you are in a workspace with multiple public packages, use `{% if <variable %}` to check if
+If you are in a workspace with multiple public packages, use `{% if <variable> %}` to check if
 these variables are set, otherwise release-plz will fail.
 
 Here's an example of how you can customize the PR name template:
