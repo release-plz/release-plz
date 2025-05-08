@@ -61,7 +61,8 @@ mod tests {
             link: "link".to_string(),
             contributors: vec![],
         };
-        let body = release_body_from_template("my_package", "0.1.0", "my changes", &remote, None).unwrap();
+        let body =
+            release_body_from_template("my_package", "0.1.0", "my changes", &remote, None).unwrap();
         assert_eq!(body, "my changes");
     }
 }

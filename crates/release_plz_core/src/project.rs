@@ -144,7 +144,12 @@ impl Project {
         self.render_template(package_name, version, TemplateField::ReleaseName)
     }
 
-    fn render_template(&self, package_name: &str, version: &str, field: TemplateField) -> anyhow::Result<String> {
+    fn render_template(
+        &self,
+        package_name: &str,
+        version: &str,
+        field: TemplateField,
+    ) -> anyhow::Result<String> {
         let release_metadata = self.release_metadata.get(package_name);
 
         let (template_name, template) = match field {
