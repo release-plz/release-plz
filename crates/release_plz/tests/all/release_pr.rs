@@ -377,7 +377,7 @@ async fn release_plz_should_set_custom_pr_details() {
 
     let config = r#"
 [workspace]
-pr_name = "release: {{ package }} {{ version }}"
+pr_name = "release:{% if package and version %} {{ package }} {{ version }}{% endif %}"
 pr_body = """
 {% for release in releases %}
 {% if release.title %}
