@@ -363,7 +363,7 @@ Here's an example of how you can customize the PR name template:
 
 ```toml
 [workspace]
-pr_name = "release {% if package %} {{ package }}{% endif %}{% if version %} v{{ version }}{% endif %}"
+pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% endif %}"
 ```
 
 #### The `pr_body` field
