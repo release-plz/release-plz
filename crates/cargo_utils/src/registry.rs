@@ -33,7 +33,7 @@ fn get_registry_env_var_name(registry: &str) -> anyhow::Result<String> {
         } else if ch == '-' {
             sanitized_name.push('_');
         } else {
-            anyhow::bail!("Invalid character in registry name: '{}'", ch);
+            anyhow::bail!("Invalid character in registry name: '{ch}'");
         }
     }
 
