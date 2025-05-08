@@ -62,7 +62,7 @@ impl Pr {
         body_template: Option<&str>,
     ) -> anyhow::Result<Self> {
         let pr = Self {
-            branch: pr_branch_name(branch_prefix, packages_to_update),
+            branch: pr_branch_name(branch_prefix, packages_to_update)?,
             base_branch: default_branch.to_string(),
             title: pr_title(
                 packages_to_update,
@@ -97,11 +97,11 @@ fn release_branch(prefix: &str) -> String {
 }
 
 /// Generate the prefix for the PR branch name.
-fn pr_branch_name(branch_prefix: &str, packages_to_update: &PackagesUpdate) -> String {
+fn pr_branch_name(branch_prefix: &str, packages_to_update: &PackagesUpdate) -> anyhow::Result<String> {
     let context = create_tera_context(packages_to_update);
-    let pr_branch_prefix = render_template(branch_prefix, &context, "pr_branch_prefix");
+    let pr_branch_prefix = render_template(branch_prefix, &context, "pr_branch_prefix")?;
 
-    release_branch(&pr_branch_prefix)
+    Ok(release_branch(&pr_branch_prefix))
 }
 
 fn pr_title(
