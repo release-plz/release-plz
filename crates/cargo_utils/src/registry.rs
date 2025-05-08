@@ -9,11 +9,14 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 
 /// Read index for a specific registry using environment variables.
 /// <https://doc.rust-lang.org/cargo/reference/environment-variables.html>
-pub fn registry_index_url_from_env(registry: &str) -> Option<String> {
-    let Ok(env_var) = get_registry_env_var_name(registry) else {
-        return None;
-    };
-    std::env::var(env_var).ok()
+///
+/// Returns:
+/// - [`Result::Err`] if the registry name is invalid.
+/// - [`Result::Ok`] with [`Option::None`] if the environment variable is not set.
+pub fn registry_index_url_from_env(registry: &str) -> anyhow::Result<Option<String>> {
+    let env_var = get_registry_env_var_name(registry)
+        .with_context(|| format!("registry name {registry} is invalid."))?;
+    Ok(std::env::var(env_var).ok())
 }
 
 /// Sanitizes the registry name to construct a valid environment variable name.
@@ -66,7 +69,7 @@ pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Res
 
     // set top-level env var override if it exists.
     if let Some(registry_name) = registry {
-        if let Some(env_var_override) = registry_index_url_from_env(registry_name) {
+        if let Some(env_var_override) = registry_index_url_from_env(registry_name)? {
             registries
                 .entry(registry_name.to_string())
                 .or_insert(Source {
@@ -214,9 +217,23 @@ mod tests {
         );
 
         // Invalid characters should fail
-        assert!(get_registry_env_var_name("with-special-chars!").is_err());
-        assert!(get_registry_env_var_name("invalid+char").is_err());
-        assert!(get_registry_env_var_name("has@symbol").is_err());
-        assert!(get_registry_env_var_name("space not allowed").is_err());
+
+        expect_test::expect!["Invalid character in registry name: '!'"]
+        .assert_eq(&registry_env_var_name_error("with-special-chars!"));
+
+        expect_test::expect!["Invalid character in registry name: '+'"]
+        .assert_eq(&registry_env_var_name_error("invalid+char"));
+
+        expect_test::expect!["Invalid character in registry name: '@'"]
+        .assert_eq(&registry_env_var_name_error("has@symbol"));
+
+        expect_test::expect!["Invalid character in registry name: ' '"]
+        .assert_eq(&registry_env_var_name_error("space not allowed"));
+    }
+
+    fn registry_env_var_name_error(registry: &str) -> String {
+        get_registry_env_var_name(registry)
+            .unwrap_err()
+            .to_string()
     }
 }
