@@ -279,7 +279,7 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// Return the update to apply to the packages that depend on the `changed_packages`.
+    /// Return the update to apply to the packages that depend on the `initial_changed_packages`.
     ///
     /// ## Args
     ///
@@ -287,7 +287,7 @@ impl Updater<'_> {
     ///   We update them if they depend on any of the `changed_packages`.
     ///   If they don't depend on any of the `changed_packages`, they are not updated
     ///   because they don't contain any new commits.
-    /// - `changed_packages`: The packages that have changed (i.e. contains commits).
+    /// - `initial_changed_packages`: The packages that have changed (i.e. contains commits).
     fn dependent_packages_update(
         &self,
         packages_to_check_for_deps: &[&Package],
@@ -420,8 +420,8 @@ impl Updater<'_> {
         let release_link = {
             let prev_tag = self
                 .project
-                .git_tag(&package.name, &package.version.to_string());
-            let next_tag = self.project.git_tag(&package.name, &version.to_string());
+                .git_tag(&package.name, &package.version.to_string())?;
+            let next_tag = self.project.git_tag(&package.name, &version.to_string())?;
             repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
         };
 
@@ -502,7 +502,7 @@ impl Updater<'_> {
 
         let git_tag = self
             .project
-            .git_tag(&package.name, &package.version.to_string());
+            .git_tag(&package.name, &package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
         if tag_commit.is_some() {
             let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;

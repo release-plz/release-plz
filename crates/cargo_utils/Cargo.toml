@@ -23,3 +23,6 @@ semver.workspace = true
 url.workspace = true
 serde.workspace = true
 secrecy.workspace = true
+
+[dev-dependencies]
+expect-test.workspace = true

@@ -1,3 +1,7 @@
+---
+toc_max_heading_level: 4
+---
+
 # Configuration
 
 This section describes how you can customize the behavior of release-plz
@@ -28,7 +32,6 @@ changelog_update = false # disable changelog updates
 dependencies_update = true # update dependencies with `cargo update`
 git_release_enable = false # disable GitHub/Gitea releases
 pr_branch_prefix = "release-plz-" # PR branch prefix
-pr_name = "Release {{ package }} v{{ version }}" # template for the PR name
 pr_labels = ["release"] # add the `release` label to the release Pull Request
 publish_allow_dirty = true # add `--allow-dirty` to `cargo publish`
 semver_check = false # disable API breaking changes checks
@@ -353,11 +356,14 @@ When using a custom template:
 - `{{ version }}` is populated only when releasing a single package or multiple packages with the
   same version.
 
+If you are in a workspace with multiple public packages, use `{% if <variable> %}` to check if
+these variables are set, otherwise release-plz will fail.
+
 Here's an example of how you can customize the PR name template:
 
 ```toml
 [workspace]
-pr_name = "release: {{ package }} {{ version }}"
+pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% endif %}"
 ```
 
 #### The `pr_body` field
@@ -860,6 +866,9 @@ link_parsers = [
     { pattern = "RFC(\\d+)", text = "ietf-rfc$1", href = "https://datatracker.ietf.org/doc/html/rfc$1"}
 ]
 ```
+
+You can find the default configuration and some alternative templates in the
+[changelog examples docs](./changelog/examples.md#release-plz-default).
 
 #### The `header` field
 

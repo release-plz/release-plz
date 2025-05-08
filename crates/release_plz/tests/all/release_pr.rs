@@ -3,6 +3,7 @@ use crate::helpers::{
     test_context::TestContext,
     today,
 };
+use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
 fn assert_cargo_semver_checks_is_installed() {
@@ -154,7 +155,7 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     // - The line containing the cargo semver checks version because it can change.
     let pr_body = pr_body
         .lines()
-        .filter(|line| !line.contains("lib.rs:1") && !line.contains("cargo-semver-checks/tree"))
+        .filter(|line| !does_line_vary(line))
         .collect::<Vec<_>>()
         .join("\n");
     pretty_assertions::assert_eq!(
@@ -376,7 +377,7 @@ async fn release_plz_should_set_custom_pr_details() {
 
     let config = r#"
 [workspace]
-pr_name = "release: {{ package }} {{ version }}"
+pr_name = "release:{% if package and version %} {{ package }} {{ version }}{% endif %}"
 pr_body = """
 {% for release in releases %}
 {% if release.title %}
@@ -719,6 +720,170 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
     }
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_binary_when_library_has_breaking_changes() {
+    let binary = "binary";
+    let library1 = "library1";
+    let library2 = "library2";
+    let library3 = "library3";
+    let library4 = "library4";
+    // Dependency chain: binary -> library3 -> library2 -> library1.
+    // Library4 is a standalone crate.
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library3}")]),
+        TestPackage::new(library3)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library2}")]),
+        TestPackage::new(library2)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library1}")]),
+        TestPackage::new(library1).with_type(PackageType::Lib),
+        TestPackage::new(library4).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // Set initial versions before first release
+    context.set_package_version(library2, &Version::new(0, 2, 0));
+    context.set_package_version(library3, &Version::new(0, 3, 0));
+    context.set_package_version(binary, &Version::new(1, 3, 0));
+
+    context.push_all_changes("set initial versions");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Update the library.
+    let lib_file = context.package_path(library1).join("src").join("lib.rs");
+    // This is a breaking change because we remove the `add` library
+    // created with `cargo init --lib`.
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("breaking change in library");
+
+    context.run_release_pr().success();
+    let today = today();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release");
+
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    let expected_body = format!(
+        r#"
+## 🤖 New release
+
+* `{library1}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
+* `{library2}`: 0.2.0 -> 0.2.1
+* `{library3}`: 0.3.0 -> 0.3.1
+* `{binary}`: 1.3.0 -> 1.3.1
+
+### ⚠ `{library1}` breaking changes
+
+```text
+--- failure function_missing: pub fn removed or renamed ---
+
+Description:
+A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.40.0/src/lints/function_missing.ron
+
+Failed in:
+  function library1::add, previously in file /private/var/folders/sz/335x8kc91g55r2nkjktmkv1h0000gq/T/.tmpY912au/library1/src/lib.rs:1
+```
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{library1}`
+
+<blockquote>
+
+## [0.2.0](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.2.0) - {today}
+
+### Other
+
+- breaking change in library
+</blockquote>
+
+## `{library2}`
+
+<blockquote>
+
+## [0.2.1](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.2.1) - {today}
+
+### Other
+
+- updated the following local packages: {library1}
+</blockquote>
+
+## `{library3}`
+
+<blockquote>
+
+## [0.3.1](https://localhost/{username}/{repo}/compare/{library3}-v0.3.0...{library3}-v0.3.1) - {today}
+
+### Other
+
+- updated the following local packages: {library2}
+</blockquote>
+
+## `{binary}`
+
+<blockquote>
+
+## [1.3.1](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.3.1) - {today}
+
+### Other
+
+- updated the following local packages: {library3}
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+    )
+    .trim()
+    .to_string();
+
+    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
+    let actual_lines: Vec<_> = actual_body.lines().collect();
+    let expected_lines: Vec<_> = expected_body.lines().collect();
+    assert_eq!(
+        actual_lines.len(),
+        expected_lines.len(),
+        "Different number of lines"
+    );
+    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
+        if !does_line_vary(actual) {
+            assert_eq!(actual, expected);
+        }
+    }
+
+    context.merge_release_pr().await;
+
+    // Check if the binary has the new version.
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "1.3.1"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library3 = { version = "0.3.1", path = "../library3", registry = "test-registry" }
+    "#]]
+    .assert_eq(&binary_cargo_toml);
+}
+
 fn move_readme(context: &TestContext, message: &str) {
     let readme = "README.md";
     let new_readme = format!("NEW_{readme}");
@@ -762,4 +927,136 @@ fn update_readme_in_cargo_toml(context: &TestContext, readme_path: &str) {
     let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
     cargo_toml.data["package"]["readme"] = toml_edit::value(readme_path);
     cargo_toml.write().unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
+    let binary = "binary";
+    let library = "library";
+    // dependency chain: binary -> library
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library}")]),
+        TestPackage::new(library).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // Set initial versions before first release
+    context.set_package_version(library, &Version::new(0, 1, 0));
+    context.set_package_version(binary, &Version::new(1, 0, 0));
+    context.push_all_changes("set initial versions");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Update the library with a breaking change
+    let lib_file = context.package_path(library).join("src").join("lib.rs");
+    // This is a breaking change because we remove the `add` library
+    // created with `cargo init --lib`.
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("breaking change in library");
+
+    context.run_release_pr().success();
+    let today = today();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release");
+
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    let expected_body = format!(
+        r#"
+## 🤖 New release
+
+* `{library}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
+* `{binary}`: 1.0.0 -> 1.0.1
+
+### ⚠ `{library}` breaking changes
+
+```text
+--- failure function_missing: pub fn removed or renamed ---
+
+Description:
+A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.40.0/src/lints/function_missing.ron
+
+Failed in:
+  function library::add, previously in file /private/var/folders/sz/335x8kc91g55r2nkjktmkv1h0000gq/T/.tmpY912au/library/src/lib.rs:1
+```
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{library}`
+
+<blockquote>
+
+## [0.2.0](https://localhost/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.2.0) - {today}
+
+### Other
+
+- breaking change in library
+</blockquote>
+
+## `{binary}`
+
+<blockquote>
+
+## [1.0.1](https://localhost/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.0.1) - {today}
+
+### Other
+
+- updated the following local packages: {library}
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+    )
+    .trim()
+    .to_string();
+
+    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
+    let actual_lines: Vec<_> = actual_body.lines().collect();
+    let expected_lines: Vec<_> = expected_body.lines().collect();
+    assert_eq!(
+        actual_lines.len(),
+        expected_lines.len(),
+        "Different number of lines"
+    );
+    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
+        if !does_line_vary(actual) {
+            assert_eq!(actual, expected);
+        }
+    }
+
+    context.merge_release_pr().await;
+
+    // Check if the binary has the new version.
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "1.0.1"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library = { version = "0.2.0", path = "../library", registry = "test-registry" }
+    "#]]
+    .assert_eq(&binary_cargo_toml);
+}
+
+/// Check if the line contains a temporary directory or the version of cargo-semver-checks.
+fn does_line_vary(line: &str) -> bool {
+    line.contains("cargo-semver-checks/tree") || line.contains(".tmp")
 }

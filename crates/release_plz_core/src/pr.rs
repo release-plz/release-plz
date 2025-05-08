@@ -60,19 +60,20 @@ impl Pr {
         branch_prefix: &str,
         title_template: Option<String>,
         body_template: Option<&str>,
-    ) -> Self {
-        Self {
+    ) -> anyhow::Result<Self> {
+        let pr = Self {
             branch: pr_branch_name(branch_prefix, packages_to_update),
             base_branch: default_branch.to_string(),
             title: pr_title(
                 packages_to_update,
                 project_contains_multiple_pub_packages,
                 title_template,
-            ),
-            body: pr_body(packages_to_update, body_template),
+            )?,
+            body: pr_body(packages_to_update, body_template)?,
             draft: false,
             labels: vec![],
-        }
+        };
+        Ok(pr)
     }
 
     pub fn mark_as_draft(mut self, draft: bool) -> Self {
@@ -107,7 +108,7 @@ fn pr_title(
     packages_to_update: &PackagesUpdate,
     project_contains_multiple_pub_packages: bool,
     title_template: Option<String>,
-) -> String {
+) -> anyhow::Result<String> {
     let updates = packages_to_update.updates();
     let first_version = &updates[0].1.version;
 
@@ -117,9 +118,9 @@ fn pr_title(
             .all(|(_, update)| &update.version == first_version)
     };
 
-    if let Some(title_template) = title_template {
+    let title = if let Some(title_template) = title_template {
         let context = create_tera_context(packages_to_update);
-        render_template(&title_template, &context, "pr_name")
+        render_template(&title_template, &context, "pr_name")?
     } else if updates.len() == 1 && project_contains_multiple_pub_packages {
         let (package, _) = &updates[0];
         // The project is a workspace with multiple public packages and we are only updating one of them.
@@ -134,7 +135,8 @@ fn pr_title(
         // - multiple packages with the same version.
         // In both cases, we can specify the version in the PR title.
         format!("chore: release v{first_version}")
-    }
+    };
+    Ok(title)
 }
 
 fn create_tera_context(packages_to_update: &PackagesUpdate) -> tera::Context {
@@ -164,11 +166,14 @@ fn create_tera_context(packages_to_update: &PackagesUpdate) -> tera::Context {
 /// The Github API allows a max of 65536 characters in the body field when trying to create a new PR
 const MAX_BODY_LEN: usize = 65536;
 
-fn pr_body(packages_to_update: &PackagesUpdate, body_template: Option<&str>) -> String {
+fn pr_body(
+    packages_to_update: &PackagesUpdate,
+    body_template: Option<&str>,
+) -> anyhow::Result<String> {
     let body_template = body_template.unwrap_or(DEFAULT_PR_BODY_TEMPLATE);
 
     let mut releases = packages_to_update.releases();
-    let first_render = render_pr_body(&releases, body_template);
+    let first_render = render_pr_body(&releases, body_template)?;
 
     if first_render.chars().count() > MAX_BODY_LEN {
         tracing::info!(
@@ -182,16 +187,16 @@ fn pr_body(packages_to_update: &PackagesUpdate, body_template: Option<&str>) -> 
 
         render_pr_body(&releases, body_template)
     } else {
-        first_render
+        Ok(first_render)
     }
 }
 
-fn render_pr_body(releases: &[ReleaseInfo], body_template: &str) -> String {
+fn render_pr_body(releases: &[ReleaseInfo], body_template: &str) -> anyhow::Result<String> {
     let mut context = tera::Context::new();
     context.insert(RELEASES_VAR, releases);
 
-    let rendered_body = render_template(body_template, &context, "pr_body");
-    trim_pr_body(rendered_body)
+    let rendered_body = render_template(body_template, &context, "pr_body")?;
+    Ok(trim_pr_body(rendered_body))
 }
 
 fn trim_pr_body(body: String) -> String {

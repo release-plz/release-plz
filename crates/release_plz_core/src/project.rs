@@ -136,15 +136,20 @@ impl Project {
         Ok(repository)
     }
 
-    pub fn git_tag(&self, package_name: &str, version: &str) -> String {
+    pub fn git_tag(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
         self.render_template(package_name, version, TemplateField::GitTagName)
     }
 
-    pub fn release_name(&self, package_name: &str, version: &str) -> String {
+    pub fn release_name(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
         self.render_template(package_name, version, TemplateField::ReleaseName)
     }
 
-    fn render_template(&self, package_name: &str, version: &str, field: TemplateField) -> String {
+    fn render_template(
+        &self,
+        package_name: &str,
+        version: &str,
+        field: TemplateField,
+    ) -> anyhow::Result<String> {
         let release_metadata = self.release_metadata.get(package_name);
 
         let (template_name, template) = match field {
@@ -423,7 +428,8 @@ mod tests {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
         let project = get_project(local_manifest, None, &HashSet::default(), true, None, None)
             .expect("Should ok");
-        assert_eq!(project.git_tag("typo_test", "0.1.0"), "v0.1.0");
+        let git_tag = project.git_tag("typo_test", "0.1.0").unwrap();
+        assert_eq!(git_tag, "v0.1.0");
     }
 
     #[test]
@@ -439,11 +445,11 @@ mod tests {
         )
         .expect("Should ok");
         assert_eq!(
-            project.git_tag("typo_test", "0.1.0"),
+            project.git_tag("typo_test", "0.1.0").unwrap(),
             "prefix-typo_test-middle-0.1.0-postfix"
         );
         assert_eq!(
-            project.release_name("typo_test", "0.1.0"),
+            project.release_name("typo_test", "0.1.0").unwrap(),
             "release-prefix-typo_test-middle-0.1.0-postfix"
         );
     }

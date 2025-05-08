@@ -83,9 +83,8 @@ pub enum Command {
     /// The Pull request contains updated packages version and changelog based on commit messages.
     /// Close old PRs opened by release-plz, too.
     ReleasePr(ReleasePr),
-    /// For each package not published to the cargo registry yet:
-    /// - create and push upstream a tag in the format of `<package>-v<version>`.
-    /// - publish the package to the cargo registry.
+    /// For each package not published to the cargo registry yet, create and push upstream a tag in the
+    /// format of `<package>-v<version>`, and then publish the package to the cargo registry.
     ///
     /// You can run this command in the CI on every commit in the main branch.
     Release(Release),
@@ -99,16 +98,18 @@ pub enum Command {
     /// Initialize release-plz for the current GitHub repository, by storing the necessary tokens in the GitHub repository secrets and generating the release-plz.yml GitHub Actions workflow file.
     Init(Init),
     /// Edit the version of a package in Cargo.toml and changelog.
+    ///
     /// Specify a version with the syntax `<package_name>@<version>`.
-    /// E.g. `release-plz set-version rand@1.2.3`
+    /// E.g. `release-plz set-version my-crate@1.2.3`.
     ///
-    /// You can also set multiple versions, separated by space.
-    /// E.g. `release-plz set-version rand@1.2.3 serde@2.0.0`
+    /// Seperate versions with a space to set multiple versions.
+    /// E.g. `release-plz set-version my-crate1@0.1.2 my-crate2@0.2.0`.
     ///
-    /// For single package projects, you can omit `<package_name>@`. E.g. `release-plz set-version 1.2.3`
+    /// For single package projects, you can omit `<package_name>@`.
+    /// E.g. `release-plz set-version 1.2.3`.
     ///
-    /// Note that this command is meant to edit the versions of the packages
-    /// of your workspace, not the version of your dependencies.
+    /// Note that this command is meant to edit the versions of the packages of your workspace, not the
+    /// version of your dependencies.
     SetVersion(SetVersion),
 }
 
