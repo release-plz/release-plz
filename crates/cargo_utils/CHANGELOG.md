@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.67](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.66...cargo_utils-v0.1.67) - 2025-05-08
+
+### Fixed
+
+- align registry env var name generation with Cargo ([#2210](https://github.com/release-plz/release-plz/pull/2210))
+
 ## [0.1.66](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.65...cargo_utils-v0.1.66) - 2025-03-01
 
 ### Other
