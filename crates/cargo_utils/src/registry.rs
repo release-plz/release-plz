@@ -21,9 +21,8 @@ pub fn registry_index_url_from_env(registry: &str) -> anyhow::Result<Option<Stri
 
 /// Sanitizes the registry name to construct a valid environment variable name.
 /// Mirrors Cargo's behavior:
-/// - Alphanumeric characters are preserved.
-/// - Hyphens (-) are converted to underscores (_).
-/// - Existing underscores (_) are preserved.
+/// - Alphanumeric characters and underscores (`_`) are preserved.
+/// - Hyphens (`-`) are converted to underscores (`_`).
 /// - Any other non-alphanumeric character is invalid and will cause an error.
 fn get_registry_env_var_name(registry: &str) -> anyhow::Result<String> {
     let mut sanitized_name = String::with_capacity(registry.len());
@@ -219,21 +218,19 @@ mod tests {
         // Invalid characters should fail
 
         expect_test::expect!["Invalid character in registry name: '!'"]
-        .assert_eq(&registry_env_var_name_error("with-special-chars!"));
+            .assert_eq(&registry_env_var_name_error("with-special-chars!"));
 
         expect_test::expect!["Invalid character in registry name: '+'"]
-        .assert_eq(&registry_env_var_name_error("invalid+char"));
+            .assert_eq(&registry_env_var_name_error("invalid+char"));
 
         expect_test::expect!["Invalid character in registry name: '@'"]
-        .assert_eq(&registry_env_var_name_error("has@symbol"));
+            .assert_eq(&registry_env_var_name_error("has@symbol"));
 
         expect_test::expect!["Invalid character in registry name: ' '"]
-        .assert_eq(&registry_env_var_name_error("space not allowed"));
+            .assert_eq(&registry_env_var_name_error("space not allowed"));
     }
 
     fn registry_env_var_name_error(registry: &str) -> String {
-        get_registry_env_var_name(registry)
-            .unwrap_err()
-            .to_string()
+        get_registry_env_var_name(registry).unwrap_err().to_string()
     }
 }
