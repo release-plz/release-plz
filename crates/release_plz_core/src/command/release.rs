@@ -601,8 +601,8 @@ async fn release_package_if_needed(
     git_client: &GitClient,
     hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Option<PackageRelease>> {
-    let git_tag = project.git_tag(&package.name, &package.version.to_string());
-    let release_name = project.release_name(&package.name, &package.version.to_string());
+    let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
+    let release_name = project.release_name(&package.name, &package.version.to_string())?;
     if repo.tag_exists(&git_tag)? {
         info!(
             "{} {}: Already published - Tag {} already exists",
@@ -1026,6 +1026,13 @@ fn release_body(
         remote,
         body_template.as_deref(),
     )
+    .unwrap_or_else(|e| {
+        warn!(
+            "{}: failed to generate release body: {:?}. The git release body will be empty.",
+            package.name, e
+        );
+        String::new()
+    })
 }
 
 /// Return an empty string if not found.

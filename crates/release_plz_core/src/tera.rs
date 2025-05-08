@@ -1,3 +1,5 @@
+use anyhow::Context as _;
+
 use crate::Remote;
 
 pub const PACKAGE_VAR: &str = "package";
@@ -16,7 +18,7 @@ pub fn release_body_from_template(
     changelog: &str,
     remote: &Remote,
     body_template: Option<&str>,
-) -> String {
+) -> anyhow::Result<String> {
     let mut context = tera_context(package_name, version);
     context.insert(CHANGELOG_VAR, changelog);
     context.insert(REMOTE_VAR, remote);
@@ -27,14 +29,18 @@ pub fn release_body_from_template(
     render_template(body_template, &context, "release_body")
 }
 
-pub fn render_template(template: &str, context: &tera::Context, template_name: &str) -> String {
+pub fn render_template(
+    template: &str,
+    context: &tera::Context,
+    template_name: &str,
+) -> anyhow::Result<String> {
     let mut tera = tera::Tera::default();
 
     tera.add_raw_template(template_name, template)
-        .expect("failed to add release_body raw template");
+        .context("failed to add release_body raw template")?;
 
     tera.render(template_name, context)
-        .unwrap_or_else(|e| panic!("failed to render {template_name}: {e}"))
+        .with_context(|| format!("failed to render {template_name}"))
 }
 
 pub fn tera_context(package_name: &str, version: &str) -> tera::Context {
@@ -55,7 +61,7 @@ mod tests {
             link: "link".to_string(),
             contributors: vec![],
         };
-        let body = release_body_from_template("my_package", "0.1.0", "my changes", &remote, None);
+        let body = release_body_from_template("my_package", "0.1.0", "my changes", &remote, None).unwrap();
         assert_eq!(body, "my changes");
     }
 }

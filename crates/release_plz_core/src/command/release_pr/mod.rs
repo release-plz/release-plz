@@ -219,7 +219,7 @@ async fn open_or_update_release_pr(
             &release_pr_options.pr_branch_prefix,
             release_pr_options.pr_name,
             release_pr_options.pr_body.as_deref(),
-        )
+        )?
         .mark_as_draft(release_pr_options.draft)
         .with_labels(release_pr_options.pr_labels)
     };
