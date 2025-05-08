@@ -97,7 +97,10 @@ fn release_branch(prefix: &str) -> String {
 }
 
 /// Generate the prefix for the PR branch name.
-fn pr_branch_name(branch_prefix: &str, packages_to_update: &PackagesUpdate) -> anyhow::Result<String> {
+fn pr_branch_name(
+    branch_prefix: &str,
+    packages_to_update: &PackagesUpdate,
+) -> anyhow::Result<String> {
     let context = create_tera_context(packages_to_update);
     let pr_branch_prefix = render_template(branch_prefix, &context, "pr_branch_prefix")?;
 
