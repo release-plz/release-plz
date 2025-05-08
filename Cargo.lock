@@ -607,6 +607,7 @@ dependencies = [
  "cargo_metadata",
  "dirs 6.0.0",
  "dunce",
+ "expect-test",
  "fs-err",
  "secrecy 0.10.3",
  "semver",
