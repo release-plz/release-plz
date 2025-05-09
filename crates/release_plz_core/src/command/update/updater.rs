@@ -15,6 +15,7 @@ use git_cliff_core::contributor::RemoteContributor;
 use git_cmd::Repo;
 use next_version::NextVersion as _;
 use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
+use std::sync::Once;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
@@ -35,6 +36,8 @@ use super::{
     PackagesToUpdate, PackagesUpdate, package_dependencies::PackageDependencies as _,
     update_request::UpdateRequest,
 };
+
+static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
 
 #[derive(Debug)]
 pub struct Updater<'a> {
@@ -236,6 +239,12 @@ impl Updater<'_> {
                         let registry_package_path = registry_package
                             .package_path()
                             .context("can't retrieve registry package path")?;
+                        // Log that we are checking semver only the first time.
+                        SEMVER_CHECK_LOG_ONCE.call_once(|| {
+                            tracing::info!(
+                                "Checking API compatibility with cargo-semver-checks..."
+                            );
+                        });
                         let semver_check =
                             semver_check::run_semver_check(&package_path, registry_package_path)
                                 .context("error while running cargo-semver-checks")?;
