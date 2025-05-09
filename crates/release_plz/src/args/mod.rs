@@ -86,6 +86,8 @@ pub enum Command {
     /// If there is a previously opened Release PR, release-plz will update it
     /// instead of opening a new one.
     ReleasePr(ReleasePr),
+    /// Release the package to the cargo registry and git forge.
+    ///
     /// For each package not published to the cargo registry yet, create and push upstream a tag in the
     /// format of `<package>-v<version>`, and then publish the package to the cargo registry.
     ///
