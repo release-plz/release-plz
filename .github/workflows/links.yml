@@ -27,4 +27,5 @@ jobs:
           args: |
             --no-progress
             --include-fragments
+            --accept '100..=103, 200..=299, 429'
             .
