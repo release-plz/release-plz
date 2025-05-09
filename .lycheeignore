@@ -5,5 +5,6 @@ https://x.com/*
 https://github.com/release-plz/release-plz/compare/*
 # Don't check pull request links to avoid being rate limited
 https://github.com/release-plz/release-plz/pull/*
+https://github.com/release-plz/release-plz/issues/*
 # Certificate expired
 https://diff.rs
