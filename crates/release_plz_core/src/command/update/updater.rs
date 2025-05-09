@@ -239,6 +239,7 @@ impl Updater<'_> {
                         let registry_package_path = registry_package
                             .package_path()
                             .context("can't retrieve registry package path")?;
+                        // Log that we are checking semver only the first time.
                         SEMVER_CHECK_LOG_ONCE.call_once(|| {
                             tracing::info!(
                                 "Checking API compatibility with cargo-semver-checks..."
