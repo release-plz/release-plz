@@ -80,8 +80,11 @@ pub enum Command {
     /// Update packages version and changelogs based on commit messages.
     Update(Update),
     /// Create a Pull Request representing the next release.
-    /// The Pull request contains updated packages version and changelog based on commit messages.
-    /// Close old PRs opened by release-plz, too.
+    ///
+    /// The Pull request updates the package version and generates a changelog entry for the new
+    /// version based on the commit messages.
+    /// If there is a previously opened Release PR, release-plz will update it
+    /// instead of opening a new one.
     ReleasePr(ReleasePr),
     /// For each package not published to the cargo registry yet, create and push upstream a tag in the
     /// format of `<package>-v<version>`, and then publish the package to the cargo registry.
@@ -95,7 +98,10 @@ pub enum Command {
     /// Write the JSON schema of the release-plz.toml configuration
     /// to .schema/latest.json
     GenerateSchema,
-    /// Initialize release-plz for the current GitHub repository, by storing the necessary tokens in the GitHub repository secrets and generating the release-plz.yml GitHub Actions workflow file.
+    /// Initialize release-plz for the current GitHub repository.
+    ///
+    /// Stores the necessary tokens in the GitHub repository secrets and generates the
+    /// release-plz.yml GitHub Actions workflow file.
     Init(Init),
     /// Edit the version of a package in Cargo.toml and changelog.
     ///
