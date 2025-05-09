@@ -76,7 +76,7 @@ For example, [here's](https://developer.1password.com/docs/cli/secrets-environme
 how to do it with 1password.
 
 An alternative is storing the token in a `.env` file and adding this file to the `.gitignore`.
-You could `source` this file or use an external tool like [dotenvx](https://github.com/dotenvx/dotenvx), which also supports encryption, so that an
+To export the variables, `source` this file or use an external tool like [dotenvx](https://github.com/dotenvx/dotenvx), which also supports encryption, so that an
 attacker who has access to the `.env` file cannot read the token easily.
 
 ## `zizmor` warning
