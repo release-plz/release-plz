@@ -59,6 +59,27 @@ jobs:
 This is the same approach used in the crates.io
 [repository](https://github.com/rust-lang/crates.io/blob/7e52e11c5ddeb33db70f0000bbcdfb01e9b43b0d/.github/workflows/ci.yml#L30C32-L31C1).
 
+## Pass environment variables
+
+When using release-plz locally, you might need to pass environment
+variables such as `GITHUB_TOKEN` or other sensitive data.
+
+### ⚠️ Risk: the environment variable is stolen
+
+If you pass the environment variable directly in the command line, it can be
+stolen by an attacker who gets access to your terminal history.
+
+### ✅ Solution: Use a password manager
+
+Store the token in a password manager and retrieve it when needed.
+For example, [here's](https://developer.1password.com/docs/cli/secrets-environment-variables/)
+how to do it with 1password.
+
+An alternative is storing the token in a `.env` file and adding this file to the `.gitignore`.
+To export the variables, `source` this file or use an external tool like
+[dotenvx](https://github.com/dotenvx/dotenvx), which also supports encryption, so that an
+attacker who has access to the `.env` file cannot read the token easily.
+
 ## `zizmor` warning
 
 [zizmor](https://github.com/woodruffw/zizmor) is a static analysis tool for GitHub Actions.
