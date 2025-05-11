@@ -14,14 +14,15 @@ const CUSTOM_GITHUB_TOKEN: &str = "RELEASE_PLZ_TOKEN";
 
 #[derive(Debug)]
 pub struct InitRequest {
-   pub manifest_path: Utf8PathBuf,
-   pub toml_check: bool,
-   pub create_config: bool,
+    pub manifest_path: Utf8PathBuf,
+    pub cargo_toml_check: bool,
+    /// Create a `release-plz.toml` file with default configuration.
+    pub create_config: bool,
+    /// Initialize the release-plz CI workflow.
+    pub create_ci: bool,
 }
 
 pub fn init(input: &InitRequest) -> anyhow::Result<()> {
-    ensure_gh_is_installed()?;
-
     // Create a Project instance to check mandatory fields
     let metadata = cargo_utils::get_manifest_metadata(&input.manifest_path)?;
     let project = Project::new(
@@ -32,9 +33,23 @@ pub fn init(input: &InitRequest) -> anyhow::Result<()> {
         &NoopReleaseMetadataBuilder,
     )?;
 
-    if input.toml_check {
+    if input.cargo_toml_check {
         project.check_mandatory_fields()?;
     }
+
+    if input.create_config {
+        config_init::create_default_config()?;
+    }
+
+    if input.create_ci {
+        initialize_ci()?;
+    }
+
+    Ok(())
+}
+
+fn initialize_ci() -> anyhow::Result<()> {
+    ensure_gh_is_installed()?;
 
     // get the repo url early to verify that the github repository is configured correctly
     let repo_url = gh::repo_url()?;
@@ -46,11 +61,8 @@ pub fn init(input: &InitRequest) -> anyhow::Result<()> {
     let github_token = store_github_token()?;
     write_actions_yaml(github_token)?;
 
-    if input.create_config {
-        config_init::create_default_config()?;
-    }
-
     print_recap(&repo_url);
+
     Ok(())
 }
 
