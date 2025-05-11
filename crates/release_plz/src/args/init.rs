@@ -14,6 +14,9 @@ pub struct Init {
     /// If set, don't check if the toml files contain `description` and `license` fields, which are mandatory for crates.io.
     #[arg(long)]
     pub no_toml_check: bool,
+    /// If set, creates a `release-plz.toml` file with default configuration.
+    #[arg(long)]
+    pub config: bool,
 }
 
 impl ManifestCommand for Init {

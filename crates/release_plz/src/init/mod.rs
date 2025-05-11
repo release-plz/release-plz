@@ -1,4 +1,5 @@
 mod gh;
+mod config;
 
 use std::io::Write;
 
@@ -11,7 +12,7 @@ const CARGO_REGISTRY_TOKEN: &str = "CARGO_REGISTRY_TOKEN";
 const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 const CUSTOM_GITHUB_TOKEN: &str = "RELEASE_PLZ_TOKEN";
 
-pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
+pub fn init(manifest_path: &Utf8Path, toml_check: bool, create_config: bool) -> anyhow::Result<()> {
     ensure_gh_is_installed()?;
 
     // Create a Project instance to check mandatory fields
@@ -37,6 +38,10 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     enable_pr_permissions(&repo_url)?;
     let github_token = store_github_token()?;
     write_actions_yaml(github_token)?;
+
+    if create_config {
+        config::create_default_config()?;
+    }
 
     print_recap(&repo_url);
     Ok(())

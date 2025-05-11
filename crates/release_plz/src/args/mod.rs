@@ -37,6 +37,14 @@ const HELP_STYLES: Styles = Styles::styled()
     .placeholder(SECONDARY_COLOR.on_default())
     .literal(SECONDARY_COLOR.on_default());
 
+pub fn config_paths() -> [&'static Path; 2] {
+    [main_config_path(), Path::new(".release-plz.toml")]
+}
+
+pub fn main_config_path() -> &'static Path {
+    Path::new("release-plz.toml")
+}
+
 /// Release-plz manages versioning, changelogs, and releases for Rust projects.
 ///
 /// See the Release-plz website for more information <https://release-plz.dev/>.
@@ -145,11 +153,8 @@ fn parse_config(config_path: Option<&Path>) -> anyhow::Result<Config> {
             },
         }
     } else {
-        let first_file = first_file_contents([
-            Path::new("release-plz.toml"),
-            Path::new(".release-plz.toml"),
-        ])
-        .context("failed looking for release-plz config file")?;
+        let first_file = first_file_contents(config_paths())
+            .context("failed looking for release-plz config file")?;
         match first_file {
             Some((config, path)) => (config, path),
             None => {
