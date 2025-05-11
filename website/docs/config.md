@@ -521,7 +521,7 @@ Pass a list of features to use for verification by `cargo publish`.
 Whether to pass the `--all-features` to `cargo publish` when verifying.
 
 - If `true`, `release-plz` adds the `--all-features` flag to `cargo publish`.
-- If `false`, `release-plz` doesn't add the `--all-features` flag to `cargo publish`.
+- If `false`, `release-plz` doesn't add the `--all-features` flag to `cargo publish`. *(Default)*.
 
 #### The `publish_timeout` field
 
