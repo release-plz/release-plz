@@ -1,5 +1,5 @@
-mod gh;
 mod config;
+mod gh;
 
 use std::io::Write;
 
@@ -12,20 +12,27 @@ const CARGO_REGISTRY_TOKEN: &str = "CARGO_REGISTRY_TOKEN";
 const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 const CUSTOM_GITHUB_TOKEN: &str = "RELEASE_PLZ_TOKEN";
 
-pub fn init(manifest_path: &Utf8Path, toml_check: bool, create_config: bool) -> anyhow::Result<()> {
+#[derive(Debug)]
+pub struct InitRequest {
+   pub manifest_path: Utf8PathBuf,
+   pub toml_check: bool,
+   pub create_config: bool,
+}
+
+pub fn init(input: &InitRequest) -> anyhow::Result<()> {
     ensure_gh_is_installed()?;
 
     // Create a Project instance to check mandatory fields
-    let metadata = cargo_utils::get_manifest_metadata(manifest_path)?;
+    let metadata = cargo_utils::get_manifest_metadata(&input.manifest_path)?;
     let project = Project::new(
-        manifest_path,
+        &input.manifest_path,
         None,
         &HashSet::new(),
         &metadata,
         &NoopReleaseMetadataBuilder,
     )?;
 
-    if toml_check {
+    if input.toml_check {
         project.check_mandatory_fields()?;
     }
 
@@ -39,7 +46,7 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool, create_config: bool) -> 
     let github_token = store_github_token()?;
     write_actions_yaml(github_token)?;
 
-    if create_config {
+    if input.create_config {
         config::create_default_config()?;
     }
 
