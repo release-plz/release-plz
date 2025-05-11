@@ -1,4 +1,4 @@
-mod config;
+mod config_init;
 mod gh;
 
 use std::io::Write;
@@ -47,7 +47,7 @@ pub fn init(input: &InitRequest) -> anyhow::Result<()> {
     write_actions_yaml(github_token)?;
 
     if input.create_config {
-        config::create_default_config()?;
+        config_init::create_default_config()?;
     }
 
     print_recap(&repo_url);
