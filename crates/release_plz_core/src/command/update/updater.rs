@@ -486,7 +486,10 @@ impl Updater<'_> {
         registry_packages: &PackagesCollection,
         repository: &Repo,
     ) -> anyhow::Result<Diff> {
-        info!("determining next version for {} {}", package.name, package.version);
+        info!(
+            "determining next version for {} {}",
+            package.name, package.version
+        );
         let package_path = get_package_path(package, repository, self.project.root())
             .context("failed to determine package path")?;
 
