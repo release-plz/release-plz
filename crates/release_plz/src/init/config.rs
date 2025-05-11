@@ -7,7 +7,7 @@ pub fn create_default_config() -> anyhow::Result<()> {
     // Check if config file already exists
     for config_path in crate::args::config_paths() {
         if config_path.exists() {
-            println!("Config file already exists at {}", config_path.display());
+            println!("Config file already exists at {config_path:?}");
             return Ok(());
         }
     }
@@ -23,7 +23,7 @@ pub fn create_default_config() -> anyhow::Result<()> {
 
     fs_err::write(config_path, toml_string).context("Failed to write config to file")?;
 
-    println!("Created default config file at {}", config_path.display());
+    println!("Created default config file at {config_path}");
 
     Ok(())
 }
