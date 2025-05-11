@@ -130,8 +130,8 @@ impl ManifestCommand for Update {
 }
 
 impl ConfigCommand for Update {
-    fn config_path(&self) -> Option<&Path> {
-        self.config.as_deref()
+    fn config_path(&self) -> Option<&Utf8Path> {
+        self.config.as_deref().and_then(|p| Utf8Path::from_path(p))
     }
 }
 
