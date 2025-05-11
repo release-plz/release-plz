@@ -73,18 +73,18 @@ the following sections:
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field)
     — Features increment minor in `0.x` versions.
+  - [`git_release_body`](#the-git_release_body-field) — Customize git release body pattern.
   - [`git_release_enable`](#the-git_release_enable-field) — Enable git release.
   - [`git_release_name`](#the-git_release_name-field) — Customize git release name pattern.
-  - [`git_release_body`](#the-git_release_body-field) — Customize git release body pattern.
   - [`git_release_type`](#the-git_release_type-field) — Publish mode for git release.
   - [`git_release_draft`](#the-git_release_draft-field) — Publish git release as draft.
   - [`git_release_latest`](#the-git_release_latest-field) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
+  - [`pr_body`](#the-pr_body-field) — Customize the body of the release Pull Request.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
   - [`pr_name`](#the-pr_name-field) — Customize the name of the release Pull Request.
-  - [`pr_body`](#the-pr_body-field) — Customize the body of the release Pull Request.
   - [`pr_labels`](#the-pr_labels-field) — Add labels to the release Pull Request.
   - [`publish`](#the-publish-field) — Publish to cargo registry.
   - [`publish_allow_dirty`](#the-publish_allow_dirty-field) — Package dirty directories.
@@ -104,9 +104,9 @@ the following sections:
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field-package-section)
     — Features increment minor in `0.x` versions.
+  - [`git_release_body`](#the-git_release_body-field-package-section) — Customize git release body pattern.
   - [`git_release_enable`](#the-git_release_enable-field-package-section) — Enable git release.
   - [`git_release_name`](#the-git_release_name-field-package-section) — Customize git release name pattern.
-  - [`git_release_body`](#the-git_release_body-field-package-section) — Customize git release body pattern.
   - [`git_release_type`](#the-git_release_type-field-package-section) — Git release type.
   - [`git_release_draft`](#the-git_release_draft-field-package-section) — Publish git release as draft.
   - [`git_release_latest`](#the-git_release_latest-field-package-section) — Publish git release as latest.
@@ -203,7 +203,7 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 #### The `features_always_increment_minor` field
 
 - If `true`, feature commits will always bump the minor version, even in 0.x releases.
-- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
+- If `false`, feature commits will only bump the minor version starting with 1.x releases. *(Default)*.
 
 :::warning
 This option violates the Cargo SemVer
@@ -211,34 +211,6 @@ This option violates the Cargo SemVer
 `0.x` to `0.(x+1)` is used for breaking changes.
 Instead, new features for `0.x` should bump the version from `0.x.y` to `0.x.(y+1)`.
 :::
-
-#### The `git_release_enable` field
-
-- If `true`, release-plz creates a git release for the created tag. *(Default)*.
-- If `false`, release-plz doesn't create a git release.
-
-The supported git releases are:
-
-- [GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
-- [Gitea](https://docs.gitea.io/en-us/)
-- [GitLab](https://docs.gitlab.com/ee/user/project/releases/#releases)
-
-#### The `git_release_name` field
-
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git release name that
-release-plz creates.
-Use this to customize the git release name pattern.
-
-By default, it's:
-
-- `"{{ package }}-v{{ version }}"` for workspaces containing more than one public package.
-- `"v{{ version }}"` for projects containing a single crate or
-  workspaces containing just one public package.
-
-Where:
-
-- `{{ package }}` is the name of the package.
-- `{{ version }}` is the new version of the package.
 
 #### The `git_release_body` field
 
@@ -274,6 +246,34 @@ git_release_body = """
 ```
 
 :::
+
+#### The `git_release_enable` field
+
+- If `true`, release-plz creates a git release for the created tag. *(Default)*.
+- If `false`, release-plz doesn't create a git release.
+
+The supported git releases are:
+
+- [GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
+- [Gitea](https://docs.gitea.io/en-us/)
+- [GitLab](https://docs.gitlab.com/ee/user/project/releases/#releases)
+
+#### The `git_release_name` field
+
+[Tera template](https://keats.github.io/tera/docs/#templates) of the git release name that
+release-plz creates.
+Use this to customize the git release name pattern.
+
+By default, it's:
+
+- `"{{ package }}-v{{ version }}"` for workspaces containing more than one public package.
+- `"v{{ version }}"` for projects containing a single crate or
+  workspaces containing just one public package.
+
+Where:
+
+- `{{ package }}` is the name of the package.
+- `{{ version }}` is the new version of the package.
 
 #### The `git_release_type` field
 
@@ -329,42 +329,6 @@ Where:
 
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
-
-#### The `pr_name` field
-
-[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's name that
-release-plz creates.
-
-By default, it's:
-
-- `chore({{ package }}): release v{{ version }}` for releasing only one package from a workspace with
-multiple publishable packages.
-  This happens when only one package changed.
-- `chore: release v{{ version }}` for releasing either:
-  - the only package of the project
-  - multiple packages with the same version
-- `chore: release` for releasing multiple packages with different versions.
-
-Where:
-
-- `{{ package }}` is the name of the package.
-- `{{ version }}` is the new version of the package(s).
-
-When using a custom template:
-
-- `{{ package }}` is populated only when releasing a single package.
-- `{{ version }}` is populated only when releasing a single package or multiple packages with the
-  same version.
-
-If you are in a workspace with multiple public packages, use `{% if <variable> %}` to check if
-these variables are set, otherwise release-plz will fail.
-
-Here's an example of how you can customize the PR name template:
-
-```toml
-[workspace]
-pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% endif %}"
-```
 
 #### The `pr_body` field
 
@@ -482,6 +446,42 @@ pr_labels = ["release"] # add the `release` label to the release Pull Request
 
 By default, release-plz doesn't add any label.
 I.e. the `pr_labels` array is empty.
+
+#### The `pr_name` field
+
+[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's name that
+release-plz creates.
+
+By default, it's:
+
+- `chore({{ package }}): release v{{ version }}` for releasing only one package from a workspace with
+multiple publishable packages.
+  This happens when only one package changed.
+- `chore: release v{{ version }}` for releasing either:
+  - the only package of the project
+  - multiple packages with the same version
+- `chore: release` for releasing multiple packages with different versions.
+
+Where:
+
+- `{{ package }}` is the name of the package.
+- `{{ version }}` is the new version of the package(s).
+
+When using a custom template:
+
+- `{{ package }}` is populated only when releasing a single package.
+- `{{ version }}` is populated only when releasing a single package or multiple packages with the
+  same version.
+
+If you are in a workspace with multiple public packages, use `{% if <variable> %}` to check if
+these variables are set, otherwise release-plz will fail.
+
+Here's an example of how you can customize the PR name template:
+
+```toml
+[workspace]
+pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% endif %}"
+```
 
 #### The `publish` field
 
