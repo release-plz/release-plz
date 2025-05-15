@@ -1,3 +1,4 @@
+mod config_init;
 mod gh;
 
 use std::io::Write;
@@ -11,22 +12,44 @@ const CARGO_REGISTRY_TOKEN: &str = "CARGO_REGISTRY_TOKEN";
 const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 const CUSTOM_GITHUB_TOKEN: &str = "RELEASE_PLZ_TOKEN";
 
-pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
-    ensure_gh_is_installed()?;
+#[derive(Debug)]
+pub struct InitRequest {
+    pub manifest_path: Utf8PathBuf,
+    pub cargo_toml_check: bool,
+    /// Create a `release-plz.toml` file with default configuration.
+    pub create_config: bool,
+    /// Initialize the release-plz CI workflow.
+    pub create_ci: bool,
+}
 
+pub fn init(input: &InitRequest) -> anyhow::Result<()> {
     // Create a Project instance to check mandatory fields
-    let metadata = cargo_utils::get_manifest_metadata(manifest_path)?;
+    let metadata = cargo_utils::get_manifest_metadata(&input.manifest_path)?;
     let project = Project::new(
-        manifest_path,
+        &input.manifest_path,
         None,
         &HashSet::new(),
         &metadata,
         &NoopReleaseMetadataBuilder,
     )?;
 
-    if toml_check {
+    if input.cargo_toml_check {
         project.check_mandatory_fields()?;
     }
+
+    if input.create_config {
+        config_init::create_default_config()?;
+    }
+
+    if input.create_ci {
+        initialize_ci()?;
+    }
+
+    Ok(())
+}
+
+fn initialize_ci() -> anyhow::Result<()> {
+    ensure_gh_is_installed()?;
 
     // get the repo url early to verify that the github repository is configured correctly
     let repo_url = gh::repo_url()?;
@@ -39,6 +62,7 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     write_actions_yaml(github_token)?;
 
     print_recap(&repo_url);
+
     Ok(())
 }
 
