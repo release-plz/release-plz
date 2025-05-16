@@ -130,14 +130,16 @@ impl Updater<'_> {
             }
         }
 
-        let changed_packages: Vec<(&Package, Version)> = packages_to_update
-            .updates()
-            .iter()
-            .map(|(p, u)| (p, u.version.clone()))
-            .collect();
-        let dependent_packages =
-            self.dependent_packages_update(&packages_to_check_for_deps, &changed_packages)?;
-        packages_to_update.updates_mut().extend(dependent_packages);
+        if self.req.should_update_dependants() {
+            let changed_packages: Vec<(&Package, Version)> = packages_to_update
+                .updates()
+                .iter()
+                .map(|(p, u)| (p, u.version.clone()))
+                .collect();
+            let dependent_packages =
+                self.dependent_packages_update(&packages_to_check_for_deps, &changed_packages)?;
+            packages_to_update.updates_mut().extend(dependent_packages);
+        }
         Ok(packages_to_update)
     }
 

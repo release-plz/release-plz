@@ -24,6 +24,10 @@ pub struct SetVersion {
     /// Path to the release-plz config file.
     #[command(flatten)]
     pub config: ConfigPath,
+
+    /// In a workspace update all member's who reference the crate's version.
+    #[arg(long)]
+    disable_dependant_updates: bool,
 }
 
 impl SetVersion {
@@ -56,9 +60,11 @@ impl SetVersion {
 
     /// Get [`SetVersionRequest`]
     pub fn set_version_request(self, config: &Config) -> anyhow::Result<SetVersionRequest> {
+        let update_dependants = !self.disable_dependant_updates;
         let cargo_metadata = self.cargo_metadata()?;
         let version_changes = self.parse_versions()?;
-        let mut request = SetVersionRequest::new(version_changes, cargo_metadata)?;
+        let mut request =
+            SetVersionRequest::new(version_changes, cargo_metadata, update_dependants)?;
         config.fill_set_version_config(&mut request)?;
         Ok(request)
     }
