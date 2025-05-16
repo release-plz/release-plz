@@ -105,6 +105,8 @@ pub struct Update {
     /// Kind of git host where your project is hosted.
     #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
     forge: GitForgeKind,
+    #[arg(long)]
+    check_only: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
@@ -174,6 +176,7 @@ impl Update {
                 format!("Cannot find file {project_manifest:?}. Make sure you are inside a rust project or that --manifest-path points to a valid Cargo.toml file.")
             })?
             .with_dependencies_update(self.dependencies_update(config))
+            .with_check_only(self.check_only)
             .with_allow_dirty(self.allow_dirty(config));
         match self.get_repo_url(config) {
             Ok(repo_url) => {
@@ -308,6 +311,7 @@ mod tests {
             config: None,
             forge: GitForgeKind::Github,
             git_token: None,
+            check_only: false,
         };
         let config: Config = toml::from_str("").unwrap();
         let req = update_args

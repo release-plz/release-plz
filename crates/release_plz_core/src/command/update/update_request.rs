@@ -45,6 +45,8 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+    /// Do not write any manifests simply check for the next version.
+    check_only: bool,
 }
 
 impl UpdateRequest {
@@ -64,6 +66,7 @@ impl UpdateRequest {
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            check_only: false,
         })
     }
 
@@ -119,6 +122,14 @@ impl UpdateRequest {
             changelog_req,
             ..self
         }
+    }
+
+    pub fn with_check_only(self, check_only: bool) -> Self {
+        Self { check_only, ..self }
+    }
+
+    pub fn check_only(&self) -> bool {
+        self.check_only
     }
 
     /// Set update config for all packages.
