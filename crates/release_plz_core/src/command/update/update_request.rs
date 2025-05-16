@@ -48,6 +48,8 @@ pub struct UpdateRequest {
     release_commits: Option<Regex>,
     git: Option<GitForge>,
     max_analyze_commits: Option<u32>,
+    /// Do not write any manifests simply check for the next version.
+    check_only: bool,
 }
 
 impl UpdateRequest {
@@ -69,6 +71,7 @@ impl UpdateRequest {
             release_commits: None,
             git: None,
             max_analyze_commits: None,
+            check_only: false,
         })
     }
 
@@ -135,6 +138,14 @@ impl UpdateRequest {
 
     pub fn max_analyze_commits(&self) -> u32 {
         self.max_analyze_commits.unwrap_or(u32::MAX)
+    }
+
+    pub fn with_check_only(self, check_only: bool) -> Self {
+        Self { check_only, ..self }
+    }
+
+    pub fn check_only(&self) -> bool {
+        self.check_only
     }
 
     /// Set update config for all packages.

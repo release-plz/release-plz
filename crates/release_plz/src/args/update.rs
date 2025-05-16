@@ -116,6 +116,8 @@ pub struct Update {
     disable_dependant_updates: bool,
     #[arg(long)]
     max_analyze_commits: Option<u32>,
+    #[arg(long)]
+    check_only: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
@@ -185,7 +187,8 @@ impl Update {
             .with_dependencies_update(self.dependencies_update(config))
             .with_allow_dirty(self.allow_dirty(config))
             .with_dependants_update(!self.disable_dependant_updates)
-            .with_max_analyze_commits(self.max_analyze_commits(config));
+            .with_max_analyze_commits(self.max_analyze_commits(config))
+            .with_check_only(self.check_only);
         match self.get_repo_url(config) {
             Ok(repo_url) => {
                 update = update.with_repo_url(repo_url);
@@ -323,6 +326,7 @@ mod tests {
             git_token: None,
             disable_dependant_updates: false,
             max_analyze_commits: None,
+            check_only: false,
         };
         let config = update_args.config.load().unwrap();
         let req = update_args
