@@ -34,6 +34,9 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
             let update_request = cmd_args.update_request(&config, cargo_metadata)?;
             let (packages_update, _temp_repo) = release_plz_core::update(&update_request).await?;
             println!("{}", packages_update.summary());
+            if update_request.exit_status() && !packages_update.updates().is_empty() {
+                anyhow::bail!("updates are required, and `exit-status` flag was set.")
+            }
         }
         Command::ReleasePr(cmd_args) => {
             anyhow::ensure!(

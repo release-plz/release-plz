@@ -47,6 +47,8 @@ pub struct UpdateRequest {
     git: Option<GitForge>,
     /// Do not write any manifests simply check for the next version.
     check_only: bool,
+    /// Exit 1 if any updates are needed.
+    exit_status: bool,
 }
 
 impl UpdateRequest {
@@ -67,6 +69,7 @@ impl UpdateRequest {
             release_commits: None,
             git: None,
             check_only: false,
+            exit_status: false,
         })
     }
 
@@ -130,6 +133,17 @@ impl UpdateRequest {
 
     pub fn check_only(&self) -> bool {
         self.check_only
+    }
+
+    pub fn with_exit_status(self, exit_status: bool) -> Self {
+        Self {
+            exit_status,
+            ..self
+        }
+    }
+
+    pub fn exit_status(&self) -> bool {
+        self.exit_status
     }
 
     /// Set update config for all packages.
