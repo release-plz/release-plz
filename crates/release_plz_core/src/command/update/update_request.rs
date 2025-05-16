@@ -45,6 +45,7 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+    max_analyze_commits: Option<u32>,
 }
 
 impl UpdateRequest {
@@ -64,6 +65,7 @@ impl UpdateRequest {
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            max_analyze_commits: None,
         })
     }
 
@@ -119,6 +121,17 @@ impl UpdateRequest {
             changelog_req,
             ..self
         }
+    }
+
+    pub fn with_max_analyze_commits(self, max_commits: Option<u32>) -> Self {
+        Self {
+            max_analyze_commits: max_commits,
+            ..self
+        }
+    }
+
+    pub fn max_analyze_commits(&self) -> u32 {
+        self.max_analyze_commits.unwrap_or(u32::MAX)
     }
 
     /// Set update config for all packages.
