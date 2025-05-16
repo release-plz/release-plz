@@ -118,6 +118,8 @@ pub struct Update {
     max_analyze_commits: Option<u32>,
     #[arg(long)]
     check_only: bool,
+    #[arg(long)]
+    exit_status: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
@@ -185,10 +187,11 @@ impl Update {
                 format!("Cannot find file {project_manifest:?}. Make sure you are inside a rust project or that --manifest-path points to a valid Cargo.toml file.")
             })?
             .with_dependencies_update(self.dependencies_update(config))
-            .with_allow_dirty(self.allow_dirty(config))
             .with_dependants_update(!self.disable_dependant_updates)
+            .with_check_only(self.check_only)
+            .with_exit_status(self.exit_status)
             .with_max_analyze_commits(self.max_analyze_commits(config))
-            .with_check_only(self.check_only);
+            .with_allow_dirty(self.allow_dirty(config));
         match self.get_repo_url(config) {
             Ok(repo_url) => {
                 update = update.with_repo_url(repo_url);
@@ -327,6 +330,7 @@ mod tests {
             disable_dependant_updates: false,
             max_analyze_commits: None,
             check_only: false,
+            exit_status: false,
         };
         let config = update_args.config.load().unwrap();
         let req = update_args
