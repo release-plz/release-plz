@@ -552,7 +552,7 @@ impl Updater<'_> {
     ) -> anyhow::Result<()> {
         let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        loop {
+        for _ in 0..self.req.max_analyze_commits().max(1) {
             let current_commit_message = repository.current_commit_message()?;
             let current_commit_hash = repository.current_commit_hash()?;
 
