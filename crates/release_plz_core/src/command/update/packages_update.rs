@@ -108,7 +108,7 @@ impl PackagesUpdate {
 
                 let (semver_check, breaking_changes) = match &update.semver_check {
                     SemverCheck::Incompatible(incompatibilities) => {
-                        ("incompatible", Some(incompatibilities.to_string()))
+                        ("incompatible", Some(incompatibilities.clone()))
                     }
                     SemverCheck::Compatible => ("compatible", None),
                     SemverCheck::Skipped => ("skipped", None),

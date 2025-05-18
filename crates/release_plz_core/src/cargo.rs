@@ -18,6 +18,7 @@ pub struct CargoRegistry {
     pub index: CargoIndex,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum CargoIndex {
     Git(GitIndex),
     Sparse(SparseIndex),

@@ -858,7 +858,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     assert_eq!(
         actual_lines.len(),
         expected_lines.len(),
-        "Different number of lines"
+        "Different number of lines. Expected:\n{expected_body}\nActual:\n{actual_body}"
     );
     for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
         if !does_line_vary(actual) {
@@ -1030,7 +1030,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     assert_eq!(
         actual_lines.len(),
         expected_lines.len(),
-        "Different number of lines"
+        "Different number of lines. Expected:\n{expected_body}\nActual:\n{actual_body}"
     );
     for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
         if !does_line_vary(actual) {
