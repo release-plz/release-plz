@@ -57,7 +57,7 @@ impl PackageDownloader {
         let crates: Vec<Crate> = self
             .packages
             .iter()
-            .map(|package_name| Crate::new(package_name.to_string(), None))
+            .map(|package_name| Crate::new(package_name.clone(), None))
             .collect();
         let mut cloner_builder = Cloner::builder()
             .with_directory(&self.directory)
