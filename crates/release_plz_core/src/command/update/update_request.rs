@@ -36,6 +36,8 @@ pub struct UpdateRequest {
     /// Allow dirty working directories to be updated.
     /// The uncommitted changes will be part of the update.
     allow_dirty: bool,
+    /// Update workspace dependants
+    dependants_update: bool,
     /// Repository Url. If present, the new changelog entry contains a link to the diff between the old and new version.
     /// Format: `https://{repo_host}/{repo_owner}/{repo_name}/compare/{old_tag}...{new_tag}`.
     repo_url: Option<RepoUrl>,
@@ -60,6 +62,7 @@ impl UpdateRequest {
             registry: None,
             dependencies_update: false,
             allow_dirty: false,
+            dependants_update: true,
             repo_url: None,
             packages_config: PackagesConfig::default(),
             release_commits: None,
@@ -196,8 +199,19 @@ impl UpdateRequest {
         }
     }
 
+    pub fn with_dependants_update(self, dependants_update: bool) -> Self {
+        Self {
+            dependants_update,
+            ..self
+        }
+    }
+
     pub fn should_update_dependencies(&self) -> bool {
         self.dependencies_update
+    }
+
+    pub fn should_update_dependants(&self) -> bool {
+        self.dependants_update
     }
 
     pub fn with_allow_dirty(self, allow_dirty: bool) -> Self {

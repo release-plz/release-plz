@@ -17,6 +17,7 @@ pub struct SetVersionRequest {
     /// Cargo metadata.
     metadata: Metadata,
     version_changes: SetVersionSpec,
+    update_dependants: bool,
 }
 
 impl SetVersionRequest {
@@ -66,13 +67,18 @@ impl VersionChange {
 }
 
 impl SetVersionRequest {
-    pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
+    pub fn new(
+        version_changes: SetVersionSpec,
+        metadata: Metadata,
+        update_dependants: bool,
+    ) -> anyhow::Result<Self> {
         let manifest = cargo_utils::workspace_manifest(&metadata);
         let manifest = canonical_local_manifest(manifest.as_ref())?;
         Ok(Self {
             version_changes,
             metadata,
             manifest,
+            update_dependants,
         })
     }
 }
@@ -99,6 +105,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
                 &all_packages,
                 change,
                 &workspace_manifest,
+                input.update_dependants,
             )?;
         }
         SetVersionSpec::Workspace(changes) => {
@@ -109,6 +116,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
                     &all_packages,
                     change,
                     &workspace_manifest,
+                    input.update_dependants,
                 )?;
             }
         }
@@ -122,6 +130,7 @@ fn set_version_in_package(
     all_packages: &[&Package],
     change: &VersionChange,
     workspace_manifest: &LocalManifest,
+    update_dependants: bool,
 ) -> Result<(), anyhow::Error> {
     let pkg = packages
         .get(package)
@@ -132,6 +141,7 @@ fn set_version_in_package(
         pkg_path,
         &change.version,
         &workspace_manifest.path,
+        update_dependants,
     )?;
     let default_changelog_path = pkg_path.join(CHANGELOG_FILENAME);
     let changelog_path: &Utf8Path = change
