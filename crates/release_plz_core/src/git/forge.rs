@@ -691,7 +691,7 @@ impl GitClient {
                 None => {
                     // The label doesn't exist in the repository, so we need to create it.
                     if !labels_to_create.contains(label) {
-                        labels_to_create.push(label.to_string());
+                        labels_to_create.push(label.clone());
                     }
                 }
             }
