@@ -28,5 +28,5 @@ Here you can find all the public repositories using the release-plz GitHub actio
 
 ## Release-plz config files
 
-[Here](https://github.com/search?q=path%3Arelease-plz.toml&type=code)
+In [this GitHub search](https://github.com/search?q=path%3Arelease-plz.toml&type=code)
 you can find all release-plz config files available in GitHub public repositories.
