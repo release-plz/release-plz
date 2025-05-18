@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.135](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.134...release-plz-v0.3.135) - 2025-05-18
+
+### Fixed
+
+- fix clippy lints ([#2235](https://github.com/release-plz/release-plz/pull/2235))
+
+### Other
+
+- improve command descriptions in the help menu ([#2217](https://github.com/release-plz/release-plz/pull/2217))
+- Indicate when diff calculation begins to avoid appearing stalled ([#2221](https://github.com/release-plz/release-plz/pull/2221))
+- log when running cargo-semver-checks ([#2219](https://github.com/release-plz/release-plz/pull/2219))
+
 ## [0.3.134](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.133...release-plz-v0.3.134) - 2025-05-08
 
 ### Fixed
