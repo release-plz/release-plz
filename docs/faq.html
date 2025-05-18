@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.7.0">
 <title data-rh="true">FAQ | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/faq"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="FAQ | Release-plz"><meta data-rh="true" name="description" content="What packages does release-plz publish?"><meta data-rh="true" property="og:description" content="What packages does release-plz publish?"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/faq"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/faq" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/faq" hreflang="x-default"><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.2759b9c7.css">
-<script src="/assets/js/runtime~main.d9b7d105.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.2d46d41e.js" defer="defer"></script>
 <script src="/assets/js/main.678a8d99.js" defer="defer"></script>
 </head>
 <body class="navigation-with-keyboard">
@@ -53,7 +53,7 @@ To do so, you can:</p>
 <li>Query the <code>/pulls</code> GitHub
 <a href="https://docs.github.com/en/free-pro-team@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests" target="_blank" rel="noopener noreferrer">endpoint</a>.
 For example, release-plz does it
-<a href="https://github.com/release-plz/release-plz/blob/a92629ed10b8bb42dde426c0f0001aebbb6fa70e/crates/release_plz_core/src/git/backend.rs#L238" target="_blank" rel="noopener noreferrer">here</a>.</li>
+in its <a href="https://github.com/release-plz/release-plz/blob/a92629ed10b8bb42dde426c0f0001aebbb6fa70e/crates/release_plz_core/src/git/backend.rs#L238" target="_blank" rel="noopener noreferrer">code</a>.</li>
 <li>Use <code>git tag | grep release-plz</code>.</li>
 </ul>
 <p>If none of these options work for you or you want release-plz to output
