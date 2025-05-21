@@ -31,6 +31,11 @@ pub struct Config {
 }
 
 impl Config {
+    /// Defaults as they should appear in the default config file
+    pub fn serialize_defaults(&self) -> Self {
+        todo!()
+    }
+
     /// Package-specific configurations.
     /// Returns `<package name, package config>`.
     fn packages(&self) -> HashMap<&str, &PackageSpecificConfig> {
@@ -167,6 +172,44 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Defaults as they should appear in the default config file
+    pub fn serialize_defaults(&self) -> Self {
+        Self {
+            packages_defaults: PackageConfig {
+                changelog_path: None,
+                changelog_update: Some(true),
+                features_always_increment_minor: Some(false),
+                git_release_enable: Some(true),
+                git_release_body: Some("{{ changelog }}".to_string()),
+                git_release_type: Some(ReleaseType::default()),
+                git_release_draft: Some(false),
+                git_release_latest: Some(true),
+                git_release_name: None,
+                git_tag_enable: Some(true),
+                git_tag_name: None,
+                publish: Some(true),
+                publish_allow_dirty: Some(false),
+                publish_no_verify: Some(false),
+                publish_features: Some(vec![]),
+                publish_all_features: Some(false),
+                semver_check: Some(true),
+                release: Some(true),
+            },
+            allow_dirty: Some(false),
+            changelog_config: None,
+            dependencies_update: Some(false),
+            pr_name: None,
+            pr_body: None,
+            pr_draft: false,
+            pr_labels: vec![],
+            pr_branch_prefix: Some("release-plz-".to_string()),
+            publish_timeout: Some("30m".to_string()),
+            repo_url: None,
+            release_commits: None,
+            release_always: Some(true),
+        }
+    }
+
     /// Get the publish timeout. Defaults to 30 minutes.
     pub fn publish_timeout(&self) -> anyhow::Result<Duration> {
         let publish_timeout = self.publish_timeout.as_deref().unwrap_or("30m");
