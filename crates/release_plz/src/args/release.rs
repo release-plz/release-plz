@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use cargo_metadata::camino::Utf8Path;
 use clap::{
     ValueEnum,
     builder::{NonEmptyStringValueParser, PathBufValueParser},
@@ -80,8 +81,8 @@ pub enum ReleaseGitForgeKind {
 }
 
 impl ConfigCommand for Release {
-    fn config_path(&self) -> Option<&Path> {
-        self.config.as_deref()
+    fn config_path(&self) -> Option<&Utf8Path> {
+        self.config.as_deref().and_then(|p| Utf8Path::from_path(p))
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use cargo_metadata::semver::Version;
+use cargo_metadata::{camino::Utf8Path, semver::Version};
 use clap::builder::PathBufValueParser;
 use release_plz_core::set_version::{SetVersionRequest, SetVersionSpec, VersionChange};
 
@@ -32,8 +32,8 @@ pub struct SetVersion {
 }
 
 impl ConfigCommand for SetVersion {
-    fn config_path(&self) -> Option<&Path> {
-        self.config.as_deref()
+    fn config_path(&self) -> Option<&Utf8Path> {
+        self.config.as_deref().and_then(|p| Utf8Path::from_path(p))
     }
 }
 
