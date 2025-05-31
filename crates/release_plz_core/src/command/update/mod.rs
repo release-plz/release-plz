@@ -48,7 +48,12 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
     // workspace dependencies.
     let all_packages: Vec<Package> = cargo_utils::workspace_members(&local_metadata)?.collect();
     let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
-    update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
+    update_manifests(
+        &packages_to_update,
+        local_manifest_path,
+        &all_packages_ref,
+        input.should_update_dependants(),
+    )?;
     update_changelogs(input, &packages_to_update)?;
     if !packages_to_update.updates().is_empty() {
         let local_manifest_dir = input.local_manifest_dir()?;
@@ -68,6 +73,7 @@ fn update_manifests(
     packages_to_update: &PackagesUpdate,
     local_manifest_path: &Utf8Path,
     all_packages: &[&Package],
+    update_dependants: bool,
 ) -> anyhow::Result<()> {
     // Distinguish packages type to avoid updating the version of packages that inherit the workspace version
     let (workspace_pkgs, independent_pkgs): (PackagesToUpdate, PackagesToUpdate) =
@@ -102,6 +108,7 @@ fn update_manifests(
         all_packages,
         &PackagesUpdate::new(independent_pkgs),
         local_manifest_path,
+        update_dependants,
     )?;
     Ok(())
 }
@@ -111,6 +118,7 @@ fn update_versions(
     all_packages: &[&Package],
     packages_to_update: &PackagesUpdate,
     workspace_manifest: &Utf8Path,
+    update_dependants: bool,
 ) -> anyhow::Result<()> {
     for (package, update) in packages_to_update.updates() {
         let package_path = package.package_path()?;
@@ -119,6 +127,7 @@ fn update_versions(
             package_path,
             &update.version,
             workspace_manifest,
+            update_dependants,
         )?;
     }
     Ok(())
@@ -163,6 +172,7 @@ pub fn set_version(
     package_path: &Utf8Path,
     version: &Version,
     workspace_manifest: &Utf8Path,
+    update_dependants: bool,
 ) -> anyhow::Result<()> {
     debug!("updating version");
     let mut local_manifest =
@@ -172,8 +182,11 @@ pub fn set_version(
         .write()
         .with_context(|| format!("cannot update manifest {:?}", &local_manifest.path))?;
 
-    let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
-    update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
+    if update_dependants {
+        let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
+        update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
+    }
+
     Ok(())
 }
 
