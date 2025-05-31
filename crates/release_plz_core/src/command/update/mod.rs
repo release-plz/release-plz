@@ -42,22 +42,24 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
     let (packages_to_update, repository) = crate::next_versions(input)
         .await
         .context("failed to determine next versions")?;
-    let local_manifest_path = input.local_manifest();
-    let local_metadata = cargo_utils::get_manifest_metadata(local_manifest_path)?;
-    // Read packages from `local_metadata` to update the manifest of local
-    // workspace dependencies.
-    let all_packages: Vec<Package> = cargo_utils::workspace_members(&local_metadata)?.collect();
-    let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
-    update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
-    update_changelogs(input, &packages_to_update)?;
-    if !packages_to_update.updates().is_empty() {
-        let local_manifest_dir = input.local_manifest_dir()?;
-        update_cargo_lock(local_manifest_dir, input.should_update_dependencies())?;
+    if !input.check_only() {
+        let local_manifest_path = input.local_manifest();
+        let local_metadata = cargo_utils::get_manifest_metadata(local_manifest_path)?;
+        // Read packages from `local_metadata` to update the manifest of local
+        // workspace dependencies.
+        let all_packages: Vec<Package> = cargo_utils::workspace_members(&local_metadata)?.collect();
+        let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
+        update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
+        update_changelogs(input, &packages_to_update)?;
+        if !packages_to_update.updates().is_empty() {
+            let local_manifest_dir = input.local_manifest_dir()?;
+            update_cargo_lock(local_manifest_dir, input.should_update_dependencies())?;
 
-        let local_repo_root = root_repo_path_from_manifest_dir(local_manifest_dir)?;
-        let there_are_commits_to_push = Repo::new(local_repo_root)?.is_clean().is_err();
-        if !there_are_commits_to_push {
-            info!("the repository is already up-to-date");
+            let local_repo_root = root_repo_path_from_manifest_dir(local_manifest_dir)?;
+            let there_are_commits_to_push = Repo::new(local_repo_root)?.is_clean().is_err();
+            if !there_are_commits_to_push {
+                info!("the repository is already up-to-date");
+            }
         }
     }
 
