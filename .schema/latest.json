@@ -1,11 +1,11 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/release-plz/release-plz/.schema/latest.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Config",
-  "description": "You can find the documentation of the configuration file [here](https://release-plz.dev/docs/config).",
+  "description": "You can find the documentation of the configuration file\n [here](https://release-plz.dev/docs/config).",
   "type": "object",
   "properties": {
     "changelog": {
+      "$ref": "#/$defs/ChangelogCfg",
       "default": {
         "body": null,
         "commit_parsers": null,
@@ -16,25 +16,21 @@
         "sort_commits": null,
         "tag_pattern": null,
         "trim": null
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/ChangelogCfg"
-        }
-      ]
+      }
     },
     "package": {
       "title": "Package",
-      "description": "Package-specific configuration. This overrides `workspace`. Not all settings of `workspace` can be overridden.",
-      "default": [],
+      "description": "Package-specific configuration. This overrides `workspace`.\n Not all settings of `workspace` can be overridden.",
       "type": "array",
+      "default": [],
       "items": {
-        "$ref": "#/definitions/PackageSpecificConfigWithName"
+        "$ref": "#/$defs/PackageSpecificConfigWithName"
       }
     },
     "workspace": {
       "title": "Workspace",
       "description": "Global configuration. Applied to all packages by default.",
+      "$ref": "#/$defs/Workspace",
       "default": {
         "allow_dirty": null,
         "changelog_config": null,
@@ -66,21 +62,16 @@
         "release_commits": null,
         "repo_url": null,
         "semver_check": null
-      },
-      "allOf": [
-        {
-          "$ref": "#/definitions/Workspace"
-        }
-      ]
+      }
     }
   },
   "additionalProperties": false,
-  "definitions": {
+  "$defs": {
     "ChangelogCfg": {
       "type": "object",
       "properties": {
         "body": {
-          "description": "Template that represents a single release in the changelog. It contains the commit messages. This is a [tera](https://keats.github.io/tera/) template.",
+          "description": "Template that represents a single release in the changelog.\n It contains the commit messages.\n This is a [tera](https://keats.github.io/tera/) template.",
           "type": [
             "string",
             "null"
@@ -93,7 +84,7 @@
             "null"
           ],
           "items": {
-            "$ref": "#/definitions/CommitParser"
+            "$ref": "#/$defs/CommitParser"
           }
         },
         "commit_preprocessors": {
@@ -103,7 +94,7 @@
             "null"
           ],
           "items": {
-            "$ref": "#/definitions/TextProcessor"
+            "$ref": "#/$defs/TextProcessor"
           }
         },
         "header": {
@@ -120,7 +111,7 @@
             "null"
           ],
           "items": {
-            "$ref": "#/definitions/LinkParser"
+            "$ref": "#/$defs/LinkParser"
           }
         },
         "protect_breaking_commits": {
@@ -134,7 +125,7 @@
           "description": "How to sort the commits inside the various sections.",
           "anyOf": [
             {
-              "$ref": "#/definitions/Sorting"
+              "$ref": "#/$defs/Sorting"
             },
             {
               "type": "null"
@@ -229,10 +220,6 @@
     },
     "LinkParser": {
       "type": "object",
-      "required": [
-        "href",
-        "pattern"
-      ],
       "properties": {
         "href": {
           "description": "The string used to generate the link URL.",
@@ -249,18 +236,19 @@
             "null"
           ]
         }
-      }
+      },
+      "required": [
+        "pattern",
+        "href"
+      ]
     },
     "PackageSpecificConfigWithName": {
       "description": "Config at the `[[package]]` level.",
       "type": "object",
-      "required": [
-        "name"
-      ],
       "properties": {
         "changelog_include": {
           "title": "Changelog Include",
-          "description": "List of package names. Include the changelogs of these packages in the changelog of the current package.",
+          "description": "List of package names.\n Include the changelogs of these packages in the changelog of the current package.",
           "type": [
             "array",
             "null"
@@ -271,7 +259,7 @@
         },
         "changelog_path": {
           "title": "Changelog Path",
-          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file. The user can provide a custom path here. `changelog_path` is propagated to the commands: `update`, `release-pr` and `release`.",
+          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file.\n The user can provide a custom path here.\n `changelog_path` is propagated to the commands:\n `update`, `release-pr` and `release`.",
           "type": [
             "string",
             "null"
@@ -279,7 +267,7 @@
         },
         "changelog_update": {
           "title": "Changelog Update",
-          "description": "Whether to create/update changelog or not. If unspecified, the changelog is updated.",
+          "description": "Whether to create/update changelog or not.\n If unspecified, the changelog is updated.",
           "type": [
             "boolean",
             "null"
@@ -287,7 +275,7 @@
         },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
-          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases. - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
           "type": [
             "boolean",
             "null"
@@ -311,7 +299,7 @@
         },
         "git_release_enable": {
           "title": "Git Release Enable",
-          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag. Enabled by default.",
+          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\n Enabled by default.",
           "type": [
             "boolean",
             "null"
@@ -338,7 +326,7 @@
           "description": "Whether to mark the created release as not ready for production.",
           "anyOf": [
             {
-              "$ref": "#/definitions/ReleaseType"
+              "$ref": "#/$defs/ReleaseType"
             },
             {
               "type": "null"
@@ -347,7 +335,7 @@
         },
         "git_tag_enable": {
           "title": "Git Tag Enable",
-          "description": "Publish the git tag for the new package version. Enabled by default.",
+          "description": "Publish the git tag for the new package version.\n Enabled by default.",
           "type": [
             "boolean",
             "null"
@@ -417,7 +405,7 @@
         },
         "semver_check": {
           "title": "Semver Check",
-          "description": "Controls when to run cargo-semver-checks. If unspecified, run cargo-semver-checks if the package is a library.",
+          "description": "Controls when to run cargo-semver-checks.\n If unspecified, run cargo-semver-checks if the package is a library.",
           "type": [
             "boolean",
             "null"
@@ -431,7 +419,10 @@
             "null"
           ]
         }
-      }
+      },
+      "required": [
+        "name"
+      ]
     },
     "ReleaseType": {
       "oneOf": [
@@ -439,25 +430,19 @@
           "title": "Prod",
           "description": "Will mark the release as ready for production.",
           "type": "string",
-          "enum": [
-            "prod"
-          ]
+          "const": "prod"
         },
         {
           "title": "Pre",
-          "description": "Will mark the release as not ready for production. I.e. as pre-release.",
+          "description": "Will mark the release as not ready for production.\n I.e. as pre-release.",
           "type": "string",
-          "enum": [
-            "pre"
-          ]
+          "const": "pre"
         },
         {
           "title": "Auto",
-          "description": "Will mark the release as not ready for production in case there is a semver pre-release in the tag e.g. v1.0.0-rc1. Otherwise, will mark the release as ready for production.",
+          "description": "Will mark the release as not ready for production\n in case there is a semver pre-release in the tag e.g. v1.0.0-rc1.\n Otherwise, will mark the release as ready for production.",
           "type": "string",
-          "enum": [
-            "auto"
-          ]
+          "const": "auto"
         }
       ]
     },
@@ -471,9 +456,6 @@
     "TextProcessor": {
       "description": "Used for modifying commit messages.",
       "type": "object",
-      "required": [
-        "pattern"
-      ],
       "properties": {
         "pattern": {
           "description": "Regex for matching a text to replace.",
@@ -493,7 +475,10 @@
             "null"
           ]
         }
-      }
+      },
+      "required": [
+        "pattern"
+      ]
     },
     "Workspace": {
       "description": "Config at the `[workspace]` level.",
@@ -501,7 +486,7 @@
       "properties": {
         "allow_dirty": {
           "title": "Allow Dirty",
-          "description": "- If `true`, allow dirty working directories to be updated. The uncommitted changes will be part of the update. - If `false` or [`Option::None`], the command will fail if the working directory is dirty.",
+          "description": "- If `true`, allow dirty working directories to be updated. The uncommitted changes will be part of the update.\n - If `false` or [`Option::None`], the command will fail if the working directory is dirty.",
           "type": [
             "boolean",
             "null"
@@ -517,7 +502,7 @@
         },
         "changelog_path": {
           "title": "Changelog Path",
-          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file. The user can provide a custom path here. `changelog_path` is propagated to the commands: `update`, `release-pr` and `release`.",
+          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file.\n The user can provide a custom path here.\n `changelog_path` is propagated to the commands:\n `update`, `release-pr` and `release`.",
           "type": [
             "string",
             "null"
@@ -525,7 +510,7 @@
         },
         "changelog_update": {
           "title": "Changelog Update",
-          "description": "Whether to create/update changelog or not. If unspecified, the changelog is updated.",
+          "description": "Whether to create/update changelog or not.\n If unspecified, the changelog is updated.",
           "type": [
             "boolean",
             "null"
@@ -533,7 +518,7 @@
         },
         "dependencies_update": {
           "title": "Dependencies Update",
-          "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`. - If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
+          "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.\n - If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
           "type": [
             "boolean",
             "null"
@@ -541,7 +526,7 @@
         },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
-          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases. - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
           "type": [
             "boolean",
             "null"
@@ -565,7 +550,7 @@
         },
         "git_release_enable": {
           "title": "Git Release Enable",
-          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag. Enabled by default.",
+          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\n Enabled by default.",
           "type": [
             "boolean",
             "null"
@@ -592,7 +577,7 @@
           "description": "Whether to mark the created release as not ready for production.",
           "anyOf": [
             {
-              "$ref": "#/definitions/ReleaseType"
+              "$ref": "#/$defs/ReleaseType"
             },
             {
               "type": "null"
@@ -601,7 +586,7 @@
         },
         "git_tag_enable": {
           "title": "Git Tag Enable",
-          "description": "Publish the git tag for the new package version. Enabled by default.",
+          "description": "Publish the git tag for the new package version.\n Enabled by default.",
           "type": [
             "boolean",
             "null"
@@ -634,14 +619,14 @@
         "pr_draft": {
           "title": "PR Draft",
           "description": "If `true`, the created release PR will be marked as a draft.",
-          "default": false,
-          "type": "boolean"
+          "type": "boolean",
+          "default": false
         },
         "pr_labels": {
           "title": "PR Labels",
           "description": "Labels to add to the release PR.",
-          "default": [],
           "type": "array",
+          "default": [],
           "items": {
             "type": "string"
           }
@@ -715,7 +700,7 @@
         },
         "release_always": {
           "title": "Release always",
-          "description": "- If true, release-plz release will try to release your packages every time you run it (e.g. on every commit in the main branch). *(Default)*. - If false, `release-plz release` will try release your packages only when you merge the release pr. Use this if you want to commit your packages and publish them later. To determine if a pr is a release-pr, release-plz will check if the branch of the PR starts with `release-plz-`. So if you want to create a PR that should trigger a release (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).",
+          "description": "- If true, release-plz release will try to release your packages every time you run it\n   (e.g. on every commit in the main branch). *(Default)*.\n - If false, `release-plz release` will try release your packages only when you merge the\n   release pr.\n   Use this if you want to commit your packages and publish them later.\n   To determine if a pr is a release-pr, release-plz will check if the branch of the PR starts with\n   `release-plz-`. So if you want to create a PR that should trigger a release\n   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).",
           "type": [
             "boolean",
             "null"
@@ -731,7 +716,7 @@
         },
         "repo_url": {
           "title": "Repo URL",
-          "description": "GitHub/Gitea/GitLab repository url where your project is hosted. It is used to generate the changelog release link. It defaults to the url of the default remote.",
+          "description": "GitHub/Gitea/GitLab repository url where your project is hosted.\n It is used to generate the changelog release link.\n It defaults to the url of the default remote.",
           "type": [
             "string",
             "null"
@@ -740,13 +725,14 @@
         },
         "semver_check": {
           "title": "Semver Check",
-          "description": "Controls when to run cargo-semver-checks. If unspecified, run cargo-semver-checks if the package is a library.",
+          "description": "Controls when to run cargo-semver-checks.\n If unspecified, run cargo-semver-checks if the package is a library.",
           "type": [
             "boolean",
             "null"
           ]
         }
-      }
+      },
+      "additionalProperties": false
     }
   }
 }
