@@ -213,7 +213,7 @@ impl ReleaseRequest {
 
         for package in &self.metadata.packages {
             if !package.is_publishable() {
-                if let Some(should_publish) = publish_fields.get(&package.name) {
+                if let Some(should_publish) = publish_fields.get(package.name.as_str()) {
                     anyhow::ensure!(
                         !should_publish,
                         "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
@@ -642,7 +642,7 @@ async fn release_package_if_needed(
         }
     }
     let package_release = package_was_released.then_some(PackageRelease {
-        package_name: package.name.clone(),
+        package_name: package.name.to_string(),
         version: package.version.clone(),
         tag: git_tag,
         prs,

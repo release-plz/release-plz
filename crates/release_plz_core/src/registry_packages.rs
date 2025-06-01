@@ -81,7 +81,7 @@ pub fn get_registry_packages(
     let registry_packages: BTreeMap<String, RegistryPackage> = registry_packages
         .into_iter()
         .map(|c| {
-            let package_name = c.package.name.clone();
+            let package_name = c.package.name.to_string();
             (package_name, c)
         })
         .collect();

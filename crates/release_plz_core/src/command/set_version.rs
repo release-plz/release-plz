@@ -81,7 +81,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
     let workspace_manifest = LocalManifest::try_new(&input.manifest)?;
     let packages: BTreeMap<String, Package> = workspace_members(&input.metadata)?
         .map(|p| {
-            let package_name = p.name.clone();
+            let package_name = p.name.to_string();
             (package_name, p)
         })
         .collect();

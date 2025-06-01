@@ -62,13 +62,13 @@ impl Project {
         override_packages_path(&mut packages, metadata, &manifest_dir)
             .context("failed to override packages path")?;
 
-        let packages_names: Vec<String> = packages.iter().map(|p| p.name.clone()).collect();
+        let packages_names: Vec<String> = packages.iter().map(|p| p.name.to_string()).collect();
         packages.retain(|p| {
             let release_metadata =
                 release_metadata_builder
                     .get_release_metadata(&p.name)
                     .map(|m| {
-                        release_metadata.insert(p.name.clone(), m);
+                        release_metadata.insert(p.name.to_string(), m);
                     });
             release_metadata.is_some()
         });
@@ -80,7 +80,7 @@ impl Project {
         let contains_multiple_pub_packages = packages.len() > 1;
 
         if let Some(pac) = single_package {
-            packages.retain(|p| p.name == pac);
+            packages.retain(|p| *p.name == pac);
             anyhow::ensure!(
                 !packages.is_empty(),
                 "package `{}` not found. If it exists, is it public?",
