@@ -71,7 +71,7 @@ impl Updater<'_> {
                 let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
                 local_manifest.version_is_inherited()
             })
-            .map(|(p, _)| p.name.clone())
+            .map(|(p, _)| p.name.to_string())
             .collect();
 
         let new_workspace_version = self.new_workspace_version(
@@ -177,7 +177,7 @@ impl Updater<'_> {
             .iter()
             .filter_map(|workspace_package| {
                 for (p, diff) in packages_diffs {
-                    if workspace_package == &p.name {
+                    if *workspace_package == *p.name {
                         let pkg_config = self.req.get_package_config(&p.name);
                         let version_updater = pkg_config.generic.version_updater();
                         let next = p.version.next_from_diff(diff, version_updater);
@@ -218,7 +218,7 @@ impl Updater<'_> {
         let mut packages_diffs = self.fill_commits(&packages_diffs_res?, repository).await?;
         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
             .iter()
-            .map(|(p, d)| (p.name.clone(), d.commits.clone()))
+            .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
         let semver_check_result: anyhow::Result<()> =
@@ -311,7 +311,7 @@ impl Updater<'_> {
         // Track which packages have been processed
         let mut processed: HashSet<String> = initial_changed_packages
             .iter()
-            .map(|(p, _)| p.name.clone())
+            .map(|(p, _)| p.name.to_string())
             .collect();
 
         let mut result = Vec::new();
@@ -325,7 +325,7 @@ impl Updater<'_> {
 
             for p in packages_to_check_for_deps {
                 // Skip packages we've already processed in previous iterations
-                if processed.contains(&p.name) {
+                if processed.contains(p.name.as_ref()) {
                     continue;
                 }
 
@@ -344,7 +344,7 @@ impl Updater<'_> {
 
                         // Mark as changed so packages depending on it will be updated in the next iteration
                         all_changed_packages.push((p, update.1.version.clone()));
-                        processed.insert(p.name.clone());
+                        processed.insert(p.name.to_string());
                         any_package_updated = true;
                     }
                 }
@@ -889,7 +889,7 @@ fn get_changelog(
     let mut changelog_builder = ChangelogBuilder::new(
         commits.clone(),
         next_version.to_string(),
-        package.name.clone(),
+        package.name.to_string(),
     );
     if let Some(changelog_req) = changelog_req {
         if let Some(release_date) = changelog_req.release_date {

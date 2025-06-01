@@ -115,7 +115,7 @@ impl PackagesUpdate {
                 };
 
                 ReleaseInfo {
-                    package: package.name.clone(),
+                    package: package.name.to_string(),
                     title: changelog_title,
                     changelog: changelog_notes,
                     next_version: update.version.to_string(),

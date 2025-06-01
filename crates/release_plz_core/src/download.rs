@@ -110,7 +110,7 @@ mod tests {
             .download()
             .unwrap();
         let rand = &packages[0];
-        assert_eq!(rand.name, package_name);
+        assert_eq!(*rand.name, package_name);
     }
 
     #[test]
@@ -123,8 +123,8 @@ mod tests {
         let packages = PackageDownloader::new([first_package, second_package], directory)
             .download()
             .unwrap();
-        assert_eq!(&packages[0].name, first_package);
-        assert_eq!(&packages[1].name, second_package);
+        assert_eq!(*packages[0].name, first_package);
+        assert_eq!(*packages[1].name, second_package);
     }
 
     #[test]

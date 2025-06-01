@@ -207,7 +207,7 @@ fn read_package_metadata(
         .context("cannot read Cargo.toml")?
         .workspace_packages()
         .into_iter()
-        .find(|&p| p.name == package_name)
+        .find(|&p| *p.name == package_name)
         .cloned()
         .context("cannot find package in Cargo.toml")?;
     Ok(package)

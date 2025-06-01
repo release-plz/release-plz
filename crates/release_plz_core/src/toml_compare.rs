@@ -1,4 +1,4 @@
-use cargo_metadata::Dependency;
+use cargo_metadata::{Dependency, Source};
 
 /// Compare the dependencies of the registry package and the local one.
 /// Check if the dependencies of the registry package were updated.
@@ -33,15 +33,15 @@ fn are_dependencies_equal(local_dep: &Dependency, registry_dep: &Dependency) -> 
         && local_dep.target == registry_dep.target
         && local_dep.rename == registry_dep.rename
         && local_dep.registry == registry_dep.registry
-        && is_source_equal(local_dep.source.as_deref(), registry_dep.source.as_deref())
+        && is_source_equal(local_dep.source.as_ref(), registry_dep.source.as_ref())
 }
 
-fn is_source_equal(local_source: Option<&str>, registry_source: Option<&str>) -> bool {
+fn is_source_equal(local_source: Option<&Source>, registry_source: Option<&Source>) -> bool {
     match (local_source, registry_source) {
         (Some(local_source), Some(registry_source)) => {
             // If the source is a git repository, we don't check the source of the registry, because
             // you can't publish a git repository on crates.io.
-            if local_source.starts_with("git+") {
+            if local_source.to_string().starts_with("git+") {
                 true
             } else {
                 local_source == registry_source
