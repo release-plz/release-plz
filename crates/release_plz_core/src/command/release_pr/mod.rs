@@ -241,7 +241,7 @@ async fn open_or_update_release_pr(
             .updates()
             .iter()
             .map(|(package, update)| PrPackageRelease {
-                package_name: package.name.clone(),
+                package_name: package.name.to_string(),
                 version: update.version.clone(),
             })
             .collect(),

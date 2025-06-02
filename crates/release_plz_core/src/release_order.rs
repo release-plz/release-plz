@@ -33,7 +33,7 @@ fn release_order_inner<'a>(
     for d in &pkg.dependencies {
         // Check if the dependency is part of the packages we are releasing.
         if let Some(dep) = packages.iter().find(|p| {
-            d.name == p.name
+            d.name == *p.name
               // Exclude the current package.
               && p.name != pkg.name
               && should_dep_be_released_before(d, pkg)

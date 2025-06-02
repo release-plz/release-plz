@@ -55,18 +55,18 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@9399c7bb15d4c7d47b27263d024f0a4978346ba4
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9
       - uses: taiki-e/setup-cross-toolchain-action@0123528f956f923e7a476f4cc04882bc005e7c89 # v1.29.1
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@13608a19a2204ea4cc0b5888e995ab288684b613 # v2.51.1
+      - uses: taiki-e/install-action@735e5933943122c5ac182670a935f54a949265c1 # v2.52.4
         with:
           tool: cross
         if: contains(matrix.target, '-musl')
       - run: echo "RUSTFLAGS=${RUSTFLAGS} -C target-feature=+crt-static" >> "${GITHUB_ENV}"
         if: endsWith(matrix.target, 'windows-msvc')
-      - uses: taiki-e/upload-rust-binary-action@e7953b6078194a4ae5f5619632e3715db6275561 # v1.24.0
+      - uses: taiki-e/upload-rust-binary-action@db101489b509ad1c7acce163e118eb36a1650f98 # v1.26.0
         with:
           bin: release-plz
           target: ${{ matrix.target }}

@@ -27,7 +27,6 @@ while the other packages inherit the default configuration.
 ```toml
 [workspace]
 allow_dirty = true # allow updating repositories with uncommitted changes
-changelog_config = "config/git-cliff.toml" # use a custom git-cliff configuration
 changelog_update = false # disable changelog updates
 dependencies_update = true # update dependencies with `cargo update`
 git_release_enable = false # disable GitHub/Gitea releases
