@@ -176,9 +176,17 @@ pub fn local_readme_override(
     package
         .readme
         .as_ref()
-        .map(|readme| {
+        .and_then(|readme| {
             let readme_path = local_package_path.join(readme);
-            fs_utils::canonicalize_utf8(&readme_path)
+            if !readme_path.exists() {
+                tracing::warn!(
+                    "README path '{}' doesn't exist for package '{}', its canonical path will be None",
+                    readme_path,
+                    package.name
+                );
+                return None;
+            }
+            Some(fs_utils::canonicalize_utf8(&readme_path))
         })
         .transpose()
 }
