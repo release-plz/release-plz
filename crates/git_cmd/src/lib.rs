@@ -173,34 +173,6 @@ impl Repo {
         &self.original_branch
     }
 
-    #[instrument(skip(self))]
-    fn current_commit(&self) -> anyhow::Result<String> {
-        self.nth_commit(1)
-    }
-
-    #[instrument(skip(self))]
-    fn previous_commit(&self) -> anyhow::Result<String> {
-        self.nth_commit(2)
-    }
-
-    #[instrument(
-        skip(self)
-        fields(
-            nth_commit = tracing::field::Empty,
-        )
-    )]
-    fn nth_commit(&self, nth: usize) -> anyhow::Result<String> {
-        let nth = nth.to_string();
-        let commit_list = self.git(&["--format=%H", "-n", &nth])?;
-        let last_commit = commit_list
-            .lines()
-            .last()
-            .context("repository has no commits")?;
-        Span::current().record("nth_commit", last_commit);
-
-        Ok(last_commit.to_string())
-    }
-
     /// Run a git command in the repository git directory
     pub fn git(&self, args: &[&str]) -> anyhow::Result<String> {
         git_in_dir(&self.directory, args)
