@@ -34,7 +34,6 @@ pub struct Changelog<'a> {
     release_link: Option<String>,
     package: String,
     remote: Option<Remote>,
-    pr_link: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,7 +83,7 @@ impl Changelog<'_> {
         &'a self,
         config: &'a Config,
     ) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
-        let mut changelog = GitCliffChangelog::new(vec![self.release.clone()], config)
+        let mut changelog = GitCliffChangelog::new(vec![self.release.clone()], config, None)
             .context("error while building changelog")?;
         add_package_context(&mut changelog, &self.package)?;
         add_release_link_context(&mut changelog, self.release_link.as_deref())?;
@@ -96,7 +95,7 @@ impl Changelog<'_> {
         let user_config = self.config.clone().unwrap_or(default_git_cliff_config());
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
-            git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
+            git: user_config.git,
             remote: user_config.remote,
             bump: Bump::default(),
         }
@@ -159,30 +158,7 @@ fn apply_defaults_to_changelog_config(
 
     ChangelogConfig {
         header: changelog.header.or(default_changelog_config.header),
-        body: changelog.body.or(default_changelog_config.body),
-        trim: changelog.trim.or(default_changelog_config.trim),
         ..changelog
-    }
-}
-
-/// Apply release-plz defaults
-fn apply_defaults_to_git_config(git: GitConfig, pr_link: Option<&str>) -> GitConfig {
-    let default_git_config = default_git_config(pr_link);
-
-    GitConfig {
-        conventional_commits: git
-            .conventional_commits
-            .or(default_git_config.conventional_commits),
-        filter_unconventional: git
-            .filter_unconventional
-            .or(default_git_config.filter_unconventional),
-        commit_parsers: git.commit_parsers.or(default_git_config.commit_parsers),
-        filter_commits: git.filter_commits.or(default_git_config.filter_commits),
-        sort_commits: git.sort_commits.or(default_git_config.sort_commits),
-        commit_preprocessors: git
-            .commit_preprocessors
-            .or(default_git_config.commit_preprocessors),
-        ..git
     }
 }
 
@@ -276,12 +252,11 @@ impl<'a> ChangelogBuilder<'a> {
     }
 
     pub fn build(self) -> Changelog<'a> {
-        let mut git_config = self
+        let git_config = self
             .config
             .clone()
             .map(|c| c.git)
             .unwrap_or_else(|| default_git_config(self.pr_link.as_deref()));
-        git_config = apply_defaults_to_git_config(git_config, self.pr_link.as_deref());
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
             .commits
@@ -289,14 +264,14 @@ impl<'a> ChangelogBuilder<'a> {
             .filter_map(|c| c.process(&git_config).ok())
             .collect();
 
-        match git_config.sort_commits.map(|s| s.to_lowercase()).as_deref() {
-            Some("oldest") => {
+        match git_config.sort_commits.to_lowercase().as_str() {
+            "oldest" => {
                 commits.reverse();
             }
-            Some("newest") | None => {
+            "newest" => {
                 // commits are already sorted from newest to oldest, we don't need to do anything
             }
-            Some(other) => {
+            other => {
                 warn!(
                     "Invalid setting for sort_commits: '{other}'. Valid values are 'newest' and 'oldest'."
                 );
@@ -329,7 +304,6 @@ impl<'a> ChangelogBuilder<'a> {
             release_link: self.release_link,
             config: self.config,
             package: self.package,
-            pr_link: self.pr_link,
         }
     }
 
@@ -344,30 +318,32 @@ impl<'a> ChangelogBuilder<'a> {
     }
 }
 
-fn default_git_config(pr_link: Option<&str>) -> GitConfig {
+pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
     GitConfig {
-        conventional_commits: Some(true),
-        filter_unconventional: Some(false),
-        commit_parsers: Some(kac_commit_parsers()),
-        filter_commits: Some(true),
+        conventional_commits: true,
+        filter_unconventional: false,
+        commit_parsers: kac_commit_parsers(),
+        filter_commits: true,
         tag_pattern: None,
         skip_tags: None,
-        split_commits: None,
-        protect_breaking_commits: None,
-        topo_order: None,
+        split_commits: false,
+        protect_breaking_commits: false,
+        topo_order: false,
         ignore_tags: None,
         limit_commits: None,
-        sort_commits: Some("newest".to_string()),
-        commit_preprocessors: pr_link.map(|pr_link| {
-            // Replace #123 with [#123](https://link_to_pr).
-            // If the number refers to an issue, GitHub redirects the PR link to the issue link.
-            vec![TextProcessor {
-                pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
-                replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
-                replace_command: None,
-            }]
-        }),
-        link_parsers: None,
+        sort_commits: "newest".to_string(),
+        commit_preprocessors: pr_link
+            .map(|pr_link| {
+                // Replace #123 with [#123](https://link_to_pr).
+                // If the number refers to an issue, GitHub redirects the PR link to the issue link.
+                vec![TextProcessor {
+                    pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
+                    replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
+                    replace_command: None,
+                }]
+            })
+            .unwrap_or_default(),
+        link_parsers: vec![],
         ..Default::default()
     }
 }
@@ -400,13 +376,13 @@ fn kac_commit_parsers() -> Vec<CommitParser> {
     ]
 }
 
-fn default_changelog_config(header: Option<String>) -> ChangelogConfig {
+pub fn default_changelog_config(header: Option<String>) -> ChangelogConfig {
     ChangelogConfig {
         header: Some(header.unwrap_or(String::from(CHANGELOG_HEADER))),
-        body: Some(default_changelog_body_config().to_string()),
+        body: default_changelog_body_config().to_string(),
         footer: None,
-        postprocessors: None,
-        trim: Some(true),
+        postprocessors: vec![],
+        trim: true,
         ..ChangelogConfig::default()
     }
 }
@@ -671,12 +647,10 @@ mod tests {
             .with_config(Config {
                 changelog: ChangelogConfig {
                     header: Some("# Changelog".to_string()),
-                    body: Some(
-                        r"{%- for commit in commits %}
+                    body: r"{%- for commit in commits %}
                             {{ commit.message }} - {{ commit.id }}
                         {% endfor -%}"
-                            .to_string(),
-                    ),
+                        .to_string(),
                     ..ChangelogConfig::default()
                 },
                 git: GitConfig::default(),
@@ -706,7 +680,7 @@ mod tests {
             .with_config(Config {
                 changelog: default_changelog_config(None),
                 git: GitConfig {
-                    sort_commits: Some("oldest".to_string()),
+                    sort_commits: "oldest".to_string(),
                     ..GitConfig::default()
                 },
                 remote: RemoteConfig::default(),

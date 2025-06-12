@@ -10,8 +10,6 @@ edition = "2024"
 anyhow = "1.0.94"
 assert_cmd = "2.0.16"
 base64 = "0.22.1"
-# needed to make git-cliff compile
-cacache = { version = "13.1.0", features = ["tokio-runtime"], default-features = false}
 camino = "1.1.9"
 cargo_metadata = "0.20.0"
 cargo = { version = "0.88.0", default-features = false }
