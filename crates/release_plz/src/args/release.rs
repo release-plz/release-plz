@@ -10,7 +10,7 @@ use secrecy::SecretString;
 use crate::config::Config;
 
 use super::{
-    OutputType, config_command::ConfigCommand, manifest_command::ManifestCommand,
+    OutputType, config_path::ConfigPath, manifest_command::ManifestCommand,
     repo_command::RepoCommand,
 };
 
@@ -21,48 +21,52 @@ pub struct Release {
     /// Both Cargo workspaces and single packages are supported.
     #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
     manifest_path: Option<PathBuf>,
+
     /// Registry where you want to publish the packages.
     /// The registry name needs to be present in the Cargo config.
     /// If unspecified, the `publish` field of the package manifest is used.
     /// If the `publish` field is empty, crates.io is used.
     #[arg(long)]
     registry: Option<String>,
+
     /// Token used to publish to the cargo registry.
     /// Override the `CARGO_REGISTRY_TOKEN` environment variable, or the `CARGO_REGISTRIES_<NAME>_TOKEN`
     /// environment variable, used for registry specified in the `registry` input variable.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     token: Option<String>,
+
     /// Perform all checks without uploading.
     #[arg(long)]
     pub dry_run: bool,
+
     /// Don't verify the contents by building them.
     /// When you pass this flag, `release-plz` adds the `--no-verify` flag to `cargo publish`.
     #[arg(long)]
     pub no_verify: bool,
+
     /// Allow dirty working directories to be packaged.
     /// When you pass this flag, `release-plz` adds the `--allow-dirty` flag to `cargo publish`.
     #[arg(long)]
     pub allow_dirty: bool,
+
     /// GitHub/Gitea/GitLab repository url where your project is hosted.
     /// It is used to create the git release.
     /// It defaults to the url of the default remote.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     pub repo_url: Option<String>,
+
     /// Git token used to publish the GitHub/Gitea/GitLab release.
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
     pub git_token: Option<String>,
+
     /// Kind of git forge
     #[arg(long, visible_alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
     forge: ReleaseGitForgeKind,
+
     /// Path to the release-plz config file.
-    /// Default: `./release-plz.toml`.
-    /// If no config file is found, the default configuration is used.
-    #[arg(
-        long,
-        value_name = "PATH",
-        value_parser = PathBufValueParser::new()
-    )]
-    config: Option<PathBuf>,
+    #[command(flatten)]
+    pub config: ConfigPath,
+
     /// Output format. If specified, prints the version and the tag of the
     /// released packages.
     #[arg(short, long, value_enum)]
@@ -77,12 +81,6 @@ pub enum ReleaseGitForgeKind {
     Gitea,
     #[value(name = "gitlab")]
     Gitlab,
-}
-
-impl ConfigCommand for Release {
-    fn config_path(&self) -> Option<&Path> {
-        self.config.as_deref()
-    }
 }
 
 impl Release {
@@ -213,7 +211,7 @@ mod tests {
             repo_url: None,
             git_token: None,
             forge: ReleaseGitForgeKind::Github,
-            config: None,
+            config: ConfigPath::default(),
             output: None,
         }
     }

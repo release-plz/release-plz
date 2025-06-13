@@ -25,7 +25,7 @@ impl ReleasePr {
         let pr_body = config.workspace.pr_body.clone();
         let pr_labels = config.workspace.pr_labels.clone();
         let pr_draft = config.workspace.pr_draft;
-        let update_request = self.update.update_request(config, cargo_metadata)?;
+        let update_request = self.update.update_request(cargo_metadata)?;
         let request = ReleasePrRequest::new(update_request)
             .mark_as_draft(pr_draft)
             .with_labels(pr_labels)
