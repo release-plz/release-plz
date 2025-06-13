@@ -132,7 +132,7 @@ async fn fetch_sparse_metadata(
     let mut res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_2).await;
     if let Err(ref e) = res {
         match e.downcast_ref::<reqwest::Error>() {
-            Some(e) if e.is_connect() => {
+            Some(e) if !e.is_status() => {
                 debug!("HTTP/2 sparse index request failed, trying HTTP/1.1");
                 res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_11).await;
             }
