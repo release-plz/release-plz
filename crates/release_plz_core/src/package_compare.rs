@@ -176,9 +176,17 @@ pub fn local_readme_override(
     package
         .readme
         .as_ref()
-        .map(|readme| {
+        .and_then(|readme| {
             let readme_path = local_package_path.join(readme);
-            fs_utils::canonicalize_utf8(&readme_path)
+            if !readme_path.exists() {
+                tracing::warn!(
+                    "README path '{}' doesn't exist for package '{}', its canonical path will be None.\n\nHint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
+                    readme_path,
+                    package.name
+                );
+                return None;
+            }
+            Some(fs_utils::canonicalize_utf8(&readme_path))
         })
         .transpose()
 }
