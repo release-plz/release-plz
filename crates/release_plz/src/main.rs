@@ -6,7 +6,7 @@ pub mod init;
 mod log;
 mod update_checker;
 
-use args::{OutputType, config_command::ConfigCommand as _};
+use args::OutputType;
 use clap::Parser;
 use release_plz_core::ReleaseRequest;
 use serde::Serialize;
@@ -30,7 +30,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
     match args.command {
         Command::Update(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
-            let config = cmd_args.config()?;
+            let config = cmd_args.config.load()?;
             let update_request = cmd_args.update_request(&config, cargo_metadata)?;
             let (packages_update, _temp_repo) = release_plz_core::update(&update_request).await?;
             println!("{}", packages_update.summary());
@@ -41,7 +41,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
                 "please provide the git token with the --git-token cli argument."
             );
             let cargo_metadata = cmd_args.update.cargo_metadata()?;
-            let config = cmd_args.update.config()?;
+            let config = cmd_args.update.config.load()?;
             let request = cmd_args.release_pr_req(&config, cargo_metadata)?;
             let release_pr = release_plz_core::release_pr(&request).await?;
             if let Some(output_type) = cmd_args.output {
@@ -57,7 +57,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
         }
         Command::Release(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
-            let config = cmd_args.config()?;
+            let config = cmd_args.config.load()?;
             let cmd_args_output = cmd_args.output;
             let request: ReleaseRequest = cmd_args.release_request(&config, cargo_metadata)?;
             let output = release_plz_core::release(&request)
@@ -72,7 +72,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
         Command::GenerateSchema => generate_schema::generate_schema_to_disk()?,
         Command::Init(cmd_args) => init::init(&cmd_args.manifest_path(), !cmd_args.no_toml_check)?,
         Command::SetVersion(cmd_args) => {
-            let config = cmd_args.config()?;
+            let config = cmd_args.config.load()?;
             let request = cmd_args.set_version_request(&config)?;
             release_plz_core::set_version::set_version(&request)?;
         }

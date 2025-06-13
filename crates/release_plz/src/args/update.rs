@@ -17,7 +17,7 @@ use secrecy::SecretString;
 use crate::config::Config;
 
 use super::{
-    config_command::ConfigCommand, manifest_command::ManifestCommand, repo_command::RepoCommand,
+    config_path::ConfigPath, manifest_command::ManifestCommand, repo_command::RepoCommand,
 };
 
 /// Update your project locally, without opening a PR.
@@ -30,6 +30,7 @@ pub struct Update {
     /// Both Cargo workspaces and single packages are supported.
     #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
     manifest_path: Option<PathBuf>,
+
     /// Path to the Cargo.toml contained in the released version of the project you want to update.
     /// If not provided, the packages of your project will be compared with the
     /// ones published in the cargo registry.
@@ -39,6 +40,7 @@ pub struct Update {
     /// The git history of this project should be behind the one of the project you want to update.
     #[arg(long, value_parser = PathBufValueParser::new(), alias = "registry-project-manifest")]
     registry_manifest_path: Option<PathBuf>,
+
     /// Package to update. Use it when you want to update a single package rather than all the
     /// packages contained in the workspace.
     #[arg(
@@ -47,9 +49,11 @@ pub struct Update {
         value_parser = NonEmptyStringValueParser::new()
     )]
     package: Option<String>,
+
     /// Don't create/update changelog.
     #[arg(long, conflicts_with("release_date"))]
     no_changelog: bool,
+
     /// Date of the release. Format: %Y-%m-%d. It defaults to current Utc date.
     #[arg(
         long,
@@ -57,6 +61,7 @@ pub struct Update {
         value_parser = NonEmptyStringValueParser::new()
     )]
     release_date: Option<String>,
+
     /// Registry where the packages are stored.
     /// The registry name needs to be present in the Cargo config.
     /// If unspecified, the `publish` field of the package manifest is used.
@@ -67,10 +72,12 @@ pub struct Update {
         value_parser = NonEmptyStringValueParser::new()
     )]
     registry: Option<String>,
+
     /// Update all the dependencies in the Cargo.lock file by running `cargo update`.
     /// If this flag is not specified, only update the workspace packages by running `cargo update --workspace`.
     #[arg(short, long)]
     update_deps: bool,
+
     /// Path to the git-cliff configuration file.
     /// If not provided, `dirs::config_dir()/git-cliff/cliff.toml` is used if present.
     #[arg(
@@ -81,27 +88,26 @@ pub struct Update {
         value_parser = PathBufValueParser::new()
     )]
     changelog_config: Option<PathBuf>,
+
     /// Allow dirty working directories to be updated.
     /// The uncommitted changes will be part of the update.
     #[arg(long)]
     allow_dirty: bool,
+
     /// GitHub/Gitea repository url where your project is hosted.
     /// It is used to generate the changelog release link.
     /// It defaults to the url of the default remote.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     repo_url: Option<String>,
+
     /// Path to the release-plz config file.
-    /// Default: `./release-plz.toml`.
-    /// If no config file is found, the default configuration is used.
-    #[arg(
-        long,
-        value_name = "PATH",
-        value_parser = PathBufValueParser::new()
-    )]
-    config: Option<PathBuf>,
+    #[command(flatten)]
+    pub config: ConfigPath,
+
     /// Git token used to create the pull request.
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), visible_alias = "github-token", env, hide_env_values=true)]
     pub git_token: Option<String>,
+
     /// Kind of git host where your project is hosted.
     #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
     forge: GitForgeKind,
@@ -126,12 +132,6 @@ impl RepoCommand for Update {
 impl ManifestCommand for Update {
     fn optional_manifest(&self) -> Option<&Path> {
         self.manifest_path.as_deref()
-    }
-}
-
-impl ConfigCommand for Update {
-    fn config_path(&self) -> Option<&Path> {
-        self.config.as_deref()
     }
 }
 
@@ -305,7 +305,7 @@ mod tests {
             changelog_config: None,
             allow_dirty: false,
             repo_url: None,
-            config: None,
+            config: ConfigPath::default(),
             forge: GitForgeKind::Github,
             git_token: None,
         };
