@@ -8,8 +8,6 @@ pub(crate) mod repo_command;
 mod set_version;
 mod update;
 
-use std::path::Path;
-
 use anyhow::{Context, bail};
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
@@ -36,6 +34,14 @@ const HELP_STYLES: Styles = Styles::styled()
     .usage(MAIN_COLOR.on_default().bold())
     .placeholder(SECONDARY_COLOR.on_default())
     .literal(SECONDARY_COLOR.on_default());
+
+pub fn config_paths() -> [&'static Utf8Path; 2] {
+    [main_config_path(), Utf8Path::new(".release-plz.toml")]
+}
+
+pub fn main_config_path() -> &'static Utf8Path {
+    Utf8Path::new("release-plz.toml")
+}
 
 /// Release-plz manages versioning, changelogs, and releases for Rust projects.
 ///
@@ -133,7 +139,7 @@ fn local_manifest(manifest_path: Option<&Utf8Path>) -> Utf8PathBuf {
     }
 }
 
-fn parse_config(config_path: Option<&Path>) -> anyhow::Result<Config> {
+fn parse_config(config_path: Option<&Utf8Path>) -> anyhow::Result<Config> {
     let (config, path) = if let Some(config_path) = config_path {
         match fs_err::read_to_string(config_path) {
             Ok(config) => (config, config_path),
@@ -145,11 +151,8 @@ fn parse_config(config_path: Option<&Path>) -> anyhow::Result<Config> {
             },
         }
     } else {
-        let first_file = first_file_contents([
-            Path::new("release-plz.toml"),
-            Path::new(".release-plz.toml"),
-        ])
-        .context("failed looking for release-plz config file")?;
+        let first_file = first_file_contents(config_paths())
+            .context("failed looking for release-plz config file")?;
         match first_file {
             Some((config, path)) => (config, path),
             None => {
@@ -159,7 +162,7 @@ fn parse_config(config_path: Option<&Path>) -> anyhow::Result<Config> {
         }
     };
 
-    info!("using release-plz config file {}", path.display());
+    info!("using release-plz config file {path}");
     toml::from_str(&config).with_context(|| format!("invalid config file {config_path:?}"))
 }
 
@@ -171,8 +174,8 @@ fn parse_config(config_path: Option<&Path>) -> anyhow::Result<Config> {
 ///
 /// Errors if opening and reading one of files paths fails for reasons other that it doesn't exist.
 fn first_file_contents<'a>(
-    paths: impl IntoIterator<Item = &'a Path>,
-) -> anyhow::Result<Option<(String, &'a Path)>> {
+    paths: impl IntoIterator<Item = &'a Utf8Path>,
+) -> anyhow::Result<Option<(String, &'a Utf8Path)>> {
     let paths = paths.into_iter();
 
     for path in paths {
