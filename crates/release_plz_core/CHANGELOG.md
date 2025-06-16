@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.2...release_plz_core-v0.34.3) - 2025-06-16
+
+### Other
+
+- update dependencies ([#2260](https://github.com/release-plz/release-plz/pull/2260))
+- update cargo metadata to 0.20 ([#2249](https://github.com/release-plz/release-plz/pull/2249))
+
 ## [0.34.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.1...release_plz_core-v0.34.2) - 2025-05-18
 
 ### Fixed
