@@ -37,7 +37,7 @@ impl ConfigPath {
             match load_config(path) {
                 Ok(Some(config)) => return Ok(config),
                 Ok(None) => bail!("specified config file {} does not exist", path.display()),
-                Err(err) => bail!("failed to read config file: {}", err),
+                Err(err) => return Err(err.context("failed to read config file")),
             }
         }
 
