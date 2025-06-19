@@ -180,7 +180,7 @@ pub fn local_readme_override(
             let readme_path = local_package_path.join(readme);
             if !readme_path.exists() {
                 tracing::warn!(
-                    "README path '{}' doesn't exist for package '{}'.\n\nHint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
+                    "README path '{}' doesn't exist for package '{}'. Hint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
                     readme_path,
                     package.name
                 );
