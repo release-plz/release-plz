@@ -112,7 +112,7 @@ mod tests {
             path: Some(temp_file.path().to_path_buf()),
         };
 
-        let result = config_path.load().unwrap_err();
+        let result = format!("{:?}", config_path.load().unwrap_err());
         assert!(result.to_string().contains("invalid config file"));
     }
 
