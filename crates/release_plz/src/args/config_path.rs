@@ -113,7 +113,7 @@ mod tests {
         };
 
         let result = format!("{:?}", config_path.load().unwrap_err());
-        assert!(result.to_string().contains("invalid config file"));
+        assert!(result.contains("invalid config file"));
     }
 
     #[test]
