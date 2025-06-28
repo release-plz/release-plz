@@ -368,6 +368,13 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         )
         .trim()
     );
+
+    // After landing the PR, there is no release PR open.
+    context.merge_release_pr().await;
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 0);
 }
 
 #[tokio::test]
