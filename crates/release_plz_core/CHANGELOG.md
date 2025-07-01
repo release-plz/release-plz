@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.3...release_plz_core-v0.34.4) - 2025-07-01
+
+### Fixed
+
+- allow license-file in Cargo.toml ([#2287](https://github.com/release-plz/release-plz/pull/2287))
+
 ## [0.34.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.2...release_plz_core-v0.34.3) - 2025-06-19
 
 ### Fixed
