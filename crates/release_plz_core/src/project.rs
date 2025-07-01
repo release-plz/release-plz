@@ -185,8 +185,11 @@ impl Project {
         let mut missing_version_errors = Vec::new();
 
         for package in &self.publishable_packages() {
-            if package.license.is_none() {
-                missing_fields.push(format!("- `license` for package `{}`", package.name));
+            if package.license.is_none() && package.license_file.is_none() {
+                missing_fields.push(format!(
+                    "- `license` or `license-file` for package `{}`",
+                    package.name
+                ));
             }
             if package.description.is_none() {
                 missing_fields.push(format!("- `description` for package `{}`", package.name));
@@ -412,6 +415,15 @@ mod tests {
             result.unwrap_err().to_string(),
             "The following overrides are not present in the workspace: `typo_tesst`. Check for typos"
         );
+    }
+
+    #[test]
+    fn test_license_file() {
+        let local_manifest = Utf8Path::new("../../tests/fixtures/non-standard-license/Cargo.toml");
+        let project = get_project(local_manifest, None, &HashSet::default(), true, None, None)
+            .expect("Should be ok");
+        let result = project.check_mandatory_fields();
+        assert!(result.is_ok());
     }
 
     #[test]
