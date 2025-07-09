@@ -408,9 +408,9 @@ mod tests {
     }
 }
 
-    #[test]
-    fn actions_yaml_string_with_trusted_publishing_is_correct() {
-        expect_test::expect![[r#"
+#[test]
+fn actions_yaml_string_with_trusted_publishing_is_correct() {
+    expect_test::expect![[r#"
             name: Release-plz
 
             on:
@@ -470,5 +470,5 @@ mod tests {
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true));
-    }
+    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true));
+}
