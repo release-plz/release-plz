@@ -32,11 +32,14 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     let repo_url = gh::repo_url()?;
 
     greet();
-    store_cargo_token()?;
+    let trusted_publishing = should_use_trusted_publishing()?;
+    if !trusted_publishing {
+        store_cargo_token()?;
+    }
 
     enable_pr_permissions(&repo_url)?;
     let github_token = store_github_token()?;
-    write_actions_yaml(github_token)?;
+    write_actions_yaml(github_token, trusted_publishing)?;
 
     print_recap(&repo_url);
     Ok(())
@@ -48,6 +51,12 @@ fn actions_file_parent() -> Utf8PathBuf {
 
 fn actions_file() -> Utf8PathBuf {
     actions_file_parent().join("release-plz.yml")
+}
+
+fn should_use_trusted_publishing() -> anyhow::Result<bool> {
+    ask_confirmation(
+        "👉 Do you want to use trusted publishing? (Recommended). If yes, follow https://crates.io/docs/trusted-publishing to setup your crate. You can use `release-plz.yml` as workflow name.",
+    )
 }
 
 fn greet() {
@@ -125,17 +134,17 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
     Ok(input != "n")
 }
 
-fn write_actions_yaml(github_token: &str) -> anyhow::Result<()> {
+fn write_actions_yaml(github_token: &str, trusted_publishing: bool) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
     let owner = gh::repo_owner()?;
-    let action_yaml = action_yaml(&branch, github_token, &owner);
+    let action_yaml = action_yaml(&branch, github_token, &owner, trusted_publishing);
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str, owner: &str) -> String {
+fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing: bool) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if is_default_token {
@@ -144,6 +153,41 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str) -> String {
         format!(
             "
           token: {github_token_secret}"
+        )
+    };
+
+    let cargo_registry_token = if trusted_publishing {
+        "${{ steps.auth.outputs.token }}".to_string()
+    } else {
+        format!("${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}")
+    };
+
+    let id_token_permissions = if trusted_publishing {
+        "\nid-token: write\n"
+    } else {
+        ""
+    };
+
+    let trusted_publishing_action = if trusted_publishing {
+        "
+      - name: Authenticate with crates.io
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth"
+    } else {
+        ""
+    };
+
+    let pr_cargo_registry_token = if trusted_publishing {
+        // For public crates, the cargo registry token is not needed in the PR workflow.
+        // So if we use trusted publishing, we can omit it.
+        // Trusted publishing also works for private crates, and if that's your case, write the token manually.
+        "".to_string()
+    } else {
+        // The crate might be private, so we add the token to the PR workflow.
+        // If the crate is public, it won't hurt having it here. You can also remove it if you want.
+        format!(
+            "
+          CARGO_REGISTRY_TOKEN: {cargo_registry_token}"
         )
     };
 
@@ -161,21 +205,21 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
-      contents: write
+      contents: write{id_token_permissions}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0{checkout_token_line}
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@stable{trusted_publishing_action}
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: {github_token_secret}
-          CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}
+          CARGO_REGISTRY_TOKEN: {cargo_registry_token}
 
   release-plz-pr:
     name: Release-plz PR
@@ -199,8 +243,7 @@ jobs:
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: {github_token_secret}
-          CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}
+          GITHUB_TOKEN: {github_token_secret}{pr_cargo_registry_token}
 "
     )
 }
