@@ -163,7 +163,8 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing
     };
 
     let id_token_permissions = if trusted_publishing {
-        "\nid-token: write\n"
+        "
+        id-token: write\n"
     } else {
         ""
     };
