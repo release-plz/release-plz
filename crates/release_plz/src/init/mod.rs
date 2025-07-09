@@ -73,7 +73,7 @@ Settings URLs:"
     let publishable_packages = &project.publishable_packages();
     let settings_urls = publishable_packages.iter().map(|package| {
         let package_name = &package.name;
-        format!("https://crates.io/crates/{package_name}/settings/trusted-publisher")
+        format!("https://crates.io/crates/{package_name}/settings/new-trusted-publisher")
     });
 
     for url in settings_urls {
