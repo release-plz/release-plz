@@ -47,7 +47,8 @@ Here you can find the public repositories using the release-plz GitHub action in
 
 - GitHub search [1](https://github.com/search?type=code&q=path%3A*.yml+OR+path%3A*.yaml+MarcoIeni%2Frelease-plz-action%40)
   and [2](https://github.com/search?type=code&q=path%3A*.yml+OR+path%3A*.yaml+release-plz%2Faction%40)
-- [Dependency graph](https://github.com/release-plz/action/network/dependents)
+- Dependency graph [1](https://github.com/release-plz/action/network/dependents?package_id=UGFja2FnZS0zMDY0NDU2NDU0)
+  and [2](https://github.com/release-plz/action/network/dependents?package_id=UGFja2FnZS01NTY5MDk1NDUw)
 
 ## 📽️ RustLab 23 talk
 
