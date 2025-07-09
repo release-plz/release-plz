@@ -47,7 +47,7 @@ strip-ansi-escapes = "0.2.0"
 tempfile = "3.14.0"
 tera = "1.20.0"
 tokio = "1.42.0"
-toml = { version = "0.8.19" }
+toml = { version = "0.9.0" }
 toml_edit = { version = "0.22.22" }
 tracing = "0.1.41"
 tracing-log = "0.2.0"
