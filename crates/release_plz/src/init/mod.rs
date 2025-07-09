@@ -341,7 +341,7 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner"));
+        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner", false));
     }
 
     #[test]
@@ -403,6 +403,72 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner"));
+        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false));
     }
 }
+
+    #[test]
+    fn actions_yaml_string_with_trusted_publishing_is_correct() {
+        expect_test::expect![[r#"
+            name: Release-plz
+
+            on:
+              push:
+                branches:
+                  - main
+
+            jobs:
+              release-plz-release:
+                name: Release-plz release
+                runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
+                permissions:
+                  contents: write
+            id-token: write
+
+                steps:
+                  - name: Checkout repository
+                    uses: actions/checkout@v4
+                    with:
+                      fetch-depth: 0
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                  - name: Install Rust toolchain
+                    uses: dtolnay/rust-toolchain@stable
+                  - name: Authenticate with crates.io
+                    uses: rust-lang/crates-io-auth-action@v1
+                    id: auth
+                  - name: Run release-plz
+                    uses: release-plz/action@v0.5
+                    with:
+                      command: release
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+              release-plz-pr:
+                name: Release-plz PR
+                runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
+                permissions:
+                  pull-requests: write
+                  contents: write
+                concurrency:
+                  group: release-plz-${{ github.ref }}
+                  cancel-in-progress: false
+                steps:
+                  - name: Checkout repository
+                    uses: actions/checkout@v4
+                    with:
+                      fetch-depth: 0
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                  - name: Install Rust toolchain
+                    uses: dtolnay/rust-toolchain@stable
+                  - name: Run release-plz
+                    uses: release-plz/action@v0.5
+                    with:
+                      command: release-pr
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+        "#]]
+        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true));
+    }
