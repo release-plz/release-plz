@@ -425,7 +425,7 @@ mod tests {
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   contents: write
-            id-token: write
+                    id-token: write
 
                 steps:
                   - name: Checkout repository
