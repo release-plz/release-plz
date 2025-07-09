@@ -33,7 +33,9 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
 
     greet();
     let trusted_publishing = should_use_trusted_publishing()?;
-    if !trusted_publishing {
+    if trusted_publishing {
+        print_settings_urls(&project)?;
+    } else {
         store_cargo_token()?;
     }
 
@@ -55,8 +57,29 @@ fn actions_file() -> Utf8PathBuf {
 
 fn should_use_trusted_publishing() -> anyhow::Result<bool> {
     ask_confirmation(
-        "👉 Do you want to use trusted publishing? (Recommended). If yes, follow https://crates.io/docs/trusted-publishing to setup your crate. You can use `release-plz.yml` as workflow name.",
+        "👉 Do you want to use trusted publishing? (Recommended). Learn more at https://crates.io/docs/trusted-publishing.",
     )
+}
+
+fn print_settings_urls(project: &Project) -> anyhow::Result<()> {
+    println!(
+        "Enable trusted publishing for your crates. You can use `release-plz.yml` as workflow name. Settings URLs:"
+    );
+
+    let publishable_packages = &project.publishable_packages();
+    let settings_urls = publishable_packages.iter().map(|package| {
+        let package_name = &package.name;
+        format!("https://crates.io/crates/{package_name}/settings/trusted-publisher")
+    });
+
+    for url in settings_urls {
+        println!("* {url}");
+    }
+    println!("\nType Enter when done.");
+
+    read_stdin()?;
+
+    Ok(())
 }
 
 fn greet() {
