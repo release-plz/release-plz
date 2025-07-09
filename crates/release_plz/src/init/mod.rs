@@ -426,7 +426,6 @@ mod tests {
                 permissions:
                   contents: write
                   id-token: write
-
                 steps:
                   - name: Checkout repository
                     uses: actions/checkout@v4
