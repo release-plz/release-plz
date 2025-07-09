@@ -33,7 +33,9 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
 
     greet();
     let trusted_publishing = should_use_trusted_publishing()?;
-    if !trusted_publishing {
+    if trusted_publishing {
+        print_settings_urls(&project)?;
+    } else {
         store_cargo_token()?;
     }
 
@@ -41,7 +43,8 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     let github_token = store_github_token()?;
     write_actions_yaml(github_token, trusted_publishing)?;
 
-    print_recap(&repo_url);
+    let secrets_stored = !trusted_publishing || github_token != GITHUB_TOKEN;
+    print_recap(&repo_url, secrets_stored);
     Ok(())
 }
 
@@ -55,8 +58,33 @@ fn actions_file() -> Utf8PathBuf {
 
 fn should_use_trusted_publishing() -> anyhow::Result<bool> {
     ask_confirmation(
-        "👉 Do you want to use trusted publishing? (Recommended). If yes, follow https://crates.io/docs/trusted-publishing to setup your crate. You can use `release-plz.yml` as workflow name.",
+        "👉 Do you want to use trusted publishing? (Recommended). Learn more at https://crates.io/docs/trusted-publishing.",
     )
+}
+
+fn print_settings_urls(project: &Project) -> anyhow::Result<()> {
+    println!(
+        "Enable trusted publishing for your crates. Note:
+- The default workflow name is `release-plz.yml`.
+- If you use an environment, edit the final workflow file.
+
+Settings URLs:"
+    );
+
+    let publishable_packages = &project.publishable_packages();
+    let settings_urls = publishable_packages.iter().map(|package| {
+        let package_name = &package.name;
+        format!("https://crates.io/crates/{package_name}/settings/new-trusted-publisher")
+    });
+
+    for url in settings_urls {
+        println!("* {url}");
+    }
+    println!("\nType Enter when done.");
+
+    read_stdin()?;
+
+    Ok(())
 }
 
 fn greet() {
@@ -106,16 +134,21 @@ fn store_github_token() -> anyhow::Result<&'static str> {
     Ok(github_token)
 }
 
-fn print_recap(repo_url: &str) {
+fn print_recap(repo_url: &str, secrets_stored: bool) {
     println!(
         "All done 🎉
-- GitHub action file written to {}
-- GitHub action secrets stored. Review them at {}
-
-Enjoy automated releases 🤖",
-        actions_file(),
-        actions_secret_url(repo_url)
+- GitHub action file written to {}",
+        actions_file()
     );
+
+    if secrets_stored {
+        println!(
+            "- GitHub action secrets stored. Review them at {}",
+            actions_secret_url(repo_url)
+        );
+    }
+
+    println!("Enjoy automated releases 🤖");
 }
 
 fn read_stdin() -> anyhow::Result<String> {
