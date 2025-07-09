@@ -43,7 +43,8 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     let github_token = store_github_token()?;
     write_actions_yaml(github_token, trusted_publishing)?;
 
-    print_recap(&repo_url);
+    let secrets_stored = !trusted_publishing || github_token != GITHUB_TOKEN;
+    print_recap(&repo_url, secrets_stored);
     Ok(())
 }
 
@@ -133,16 +134,21 @@ fn store_github_token() -> anyhow::Result<&'static str> {
     Ok(github_token)
 }
 
-fn print_recap(repo_url: &str) {
+fn print_recap(repo_url: &str, secrets_stored: bool) {
     println!(
         "All done 🎉
-- GitHub action file written to {}
-- GitHub action secrets stored. Review them at {}
-
-Enjoy automated releases 🤖",
-        actions_file(),
-        actions_secret_url(repo_url)
+- GitHub action file written to {}",
+        actions_file()
     );
+
+    if secrets_stored {
+        println!(
+            "- GitHub action secrets stored. Review them at {}",
+            actions_secret_url(repo_url)
+        );
+    }
+
+    println!("Enjoy automated releases 🤖");
 }
 
 fn read_stdin() -> anyhow::Result<String> {
