@@ -63,7 +63,11 @@ fn should_use_trusted_publishing() -> anyhow::Result<bool> {
 
 fn print_settings_urls(project: &Project) -> anyhow::Result<()> {
     println!(
-        "Enable trusted publishing for your crates. You can use `release-plz.yml` as workflow name. Settings URLs:"
+        "Enable trusted publishing for your crates. Note:
+- The default workflow name is `release-plz.yml`.
+- If you use an environment, edit the final workflow file.
+
+Settings URLs:"
     );
 
     let publishable_packages = &project.publishable_packages();
