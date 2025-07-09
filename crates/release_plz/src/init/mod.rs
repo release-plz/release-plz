@@ -164,7 +164,7 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing
 
     let id_token_permissions = if trusted_publishing {
         "
-        id-token: write\n"
+      id-token: write\n"
     } else {
         ""
     };
@@ -425,7 +425,7 @@ mod tests {
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   contents: write
-                    id-token: write
+                  id-token: write
 
                 steps:
                   - name: Checkout repository
