@@ -3,10 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context as _, bail};
+use anyhow::{bail, Context as _};
 use clap::Args;
 use fs_err::read_to_string;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::config::Config;
 
@@ -43,12 +43,14 @@ impl ConfigPath {
 
         for path in DEFAULT_CONFIG_PATHS {
             let path = Path::new(path);
-            if let Ok(Some(config)) = load_config(path) {
-                return Ok(config);
+            match load_config(path) {
+                Ok(Some(config)) => return Ok(config),
+                Err(e) => warn!("{e}"),
+                _ => (),
             }
         }
 
-        info!("release-plz config file not found, using default configuration");
+        info!("valid release-plz config file not found, using default configuration");
         Ok(Config::default())
     }
 }
@@ -73,7 +75,7 @@ fn load_config(path: &Path) -> anyhow::Result<Option<Config>> {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
-    use tempfile::{NamedTempFile, tempdir};
+    use tempfile::{tempdir, NamedTempFile};
 
     use super::*;
 
@@ -114,6 +116,20 @@ mod tests {
 
         let result = format!("{:?}", config_path.load().unwrap_err());
         assert!(result.contains("invalid config file"));
+    }
+
+    #[test]
+    fn load_default_config_with_invalid_toml() {
+        let temp_dir = tempdir().unwrap();
+        let default_config_path = temp_dir.path().join("release-plz.toml");
+        let default_config = "invalid toml content [[[";
+        fs_err::write(&default_config_path, default_config).unwrap();
+
+        let config_path = ConfigPath { path: None };
+        // let result = format!("{:?}", config_path.load().unwrap_err());
+        // assert!(result.contains("invalid config file"));
+
+        assert_eq!(config_path.load().unwrap_err(), Config::default());
     }
 
     #[test]
