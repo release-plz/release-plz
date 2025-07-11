@@ -43,8 +43,10 @@ impl ConfigPath {
 
         for path in DEFAULT_CONFIG_PATHS {
             let path = Path::new(path);
-            if let Ok(Some(config)) = load_config(path) {
-                return Ok(config);
+            match load_config(path) {
+                Ok(Some(config)) => return Ok(config),
+                Ok(None) => (),
+                Err(err) => return Err(err.context("invalid config file")),
             }
         }
 
