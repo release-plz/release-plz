@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.139](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.138...release-plz-v0.3.139) - 2025-07-11
+
+### Added
+
+- *(init)* print settings URLs to enable trusted publishing ([#2303](https://github.com/release-plz/release-plz/pull/2303))
+
+### Fixed
+
+- return error if default config has invalid toml ([#2311](https://github.com/release-plz/release-plz/pull/2311))
+
+### Other
+
+- add new dependency graph ([#2304](https://github.com/release-plz/release-plz/pull/2304))
+- update Cargo.toml dependencies
+
 ## [0.3.138](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.137...release-plz-v0.3.138) - 2025-07-09
 
 ### Added
