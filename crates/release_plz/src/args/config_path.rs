@@ -45,7 +45,7 @@ impl ConfigPath {
             let path = Path::new(path);
             match load_config(path) {
                 Ok(Some(config)) => return Ok(config),
-                Ok(None) => continue,
+                Ok(None) => (),
                 Err(err) => return Err(err.context("invalid config file")),
             }
         }
