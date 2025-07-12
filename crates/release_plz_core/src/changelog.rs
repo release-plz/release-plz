@@ -336,7 +336,7 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
         conventional_commits: true,
         filter_unconventional: false,
         commit_parsers: kac_commit_parsers(),
-        filter_commits: true,
+        filter_commits: false,
         tag_pattern: None,
         skip_tags: None,
         split_commits: false,
