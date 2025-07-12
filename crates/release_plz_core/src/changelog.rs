@@ -158,7 +158,20 @@ fn apply_defaults_to_changelog_config(
 
     ChangelogConfig {
         header: changelog.header.or(default_changelog_config.header),
-        ..changelog
+        body: if changelog.body.is_empty() {
+            default_changelog_config.body
+        } else {
+            changelog.body
+        },
+        footer: changelog.footer.or(default_changelog_config.footer),
+        trim: changelog.trim,
+        render_always: changelog.render_always,
+        postprocessors: if changelog.postprocessors.is_empty() {
+            default_changelog_config.postprocessors
+        } else {
+            changelog.postprocessors
+        },
+        output: changelog.output.or(default_changelog_config.output),
     }
 }
 
