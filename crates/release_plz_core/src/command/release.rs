@@ -14,7 +14,7 @@ use crates_index::{GitIndex, SparseIndex};
 use git_cmd::Repo;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, instrument, trace, warn};
 use url::Url;
 
 use crate::{
@@ -543,16 +543,22 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
     let repo = Repo::new(&input.metadata.workspace_root)?;
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
+    debug!("should release: {should_release:?}");
+
     if should_release == ShouldRelease::No {
+        debug!("skipping release");
         return Ok(None);
     }
 
     let mut checkout_done = false;
     if let ShouldRelease::YesWithCommit(commit) = &should_release {
-        // The commit does not exist if the PR was squashed.
-        if let Ok(()) = repo.checkout(commit) {
-            debug!("releasing commit {commit}");
-            checkout_done = true;
+        match repo.checkout(commit) {
+            Ok(()) => {
+                debug!("checking out commit {commit}");
+                checkout_done = true;
+            }
+            // The commit does not exist if the PR was squashed.
+            Err(_) => trace!("checkout failed; continuing"),
         }
     }
 
@@ -564,6 +570,7 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         // the repository in the same commit they launched release-plz.
         if checkout_done {
             repo.checkout("-")?;
+            trace!("restored previous commit after release");
         }
     }
 
@@ -578,6 +585,10 @@ async fn release_packages(
 ) -> anyhow::Result<Option<Release>> {
     // Packages are already ordered by release order.
     let packages = project.publishable_packages();
+    if packages.is_empty() {
+        info!("nothing to release");
+    }
+
     let mut package_releases: Vec<PackageRelease> = vec![];
     let hash_kind = get_hash_kind()?;
     for package in packages {

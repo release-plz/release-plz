@@ -9,7 +9,7 @@ use release_plz_core::set_version::{SetVersionRequest, SetVersionSpec, VersionCh
 
 use crate::config::Config;
 
-use super::{config_command::ConfigCommand, manifest_command::ManifestCommand};
+use super::{config_path::ConfigPath, manifest_command::ManifestCommand};
 
 #[derive(clap::Parser, Debug)]
 pub struct SetVersion {
@@ -20,21 +20,10 @@ pub struct SetVersion {
     /// Both Cargo workspaces and single packages are supported.
     #[arg(long, value_parser = PathBufValueParser::new())]
     manifest_path: Option<PathBuf>,
-    /// Path to the release-plz config file.
-    /// Default: `./release-plz.toml`.
-    /// If no config file is found, the default configuration is used.
-    #[arg(
-        long,
-        value_name = "PATH",
-        value_parser = PathBufValueParser::new()
-    )]
-    config: Option<PathBuf>,
-}
 
-impl ConfigCommand for SetVersion {
-    fn config_path(&self) -> Option<&Path> {
-        self.config.as_deref()
-    }
+    /// Path to the release-plz config file.
+    #[command(flatten)]
+    pub config: ConfigPath,
 }
 
 impl SetVersion {

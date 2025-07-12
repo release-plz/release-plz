@@ -20,7 +20,7 @@ use cargo_metadata::{
 use chrono::NaiveDate;
 use std::path::PathBuf;
 use toml_edit::TableLike;
-use tracing::instrument;
+use tracing::{instrument, trace};
 
 // Used to indicate that this is a dummy commit with no corresponding ID available.
 // It should be at least 7 characters long to avoid a panic in git-cliff
@@ -163,7 +163,7 @@ pub trait Publishable {
 impl Publishable for Package {
     /// Return true if the package can be published to at least one register (e.g. crates.io).
     fn is_publishable(&self) -> bool {
-        if let Some(publish) = &self.publish {
+        let res = if let Some(publish) = &self.publish {
             // `publish.is_empty()` is:
             // - true: when `publish` in Cargo.toml is `[]` or `false`.
             // - false: when the package can be published only to certain registries.
@@ -172,7 +172,9 @@ impl Publishable for Package {
         } else {
             // If it's not an example, the package can be published anywhere
             !is_example_package(self)
-        }
+        };
+        trace!("package {} is publishable: {res}", self.name);
+        res
     }
 }
 

@@ -32,13 +32,19 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     let repo_url = gh::repo_url()?;
 
     greet();
-    store_cargo_token()?;
+    let trusted_publishing = should_use_trusted_publishing()?;
+    if trusted_publishing {
+        print_settings_urls(&project)?;
+    } else {
+        store_cargo_token()?;
+    }
 
     enable_pr_permissions(&repo_url)?;
     let github_token = store_github_token()?;
-    write_actions_yaml(github_token)?;
+    write_actions_yaml(github_token, trusted_publishing)?;
 
-    print_recap(&repo_url);
+    let secrets_stored = !trusted_publishing || github_token != GITHUB_TOKEN;
+    print_recap(&repo_url, secrets_stored);
     Ok(())
 }
 
@@ -48,6 +54,37 @@ fn actions_file_parent() -> Utf8PathBuf {
 
 fn actions_file() -> Utf8PathBuf {
     actions_file_parent().join("release-plz.yml")
+}
+
+fn should_use_trusted_publishing() -> anyhow::Result<bool> {
+    ask_confirmation(
+        "👉 Do you want to use trusted publishing? (Recommended). Learn more at https://crates.io/docs/trusted-publishing.",
+    )
+}
+
+fn print_settings_urls(project: &Project) -> anyhow::Result<()> {
+    println!(
+        "Enable trusted publishing for your crates. Note:
+- The default workflow name is `release-plz.yml`.
+- If you use an environment, edit the final workflow file.
+
+Settings URLs:"
+    );
+
+    let publishable_packages = &project.publishable_packages();
+    let settings_urls = publishable_packages.iter().map(|package| {
+        let package_name = &package.name;
+        format!("https://crates.io/crates/{package_name}/settings/new-trusted-publisher")
+    });
+
+    for url in settings_urls {
+        println!("* {url}");
+    }
+    println!("\nType Enter when done.");
+
+    read_stdin()?;
+
+    Ok(())
 }
 
 fn greet() {
@@ -97,16 +134,21 @@ fn store_github_token() -> anyhow::Result<&'static str> {
     Ok(github_token)
 }
 
-fn print_recap(repo_url: &str) {
+fn print_recap(repo_url: &str, secrets_stored: bool) {
     println!(
         "All done 🎉
-- GitHub action file written to {}
-- GitHub action secrets stored. Review them at {}
-
-Enjoy automated releases 🤖",
-        actions_file(),
-        actions_secret_url(repo_url)
+- GitHub action file written to {}",
+        actions_file()
     );
+
+    if secrets_stored {
+        println!(
+            "- GitHub action secrets stored. Review them at {}",
+            actions_secret_url(repo_url)
+        );
+    }
+
+    println!("Enjoy automated releases 🤖");
 }
 
 fn read_stdin() -> anyhow::Result<String> {
@@ -125,17 +167,17 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
     Ok(input != "n")
 }
 
-fn write_actions_yaml(github_token: &str) -> anyhow::Result<()> {
+fn write_actions_yaml(github_token: &str, trusted_publishing: bool) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
     let owner = gh::repo_owner()?;
-    let action_yaml = action_yaml(&branch, github_token, &owner);
+    let action_yaml = action_yaml(&branch, github_token, &owner, trusted_publishing);
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str, owner: &str) -> String {
+fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing: bool) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if is_default_token {
@@ -144,6 +186,42 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str) -> String {
         format!(
             "
           token: {github_token_secret}"
+        )
+    };
+
+    let cargo_registry_token = if trusted_publishing {
+        "${{ steps.auth.outputs.token }}".to_string()
+    } else {
+        format!("${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}")
+    };
+
+    let id_token_permissions = if trusted_publishing {
+        "
+      id-token: write"
+    } else {
+        ""
+    };
+
+    let trusted_publishing_action = if trusted_publishing {
+        "
+      - name: Authenticate with crates.io
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth"
+    } else {
+        ""
+    };
+
+    let pr_cargo_registry_token = if trusted_publishing {
+        // For public crates, the cargo registry token is not needed in the PR workflow.
+        // So if we use trusted publishing, we can omit it.
+        // Trusted publishing also works for private crates, and if that's your case, write the token manually.
+        "".to_string()
+    } else {
+        // The crate might be private, so we add the token to the PR workflow.
+        // If the crate is public, it won't hurt having it here. You can also remove it if you want.
+        format!(
+            "
+          CARGO_REGISTRY_TOKEN: {cargo_registry_token}"
         )
     };
 
@@ -161,21 +239,21 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
-      contents: write
+      contents: write{id_token_permissions}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0{checkout_token_line}
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@stable{trusted_publishing_action}
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: {github_token_secret}
-          CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}
+          CARGO_REGISTRY_TOKEN: {cargo_registry_token}
 
   release-plz-pr:
     name: Release-plz PR
@@ -199,8 +277,7 @@ jobs:
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: {github_token_secret}
-          CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}
+          GITHUB_TOKEN: {github_token_secret}{pr_cargo_registry_token}
 "
     )
 }
@@ -298,7 +375,7 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner"));
+        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner", false));
     }
 
     #[test]
@@ -360,6 +437,71 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner"));
+        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false));
     }
+}
+
+#[test]
+fn actions_yaml_string_with_trusted_publishing_is_correct() {
+    expect_test::expect![[r#"
+            name: Release-plz
+
+            on:
+              push:
+                branches:
+                  - main
+
+            jobs:
+              release-plz-release:
+                name: Release-plz release
+                runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
+                permissions:
+                  contents: write
+                  id-token: write
+                steps:
+                  - name: Checkout repository
+                    uses: actions/checkout@v4
+                    with:
+                      fetch-depth: 0
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                  - name: Install Rust toolchain
+                    uses: dtolnay/rust-toolchain@stable
+                  - name: Authenticate with crates.io
+                    uses: rust-lang/crates-io-auth-action@v1
+                    id: auth
+                  - name: Run release-plz
+                    uses: release-plz/action@v0.5
+                    with:
+                      command: release
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+              release-plz-pr:
+                name: Release-plz PR
+                runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
+                permissions:
+                  pull-requests: write
+                  contents: write
+                concurrency:
+                  group: release-plz-${{ github.ref }}
+                  cancel-in-progress: false
+                steps:
+                  - name: Checkout repository
+                    uses: actions/checkout@v4
+                    with:
+                      fetch-depth: 0
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                  - name: Install Rust toolchain
+                    uses: dtolnay/rust-toolchain@stable
+                  - name: Run release-plz
+                    uses: release-plz/action@v0.5
+                    with:
+                      command: release-pr
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+        "#]]
+    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true));
 }

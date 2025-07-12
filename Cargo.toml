@@ -11,8 +11,8 @@ anyhow = "1.0.94"
 assert_cmd = "2.0.16"
 base64 = "0.22.1"
 camino = "1.1.9"
-cargo_metadata = "0.20.0"
-cargo = { version = "0.88.0", default-features = false }
+cargo_metadata = "0.21.0"
+cargo = { version = "0.89.0", default-features = false }
 chrono = { version = "0.4.38", default-features = false }
 clap = "4.5.23"
 clap_complete = "4.5.38"
@@ -36,7 +36,7 @@ regex = "1.11.1"
 reqwest = "0.12.9"
 reqwest-middleware = { version = "0.4.0", features = ["json"] }
 reqwest-retry = "0.7.0"
-schemars = { version = "0.9.0", features = ["url2"] }
+schemars = { version = "1.0.0", features = ["url2"] }
 secrecy = "0.10.3"
 semver = "1.0.23"
 serde = "1.0.215"
@@ -45,8 +45,8 @@ strip-ansi-escapes = "0.2.0"
 tempfile = "3.14.0"
 tera = "1.20.0"
 tokio = "1.42.0"
-toml = { version = "0.8.19" }
-toml_edit = { version = "0.22.22" }
+toml = { version = "0.9.0" }
+toml_edit = { version = "0.23.0" }
 tracing = "0.1.41"
 tracing-log = "0.2.0"
 tracing-subscriber = "0.3.19"

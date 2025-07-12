@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.138](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.137...release-plz-v0.3.138) - 2025-07-09
+
+### Added
+
+- *(init)* add support for trusted publishing ([#2300](https://github.com/release-plz/release-plz/pull/2300))
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.3.137](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.136...release-plz-v0.3.137) - 2025-07-01
+
+### Fixed
+
+- allow license-file in Cargo.toml ([#2287](https://github.com/release-plz/release-plz/pull/2287))
+
+### Other
+
+- validate there's no release pr open after landing a release pr ([#2283](https://github.com/release-plz/release-plz/pull/2283))
+
+## [0.3.136](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.135...release-plz-v0.3.136) - 2025-06-19
+
+### Fixed
+
+- don't quit if readme doesn't exist ([#2257](https://github.com/release-plz/release-plz/pull/2257))
+
+### Other
+
+- tidy up config path handling ([#2268](https://github.com/release-plz/release-plz/pull/2268))
+- Add some more logging related to package publishing ([#2270](https://github.com/release-plz/release-plz/pull/2270))
+- update dependencies ([#2260](https://github.com/release-plz/release-plz/pull/2260))
+- update cargo metadata to 0.20 ([#2249](https://github.com/release-plz/release-plz/pull/2249))
+
 ## [0.3.135](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.134...release-plz-v0.3.135) - 2025-05-18
 
 ### Fixed

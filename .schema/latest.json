@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Config",
-  "description": "You can find the documentation of the configuration file\n [here](https://release-plz.dev/docs/config).",
+  "description": "You can find the documentation of the configuration file\n[here](https://release-plz.dev/docs/config).",
   "type": "object",
   "properties": {
     "changelog": {
@@ -20,7 +20,7 @@
     },
     "package": {
       "title": "Package",
-      "description": "Package-specific configuration. This overrides `workspace`.\n Not all settings of `workspace` can be overridden.",
+      "description": "Package-specific configuration. This overrides `workspace`.\nNot all settings of `workspace` can be overridden.",
       "type": "array",
       "default": [],
       "items": {
@@ -71,7 +71,7 @@
       "type": "object",
       "properties": {
         "body": {
-          "description": "Template that represents a single release in the changelog.\n It contains the commit messages.\n This is a [tera](https://keats.github.io/tera/) template.",
+          "description": "Template that represents a single release in the changelog.\nIt contains the commit messages.\nThis is a [tera](https://keats.github.io/tera/) template.",
           "type": [
             "string",
             "null"
@@ -248,7 +248,7 @@
       "properties": {
         "changelog_include": {
           "title": "Changelog Include",
-          "description": "List of package names.\n Include the changelogs of these packages in the changelog of the current package.",
+          "description": "List of package names.\nInclude the changelogs of these packages in the changelog of the current package.",
           "type": [
             "array",
             "null"
@@ -259,7 +259,7 @@
         },
         "changelog_path": {
           "title": "Changelog Path",
-          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file.\n The user can provide a custom path here.\n `changelog_path` is propagated to the commands:\n `update`, `release-pr` and `release`.",
+          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file.\nThe user can provide a custom path here.\n`changelog_path` is propagated to the commands:\n`update`, `release-pr` and `release`.",
           "type": [
             "string",
             "null"
@@ -267,7 +267,7 @@
         },
         "changelog_update": {
           "title": "Changelog Update",
-          "description": "Whether to create/update changelog or not.\n If unspecified, the changelog is updated.",
+          "description": "Whether to create/update changelog or not.\nIf unspecified, the changelog is updated.",
           "type": [
             "boolean",
             "null"
@@ -275,7 +275,7 @@
         },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
-          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
           "type": [
             "boolean",
             "null"
@@ -299,7 +299,7 @@
         },
         "git_release_enable": {
           "title": "Git Release Enable",
-          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\n Enabled by default.",
+          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\nEnabled by default.",
           "type": [
             "boolean",
             "null"
@@ -335,7 +335,7 @@
         },
         "git_tag_enable": {
           "title": "Git Tag Enable",
-          "description": "Publish the git tag for the new package version.\n Enabled by default.",
+          "description": "Publish the git tag for the new package version.\nEnabled by default.",
           "type": [
             "boolean",
             "null"
@@ -405,7 +405,7 @@
         },
         "semver_check": {
           "title": "Semver Check",
-          "description": "Controls when to run cargo-semver-checks.\n If unspecified, run cargo-semver-checks if the package is a library.",
+          "description": "Controls when to run cargo-semver-checks.\nIf unspecified, run cargo-semver-checks if the package is a library.",
           "type": [
             "boolean",
             "null"
@@ -434,13 +434,13 @@
         },
         {
           "title": "Pre",
-          "description": "Will mark the release as not ready for production.\n I.e. as pre-release.",
+          "description": "Will mark the release as not ready for production.\nI.e. as pre-release.",
           "type": "string",
           "const": "pre"
         },
         {
           "title": "Auto",
-          "description": "Will mark the release as not ready for production\n in case there is a semver pre-release in the tag e.g. v1.0.0-rc1.\n Otherwise, will mark the release as ready for production.",
+          "description": "Will mark the release as not ready for production\nin case there is a semver pre-release in the tag e.g. v1.0.0-rc1.\nOtherwise, will mark the release as ready for production.",
           "type": "string",
           "const": "auto"
         }
@@ -486,7 +486,7 @@
       "properties": {
         "allow_dirty": {
           "title": "Allow Dirty",
-          "description": "- If `true`, allow dirty working directories to be updated. The uncommitted changes will be part of the update.\n - If `false` or [`Option::None`], the command will fail if the working directory is dirty.",
+          "description": "- If `true`, allow dirty working directories to be updated. The uncommitted changes will be part of the update.\n- If `false` or [`Option::None`], the command will fail if the working directory is dirty.",
           "type": [
             "boolean",
             "null"
@@ -502,7 +502,7 @@
         },
         "changelog_path": {
           "title": "Changelog Path",
-          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file.\n The user can provide a custom path here.\n `changelog_path` is propagated to the commands:\n `update`, `release-pr` and `release`.",
+          "description": "Normally the changelog is placed in the same directory of the Cargo.toml file.\nThe user can provide a custom path here.\n`changelog_path` is propagated to the commands:\n`update`, `release-pr` and `release`.",
           "type": [
             "string",
             "null"
@@ -510,7 +510,7 @@
         },
         "changelog_update": {
           "title": "Changelog Update",
-          "description": "Whether to create/update changelog or not.\n If unspecified, the changelog is updated.",
+          "description": "Whether to create/update changelog or not.\nIf unspecified, the changelog is updated.",
           "type": [
             "boolean",
             "null"
@@ -518,7 +518,7 @@
         },
         "dependencies_update": {
           "title": "Dependencies Update",
-          "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.\n - If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
+          "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.\n- If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
           "type": [
             "boolean",
             "null"
@@ -526,7 +526,7 @@
         },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
-          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
           "type": [
             "boolean",
             "null"
@@ -550,7 +550,7 @@
         },
         "git_release_enable": {
           "title": "Git Release Enable",
-          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\n Enabled by default.",
+          "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\nEnabled by default.",
           "type": [
             "boolean",
             "null"
@@ -586,7 +586,7 @@
         },
         "git_tag_enable": {
           "title": "Git Tag Enable",
-          "description": "Publish the git tag for the new package version.\n Enabled by default.",
+          "description": "Publish the git tag for the new package version.\nEnabled by default.",
           "type": [
             "boolean",
             "null"
@@ -700,7 +700,7 @@
         },
         "release_always": {
           "title": "Release always",
-          "description": "- If true, release-plz release will try to release your packages every time you run it\n   (e.g. on every commit in the main branch). *(Default)*.\n - If false, `release-plz release` will try release your packages only when you merge the\n   release pr.\n   Use this if you want to commit your packages and publish them later.\n   To determine if a pr is a release-pr, release-plz will check if the branch of the PR starts with\n   `release-plz-`. So if you want to create a PR that should trigger a release\n   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).",
+          "description": "- If true, release-plz release will try to release your packages every time you run it\n  (e.g. on every commit in the main branch). *(Default)*.\n- If false, `release-plz release` will try release your packages only when you merge the\n  release pr.\n  Use this if you want to commit your packages and publish them later.\n  To determine if a pr is a release-pr, release-plz will check if the branch of the PR starts with\n  `release-plz-`. So if you want to create a PR that should trigger a release\n  (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).",
           "type": [
             "boolean",
             "null"
@@ -716,7 +716,7 @@
         },
         "repo_url": {
           "title": "Repo URL",
-          "description": "GitHub/Gitea/GitLab repository url where your project is hosted.\n It is used to generate the changelog release link.\n It defaults to the url of the default remote.",
+          "description": "GitHub/Gitea/GitLab repository url where your project is hosted.\nIt is used to generate the changelog release link.\nIt defaults to the url of the default remote.",
           "type": [
             "string",
             "null"
@@ -725,7 +725,7 @@
         },
         "semver_check": {
           "title": "Semver Check",
-          "description": "Controls when to run cargo-semver-checks.\n If unspecified, run cargo-semver-checks if the package is a library.",
+          "description": "Controls when to run cargo-semver-checks.\nIf unspecified, run cargo-semver-checks if the package is a library.",
           "type": [
             "boolean",
             "null"

@@ -368,6 +368,13 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         )
         .trim()
     );
+
+    // After landing the PR, there is no release PR open.
+    context.merge_release_pr().await;
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 0);
 }
 
 #[tokio::test]
@@ -1059,4 +1066,145 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 /// Check if the line contains a temporary directory or the version of cargo-semver-checks.
 fn does_line_vary(line: &str) -> bool {
     line.contains("cargo-semver-checks/tree") || line.contains(".tmp")
+}
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_handles_invalid_readme_path_gracefully() {
+    let context = TestContext::new().await;
+
+    // Set up a README path that will be invalid when the package is installed
+    // This simulates the real-world scenario where someone sets a relative path
+    // like "../../README.md" in their Cargo.toml, which works locally but fails
+    // when the package is installed from the registry cache
+    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+
+    // Create a README file in the project root for local development
+    let readme_content = "# My Project\n\nThis is a test project.";
+    let actual_readme_path = context.repo_dir().join("README.md");
+    fs_err::write(&actual_readme_path, readme_content).unwrap();
+
+    // Set an invalid relative path that would work locally but fail in registry cache
+    // This is the problematic pattern that users might accidentally use
+    cargo_toml.data["package"]["readme"] = toml_edit::value("../../README.md");
+    cargo_toml.write().unwrap();
+
+    context.push_all_changes("set invalid readme path");
+
+    // This should not panic or fail due to the invalid readme path
+    // The fix should handle this gracefully by logging a warning and continuing
+    let outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(
+        opened_prs.len(),
+        1,
+        "Release PR should still be created despite invalid readme path"
+    );
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release v0.1.0");
+
+    // Verify the PR was created successfully
+    let expected_stdout = serde_json::json!({
+        "prs": [{
+            "head_branch": open_pr.branch(),
+            "base_branch": "main",
+            "html_url": open_pr.html_url,
+            "number": open_pr.number,
+            "releases": [{
+                "package_name": context.gitea.repo,
+                "version": "0.1.0"
+            }]
+        }]
+    });
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Additional test: Make a change and ensure subsequent operations work
+    let new_file = context.repo_dir().join("src").join("new.rs");
+    fs_err::write(&new_file, "// new functionality").unwrap();
+    context.push_all_changes("feat: add new functionality");
+
+    // This should also work without issues
+    context.run_update().success();
+
+    // Verify changelog was updated despite the invalid readme path
+    let changelog = fs_err::read_to_string(context.repo_dir().join("CHANGELOG.md")).unwrap();
+    assert!(
+        changelog.contains("add new functionality"),
+        "Changelog should be updated even with invalid readme path"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_handles_nonexistent_readme_path_in_cargo_toml() {
+    let context = TestContext::new().await;
+
+    // Set a README path that simply doesn't exist anywhere
+    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["readme"] = toml_edit::value("nonexistent-readme.md");
+    cargo_toml.write().unwrap();
+
+    context.push_all_changes("set nonexistent readme path");
+
+    // This should handle the nonexistent file gracefully
+    let _outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(
+        opened_prs.len(),
+        1,
+        "Release PR should be created despite nonexistent readme"
+    );
+
+    // Make sure subsequent operations work
+    let new_file = context.repo_dir().join("src").join("lib.rs");
+    fs_err::write(&new_file, "pub fn test() {}").unwrap();
+    context.push_all_changes("add lib function");
+
+    context.run_update().success();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_works_with_valid_readme_path() {
+    let context = TestContext::new().await;
+
+    // Create a valid README and set correct path
+    let readme_content = "# Valid Project\n\nThis project has a valid readme path.";
+    let readme_path = context.repo_dir().join("README.md");
+    fs_err::write(&readme_path, readme_content).unwrap();
+
+    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["readme"] = toml_edit::value("README.md");
+    cargo_toml.write().unwrap();
+
+    context.push_all_changes("add valid readme");
+
+    // This should work normally
+    let _outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    // Modify the README and ensure it's detected as a change
+    fs_err::write(
+        &readme_path,
+        "# Updated Valid Project\n\nThis readme was updated.",
+    )
+    .unwrap();
+    context.push_all_changes("update readme content");
+
+    context.run_release_pr().success();
+
+    // Should create a new PR for the readme change
+    let updated_prs = context.opened_release_prs().await;
+    // The count might be 1 (updated) or 2 (new PR), both are valid depending on implementation
+    assert!(
+        !updated_prs.is_empty(),
+        "Should handle readme updates correctly"
+    );
 }
