@@ -14,7 +14,7 @@ use release_plz_core::{
 };
 use secrecy::SecretString;
 
-use crate::config::Config;
+use crate::{changelog_config, config::Config};
 
 use super::{
     config_path::ConfigPath, manifest_command::ManifestCommand, repo_command::RepoCommand,
@@ -203,9 +203,10 @@ impl Update {
                         .context("cannot parse release_date to y-m-d format")
                 })
                 .transpose()?;
+            let pr_link = update.repo_url().map(|url| url.git_pr_link());
             let changelog_req = ChangelogRequest {
                 release_date,
-                changelog_config: Some(self.changelog_config(&config)?),
+                changelog_config: Some(self.changelog_config(&config, pr_link.as_deref())?),
             };
             update = update.with_changelog_req(changelog_req);
         }
@@ -227,7 +228,11 @@ impl Update {
         Ok(update)
     }
 
-    fn changelog_config(&self, config: &Config) -> anyhow::Result<GitCliffConfig> {
+    fn changelog_config(
+        &self,
+        config: &Config,
+        pr_link: Option<&str>,
+    ) -> anyhow::Result<GitCliffConfig> {
         let default_config_path = dirs::config_dir()
             .context("cannot get config dir")?
             .join("git-cliff")
@@ -252,10 +257,7 @@ impl Update {
             );
             GitCliffConfig::parse(path).context("failed to parse git-cliff config file")?
         } else {
-            config
-                .changelog
-                .clone()
-                .try_into()
+            changelog_config::to_git_cliff_config(config.changelog.clone(), pr_link)
                 .context("invalid `[changelog] config")?
         };
 

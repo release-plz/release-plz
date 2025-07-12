@@ -82,14 +82,12 @@ pub fn get_required_info(changelog_config: &ChangelogConfig) -> RequiredInfo {
         remote_pr_number: false,
     };
 
-    if let Some(body) = changelog_config.body.as_ref() {
-        required_info.author_name = body.contains("author.name");
-        required_info.author_email = body.contains("author.email");
-        required_info.committer_name = body.contains("committer.name");
-        required_info.committer_email = body.contains("committer.email");
-        required_info.remote_username = body.contains("remote.username");
-        required_info.remote_pr_number = body.contains("remote.pr_number");
-    }
+    required_info.author_name = changelog_config.body.contains("author.name");
+    required_info.author_email = changelog_config.body.contains("author.email");
+    required_info.committer_name = changelog_config.body.contains("committer.name");
+    required_info.committer_email = changelog_config.body.contains("committer.email");
+    required_info.remote_username = changelog_config.body.contains("remote.username");
+    required_info.remote_pr_number = changelog_config.body.contains("remote.pr_number");
 
     required_info
 }

@@ -22,7 +22,6 @@ git_cmd = { path = "../git_cmd", version = "0.6.24" }
 next_version = { path = "../next_version", version = "0.2" }
 
 anyhow.workspace = true
-cacache.workspace = true
 cargo_metadata.workspace = true
 cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
