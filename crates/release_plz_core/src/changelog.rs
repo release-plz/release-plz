@@ -95,10 +95,53 @@ impl Changelog<'_> {
         let user_config = self.config.clone().unwrap_or(default_git_cliff_config());
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
-            git: user_config.git,
+            git: apply_defaults_to_git_config(user_config.git, None),
             remote: user_config.remote,
             bump: Bump::default(),
         }
+    }
+}
+
+/// Apply release-plz defaults to git config
+fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) -> GitConfig {
+    let default_git_config = default_git_config(pr_link);
+
+    GitConfig {
+        conventional_commits: git_config.conventional_commits,
+        require_conventional: git_config.require_conventional,
+        filter_unconventional: git_config.filter_unconventional,
+        split_commits: git_config.split_commits,
+        commit_preprocessors: if git_config.commit_preprocessors.is_empty() {
+            default_git_config.commit_preprocessors
+        } else {
+            git_config.commit_preprocessors
+        },
+        commit_parsers: if git_config.commit_parsers.is_empty() {
+            default_git_config.commit_parsers
+        } else {
+            git_config.commit_parsers
+        },
+        protect_breaking_commits: git_config.protect_breaking_commits,
+        filter_commits: git_config.filter_commits,
+        tag_pattern: git_config.tag_pattern,
+        skip_tags: git_config.skip_tags,
+        ignore_tags: git_config.ignore_tags,
+        count_tags: git_config.count_tags,
+        use_branch_tags: git_config.use_branch_tags,
+        topo_order: git_config.topo_order,
+        topo_order_commits: git_config.topo_order_commits,
+        sort_commits: if git_config.sort_commits.is_empty() {
+            default_git_config.sort_commits
+        } else {
+            git_config.sort_commits
+        },
+        limit_commits: git_config.limit_commits,
+        recurse_submodules: git_config.recurse_submodules,
+        link_parsers: if git_config.link_parsers.is_empty() {
+            default_git_config.link_parsers
+        } else {
+            git_config.link_parsers
+        },
     }
 }
 
