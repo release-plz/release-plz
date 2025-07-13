@@ -290,7 +290,7 @@ mod tests {
                     href: "href".to_string(),
                     text: Some("text".to_string()),
                 }],
-                filter_commits: true,
+                filter_commits: false,
                 tag_pattern: None,
                 skip_tags: None,
                 ignore_tags: None,
