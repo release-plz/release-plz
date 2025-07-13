@@ -34,6 +34,7 @@ pub struct Changelog<'a> {
     release_link: Option<String>,
     package: String,
     remote: Option<Remote>,
+    pr_link: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -95,7 +96,7 @@ impl Changelog<'_> {
         let user_config = self.config.clone().unwrap_or(default_git_cliff_config());
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
-            git: apply_defaults_to_git_config(user_config.git, None),
+            git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
             remote: user_config.remote,
             bump: Bump::default(),
         }
@@ -360,6 +361,7 @@ impl<'a> ChangelogBuilder<'a> {
             release_link: self.release_link,
             config: self.config,
             package: self.package,
+            pr_link: self.pr_link,
         }
     }
 
@@ -444,7 +446,8 @@ pub fn default_changelog_config(header: Option<String>) -> ChangelogConfig {
 }
 
 fn default_changelog_body_config() -> &'static str {
-    r#"## [{{ version }}]{%- if release_link -%}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+    r#"
+## [{{ version }}]{%- if release_link -%}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}
 
