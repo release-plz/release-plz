@@ -227,11 +227,8 @@ fn is_version_unchanged(release: &Release) -> bool {
 
 fn default_git_cliff_config() -> Config {
     Config {
-        changelog: ChangelogConfig {
-            trim: true,
-            ..ChangelogConfig::default()
-        },
-        git: GitConfig::default(),
+        changelog: default_changelog_config(None),
+        git: default_git_config(None),
         remote: RemoteConfig::default(),
         bump: Bump::default(),
     }
