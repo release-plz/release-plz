@@ -7,6 +7,7 @@ use http::{Version, header};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
+    error::Error as _,
     process::{Command, ExitStatus},
     time::{Duration, Instant},
 };
@@ -131,9 +132,19 @@ async fn fetch_sparse_metadata(
 ) -> anyhow::Result<Option<Crate>> {
     let mut res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_2).await;
     if let Err(ref e) = res {
+        // Inspect the error to see if we should retry this request using
+        // HTTP/1.1. Any error reqwest identifies as a connection error usually
+        // indicates that the server does not support HTTP/2.
+        //
+        // With some private registries that do not support HTTP/2, or perhaps
+        // falsely advertise as supporting it, reqwest does not always identify
+        // the cause of failure as a connection error. In this case, the
+        // underlying `h2` library may return a premature `GOAWAY` error from
+        // either the client or server. If this happens, we should also use
+        // HTTP/1.1 instead, so also check for that case.
         match e.downcast_ref::<reqwest::Error>() {
-            Some(e) if e.is_connect() => {
-                debug!("HTTP/2 sparse index request failed, trying HTTP/1.1");
+            Some(e) if e.is_connect() || is_h2_go_away(e) => {
+                debug!(error = ?e, "HTTP/2 sparse index request failed, trying HTTP/1.1");
                 res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_11).await;
             }
             _ => (),
@@ -155,6 +166,23 @@ async fn fetch_sparse_metadata(
     let crate_data = index.parse_cache_response(crate_name, res, true)?;
 
     Ok(crate_data)
+}
+
+/// Determine if a reqwest error is caused by an HTTP/2 `GOAWAY` error.
+fn is_h2_go_away(error: &reqwest::Error) -> bool {
+    let mut source = error.source();
+
+    while let Some(error) = source {
+        if let Some(h2_error) = error.downcast_ref::<h2::Error>() {
+            if h2_error.is_go_away() {
+                return true;
+            }
+        }
+
+        source = error.source();
+    }
+
+    false
 }
 
 async fn request_for_sparse_metadata(
