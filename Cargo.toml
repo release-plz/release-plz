@@ -10,8 +10,6 @@ edition = "2024"
 anyhow = "1.0.94"
 assert_cmd = "2.0.16"
 base64 = "0.22.1"
-# needed to make git-cliff compile
-cacache = { version = "13.1.0", features = ["tokio-runtime"], default-features = false}
 camino = "1.1.9"
 cargo_metadata = "0.21.0"
 cargo = { version = "0.89.0", default-features = false }
@@ -24,7 +22,7 @@ dunce = "1.0.5"
 expect-test = "1.5.0"
 fake = "4.0.0"
 fs-err = "3.0.0"
-git-cliff-core = { version = "2.7.0", default-features = false }
+git-cliff-core = { version = "2.9.1", default-features = false }
 git-conventional = "0.12.9"
 git-url-parse = "0.4.5"
 h2 = "0.4"

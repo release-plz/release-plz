@@ -148,11 +148,13 @@ fn to_opt_regex(input: Option<&str>, element_name: &str) -> anyhow::Result<Optio
     input.map(|i| to_regex(i, element_name)).transpose()
 }
 
-fn to_opt_vec<T, U>(vec: Option<Vec<T>>, element_name: &str) -> anyhow::Result<Option<Vec<U>>>
+fn to_opt_vec<T, U>(vec: Option<Vec<T>>, element_name: &str) -> anyhow::Result<Vec<U>>
 where
     T: TryInto<U, Error = anyhow::Error>,
 {
-    vec.map(|v| vec_try_into(v, element_name)).transpose()
+    vec.map(|v| vec_try_into(v, element_name))
+        .transpose()
+        .map(|v| v.unwrap_or_default())
 }
 
 fn vec_try_into<T, U>(vec: Vec<T>, element_name: &str) -> anyhow::Result<Vec<U>>
@@ -167,51 +169,54 @@ where
         .collect()
 }
 
-impl TryFrom<ChangelogCfg> for git_cliff_core::config::Config {
-    type Error = anyhow::Error;
+pub fn to_git_cliff_config(
+    cfg: ChangelogCfg,
+    pr_link: Option<&str>,
+) -> anyhow::Result<git_cliff_core::config::Config> {
+    let commit_preprocessors: Vec<git_cliff_core::config::TextProcessor> =
+        to_opt_vec(cfg.commit_preprocessors, "commit_preprocessors")?;
+    let link_parsers: Vec<git_cliff_core::config::LinkParser> =
+        to_opt_vec(cfg.link_parsers, "link_parsers")?;
+    let tag_pattern = to_opt_regex(cfg.tag_pattern.as_deref(), "tag_pattern")?;
 
-    fn try_from(cfg: ChangelogCfg) -> Result<Self, Self::Error> {
-        let commit_preprocessors: Option<Vec<git_cliff_core::config::TextProcessor>> =
-            to_opt_vec(cfg.commit_preprocessors, "commit_preprocessors")?;
-        let link_parsers: Option<Vec<git_cliff_core::config::LinkParser>> =
-            to_opt_vec(cfg.link_parsers, "link_parsers")?;
-        let tag_pattern = to_opt_regex(cfg.tag_pattern.as_deref(), "tag_pattern")?;
+    let sort_commits = cfg.sort_commits.map(|s| format!("{s}"));
 
-        let sort_commits = cfg.sort_commits.map(|s| format!("{s}"));
+    let commit_parsers: Vec<git_cliff_core::config::CommitParser> =
+        to_opt_vec(cfg.commit_parsers, "commit_parsers")?;
 
-        let commit_parsers: Option<Vec<git_cliff_core::config::CommitParser>> =
-            to_opt_vec(cfg.commit_parsers, "commit_parsers")?;
-
-        Ok(Self {
-            changelog: ChangelogConfig {
-                header: cfg.header,
-                body: cfg.body,
-                trim: cfg.trim,
-                postprocessors: None,
-                footer: None,
-                ..ChangelogConfig::default()
-            },
-            git: git_cliff_core::config::GitConfig {
-                conventional_commits: None,
-                filter_unconventional: None,
-                split_commits: None,
-                commit_preprocessors,
-                commit_parsers,
-                protect_breaking_commits: cfg.protect_breaking_commits,
-                link_parsers,
-                filter_commits: None,
-                tag_pattern,
-                skip_tags: None,
-                ignore_tags: None,
-                topo_order: None,
-                sort_commits,
-                limit_commits: None,
-                ..Default::default()
-            },
-            remote: RemoteConfig::default(),
-            bump: Bump::default(),
-        })
-    }
+    let default_changelog_config = release_plz_core::default_changelog_config(cfg.header.clone());
+    let default_git_config = release_plz_core::default_git_config(pr_link);
+    Ok(git_cliff_core::config::Config {
+        changelog: ChangelogConfig {
+            header: default_changelog_config.header,
+            body: cfg.body.unwrap_or(default_changelog_config.body),
+            trim: cfg.trim.unwrap_or(default_changelog_config.trim),
+            postprocessors: vec![],
+            footer: None,
+            ..ChangelogConfig::default()
+        },
+        git: git_cliff_core::config::GitConfig {
+            conventional_commits: default_git_config.conventional_commits,
+            filter_unconventional: default_git_config.filter_unconventional,
+            split_commits: default_git_config.split_commits,
+            commit_preprocessors,
+            commit_parsers,
+            protect_breaking_commits: cfg
+                .protect_breaking_commits
+                .unwrap_or(default_git_config.protect_breaking_commits),
+            link_parsers,
+            filter_commits: default_git_config.filter_commits,
+            tag_pattern,
+            skip_tags: None,
+            ignore_tags: None,
+            topo_order: default_git_config.topo_order,
+            sort_commits: sort_commits.unwrap_or(default_git_config.sort_commits),
+            limit_commits: None,
+            ..Default::default()
+        },
+        remote: RemoteConfig::default(),
+        bump: Bump::default(),
+    })
 }
 
 // write test to check that the configuration is deserialized correctly
@@ -243,19 +248,20 @@ mod tests {
             ]
     "#;
         let cfg: Config = toml::from_str(toml).unwrap();
-        let actual_cliff_config: git_cliff_core::config::Config = cfg.changelog.try_into().unwrap();
+        let actual_cliff_config: git_cliff_core::config::Config =
+            to_git_cliff_config(cfg.changelog, None).unwrap();
         let expected_cliff_config = git_cliff_core::config::Config {
             changelog: ChangelogConfig {
                 header: Some("Changelog".to_string()),
-                body: Some("Body".to_string()),
-                trim: Some(true),
-                postprocessors: None,
+                body: "Body".to_string(),
+                trim: true,
+                postprocessors: vec![],
                 footer: None,
                 ..ChangelogConfig::default()
             },
             git: git_cliff_core::config::GitConfig {
-                protect_breaking_commits: Some(true),
-                commit_preprocessors: Some(vec![
+                protect_breaking_commits: true,
+                commit_preprocessors: vec![
                     git_cliff_core::config::TextProcessor {
                         pattern: regex::Regex::new("pattern").unwrap(),
                         replace: Some("replace".to_string()),
@@ -266,8 +272,8 @@ mod tests {
                         replace: Some("replace2".to_string()),
                         replace_command: Some("replace_command2".to_string()),
                     },
-                ]),
-                commit_parsers: Some(vec![git_cliff_core::config::CommitParser {
+                ],
+                commit_parsers: vec![git_cliff_core::config::CommitParser {
                     message: Some(regex::Regex::new("message").unwrap()),
                     body: Some(regex::Regex::new("body").unwrap()),
                     group: Some("group".to_string()),
@@ -278,22 +284,22 @@ mod tests {
                     pattern: Some(regex::Regex::new("pattern").unwrap()),
                     sha: None,
                     footer: None,
-                }]),
-                link_parsers: Some(vec![git_cliff_core::config::LinkParser {
+                }],
+                link_parsers: vec![git_cliff_core::config::LinkParser {
                     pattern: regex::Regex::new("pattern").unwrap(),
                     href: "href".to_string(),
                     text: Some("text".to_string()),
-                }]),
-                filter_commits: None,
+                }],
+                filter_commits: false,
                 tag_pattern: None,
                 skip_tags: None,
                 ignore_tags: None,
-                topo_order: None,
-                sort_commits: None,
+                topo_order: false,
+                sort_commits: "newest".to_string(),
                 limit_commits: None,
-                conventional_commits: None,
-                filter_unconventional: None,
-                split_commits: None,
+                conventional_commits: true,
+                filter_unconventional: false,
+                split_commits: false,
                 ..Default::default()
             },
             remote: RemoteConfig::default(),
