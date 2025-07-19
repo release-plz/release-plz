@@ -4859,6 +4859,7 @@ dependencies = [
  "git-cliff-core",
  "git-url-parse",
  "git_cmd",
+ "h2",
  "http",
  "ignore",
  "itertools",
