@@ -711,7 +711,7 @@ mod tests {
                         .to_string(),
                     ..ChangelogConfig::default()
                 },
-                git: GitConfig::default(),
+                git: default_git_config(None),
                 remote: RemoteConfig::default(),
                 bump: Bump::default(),
             })
@@ -739,7 +739,7 @@ mod tests {
                 changelog: default_changelog_config(None),
                 git: GitConfig {
                     sort_commits: "oldest".to_string(),
-                    ..GitConfig::default()
+                    ..default_git_config(None)
                 },
                 remote: RemoteConfig::default(),
                 bump: Bump::default(),
