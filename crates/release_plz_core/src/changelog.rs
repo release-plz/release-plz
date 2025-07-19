@@ -709,7 +709,7 @@ mod tests {
                             {{ commit.message }} - {{ commit.id }}
                         {% endfor -%}"
                         .to_string(),
-                    ..ChangelogConfig::default()
+                    ..default_changelog_config(None)
                 },
                 git: default_git_config(None),
                 remote: RemoteConfig::default(),
