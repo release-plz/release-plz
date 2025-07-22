@@ -17,19 +17,8 @@ pub fn generate_schema_to_disk() -> anyhow::Result<()> {
 }
 
 fn generate_schema_json() -> anyhow::Result<String> {
-    const SCHEMA_TOKEN: &str = r##"schema#","##;
-    const ID: &str = r##""$id": "https://github.com/release-plz/release-plz/"##;
-
     let schema = schema_for!(config::Config);
-    let mut json =
-        serde_json::to_string_pretty(&schema).context("can't convert schema to string")?;
-    // As of now, Schemars does not support the $id field, so we insert it manually.
-    // See here for update on resolution: https://github.com/GREsau/schemars/issues/229
-    json = json.replace(
-        SCHEMA_TOKEN,
-        &format!("{SCHEMA_TOKEN}\n  {ID}{FOLDER}/{FILE}\","),
-    );
-    json += "\n";
+    let json = serde_json::to_string_pretty(&schema).context("can't convert schema to string")?;
 
     Ok(json)
 }
@@ -73,5 +62,19 @@ mod tests {
 
             workspace_path.join(FOLDER).join(FILE)
         }
+    }
+
+    #[test]
+    fn schema_contains_id_field() {
+        let json = generate_schema_json().unwrap();
+        let schema: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            schema.get("$id"),
+            Some(&serde_json::Value::String(
+                "https://github.com/release-plz/release-plz/".to_string()
+            )),
+            "Schema should contain the $id field specified in config.rs"
+        );
     }
 }
