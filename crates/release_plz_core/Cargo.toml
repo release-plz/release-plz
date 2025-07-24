@@ -51,7 +51,7 @@ walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
 strip-ansi-escapes.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 http.workspace = true
 
