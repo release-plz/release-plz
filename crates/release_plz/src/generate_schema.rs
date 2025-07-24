@@ -72,7 +72,7 @@ mod tests {
         assert_eq!(
             schema.get("$id"),
             Some(&serde_json::Value::String(
-                "https://github.com/release-plz/release-plz/".to_string()
+                "https://raw.githubusercontent.com/release-plz/release-plz/main/.schema/latest.json".to_string()
             )),
             "Schema should contain the $id field specified in config.rs"
         );
