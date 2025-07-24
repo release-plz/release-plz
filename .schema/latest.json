@@ -1,4 +1,5 @@
 {
+  "$id": "https://raw.githubusercontent.com/release-plz/release-plz/main/.schema/latest.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Config",
   "description": "You can find the documentation of the configuration file\n[here](https://release-plz.dev/docs/config).",

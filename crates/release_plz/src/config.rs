@@ -16,6 +16,7 @@ use crate::changelog_config::ChangelogCfg;
 /// [here](https://release-plz.dev/docs/config).
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(extend("$id" = "https://raw.githubusercontent.com/release-plz/release-plz/main/.schema/latest.json"))]
 pub struct Config {
     /// # Workspace
     /// Global configuration. Applied to all packages by default.
