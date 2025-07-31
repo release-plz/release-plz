@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.6...release_plz_core-v0.34.7) - 2025-07-31
+
+### Other
+
+- update to git-cliff-core 2.10.0 ([#2326](https://github.com/release-plz/release-plz/pull/2326))
+
 ## [0.34.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.5...release_plz_core-v0.34.6) - 2025-07-19
 
 ### Fixed
