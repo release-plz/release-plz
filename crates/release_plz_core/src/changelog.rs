@@ -143,6 +143,8 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         } else {
             git_config.link_parsers
         },
+        exclude_paths: git_config.exclude_paths,
+        include_paths: git_config.include_paths,
     }
 }
 
@@ -339,7 +341,7 @@ impl<'a> ChangelogBuilder<'a> {
             version: Some(ver),
             commits: vec![],
             commit_id: None,
-            timestamp: 0,
+            timestamp: Some(0),
             previous: None,
             message: None,
             repository: None,
@@ -351,7 +353,7 @@ impl<'a> ChangelogBuilder<'a> {
                 version: Some(self.version),
                 commits,
                 commit_id: None,
-                timestamp: release_date,
+                timestamp: Some(release_date),
                 previous: previous.map(Box::new),
                 message: None,
                 repository: None,
