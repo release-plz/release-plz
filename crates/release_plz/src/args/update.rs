@@ -255,7 +255,7 @@ impl Update {
                 config.changelog.is_default(),
                 "specifying the `[changelog]` configuration has no effect if `changelog_config` path is specified"
             );
-            GitCliffConfig::parse(path).context("failed to parse git-cliff config file")?
+            GitCliffConfig::load(path).context("failed to parse git-cliff config file")?
         } else {
             changelog_config::to_git_cliff_config(config.changelog.clone(), pr_link)
                 .context("invalid `[changelog] config")?
