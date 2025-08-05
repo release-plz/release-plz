@@ -603,8 +603,8 @@ dependencies = [
  "secrecy 0.10.3",
  "semver",
  "serde",
- "toml 0.9.4",
- "toml_edit 0.23.2",
+ "toml 0.9.5",
+ "toml_edit 0.23.3",
  "url",
 ]
 
@@ -762,7 +762,7 @@ checksum = "5b1eb4fb07bc7f012422df02766c7bd5971effb894f573865642f06fa3265440"
 dependencies = [
  "pathdiff",
  "serde",
- "toml 0.9.4",
+ "toml 0.9.5",
  "winnow",
  "yaml-rust2",
 ]
@@ -842,7 +842,7 @@ dependencies = [
  "serde_json",
  "smol_str",
  "thiserror 2.0.12",
- "toml 0.9.4",
+ "toml 0.9.5",
 ]
 
 [[package]]
@@ -1501,7 +1501,7 @@ dependencies = [
  "tera",
  "thiserror 2.0.12",
  "time",
- "toml 0.9.4",
+ "toml 0.9.5",
  "url",
  "urlencoding",
 ]
@@ -4851,7 +4851,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "release-plz"
-version = "0.3.139"
+version = "0.3.140"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4879,8 +4879,8 @@ dependencies = [
  "tempfile",
  "test_logs",
  "tokio",
- "toml 0.9.4",
- "toml_edit 0.23.2",
+ "toml 0.9.5",
+ "toml_edit 0.23.3",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -4888,7 +4888,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.34.6"
+version = "0.34.7"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4925,8 +4925,8 @@ dependencies = [
  "tera",
  "test_logs",
  "tokio",
- "toml 0.9.4",
- "toml_edit 0.23.2",
+ "toml 0.9.5",
+ "toml_edit 0.23.3",
  "tracing",
  "url",
  "walkdir",
@@ -5988,9 +5988,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.4"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41ae868b5a0f67631c14589f7e250c1ea2c574ee5ba21c6c8dd4b1485705a5a1"
+checksum = "75129e1dc5000bfbaa9fee9d1b21f974f9fbad9daec557a521ee6e080825f6e8"
 dependencies = [
  "indexmap",
  "serde",
@@ -6035,9 +6035,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.23.2"
+version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1dee9dc43ac2aaf7d3b774e2fba5148212bf2bd9374f4e50152ebe9afd03d42"
+checksum = "17d3b47e6b7a040216ae5302712c94d1cf88c95b47efa80e2c59ce96c878267e"
 dependencies = [
  "indexmap",
  "toml_datetime 0.7.0",
@@ -6048,9 +6048,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97200572db069e74c512a14117b296ba0a80a30123fbbb5aa1f4a348f639ca30"
+checksum = "b551886f449aa90d4fe2bdaa9f4a2577ad2dde302c61ecf262d80b116db95c10"
 dependencies = [
  "winnow",
 ]
@@ -7056,9 +7056,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a05eb080e015ba39cc9e23bbe5e7fb04d5fb040350f99f34e338d5fdd294428"
+checksum = "bdbb9122ea75b11bf96e7492afb723e8a7fbe12c67417aa95e7e3d18144d37cd"
 dependencies = [
  "yoke",
  "zerofrom",
