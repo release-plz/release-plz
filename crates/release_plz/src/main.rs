@@ -1,5 +1,3 @@
-#![allow(renamed_and_removed_lints)]
-
 mod args;
 mod changelog_config;
 mod config;
