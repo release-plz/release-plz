@@ -212,14 +212,14 @@ impl ReleaseRequest {
         let publish_fields = self.packages_config.publish_overrides_fields();
 
         for package in &self.metadata.packages {
-            if !package.is_publishable() {
-                if let Some(should_publish) = publish_fields.get(package.name.as_str()) {
-                    anyhow::ensure!(
-                        !should_publish,
-                        "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
-                        package.name
-                    );
-                }
+            if !package.is_publishable()
+                && let Some(should_publish) = publish_fields.get(package.name.as_str())
+            {
+                anyhow::ensure!(
+                    !should_publish,
+                    "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
+                    package.name
+                );
             }
         }
         Ok(())

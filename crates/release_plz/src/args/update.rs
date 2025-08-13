@@ -219,10 +219,10 @@ impl Update {
         if let Some(release_commits) = &config.workspace.release_commits {
             update = update.with_release_commits(release_commits)?;
         }
-        if let Some(repo) = update.repo_url() {
-            if let Some(git_client) = self.git_forge(repo.clone())? {
-                update = update.with_git_client(git_client);
-            }
+        if let Some(repo) = update.repo_url()
+            && let Some(git_client) = self.git_forge(repo.clone())?
+        {
+            update = update.with_git_client(git_client);
         }
 
         Ok(update)

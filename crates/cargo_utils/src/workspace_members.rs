@@ -32,10 +32,10 @@ pub fn workspace_members(metadata: &Metadata) -> anyhow::Result<impl Iterator<It
 fn canonicalize_path(
     path: cargo_metadata::camino::Utf8PathBuf,
 ) -> cargo_metadata::camino::Utf8PathBuf {
-    if let Ok(path) = dunce::canonicalize(&path) {
-        if let Ok(path) = path.try_into() {
-            return path;
-        }
+    if let Ok(path) = dunce::canonicalize(&path)
+        && let Ok(path) = path.try_into()
+    {
+        return path;
     }
 
     path

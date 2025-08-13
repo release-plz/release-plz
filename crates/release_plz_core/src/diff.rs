@@ -40,7 +40,7 @@ impl Commit {
         cliff.into_conventional().is_ok()
     }
 
-    pub fn to_cliff_commit(&self) -> git_cliff_core::commit::Commit {
+    pub fn to_cliff_commit(&self) -> git_cliff_core::commit::Commit<'_> {
         let remote = self.remote.username.is_some().then(|| self.remote.clone());
         git_cliff_core::commit::Commit {
             id: self.id.clone(),

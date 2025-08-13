@@ -83,7 +83,7 @@ impl<'a> ChangelogParser<'a> {
         Ok(Self { changelog })
     }
 
-    fn last_release(&self) -> Option<&parse_changelog::Release> {
+    fn last_release(&self) -> Option<&parse_changelog::Release<'_>> {
         let last_release = release_at(&self.changelog, 0)?;
         let last_release = if last_release.version.to_lowercase().contains("unreleased") {
             release_at(&self.changelog, 1)?

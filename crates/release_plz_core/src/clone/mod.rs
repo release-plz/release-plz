@@ -140,7 +140,9 @@ impl Cloner {
         Ok(cloned_pkgs)
     }
 
-    fn acquire_cargo_package_cache_lock(&self) -> CargoResult<cargo::util::cache_lock::CacheLock> {
+    fn acquire_cargo_package_cache_lock(
+        &self,
+    ) -> CargoResult<cargo::util::cache_lock::CacheLock<'_>> {
         self.config
             .acquire_package_cache_lock(CacheLockMode::DownloadExclusive)
     }

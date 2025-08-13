@@ -152,14 +152,14 @@ fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<Reg
         if !git_repo.exists() {
             git_in_dir(package_path, &["init"])?;
             git_in_dir(package_path, &["add", "."])?;
-            if let Err(e) = commit_init() {
-                if e.to_string().trim().starts_with("Author identity unknown") {
-                    // we can use any email and name here, as this repository is only used
-                    // to compare packages
-                    git_in_dir(package_path, &["config", "user.email", "test@registry"])?;
-                    git_in_dir(package_path, &["config", "user.name", "test"])?;
-                    commit_init()?;
-                }
+            if let Err(e) = commit_init()
+                && e.to_string().trim().starts_with("Author identity unknown")
+            {
+                // we can use any email and name here, as this repository is only used
+                // to compare packages
+                git_in_dir(package_path, &["config", "user.email", "test@registry"])?;
+                git_in_dir(package_path, &["config", "user.name", "test"])?;
+                commit_init()?;
             }
         }
         registry_packages.push(RegistryPackage { package: p, sha1 });

@@ -331,12 +331,12 @@ impl GitClient {
             .await?
             .error_for_status()
             .map_err(|e| {
-                if let Some(status) = e.status() {
-                    if status == reqwest::StatusCode::FORBIDDEN {
-                        return anyhow::anyhow!(e).context(
-                            "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release or https://release-plz.dev/docs/github/token",
-                        );
-                    }
+                if let Some(status) = e.status()
+                    && status == reqwest::StatusCode::FORBIDDEN
+                {
+                    return anyhow::anyhow!(e).context(
+                        "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release or https://release-plz.dev/docs/github/token",
+                    );
                 }
                 anyhow::anyhow!(e)
             })?;
@@ -362,13 +362,13 @@ impl GitClient {
             .await?
             .error_for_status()
             .map_err(|e| {
-                if let Some(status) = e.status() {
-                    if status == reqwest::StatusCode::FORBIDDEN {
+                if let Some(status) = e.status()
+                    && status == reqwest::StatusCode::FORBIDDEN {
                         return anyhow::anyhow!(e).context(
                             "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release#gitlab",
                         );
                     }
-                }
+
                 anyhow::anyhow!(e)
             })?;
         Ok(())
@@ -865,13 +865,13 @@ impl GitClient {
         let api_path = self.commits_api_path(commit);
         let response = self.client.get(api_path).send().await?;
 
-        if let Err(err) = response.error_for_status_ref() {
-            if let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status() {
-                // The user didn't push the commit to the remote repository.
-                // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
-                // I'm not sure why GitHub returns 422 if the commit doesn't exist.
-                return Ok(RemoteCommit { username: None });
-            }
+        if let Err(err) = response.error_for_status_ref()
+            && let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status()
+        {
+            // The user didn't push the commit to the remote repository.
+            // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
+            // I'm not sure why GitHub returns 422 if the commit doesn't exist.
+            return Ok(RemoteCommit { username: None });
         }
 
         let remote_commit: GitHubCommit = response
