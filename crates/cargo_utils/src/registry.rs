@@ -67,15 +67,15 @@ pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Res
     let mut registries: HashMap<String, Source> = HashMap::new();
 
     // set top-level env var override if it exists.
-    if let Some(registry_name) = registry {
-        if let Some(env_var_override) = registry_index_url_from_env(registry_name)? {
-            registries
-                .entry(registry_name.to_string())
-                .or_insert(Source {
-                    registry: Some(env_var_override),
-                    replace_with: None,
-                });
-        }
+    if let Some(registry_name) = registry
+        && let Some(env_var_override) = registry_index_url_from_env(registry_name)?
+    {
+        registries
+            .entry(registry_name.to_string())
+            .or_insert(Source {
+                registry: Some(env_var_override),
+                replace_with: None,
+            });
     }
 
     // ref: https://doc.rust-lang.org/cargo/reference/config.html#hierarchical-structure

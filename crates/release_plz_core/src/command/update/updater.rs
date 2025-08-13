@@ -85,12 +85,12 @@ impl Updater<'_> {
 
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
-            if let Some(release_commits_regex) = self.req.release_commits() {
-                if !diff.any_commit_matches(release_commits_regex) {
-                    info!("{}: no commit matches the `release_commits` regex", p.name);
-                    continue;
-                };
-            }
+            if let Some(release_commits_regex) = self.req.release_commits()
+                && !diff.any_commit_matches(release_commits_regex)
+            {
+                info!("{}: no commit matches the `release_commits` regex", p.name);
+                continue;
+            };
             let next_version = self.get_next_version(
                 new_workspace_version.as_ref(),
                 p,
@@ -181,10 +181,10 @@ impl Updater<'_> {
                         let pkg_config = self.req.get_package_config(&p.name);
                         let version_updater = pkg_config.generic.version_updater();
                         let next = p.version.next_from_diff(diff, version_updater);
-                        if let Some(workspace_version) = &workspace_version {
-                            if &next >= workspace_version {
-                                return Some(next);
-                            }
+                        if let Some(workspace_version) = &workspace_version
+                            && &next >= workspace_version
+                        {
+                            return Some(next);
                         }
                     }
                 }
@@ -334,19 +334,18 @@ impl Updater<'_> {
                     &all_changed_packages,
                     workspace_dependencies,
                     workspace_dir,
-                ) {
-                    if !deps.is_empty() {
-                        // This package depends on changed packages, so it needs to be updated
-                        let update =
-                            self.calculate_package_update_result(&deps, p, &mut old_changelogs)?;
+                ) && !deps.is_empty()
+                {
+                    // This package depends on changed packages, so it needs to be updated
+                    let update =
+                        self.calculate_package_update_result(&deps, p, &mut old_changelogs)?;
 
-                        result.push(update.clone());
+                    result.push(update.clone());
 
-                        // Mark as changed so packages depending on it will be updated in the next iteration
-                        all_changed_packages.push((p, update.1.version.clone()));
-                        processed.insert(p.name.to_string());
-                        any_package_updated = true;
-                    }
+                    // Mark as changed so packages depending on it will be updated in the next iteration
+                    all_changed_packages.push((p, update.1.version.clone()));
+                    processed.insert(p.name.to_string());
+                    any_package_updated = true;
                 }
             }
 
@@ -842,24 +841,24 @@ fn is_commit_too_old(
     published_at_commit: Option<&str>,
     current_commit_hash: &str,
 ) -> bool {
-    if let Some(tag_commit) = tag_commit.as_ref() {
-        if repository.is_ancestor(current_commit_hash, tag_commit) {
-            debug!(
-                "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) tagged with the previous version.",
-                current_commit_hash, tag_commit
-            );
-            return true;
-        }
+    if let Some(tag_commit) = tag_commit.as_ref()
+        && repository.is_ancestor(current_commit_hash, tag_commit)
+    {
+        debug!(
+            "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) tagged with the previous version.",
+            current_commit_hash, tag_commit
+        );
+        return true;
     }
 
-    if let Some(published_commit) = published_at_commit.as_ref() {
-        if repository.is_ancestor(current_commit_hash, published_commit) {
-            debug!(
-                "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) where the previous version was published.",
-                current_commit_hash, published_commit
-            );
-            return true;
-        }
+    if let Some(published_commit) = published_at_commit.as_ref()
+        && repository.is_ancestor(current_commit_hash, published_commit)
+    {
+        debug!(
+            "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) where the previous version was published.",
+            current_commit_hash, published_commit
+        );
+        return true;
     }
     false
 }
@@ -923,17 +922,16 @@ fn get_changelog(
         if is_package_published {
             let last_version = last_version.unwrap_or(package.version.to_string());
             changelog_builder = changelog_builder.with_previous_version(last_version);
-        } else if let Some(last_version) = last_version {
-            if let Some(old_changelog) = old_changelog {
-                if last_version == next_version.to_string() {
-                    // If the next version is the same as the last version of the changelog,
-                    // don't update the changelog (returning the old one).
-                    // This can happen when no version of the package was published,
-                    // but the changelog already contains the changes of the initial version
-                    // of the package (e.g. because a release PR was merged).
-                    return Ok(old_changelog.to_string());
-                }
-            }
+        } else if let Some(last_version) = last_version
+            && let Some(old_changelog) = old_changelog
+            && last_version == next_version.to_string()
+        {
+            // If the next version is the same as the last version of the changelog,
+            // don't update the changelog (returning the old one).
+            // This can happen when no version of the package was published,
+            // but the changelog already contains the changes of the initial version
+            // of the package (e.g. because a release PR was merged).
+            return Ok(old_changelog.to_string());
         }
     }
     let new_changelog = changelog_builder.build();

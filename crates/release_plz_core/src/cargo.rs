@@ -113,10 +113,10 @@ async fn is_in_cache_sparse(
 }
 
 fn is_in_cache(crate_data: Option<&Crate>, version: &str) -> bool {
-    if let Some(crate_data) = crate_data {
-        if is_version_present(version, crate_data) {
-            return true;
-        }
+    if let Some(crate_data) = crate_data
+        && is_version_present(version, crate_data)
+    {
+        return true;
     }
     false
 }
@@ -173,10 +173,10 @@ fn is_h2_go_away(error: &reqwest::Error) -> bool {
     let mut source = error.source();
 
     while let Some(error) = source {
-        if let Some(h2_error) = error.downcast_ref::<h2::Error>() {
-            if h2_error.is_go_away() {
-                return true;
-            }
+        if let Some(h2_error) = error.downcast_ref::<h2::Error>()
+            && h2_error.is_go_away()
+        {
+            return true;
         }
 
         source = error.source();
