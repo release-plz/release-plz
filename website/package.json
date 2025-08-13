@@ -33,7 +33,7 @@
         "@docusaurus/module-type-aliases": "^3.6.1",
         "markdownlint-cli": "^0.45.0",
         "sharp": "0.34.3",
-        "tsx": "4.20.3"
+        "tsx": "4.20.4"
     },
     "browserslist": {
         "production": [
