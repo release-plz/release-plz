@@ -89,6 +89,7 @@ impl Updater<'_> {
                 && !diff.any_commit_matches(release_commits_regex)
             {
                 info!("{}: no commit matches the `release_commits` regex", p.name);
+                packages_to_check_for_deps.push(p);
                 continue;
             };
             let next_version = self.get_next_version(
