@@ -1208,3 +1208,118 @@ async fn release_plz_works_with_valid_readme_path() {
         "Should handle readme updates correctly"
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_binary_when_library_changes_commit_regex() {
+    let binary = "binary";
+    let library1 = "library1";
+    let library2 = "library2";
+    // dependency chain: binary -> library2 -> library1
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library2}")]),
+        TestPackage::new(library2)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library1}")]),
+        TestPackage::new(library1).with_type(PackageType::Lib),
+    ])
+    .await;
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Update the library.
+    let lib_file = context.package_path(library1).join("src").join("aa.rs");
+    fs_err::write(&lib_file, "pub fn foo() {}").unwrap();
+    context.push_all_changes("edit library");
+
+    let config = r#"
+    [workspace]
+    release_commits = "^edit library$"
+    "#;
+    context.write_release_plz_toml(config);
+
+    context.run_release_pr().success();
+    let today = today();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release v0.1.1");
+
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    // The binary depends on the library, so release-plz should update its version.
+    assert_eq!(
+        open_pr.body.as_ref().unwrap().trim(),
+        format!(
+            r#"
+## 🤖 New release
+
+* `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `{library2}`: 0.1.0 -> 0.1.1
+* `{binary}`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{library1}`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
+
+### Other
+
+- edit library
+</blockquote>
+
+## `{library2}`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
+
+### Other
+
+- updated the following local packages: {library1}
+</blockquote>
+
+## `{binary}`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
+
+### Other
+
+- updated the following local packages: {library2}
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+
+    context.merge_release_pr().await;
+
+    // Check if the binary has the new version.
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "0.1.1"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
+    "#]]
+    .assert_eq(&binary_cargo_toml);
+}
