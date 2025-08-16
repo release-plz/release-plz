@@ -27,6 +27,17 @@ pub fn get_hash_kind() -> anyhow::Result<crates_index::HashKind> {
     Ok(hash_kind)
 }
 
+pub fn try_get_fallback_hash_kind(
+    hash_kind: &crates_index::HashKind,
+) -> Option<crates_index::HashKind> {
+    use crates_index::HashKind;
+
+    match hash_kind {
+        HashKind::Stable => Some(HashKind::Legacy),
+        HashKind::Legacy => None,
+    }
+}
+
 fn get_hash_kind_from_stdout(output: &str) -> crates_index::HashKind {
     match cargo_version_from_stdout(output) {
         Ok(version) => {
@@ -77,5 +88,22 @@ mod tests {
         assert!(version >= Version::new(1, 85, 0));
         let hash_kind = get_hash_kind_from_stdout(stdout);
         assert!(matches!(hash_kind, crates_index::HashKind::Stable));
+    }
+
+    #[test]
+    fn test_registry_fallback() {
+        use crates_index::HashKind;
+
+        for (stdout, _expected_fallback_hash_kind) in [
+            (
+                "cargo 1.85.0 (d73d2caf9 2024-12-31)",
+                Some(HashKind::Stable),
+            ),
+            ("cargo 1.84.0 (abc12345 2024-01-01)", None),
+        ] {
+            let hash_kind = get_hash_kind_from_stdout(stdout);
+            let fallback_hash_kind = try_get_fallback_hash_kind(&hash_kind);
+            assert!(matches!(fallback_hash_kind, _expected_fallback_hash_kind));
+        }
     }
 }

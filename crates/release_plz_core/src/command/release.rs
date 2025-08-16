@@ -21,7 +21,7 @@ use crate::{
     CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
     ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
-    cargo_hash_kind::get_hash_kind,
+    cargo_hash_kind::{get_hash_kind, try_get_fallback_hash_kind},
     changelog_parser,
     git::forge::GitClient,
     pr_parser::{Pr, prs_from_text},
@@ -634,12 +634,36 @@ async fn release_package_if_needed(
         changelog: &changelog,
         prs: &prs,
     };
-    for CargoRegistry { name, mut index } in registry_indexes {
+    for CargoRegistry {
+        name,
+        index: mut primary_index,
+        fallback_index: maybe_fallback_index,
+    } in registry_indexes
+    {
         let token = input.find_registry_token(name.as_deref())?;
-        if is_published(&mut index, package, input.publish_timeout, &token)
-            .await
-            .context("can't determine if package is published")?
-        {
+        let is_published_primary =
+            is_published(&mut primary_index, package, input.publish_timeout, &token).await;
+
+        // DEVNOTE: the following vars will default to the primary index but
+        // may be updated to a fallback index if the primary index returns an
+        // error.
+        let mut pkg_is_published = is_published_primary;
+        let mut index = primary_index;
+        // If a fallback index is defined.
+        if let Some(mut fallback_index) = maybe_fallback_index {
+            // and if the primary index returns an error, attempt to check the
+            // fallback.
+            if pkg_is_published.is_err() {
+                let fallback_is_published =
+                    is_published(&mut fallback_index, package, input.publish_timeout, &token).await;
+                if fallback_is_published.is_ok() {
+                    pkg_is_published = fallback_is_published;
+                    index = fallback_index;
+                }
+            };
+        };
+
+        if pkg_is_published.context("can't determine if package is published")? {
             info!("{} {}: already published", package.name, package.version);
             continue;
         }
@@ -742,15 +766,42 @@ fn registry_indexes(
     let mut registry_indexes = registry_urls
         .into_iter()
         .map(|(registry, u)| {
-            if u.to_string().starts_with("sparse+") {
-                SparseIndex::from_url_with_hash_kind(u.as_str(), hash_kind).map(CargoIndex::Sparse)
-            } else {
-                GitIndex::from_url_with_hash_kind(&format!("registry+{u}"), hash_kind)
-                    .map(CargoIndex::Git)
+            let fallback_hash = try_get_fallback_hash_kind(hash_kind);
+
+            let (maybe_primary_index, maybe_fallback_index) =
+                if u.to_string().starts_with("sparse+") {
+                    let index_url = u.as_str();
+                    let maybe_primary = SparseIndex::from_url_with_hash_kind(index_url, hash_kind)
+                        .map(CargoIndex::Sparse);
+                    let maybe_fallback = fallback_hash.map(|hash_kind| {
+                        SparseIndex::from_url_with_hash_kind(index_url, &hash_kind)
+                            .map(CargoIndex::Sparse)
+                    });
+
+                    (maybe_primary, maybe_fallback)
+                } else {
+                    let index_url = format!("registry+{u}");
+                    let maybe_primary = GitIndex::from_url_with_hash_kind(&index_url, hash_kind)
+                        .map(CargoIndex::Git);
+                    let maybe_fallback = fallback_hash.map(|hash_kind| {
+                        GitIndex::from_url_with_hash_kind(&index_url, &hash_kind)
+                            .map(CargoIndex::Git)
+                    });
+
+                    (maybe_primary, maybe_fallback)
+                };
+
+            match (maybe_primary_index, maybe_fallback_index) {
+                (Ok(primary_index), None) => Ok((primary_index, None)),
+                (Ok(primary_index), Some(Ok(fallback_index))) => {
+                    Ok((primary_index, Some(fallback_index)))
+                }
+                (Err(e), _) | (_, Some(Err(e))) => Err(e),
             }
-            .map(|index| CargoRegistry {
+            .map(|(index, maybe_fallback_index)| CargoRegistry {
                 name: Some(registry),
                 index,
+                fallback_index: maybe_fallback_index,
             })
         })
         .collect::<Result<Vec<CargoRegistry>, crates_index::Error>>()?;
@@ -758,6 +809,7 @@ fn registry_indexes(
         registry_indexes.push(CargoRegistry {
             name: None,
             index: CargoIndex::Git(GitIndex::new_cargo_default()?),
+            fallback_index: None,
         });
     }
     Ok(registry_indexes)
