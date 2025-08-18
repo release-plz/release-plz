@@ -11,7 +11,7 @@ anyhow = "1.0.94"
 assert_cmd = "2.0.16"
 base64 = "0.22.1"
 camino = "1.1.9"
-cargo_metadata = "0.21.0"
+cargo_metadata = "0.22.0"
 cargo = { version = "0.90.0", default-features = false }
 chrono = { version = "0.4.38", default-features = false }
 clap = "4.5.23"
