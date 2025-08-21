@@ -261,7 +261,7 @@ async fn handle_opened_pr(
         .pr_commits(opened_pr.number)
         .await
         .context("cannot get commits of release-plz pr")?;
-    let pr_contributors = contributors_from_commits(&pr_commits);
+    let pr_contributors = contributors_from_commits(&pr_commits, git_client.forge);
     Ok(if pr_contributors.is_empty() {
         // There are no contributors, so we can force-push
         // in this PR, because we don't care about the git history.

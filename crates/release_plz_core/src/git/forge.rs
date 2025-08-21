@@ -68,6 +68,7 @@ pub struct PrCommit {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Author {
+    pub id: i32,
     pub login: String,
 }
 
@@ -152,6 +153,7 @@ impl From<GitLabMr> for GitPr {
             title: value.title,
             body,
             user: Author {
+                id: value.author.id,
                 login: value.author.username,
             },
             labels,
@@ -174,6 +176,7 @@ pub struct GitLabMr {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct GitLabAuthor {
+    pub id: i32,
     pub username: String,
 }
 
@@ -184,6 +187,7 @@ impl From<GitPr> for GitLabMr {
 
         GitLabMr {
             author: GitLabAuthor {
+                id: value.user.id,
                 username: value.user.login,
             },
             iid: value.number,
@@ -951,12 +955,16 @@ pub struct GitHubCommitAuthor {
 
 /// Returns the list of contributors for the given commits,
 /// excluding the PR author and bots.
-pub fn contributors_from_commits(commits: &[PrCommit]) -> Vec<String> {
+pub fn contributors_from_commits(commits: &[PrCommit], forge: ForgeType) -> Vec<String> {
     let mut contributors = commits
         .iter()
         .skip(1) // skip pr author
         .flat_map(|commit| &commit.author)
-        .filter(|author| !author.login.ends_with("[bot]")) // ignore bots
+        .filter(|author| {
+            let is_gitea_actions_account = forge == ForgeType::Gitea && author.id == -2;
+            let is_bot = author.login.ends_with("[bot]") || is_gitea_actions_account;
+            !is_bot
+        })
         .map(|author| author.login.clone())
         .collect::<Vec<_>>();
     contributors.dedup();
@@ -999,19 +1007,29 @@ mod tests {
         let commits = vec![
             PrCommit {
                 author: Some(Author {
+                    id: 1,
                     login: "bob".to_string(),
                 }),
                 sha: "abc".to_string(),
             },
             PrCommit {
                 author: Some(Author {
+                    id: 2,
                     login: "marco".to_string(),
                 }),
                 sha: "abc".to_string(),
             },
             PrCommit {
                 author: Some(Author {
+                    id: 3,
                     login: "release[bot]".to_string(),
+                }),
+                sha: "abc".to_string(),
+            },
+            PrCommit {
+                author: Some(Author {
+                    id: -2,
+                    login: "gitea-actions".to_string(),
                 }),
                 sha: "abc".to_string(),
             },
@@ -1020,7 +1038,7 @@ mod tests {
                 sha: "abc".to_string(),
             },
         ];
-        let contributors = contributors_from_commits(&commits);
+        let contributors = contributors_from_commits(&commits, ForgeType::Gitea);
         assert_eq!(contributors, vec!["marco"]);
     }
 }
