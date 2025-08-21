@@ -95,16 +95,12 @@ mod tests {
     fn test_registry_fallback() {
         use crates_index::HashKind;
 
-        for (stdout, _expected_fallback_hash_kind) in [
-            (
-                "cargo 1.85.0 (d73d2caf9 2024-12-31)",
-                Some(HashKind::Stable),
-            ),
-            ("cargo 1.84.0 (abc12345 2024-01-01)", None),
-        ] {
-            let hash_kind = get_hash_kind_from_stdout(stdout);
-            let fallback_hash_kind = try_get_fallback_hash_kind(&hash_kind);
-            assert!(matches!(fallback_hash_kind, _expected_fallback_hash_kind));
-        }
+        let hash_kind = get_hash_kind_from_stdout("cargo 1.85.0 (d73d2caf9 2024-12-31)");
+        let fallback_hash_kind = try_get_fallback_hash_kind(&hash_kind);
+        assert!(matches!(fallback_hash_kind, Some(HashKind::Legacy)));
+
+        let hash_kind = get_hash_kind_from_stdout("cargo 1.84.0 (1234abcde 2024-12-31)");
+        let fallback_hash_kind = try_get_fallback_hash_kind(&hash_kind);
+        assert!(fallback_hash_kind.is_none());
     }
 }
