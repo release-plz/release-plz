@@ -33,6 +33,7 @@ pub fn try_get_fallback_hash_kind(
     use crates_index::HashKind;
 
     match hash_kind {
+        // Some registries still use the legacy hash kind, so we fallback to it.
         HashKind::Stable => Some(HashKind::Legacy),
         HashKind::Legacy => None,
     }
