@@ -636,32 +636,13 @@ async fn release_package_if_needed(
     };
     for CargoRegistry {
         name,
-        index: mut primary_index,
-        fallback_index: maybe_fallback_index,
+        index: primary_index,
+        fallback_index,
     } in registry_indexes
     {
         let token = input.find_registry_token(name.as_deref())?;
-        let is_published_primary =
-            is_published(&mut primary_index, package, input.publish_timeout, &token).await;
-
-        // DEVNOTE: the following vars will default to the primary index but
-        // may be updated to a fallback index if the primary index returns an
-        // error.
-        let mut pkg_is_published = is_published_primary;
-        let mut index = primary_index;
-        // If a fallback index is defined.
-        if let Some(mut fallback_index) = maybe_fallback_index {
-            // and if the primary index returns an error, attempt to check the
-            // fallback.
-            if pkg_is_published.is_err() {
-                let fallback_is_published =
-                    is_published(&mut fallback_index, package, input.publish_timeout, &token).await;
-                if fallback_is_published.is_ok() {
-                    pkg_is_published = fallback_is_published;
-                    index = fallback_index;
-                }
-            };
-        };
+        let (pkg_is_published, mut index) =
+            is_package_published(input, package, primary_index, fallback_index, &token).await;
 
         if pkg_is_published.context("can't determine if package is published")? {
             info!("{} {}: already published", package.name, package.version);
@@ -683,6 +664,37 @@ async fn release_package_if_needed(
         prs,
     });
     Ok(package_release)
+}
+
+async fn is_package_published(
+    input: &ReleaseRequest,
+    package: &Package,
+    mut primary_index: CargoIndex,
+    fallback_index: Option<CargoIndex>,
+    token: &Option<secrecy::SecretBox<str>>,
+) -> (anyhow::Result<bool>, CargoIndex) {
+    let is_published_primary =
+        is_published(&mut primary_index, package, input.publish_timeout, token).await;
+
+    // DEVNOTE: the following vars will default to the primary index but
+    // may be updated to a fallback index if the primary index returns an
+    // error.
+    let mut pkg_is_published = is_published_primary;
+    let mut index = primary_index;
+    // If a fallback index is defined.
+    if let Some(mut fallback_index) = fallback_index {
+        // and if the primary index returns an error, attempt to check the
+        // fallback.
+        if pkg_is_published.is_err() {
+            let fallback_is_published =
+                is_published(&mut fallback_index, package, input.publish_timeout, token).await;
+            if fallback_is_published.is_ok() {
+                pkg_is_published = fallback_is_published;
+                index = fallback_index;
+            }
+        };
+    };
+    (pkg_is_published, index)
 }
 
 #[derive(Debug, PartialEq, Eq)]
