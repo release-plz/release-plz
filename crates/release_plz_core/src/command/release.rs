@@ -779,46 +779,8 @@ fn registry_indexes(
 
     let mut registry_indexes = registry_urls
         .into_iter()
-        .map(|(registry, u)| {
-            let fallback_hash = try_get_fallback_hash_kind(hash_kind);
-
-            let (maybe_primary_index, maybe_fallback_index) =
-                if u.to_string().starts_with("sparse+") {
-                    let index_url = u.as_str();
-                    let maybe_primary = SparseIndex::from_url_with_hash_kind(index_url, hash_kind)
-                        .map(CargoIndex::Sparse);
-                    let maybe_fallback = fallback_hash.map(|hash_kind| {
-                        SparseIndex::from_url_with_hash_kind(index_url, &hash_kind)
-                            .map(CargoIndex::Sparse)
-                    });
-
-                    (maybe_primary, maybe_fallback)
-                } else {
-                    let index_url = format!("registry+{u}");
-                    let maybe_primary = GitIndex::from_url_with_hash_kind(&index_url, hash_kind)
-                        .map(CargoIndex::Git);
-                    let maybe_fallback = fallback_hash.map(|hash_kind| {
-                        GitIndex::from_url_with_hash_kind(&index_url, &hash_kind)
-                            .map(CargoIndex::Git)
-                    });
-
-                    (maybe_primary, maybe_fallback)
-                };
-
-            match (maybe_primary_index, maybe_fallback_index) {
-                (Ok(primary_index), None) => Ok((primary_index, None)),
-                (Ok(primary_index), Some(Ok(fallback_index))) => {
-                    Ok((primary_index, Some(fallback_index)))
-                }
-                (Err(e), _) | (_, Some(Err(e))) => Err(e),
-            }
-            .map(|(index, maybe_fallback_index)| CargoRegistry {
-                name: Some(registry),
-                index,
-                fallback_index: maybe_fallback_index,
-            })
-        })
-        .collect::<Result<Vec<CargoRegistry>, crates_index::Error>>()?;
+        .map(|(registry, u)| get_cargo_registry(hash_kind, registry, u))
+        .collect::<anyhow::Result<Vec<CargoRegistry>>>()?;
     if registry_indexes.is_empty() {
         registry_indexes.push(CargoRegistry {
             name: None,
@@ -827,6 +789,47 @@ fn registry_indexes(
         });
     }
     Ok(registry_indexes)
+}
+
+fn get_cargo_registry(
+    hash_kind: &crates_index::HashKind,
+    registry: String,
+    u: Url,
+) -> anyhow::Result<CargoRegistry> {
+    let fallback_hash = try_get_fallback_hash_kind(hash_kind);
+
+    let (maybe_primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
+        let index_url = u.as_str();
+        let maybe_primary =
+            SparseIndex::from_url_with_hash_kind(index_url, hash_kind).map(CargoIndex::Sparse);
+        let maybe_fallback = fallback_hash.map(|hash_kind| {
+            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)
+        });
+
+        (maybe_primary, maybe_fallback)
+    } else {
+        let index_url = format!("registry+{u}");
+        let maybe_primary =
+            GitIndex::from_url_with_hash_kind(&index_url, hash_kind).map(CargoIndex::Git);
+        let maybe_fallback = fallback_hash.map(|hash_kind| {
+            GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git)
+        });
+
+        (maybe_primary, maybe_fallback)
+    };
+
+    match (maybe_primary_index, maybe_fallback_index) {
+        (Ok(primary_index), None) => Ok((primary_index, None)),
+        (Ok(primary_index), Some(Ok(fallback_index))) => Ok((primary_index, Some(fallback_index))),
+        (Err(e), _) | (_, Some(Err(e))) => {
+            Err(anyhow::anyhow!("failed to get cargo registry: {e}"))
+        }
+    }
+    .map(|(index, maybe_fallback_index)| CargoRegistry {
+        name: Some(registry),
+        index,
+        fallback_index: maybe_fallback_index,
+    })
 }
 
 struct ReleaseInfo<'a> {
