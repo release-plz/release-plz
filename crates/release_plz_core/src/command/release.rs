@@ -666,6 +666,8 @@ async fn release_package_if_needed(
     Ok(package_release)
 }
 
+/// Check if `package` is published in the primary index.
+/// If the check fails, check the fallback index if it exists.
 async fn is_package_published(
     input: &ReleaseRequest,
     package: &Package,
@@ -676,16 +678,11 @@ async fn is_package_published(
     let is_published_primary =
         is_published(&mut primary_index, package, input.publish_timeout, token).await;
 
-    // DEVNOTE: the following vars will default to the primary index but
-    // may be updated to a fallback index if the primary index returns an
-    // error.
-    let pkg_is_published = is_published_primary;
-    let index = primary_index;
     // If a fallback index is defined.
     if let Some(mut fallback_index) = fallback_index {
         // and if the primary index returns an error, attempt to check the
         // fallback.
-        if pkg_is_published.is_err() {
+        if is_published_primary.is_err() {
             let fallback_is_published =
                 is_published(&mut fallback_index, package, input.publish_timeout, token).await;
             if let Ok(fallback_is_published) = fallback_is_published {
@@ -693,7 +690,7 @@ async fn is_package_published(
             }
         };
     };
-    Ok((pkg_is_published?, index))
+    Ok((is_published_primary?, primary_index))
 }
 
 #[derive(Debug, PartialEq, Eq)]
