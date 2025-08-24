@@ -642,9 +642,11 @@ async fn release_package_if_needed(
     {
         let token = input.find_registry_token(name.as_deref())?;
         let (pkg_is_published, mut index) =
-            is_package_published(input, package, primary_index, fallback_index, &token).await;
+            is_package_published(input, package, primary_index, fallback_index, &token)
+                .await
+                .context("can't determine if package is published")?;
 
-        if pkg_is_published.context("can't determine if package is published")? {
+        if pkg_is_published {
             info!("{} {}: already published", package.name, package.version);
             continue;
         }
