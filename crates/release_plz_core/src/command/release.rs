@@ -686,7 +686,7 @@ async fn is_package_published(
 
     // If a fallback index is defined.
     if let Some(mut fallback_index) = fallback_index {
-        // and if the primary index returns an error, attempt to check the
+        // And if the primary index returns an error, attempt to check the
         // fallback.
         if is_published_primary.is_err() {
             let fallback_is_published =
