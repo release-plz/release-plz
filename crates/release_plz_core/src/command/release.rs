@@ -679,8 +679,8 @@ async fn is_package_published(
     // DEVNOTE: the following vars will default to the primary index but
     // may be updated to a fallback index if the primary index returns an
     // error.
-    let mut pkg_is_published = is_published_primary;
-    let mut index = primary_index;
+    let pkg_is_published = is_published_primary;
+    let index = primary_index;
     // If a fallback index is defined.
     if let Some(mut fallback_index) = fallback_index {
         // and if the primary index returns an error, attempt to check the
@@ -688,9 +688,8 @@ async fn is_package_published(
         if pkg_is_published.is_err() {
             let fallback_is_published =
                 is_published(&mut fallback_index, package, input.publish_timeout, token).await;
-            if fallback_is_published.is_ok() {
-                pkg_is_published = fallback_is_published;
-                index = fallback_index;
+            if let Ok(fallback_is_published) = fallback_is_published {
+                return Ok((fallback_is_published, fallback_index));
             }
         };
     };
