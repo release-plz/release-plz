@@ -677,7 +677,7 @@ async fn is_package_published(
     package: &Package,
     mut primary_index: CargoIndex,
     fallback_index: Option<CargoIndex>,
-    token: &Option<secrecy::SecretBox<str>>,
+    token: &Option<SecretString>,
 ) -> anyhow::Result<(bool, CargoIndex)> {
     let is_published_primary =
         is_published(&mut primary_index, package, input.publish_timeout, token).await;
