@@ -670,6 +670,8 @@ async fn release_package_if_needed(
 
 /// Check if `package` is published in the primary index.
 /// If the check fails, check the fallback index if it exists.
+///
+/// Returns whether the package is published and the index used for the check.
 async fn is_package_published(
     input: &ReleaseRequest,
     package: &Package,
