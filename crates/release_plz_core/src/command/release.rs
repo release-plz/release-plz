@@ -779,7 +779,7 @@ fn registry_indexes(
 
     let mut registry_indexes = registry_urls
         .into_iter()
-        .map(|(registry, u)| get_cargo_registry(hash_kind, registry, u))
+        .map(|(registry, u)| get_cargo_registry(hash_kind, registry, &u))
         .collect::<anyhow::Result<Vec<CargoRegistry>>>()?;
     if registry_indexes.is_empty() {
         registry_indexes.push(CargoRegistry {
@@ -794,7 +794,7 @@ fn registry_indexes(
 fn get_cargo_registry(
     hash_kind: &crates_index::HashKind,
     registry: String,
-    u: Url,
+    u: &Url,
 ) -> anyhow::Result<CargoRegistry> {
     let fallback_hash = try_get_fallback_hash_kind(hash_kind);
 
