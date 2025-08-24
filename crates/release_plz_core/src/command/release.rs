@@ -644,7 +644,7 @@ async fn release_package_if_needed(
         let (pkg_is_published, mut index) =
             is_package_published(input, package, primary_index, fallback_index, &token)
                 .await
-                .context("can't determine if package is published")?;
+                .with_context(|| format!("can't determine if package {} is published", package.name))?;
 
         if pkg_is_published {
             info!("{} {}: already published", package.name, package.version);
