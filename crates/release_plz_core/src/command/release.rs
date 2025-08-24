@@ -819,11 +819,11 @@ fn get_cargo_registry(
     };
 
     match (maybe_primary_index, maybe_fallback_index) {
-        (Ok(primary_index), None) => Ok((primary_index, None)),
+        // In cases where the primary index succeeds, the lookup should
+        // continue regardless of the state of the fallback index.
+        (Ok(primary_index), None) | (Ok(primary_index), Some(Err(_))) => Ok((primary_index, None)),
         (Ok(primary_index), Some(Ok(fallback_index))) => Ok((primary_index, Some(fallback_index))),
-        (Err(e), _) | (_, Some(Err(e))) => {
-            Err(anyhow::anyhow!("failed to get cargo registry: {e}"))
-        }
+        (Err(e), _) => Err(anyhow::anyhow!("failed to get cargo registry: {e}")),
     }
     .map(|(index, maybe_fallback_index)| CargoRegistry {
         name: Some(registry),
