@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.9](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.8...release_plz_core-v0.34.9) - 2025-08-25
+
+### Fixed
+
+- recognize gitea-actions as bot account ([#2347](https://github.com/release-plz/release-plz/pull/2347))
+
 ## [0.34.8](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.7...release_plz_core-v0.34.8) - 2025-08-15
 
 ### Fixed
