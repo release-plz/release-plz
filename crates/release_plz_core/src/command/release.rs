@@ -681,22 +681,26 @@ async fn is_package_published(
     fallback_index: Option<CargoIndex>,
     token: &Option<SecretString>,
 ) -> anyhow::Result<(bool, CargoIndex)> {
-    let is_published_primary =
+    let is_published_in_primary =
         is_published(&mut primary_index, package, input.publish_timeout, token).await;
 
     // If a fallback index is defined.
     if let Some(mut fallback_index) = fallback_index {
         // And if the primary index returns an error, attempt to check the
         // fallback.
-        if is_published_primary.is_err() {
-            let fallback_is_published =
+        if let Err(e) = &is_published_in_primary {
+            warn!(
+                "Error checking primary index for package {}: {e:?}. Trying fallback index.",
+                package.name
+            );
+            let is_published_in_fallback =
                 is_published(&mut fallback_index, package, input.publish_timeout, token).await;
-            if let Ok(fallback_is_published) = fallback_is_published {
+            if let Ok(fallback_is_published) = is_published_in_fallback {
                 return Ok((fallback_is_published, fallback_index));
             }
         };
     };
-    Ok((is_published_primary?, primary_index))
+    Ok((is_published_in_primary?, primary_index))
 }
 
 #[derive(Debug, PartialEq, Eq)]
