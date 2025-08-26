@@ -822,18 +822,21 @@ fn get_cargo_registry(
         (maybe_primary, maybe_fallback)
     };
 
-    match (maybe_primary_index, maybe_fallback_index) {
+    let primary_index = maybe_primary_index.context("failed to get cargo registry")?;
+
+    let fallback_index = match maybe_fallback_index {
         // In cases where the primary index succeeds, the lookup should
         // continue regardless of the state of the fallback index.
-        (Ok(primary_index), None) | (Ok(primary_index), Some(Err(_))) => Ok((primary_index, None)),
-        (Ok(primary_index), Some(Ok(fallback_index))) => Ok((primary_index, Some(fallback_index))),
-        (Err(e), _) => Err(anyhow::anyhow!("failed to get cargo registry: {e}")),
-    }
-    .map(|(index, maybe_fallback_index)| CargoRegistry {
+        None | Some(Err(_)) => None,
+        Some(Ok(fallback_index)) => Some(fallback_index),
+    };
+
+    let registry = CargoRegistry {
         name: Some(registry),
-        index,
-        fallback_index: maybe_fallback_index,
-    })
+        index: primary_index,
+        fallback_index,
+    };
+    Ok(registry)
 }
 
 struct ReleaseInfo<'a> {
