@@ -75,17 +75,9 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     // Release-plz will compare the registry packages with the local packages,
     // to determine the new commits.
     // Filter packages to only include those that should be published according to release-plz config.
-    let publishable_packages = local_project
-        .publishable_packages()
-        .into_iter()
-        .filter(|pkg| {
-            let config = input.get_package_config(&pkg.name);
-            config.should_publish()
-        })
-        .collect::<Vec<_>>();
     let registry_packages = registry_packages::get_registry_packages(
         input.registry_manifest(),
-        &publishable_packages,
+        &local_project.publishable_packages(),
         input.registry(),
     )?;
 
