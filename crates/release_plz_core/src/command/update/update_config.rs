@@ -15,6 +15,9 @@ pub struct UpdateConfig {
     pub changelog_update: bool,
     /// High-level toggle to process this package or ignore it.
     pub release: bool,
+    /// Whether to publish this package to a registry.
+    /// Default: `true`.
+    pub publish: bool,
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: bool,
@@ -51,6 +54,10 @@ impl PackageUpdateConfig {
     pub fn should_update_changelog(&self) -> bool {
         self.generic.changelog_update
     }
+
+    pub fn should_publish(&self) -> bool {
+        self.generic.publish
+    }
 }
 
 impl Default for UpdateConfig {
@@ -59,6 +66,7 @@ impl Default for UpdateConfig {
             semver_check: true,
             changelog_update: true,
             release: true,
+            publish: true,
             features_always_increment_minor: false,
             tag_name_template: None,
             changelog_path: None,
@@ -87,6 +95,13 @@ impl UpdateConfig {
     pub fn with_changelog_update(self, changelog_update: bool) -> Self {
         Self {
             changelog_update,
+            ..self
+        }
+    }
+
+    pub fn with_publish(self, publish: bool) -> Self {
+        Self {
+            publish,
             ..self
         }
     }
