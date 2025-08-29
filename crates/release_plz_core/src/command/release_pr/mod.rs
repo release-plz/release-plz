@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::semver::Version;
 use cargo_utils::CARGO_TOML;
@@ -152,7 +154,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
             let pr = open_or_update_release_pr(
                 &local_manifest,
                 &packages_to_update,
-                &git_client,
+                git_client.into(),
                 &repo,
                 ReleasePrOptions {
                     draft: input.draft,
@@ -181,7 +183,7 @@ struct ReleasePrOptions {
 async fn open_or_update_release_pr(
     local_manifest: &Utf8Path,
     packages_to_update: &PackagesUpdate,
-    git_client: &GitClient,
+    git_client: Arc<GitClient>,
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
 ) -> anyhow::Result<ReleasePr> {
@@ -234,7 +236,7 @@ async fn open_or_update_release_pr(
             )
             .await
         }
-        None => create_pr(git_client, repo, &new_pr).await,
+        None => create_pr(&git_client, repo, &new_pr).await,
     }?;
     let release_pr = ReleasePr {
         releases: packages_to_update
@@ -251,7 +253,7 @@ async fn open_or_update_release_pr(
 }
 
 async fn handle_opened_pr(
-    git_client: &GitClient,
+    git_client: Arc<GitClient>,
     opened_pr: &GitPr,
     repo: &Repo,
     new_pr: &Pr,
@@ -266,7 +268,7 @@ async fn handle_opened_pr(
         // There are no contributors, so we can force-push
         // in this PR, because we don't care about the git history.
         match update_pr(
-            git_client,
+            git_client.clone(),
             opened_pr,
             pr_commits.len(),
             repo,
@@ -286,7 +288,7 @@ async fn handle_opened_pr(
                     .close_pr(opened_pr.number)
                     .await
                     .context("cannot close old release-plz prs")?;
-                create_pr(git_client, repo, new_pr).await?
+                create_pr(&git_client, repo, new_pr).await?
             }
         }
     } else {
@@ -299,7 +301,7 @@ async fn handle_opened_pr(
             .close_pr(opened_pr.number)
             .await
             .context("cannot close old release-plz prs")?;
-        create_pr(git_client, repo, new_pr).await?
+        create_pr(&git_client, repo, new_pr).await?
     })
 }
 
@@ -317,7 +319,7 @@ async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Resu
 }
 
 async fn update_pr(
-    git_client: &GitClient,
+    git_client: Arc<GitClient>,
     opened_pr: &GitPr,
     commits_number: usize,
     repository: &Repo,
@@ -331,7 +333,7 @@ async fn update_pr(
         )
     })?;
     if matches!(git_client.forge, ForgeType::Github) {
-        github_force_push(git_client, opened_pr, repository).await?;
+        github_force_push(git_client.clone(), opened_pr, repository).await?;
     } else {
         force_push(opened_pr, repository)?;
     }
@@ -419,14 +421,14 @@ fn force_push(pr: &GitPr, repository: &Repo) -> anyhow::Result<()> {
 }
 
 async fn github_force_push(
-    client: &GitClient,
+    client: Arc<GitClient>,
     pr: &GitPr,
     repository: &Repo,
 ) -> anyhow::Result<()> {
     // Create a temporary branch.
     let tmp_release_branch = {
         let name = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
-        TmpBranch::checkout_new(repository, name)
+        TmpBranch::checkout_new(repository, name, client.clone())
     }?;
 
     // Push the "Verified" commit in the temporary branch using
@@ -437,7 +439,7 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    github_create_release_branch(client, repository, &tmp_release_branch.name, &pr.title).await?;
+    github_create_release_branch(&client, repository, &tmp_release_branch.name, &pr.title).await?;
 
     repository.fetch(&tmp_release_branch.name)?;
 
@@ -456,25 +458,33 @@ async fn github_force_push(
 /// Temporary branch.
 /// It deletes the branch in remote when it goes out of scope.
 /// In this way, we can ensure that the branch is deleted even if the program panics.
-struct TmpBranch<'a> {
+struct TmpBranch {
     name: String,
-    repository: &'a Repo,
+    client: Arc<GitClient>,
 }
 
-impl<'a> TmpBranch<'a> {
-    fn checkout_new(repository: &'a Repo, name: impl Into<String>) -> anyhow::Result<Self> {
+impl TmpBranch {
+    fn checkout_new(
+        repository: &Repo,
+        name: impl Into<String>,
+        client: Arc<GitClient>,
+    ) -> anyhow::Result<Self> {
         let name = name.into();
         repository.checkout_new_branch(&name)?;
-        let branch = Self { name, repository };
+        let branch = Self { name, client };
         Ok(branch)
     }
 }
 
-impl Drop for TmpBranch<'_> {
+impl Drop for TmpBranch {
     fn drop(&mut self) {
-        if let Err(e) = self.repository.delete_branch_in_remote(&self.name) {
-            tracing::error!("cannot delete branch {}: {:?}", self.name, e);
-        }
+        let client = self.client.clone();
+        let name = self.name.clone();
+        tokio::spawn(async move {
+            if let Err(e) = client.delete_branch(&name).await {
+                tracing::error!("cannot delete branch {}: {:?}", name, e);
+            }
+        });
     }
 }
 
