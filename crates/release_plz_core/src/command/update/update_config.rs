@@ -100,10 +100,7 @@ impl UpdateConfig {
     }
 
     pub fn with_publish(self, publish: bool) -> Self {
-        Self {
-            publish,
-            ..self
-        }
+        Self { publish, ..self }
     }
 
     pub fn version_updater(&self) -> VersionUpdater {
