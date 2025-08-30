@@ -304,10 +304,10 @@ async fn handle_opened_pr(
 }
 
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
-    repo.checkout_new_branch(&pr.branch)?;
     if matches!(git_client.forge, ForgeType::Github) {
         github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
     } else {
+        repo.checkout_new_branch(&pr.branch)?;
         create_release_branch(repo, &pr.branch, &pr.title)?;
     }
     debug!("changes committed to release branch {}", pr.branch);
@@ -494,7 +494,8 @@ async fn github_create_release_branch(
     release_branch: &str,
     commit_message: &str,
 ) -> anyhow::Result<()> {
-    repository.push(release_branch)?;
+    let sha = repository.current_commit_hash()?;
+    client.create_branch(release_branch, &sha).await?;
     github_graphql::commit_changes(client, repository, commit_message, release_branch).await
 }
 

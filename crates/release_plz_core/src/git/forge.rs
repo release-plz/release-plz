@@ -902,6 +902,63 @@ impl GitClient {
         };
         format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
+
+    /// Create a new branch from the given SHA.
+    pub async fn create_branch(&self, branch_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+        match self.forge {
+            ForgeType::Github => {
+                self.post_github_ref(&format!("refs/heads/{branch_name}"), sha)
+                    .await
+            }
+            ForgeType::Gitlab => self.post_gitlab_branch(branch_name, sha).await,
+            ForgeType::Gitea => self.post_gitea_branch(branch_name, sha).await,
+        }
+    }
+
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/git/refs", self.repo_url()))
+            .json(&json!({
+                "ref": ref_name,
+                "sha": sha
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to create branch")?;
+        Ok(())
+    }
+
+    async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/repository/branches", self.repo_url()))
+            .json(&json!({
+                "branch": branch_name,
+                "ref": sha
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to create branch")?;
+        Ok(())
+    }
+
+    async fn post_gitea_branch(&self, branch_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/branches", self.repo_url()))
+            .json(&json!({
+                "new_branch_name": branch_name,
+                "old_ref_name": sha
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to create branch")?;
+        Ok(())
+    }
 }
 
 pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
