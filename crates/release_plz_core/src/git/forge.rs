@@ -903,7 +903,7 @@ impl GitClient {
         format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
 
-        async fn post_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), anyhow::Error> {
         self.client
             .post(format!("{}/git/refs", self.repo_url()))
             .json(&json!({
