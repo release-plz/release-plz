@@ -54,6 +54,7 @@ strip-ansi-escapes.workspace = true
 tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 http.workspace = true
+urlencoding.workspace = true
 
 [dev-dependencies]
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
