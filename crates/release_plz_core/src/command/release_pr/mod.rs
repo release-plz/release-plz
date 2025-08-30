@@ -482,7 +482,7 @@ impl Drop for TmpBranch {
         let name = self.name.clone();
         tokio::spawn(async move {
             if let Err(e) = client.delete_branch(&name).await {
-                tracing::error!("cannot delete branch {}: {:?}", name, e);
+                tracing::error!("cannot delete branch {name}: {e:?}");
             }
         });
     }

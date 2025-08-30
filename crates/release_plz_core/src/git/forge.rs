@@ -904,7 +904,7 @@ impl GitClient {
     }
 
     /// Delete a branch.
-    pub async fn delete_branch(&self, branch_name: &str) -> Result<(), anyhow::Error> {
+    pub async fn delete_branch(&self, branch_name: &str) -> anyhow::Result<()> {
         let url = match self.forge {
             ForgeType::Github => format!("{}/git/refs/heads/{}", self.repo_url(), branch_name),
             ForgeType::Gitlab => format!(
