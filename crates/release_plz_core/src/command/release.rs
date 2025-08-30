@@ -911,8 +911,10 @@ async fn release_package(
                 "chore: Release package {} version {}",
                 release_info.package.name, release_info.package.version
             );
-            repo.tag(release_info.git_tag, &message)?;
-            repo.push(release_info.git_tag)?;
+            let sha = repo.current_commit_hash()?;
+            git_client
+                .create_tag(release_info.git_tag, &message, &sha)
+                .await?;
         }
 
         let contributors = get_contributors(release_info, git_client).await;

@@ -902,6 +902,106 @@ impl GitClient {
         };
         format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
+
+        async fn post_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/git/refs", self.repo_url()))
+            .json(&json!({
+                "ref": ref_name,
+                "sha": sha
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to create branch")?;
+        Ok(())
+    }
+
+    /// Creates an annotated tag.
+    pub async fn create_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        match self.forge {
+            ForgeType::Github => self.create_github_tag(tag_name, message, sha).await,
+            ForgeType::Gitlab => self.create_gitlab_tag(tag_name, message, sha).await,
+            ForgeType::Gitea => self.create_gitea_tag(tag_name, message, sha).await,
+        }
+    }
+
+    async fn create_github_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        let tag_object_sha = self
+            .client
+            .post(format!("{}/git/tags", self.repo_url()))
+            .json(&json!({
+                "tag": tag_name,
+                "message": message,
+                "object": sha,
+                "type": "commit"
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await?
+            .json::<serde_json::Value>()
+            .await?
+            .get("sha")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .with_context(|| format!("failed to create git tag object for tag '{tag_name}'"))?;
+        self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
+            .await
+    }
+
+    async fn create_gitlab_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/repository/tags", self.repo_url()))
+            .json(&json!({
+                "tag_name": tag_name,
+                "ref": sha,
+                "message": message
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to create git tag")?;
+        Ok(())
+    }
+
+    async fn create_gitea_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/tags", self.repo_url()))
+            .json(&json!({
+                "tag_name": tag_name,
+                "target": sha,
+                "message": message
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to create git tag")?;
+        Ok(())
+    }
 }
 
 pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
