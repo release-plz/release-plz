@@ -519,14 +519,18 @@ impl Updater<'_> {
             .git_tag(&package.name, &package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
         if tag_commit.is_some() {
-            let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
-            anyhow::ensure!(
-                registry_package.package.version == package.version,
-                "package `{}` has a different version ({}) with respect to the registry package ({}), but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish the new version of this package.",
-                package.name,
-                package.version,
-                registry_package.package.version
-            );
+            // Only check registry for packages that should be published
+            let config = self.req.get_package_config(&package.name);
+            if config.should_publish() {
+                let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
+                anyhow::ensure!(
+                    registry_package.package.version == package.version,
+                    "package `{}` has a different version ({}) with respect to the registry package ({}), but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish the new version of this package.",
+                    package.name,
+                    package.version,
+                    registry_package.package.version
+                );
+            }
         }
         self.get_package_diff(
             &package_path,
