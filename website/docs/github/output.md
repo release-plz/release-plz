@@ -16,7 +16,7 @@ When the action runs with `command: release-pr`, it outputs the following proper
     Each entry is an object containing:
     - `package_name`: The name of the edited package.
     - `version`: The next version of the package. The PR updates the package to this version.
-- `prs_created`: Whether release-plz created any release PR. *Boolean.*
+- `prs_created`: Whether release-plz created any release PR. *"true" or "false".*
 
 When the action runs with `command: release`, it outputs the following properties:
 
@@ -32,7 +32,7 @@ When the action runs with `command: release`, it outputs the following propertie
     [git_tag_enable](../config.md#the-git_tag_enable-field) set to `false`, so that
     you can use this to create the git tag yourself.
   - `version`: The version of the package that was released.
-- `releases_created`: Whether release-plz released any package. *Boolean.*
+- `releases_created`: Whether release-plz released any package. *"true" or "false".*
 
 ## Example: read the output
 
