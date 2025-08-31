@@ -234,7 +234,7 @@ async fn open_or_update_release_pr(
             )
             .await
         }
-        None => create_pr(&git_client, repo, &new_pr).await,
+        None => create_pr(git_client, repo, &new_pr).await,
     }?;
     let release_pr = ReleasePr {
         releases: packages_to_update
@@ -286,7 +286,7 @@ async fn handle_opened_pr(
                     .close_pr(opened_pr.number)
                     .await
                     .context("cannot close old release-plz prs")?;
-                create_pr(&git_client, repo, new_pr).await?
+                create_pr(git_client, repo, new_pr).await?
             }
         }
     } else {
@@ -299,7 +299,7 @@ async fn handle_opened_pr(
             .close_pr(opened_pr.number)
             .await
             .context("cannot close old release-plz prs")?;
-        create_pr(&git_client, repo, new_pr).await?
+        create_pr(git_client, repo, new_pr).await?
     })
 }
 
@@ -436,7 +436,7 @@ async fn github_force_push(
         // - If we revert the last commit of the release PR branch, GitHub will close the release PR
         //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
         // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-        github_create_release_branch(&client, repository, &tmp_release_branch, &pr.title).await?;
+        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
 
         repository.fetch(&tmp_release_branch)?;
 
