@@ -911,10 +911,19 @@ async fn release_package(
                 "chore: Release package {} version {}",
                 release_info.package.name, release_info.package.version
             );
-            let sha = repo.current_commit_hash()?;
-            git_client
-                .create_tag(release_info.git_tag, &message, &sha)
-                .await?;
+            let should_sign_tags = repo
+                .git(&["config", "--get", "tag.gpgSign", "--default", "false"])
+                .map(|s| s.trim() == "true")?;
+            // If tag signing is enabled, create the tag locally instead of using the API
+            if should_sign_tags {
+                repo.tag(release_info.git_tag, &message)?;
+                repo.push(release_info.git_tag)?;
+            } else {
+                let sha = repo.current_commit_hash()?;
+                git_client
+                    .create_tag(release_info.git_tag, &message, &sha)
+                    .await?;
+            }
         }
 
         let contributors = get_contributors(release_info, git_client).await;
