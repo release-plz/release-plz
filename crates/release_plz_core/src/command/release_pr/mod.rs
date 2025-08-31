@@ -449,17 +449,15 @@ async fn execute_github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
-
-    repository.fetch(tmp_release_branch)?;
+    let sha =
+        github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
-    repository.force_push(&format!(
-        "{}/{}:{}",
-        repository.original_remote(),
-        tmp_release_branch,
-        pr.branch()
-    ))?;
+    client
+        .update_branch(pr.branch(), &sha)
+        .await
+        .context("failed to force push PR branch")?;
+
     Ok(())
 }
 
@@ -478,7 +476,7 @@ async fn github_create_release_branch(
     repository: &Repo,
     release_branch: &str,
     commit_message: &str,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let sha = repository.current_commit_hash()?;
     client.create_branch(release_branch, &sha).await?;
     github_graphql::commit_changes(client, repository, commit_message, release_branch).await

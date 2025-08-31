@@ -926,7 +926,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .context("failed to create ref")?;
         Ok(())
     }
 
@@ -957,6 +957,36 @@ impl GitClient {
             .successful_status()
             .await
             .context("failed to create branch")?;
+        Ok(())
+    }
+
+    pub async fn update_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
+        match self.forge {
+            ForgeType::Github => {
+                self.patch_github_ref(&format!("heads/{branch_name}"), sha)
+                    .await
+            }
+            ForgeType::Gitlab => {
+                unimplemented!("Gitlab support for updating branches is not implemented yet")
+            }
+            ForgeType::Gitea => {
+                unimplemented!("Gitea support for updating branches is not implemented yet")
+            }
+        }
+    }
+
+    async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
+            .json(&json!({
+                "sha": sha,
+                "force": true
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to update ref")?;
         Ok(())
     }
 
