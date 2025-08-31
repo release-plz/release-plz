@@ -904,7 +904,7 @@ impl GitClient {
     }
 
     /// Create a new branch from the given SHA.
-    pub async fn create_branch(&self, branch_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+    pub async fn create_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
         match self.forge {
             ForgeType::Github => {
                 self.post_github_ref(&format!("refs/heads/{branch_name}"), sha)
@@ -915,7 +915,7 @@ impl GitClient {
         }
     }
 
-    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
         self.client
             .post(format!("{}/git/refs", self.repo_url()))
             .json(&json!({
@@ -930,7 +930,7 @@ impl GitClient {
         Ok(())
     }
 
-    async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+    async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
         self.client
             .post(format!("{}/repository/branches", self.repo_url()))
             .json(&json!({
@@ -945,7 +945,7 @@ impl GitClient {
         Ok(())
     }
 
-    async fn post_gitea_branch(&self, branch_name: &str, sha: &str) -> Result<(), anyhow::Error> {
+    async fn post_gitea_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
         self.client
             .post(format!("{}/branches", self.repo_url()))
             .json(&json!({
