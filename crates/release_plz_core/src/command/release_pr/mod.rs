@@ -304,6 +304,7 @@ async fn handle_opened_pr(
 }
 
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
+    repo.checkout_new_branch(&pr.branch)?;
     if git_client.forge == ForgeType::Github {
         github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
     } else {
@@ -482,7 +483,6 @@ fn create_release_branch(
     release_branch: &str,
     commit_message: &str,
 ) -> anyhow::Result<()> {
-    repository.checkout_new_branch(release_branch)?;
     add_changes_and_commit(repository, commit_message)?;
     repository.push(release_branch)?;
     Ok(())
