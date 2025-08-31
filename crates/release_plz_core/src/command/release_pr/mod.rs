@@ -482,7 +482,7 @@ fn create_release_branch(
     release_branch: &str,
     commit_message: &str,
 ) -> anyhow::Result<()> {
-    repository.checkout_new_branch(&release_branch)?;
+    repository.checkout_new_branch(release_branch)?;
     add_changes_and_commit(repository, commit_message)?;
     repository.push(release_branch)?;
     Ok(())
@@ -495,7 +495,7 @@ async fn github_create_release_branch(
     commit_message: &str,
 ) -> anyhow::Result<()> {
     let sha = repository.current_commit_hash()?;
-    client.create_branch(&release_branch, &sha).await?;
+    client.create_branch(release_branch, &sha).await?;
     github_graphql::commit_changes(client, repository, commit_message, release_branch).await
 }
 
