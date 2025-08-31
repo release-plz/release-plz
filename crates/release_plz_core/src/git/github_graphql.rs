@@ -47,7 +47,7 @@ pub async fn commit_changes(
     let commit_sha = res
         .pointer("data/createCommitOnBranch/commit/oid")
         .and_then(Value::as_str)
-        .with_context(|| format!("createCommitOnBranch did not return commit object: {}", res))?
+        .with_context(|| format!("createCommitOnBranch did not return commit object: {res}"))?
         .to_owned();
 
     Ok(commit_sha)
