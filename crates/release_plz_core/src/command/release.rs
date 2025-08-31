@@ -912,7 +912,7 @@ async fn release_package(
                 release_info.package.name, release_info.package.version
             );
             let should_sign_tags = repo
-                .git(&["config", "--get", "tag.gpgSign", "--default", "false"])
+                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
                 .map(|s| s.trim() == "true")?;
             // If tag signing is enabled, create the tag locally instead of using the API
             if should_sign_tags {
