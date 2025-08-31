@@ -959,6 +959,31 @@ impl GitClient {
             .context("failed to create branch")?;
         Ok(())
     }
+
+    /// Delete a branch.
+    pub async fn delete_branch(&self, branch_name: &str) -> anyhow::Result<()> {
+        let url = match self.forge {
+            ForgeType::Github => format!("{}/git/refs/heads/{}", self.repo_url(), branch_name),
+            ForgeType::Gitlab => format!(
+                "{}/repository/branches/{}",
+                self.repo_url(),
+                urlencoding::encode(branch_name)
+            ),
+            ForgeType::Gitea => format!(
+                "{}/branches/{}",
+                self.repo_url(),
+                urlencoding::encode(branch_name)
+            ),
+        };
+        self.client
+            .delete(url)
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to delete branch")?;
+        Ok(())
+    }
 }
 
 pub fn validate_labels(labels: &[String]) -> anyhow::Result<()> {
