@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::semver::Version;
 use cargo_utils::CARGO_TOML;
@@ -154,7 +152,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
             let pr = open_or_update_release_pr(
                 &local_manifest,
                 &packages_to_update,
-                git_client.into(),
+                &git_client,
                 &repo,
                 ReleasePrOptions {
                     draft: input.draft,
@@ -183,7 +181,7 @@ struct ReleasePrOptions {
 async fn open_or_update_release_pr(
     local_manifest: &Utf8Path,
     packages_to_update: &PackagesUpdate,
-    git_client: Arc<GitClient>,
+    git_client: &GitClient,
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
 ) -> anyhow::Result<ReleasePr> {
@@ -253,7 +251,7 @@ async fn open_or_update_release_pr(
 }
 
 async fn handle_opened_pr(
-    git_client: Arc<GitClient>,
+    git_client: &GitClient,
     opened_pr: &GitPr,
     repo: &Repo,
     new_pr: &Pr,
@@ -268,7 +266,7 @@ async fn handle_opened_pr(
         // There are no contributors, so we can force-push
         // in this PR, because we don't care about the git history.
         match update_pr(
-            git_client.clone(),
+            git_client,
             opened_pr,
             pr_commits.len(),
             repo,
@@ -319,7 +317,7 @@ async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Resu
 }
 
 async fn update_pr(
-    git_client: Arc<GitClient>,
+    git_client: &GitClient,
     opened_pr: &GitPr,
     commits_number: usize,
     repository: &Repo,
@@ -333,7 +331,7 @@ async fn update_pr(
         )
     })?;
     if matches!(git_client.forge, ForgeType::Github) {
-        github_force_push(git_client.clone(), opened_pr, repository).await?;
+        github_force_push(git_client, opened_pr, repository).await?;
     } else {
         force_push(opened_pr, repository)?;
     }
@@ -421,7 +419,7 @@ fn force_push(pr: &GitPr, repository: &Repo) -> anyhow::Result<()> {
 }
 
 async fn github_force_push(
-    client: Arc<GitClient>,
+    client: &GitClient,
     pr: &GitPr,
     repository: &Repo,
 ) -> anyhow::Result<()> {
