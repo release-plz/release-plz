@@ -305,7 +305,7 @@ async fn handle_opened_pr(
 
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
     repo.checkout_new_branch(&pr.branch)?;
-    if matches!(git_client.forge, ForgeType::Github) {
+    if git_client.forge == ForgeType::Github {
         github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
     } else {
         create_release_branch(repo, &pr.branch, &pr.title)?;
@@ -330,7 +330,7 @@ async fn update_pr(
             repository.original_branch()
         )
     })?;
-    if matches!(git_client.forge, ForgeType::Github) {
+    if git_client.forge == ForgeType::Github {
         github_force_push(git_client, opened_pr, repository).await?;
     } else {
         force_push(opened_pr, repository)?;
@@ -424,11 +424,23 @@ async fn github_force_push(
     repository: &Repo,
 ) -> anyhow::Result<()> {
     // Create a temporary branch.
-    let tmp_release_branch = {
-        let name = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
-        TmpBranch::checkout_new(repository, name)
-    }?;
+    let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
+    repository.checkout_new_branch(&tmp_release_branch)?;
 
+    let result = execute_github_force_push(client, pr, repository, &tmp_release_branch).await;
+    // Ensure the temporary branch is deleted even if the push fails.
+    if let Err(e) = client.delete_branch(&tmp_release_branch).await {
+        tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
+    }
+    result
+}
+
+async fn execute_github_force_push(
+    client: &GitClient,
+    pr: &GitPr,
+    repository: &Repo,
+    tmp_release_branch: &str,
+) -> anyhow::Result<()> {
     // Push the "Verified" commit in the temporary branch using
     // the GitHub API.
     // We push the release-plz changes to the temporary branch instead of the release PR branch because:
@@ -437,45 +449,18 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    github_create_release_branch(client, repository, &tmp_release_branch.name, &pr.title).await?;
+    github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
 
-    repository.fetch(&tmp_release_branch.name)?;
+    repository.fetch(tmp_release_branch)?;
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
     repository.force_push(&format!(
         "{}/{}:{}",
         repository.original_remote(),
-        tmp_release_branch.name,
+        tmp_release_branch,
         pr.branch()
     ))?;
-
-    // The temporary branch is deleted in remote when it goes out of scope.
     Ok(())
-}
-
-/// Temporary branch.
-/// It deletes the branch in remote when it goes out of scope.
-/// In this way, we can ensure that the branch is deleted even if the program panics.
-struct TmpBranch<'a> {
-    name: String,
-    repository: &'a Repo,
-}
-
-impl<'a> TmpBranch<'a> {
-    fn checkout_new(repository: &'a Repo, name: impl Into<String>) -> anyhow::Result<Self> {
-        let name = name.into();
-        repository.checkout_new_branch(&name)?;
-        let branch = Self { name, repository };
-        Ok(branch)
-    }
-}
-
-impl Drop for TmpBranch<'_> {
-    fn drop(&mut self) {
-        if let Err(e) = self.repository.delete_branch_in_remote(&self.name) {
-            tracing::error!("cannot delete branch {}: {:?}", self.name, e);
-        }
-    }
 }
 
 fn create_release_branch(
@@ -494,7 +479,8 @@ async fn github_create_release_branch(
     release_branch: &str,
     commit_message: &str,
 ) -> anyhow::Result<()> {
-    repository.push(release_branch)?;
+    let sha = repository.current_commit_hash()?;
+    client.create_branch(release_branch, &sha).await?;
     github_graphql::commit_changes(client, repository, commit_message, release_branch).await
 }
 
