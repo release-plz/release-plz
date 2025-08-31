@@ -426,66 +426,39 @@ async fn github_force_push(
     repository: &Repo,
 ) -> anyhow::Result<()> {
     // Create a temporary branch.
-    let tmp_release_branch = {
-        let name = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
-        TmpBranch::checkout_new(repository, name, client.clone())
-    }?;
+    let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
+    repository.checkout_new_branch(&tmp_release_branch)?;
 
-    // Push the "Verified" commit in the temporary branch using
-    // the GitHub API.
-    // We push the release-plz changes to the temporary branch instead of the release PR branch because:
-    // - You can't force-push with the GitHub API, so we can't commit to the release PR branch
-    //   directly if we want a "Verified" commit.
-    // - If we revert the last commit of the release PR branch, GitHub will close the release PR
-    //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
-    // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    github_create_release_branch(&client, repository, &tmp_release_branch.name, &pr.title).await?;
+    let run = async {
+        // Push the "Verified" commit in the temporary branch using
+        // the GitHub API.
+        // We push the release-plz changes to the temporary branch instead of the release PR branch because:
+        // - You can't force-push with the GitHub API, so we can't commit to the release PR branch
+        //   directly if we want a "Verified" commit.
+        // - If we revert the last commit of the release PR branch, GitHub will close the release PR
+        //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
+        // To learn more, see https://github.com/release-plz/release-plz/issues/1487
+        github_create_release_branch(&client, repository, &tmp_release_branch, &pr.title).await?;
 
-    repository.fetch(&tmp_release_branch.name)?;
+        repository.fetch(&tmp_release_branch)?;
 
-    // Rewrite the PR branch so that it's the same as the temporary branch.
-    repository.force_push(&format!(
-        "{}/{}:{}",
-        repository.original_remote(),
-        tmp_release_branch.name,
-        pr.branch()
-    ))?;
+        // Rewrite the PR branch so that it's the same as the temporary branch.
+        repository.force_push(&format!(
+            "{}/{}:{}",
+            repository.original_remote(),
+            tmp_release_branch,
+            pr.branch()
+        ))?;
+        Ok::<(), anyhow::Error>(())
+    };
 
-    // The temporary branch is deleted in remote when it goes out of scope.
-    Ok(())
-}
+    let result = run.await;
 
-/// Temporary branch.
-/// It deletes the branch in remote when it goes out of scope.
-/// In this way, we can ensure that the branch is deleted even if the program panics.
-struct TmpBranch {
-    name: String,
-    client: Arc<GitClient>,
-}
-
-impl TmpBranch {
-    fn checkout_new(
-        repository: &Repo,
-        name: impl Into<String>,
-        client: Arc<GitClient>,
-    ) -> anyhow::Result<Self> {
-        let name = name.into();
-        repository.checkout_new_branch(&name)?;
-        let branch = Self { name, client };
-        Ok(branch)
+    if let Err(e) = client.delete_branch(&tmp_release_branch).await {
+        tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
     }
-}
 
-impl Drop for TmpBranch {
-    fn drop(&mut self) {
-        let client = self.client.clone();
-        let name = self.name.clone();
-        tokio::spawn(async move {
-            if let Err(e) = client.delete_branch(&name).await {
-                tracing::error!("cannot delete branch {name}: {e:?}");
-            }
-        });
-    }
+    result
 }
 
 fn create_release_branch(
