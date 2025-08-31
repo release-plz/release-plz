@@ -304,7 +304,7 @@ async fn handle_opened_pr(
 }
 
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
-    if matches!(git_client.forge, ForgeType::Github) {
+    if git_client.forge == ForgeType::Github {
         github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
     } else {
         create_release_branch(repo, &pr.branch, &pr.title)?;
@@ -329,7 +329,7 @@ async fn update_pr(
             repository.original_branch()
         )
     })?;
-    if matches!(git_client.forge, ForgeType::Github) {
+    if git_client.forge == ForgeType::Github {
         github_force_push(git_client, opened_pr, repository).await?;
     } else {
         force_push(opened_pr, repository)?;
