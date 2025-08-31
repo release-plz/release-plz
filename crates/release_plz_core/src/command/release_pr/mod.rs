@@ -427,36 +427,40 @@ async fn github_force_push(
     let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
     repository.checkout_new_branch(&tmp_release_branch)?;
 
-    let run = async {
-        // Push the "Verified" commit in the temporary branch using
-        // the GitHub API.
-        // We push the release-plz changes to the temporary branch instead of the release PR branch because:
-        // - You can't force-push with the GitHub API, so we can't commit to the release PR branch
-        //   directly if we want a "Verified" commit.
-        // - If we revert the last commit of the release PR branch, GitHub will close the release PR
-        //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
-        // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
-
-        repository.fetch(&tmp_release_branch)?;
-
-        // Rewrite the PR branch so that it's the same as the temporary branch.
-        repository.force_push(&format!(
-            "{}/{}:{}",
-            repository.original_remote(),
-            tmp_release_branch,
-            pr.branch()
-        ))?;
-        Ok::<(), anyhow::Error>(())
-    };
-
-    let result = run.await;
-
+    let result = execute_github_force_push(client, pr, repository, &tmp_release_branch).await;
+    // Ensure the temporary branch is deleted even if the push fails.
     if let Err(e) = client.delete_branch(&tmp_release_branch).await {
         tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
     }
-
     result
+}
+
+async fn execute_github_force_push(
+    client: &GitClient,
+    pr: &GitPr,
+    repository: &Repo,
+    tmp_release_branch: &str,
+) -> anyhow::Result<()> {
+    // Push the "Verified" commit in the temporary branch using
+    // the GitHub API.
+    // We push the release-plz changes to the temporary branch instead of the release PR branch because:
+    // - You can't force-push with the GitHub API, so we can't commit to the release PR branch
+    //   directly if we want a "Verified" commit.
+    // - If we revert the last commit of the release PR branch, GitHub will close the release PR
+    //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
+    // To learn more, see https://github.com/release-plz/release-plz/issues/1487
+    github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
+
+    repository.fetch(tmp_release_branch)?;
+
+    // Rewrite the PR branch so that it's the same as the temporary branch.
+    repository.force_push(&format!(
+        "{}/{}:{}",
+        repository.original_remote(),
+        tmp_release_branch,
+        pr.branch()
+    ))?;
+    Ok(())
 }
 
 fn create_release_branch(
