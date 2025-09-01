@@ -91,7 +91,7 @@ The account that owns the PAT will be the author of the release pull
 request and the commit itself.
 If you don't want release-plz to open release pull requests and commit with
 your account, consider creating a
-[machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#personal-accounts).
+[machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#user-accounts).
 If your machine user needs a cool avatar, you can use the release-plz [logo](/img/robot_head.jpeg).
 :::
 
@@ -121,8 +121,6 @@ steps:
     uses: actions/checkout@v4
     with:
       fetch-depth: 0
-      # highlight-next-line
-      token: ${{ secrets.RELEASE_PLZ_TOKEN }} # <-- PAT secret name
   - name: Install Rust toolchain
     uses: dtolnay/rust-toolchain@stable
   - name: Run release-plz
@@ -134,13 +132,6 @@ steps:
     with:
       ...
 ```
-
-:::warning
-As shown in the example below,
-you need to add the `token` field to the `actions/checkout` step, too.
-This allows release-plz to use the PAT also when spawning `git` commands,
-such as `git tag`.
-:::
 
 ### Use a GitHub App
 
@@ -195,8 +186,6 @@ Here's how to use a GitHub App to generate a GitHub token:
        uses: actions/checkout@v4
        with:
          fetch-depth: 0
-   # highlight-next-line
-         token: ${{ steps.generate-token.outputs.token }}
      - name: Install Rust toolchain
        uses: dtolnay/rust-toolchain@stable
      - name: Run release-plz
