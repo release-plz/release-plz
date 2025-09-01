@@ -37,7 +37,7 @@ pub struct Changelog<'a> {
     pr_link: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Remote {
     /// Owner of the repo. E.g. `MarcoIeni`.
     pub owner: String,
@@ -236,7 +236,7 @@ fn default_git_cliff_config() -> Config {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChangelogBuilder<'a> {
     commits: Vec<Commit<'a>>,
     version: String,
@@ -310,7 +310,11 @@ impl<'a> ChangelogBuilder<'a> {
         }
     }
 
-    pub fn build(self) -> Changelog<'a> {
+    pub fn config(&self) -> Option<&Config> {
+        self.config.as_ref()
+    }
+
+    pub fn build(&self) -> Changelog<'a> {
         let git_config = self
             .config
             .clone()
@@ -319,7 +323,7 @@ impl<'a> ChangelogBuilder<'a> {
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
             .commits
-            .into_iter()
+            .iter()
             .filter_map(|c| c.process(&git_config).ok())
             .collect();
 
@@ -337,8 +341,8 @@ impl<'a> ChangelogBuilder<'a> {
             }
         }
 
-        let previous = self.previous_version.map(|ver| Release {
-            version: Some(ver),
+        let previous = self.previous_version.as_ref().map(|ver| Release {
+            version: Some(ver.clone()),
             commits: vec![],
             commit_id: None,
             timestamp: Some(0),
@@ -350,7 +354,7 @@ impl<'a> ChangelogBuilder<'a> {
 
         Changelog {
             release: Release {
-                version: Some(self.version),
+                version: Some(self.version.clone()),
                 commits,
                 commit_id: None,
                 timestamp: Some(release_date),
@@ -359,11 +363,11 @@ impl<'a> ChangelogBuilder<'a> {
                 repository: None,
                 ..Default::default()
             },
-            remote: self.remote,
-            release_link: self.release_link,
-            config: self.config,
-            package: self.package,
-            pr_link: self.pr_link,
+            remote: self.remote.clone(),
+            release_link: self.release_link.clone(),
+            config: self.config.clone(),
+            package: self.package.clone(),
+            pr_link: self.pr_link.clone(),
         }
     }
 
