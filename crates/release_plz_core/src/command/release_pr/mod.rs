@@ -454,7 +454,7 @@ async fn execute_github_force_push(
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
     client
-        .update_branch(pr.branch(), &sha)
+        .patch_github_ref(&format!("heads/{}", pr.branch()), &sha)
         .await
         .context("failed to force push PR branch")?;
 
