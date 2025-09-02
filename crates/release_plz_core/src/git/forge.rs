@@ -1023,7 +1023,7 @@ impl GitClient {
             .get("sha")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .with_context(|| format!("failed to create git tag object for tag '{tag_name}'"))?;
+            .with_context(|| format!("failed to create git tag object for tag '{tag_name}' on '{sha}'"))?;
         self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
             .await
     }
@@ -1045,7 +1045,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create git tag")?;
+            .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
         Ok(())
     }
 
@@ -1066,7 +1066,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create git tag")?;
+            .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
         Ok(())
     }
 }
