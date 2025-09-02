@@ -133,6 +133,7 @@ pub struct UpdateResult {
     /// New changelog.
     pub changelog: Option<String>,
     pub semver_check: SemverCheck,
+    pub new_changelog_entry: Option<String>,
 }
 
 impl UpdateResult {
