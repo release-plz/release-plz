@@ -45,7 +45,7 @@ pub async fn commit_changes(
     }
 
     let commit_sha = res
-        .pointer("data/createCommitOnBranch/commit/oid")
+        .pointer("/data/createCommitOnBranch/commit/oid")
         .and_then(Value::as_str)
         .with_context(|| format!("createCommitOnBranch did not return commit object: {res}"))?
         .to_owned();
@@ -154,10 +154,7 @@ fn mutation() -> String {
             mutation($input: CreateCommitOnBranchInput!) {
               createCommitOnBranch(input: $input) {
                 commit {
-                  author {
-                    name,
-                    email
-                  }
+                  oid
                 }
               }
             }"#;
@@ -259,7 +256,7 @@ mod tests {
 
         assert_eq!(expected_variables, query["variables"]);
 
-        expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{author{name,email}}}}""#]]
+        expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}""#]]
         .assert_eq(&query["query"].to_string());
     }
 }
