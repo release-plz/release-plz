@@ -64,7 +64,10 @@ async fn release_plz_releases_a_new_project_with_custom_tag_name() {
     let crate_name = &context.gitea.repo;
 
     let expected_tag = format!("{crate_name}--0.1.0");
-    let is_tag_created = || context.repo.tag_exists(&expected_tag).unwrap();
+    let is_tag_created = || {
+        context.repo.git(&["fetch", "--tags"]).unwrap();
+        context.repo.tag_exists(&expected_tag).unwrap()
+    };
 
     assert!(!is_tag_created());
 
