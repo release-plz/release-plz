@@ -31,7 +31,7 @@ jobs:
         run: docker compose up -d --wait
         working-directory: ./tests
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@7659442a2cec41defbcdc4837c1ff43bf5bf6299
+        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
       - name: Run tests
         run: cargo test --all-features --workspace
 
@@ -55,7 +55,7 @@ jobs:
         with:
           tool: cargo-semver-checks
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@7659442a2cec41defbcdc4837c1ff43bf5bf6299
+        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
       - name: Run tests
         run: cargo test --no-default-features --features all-static --workspace
 
@@ -68,7 +68,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@7659442a2cec41defbcdc4837c1ff43bf5bf6299
+        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
         with:
           components: rustfmt
       - name: Check formatting
@@ -83,7 +83,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@7659442a2cec41defbcdc4837c1ff43bf5bf6299
+        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
         with:
           components: clippy
       - name: Clippy check
@@ -98,7 +98,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@7659442a2cec41defbcdc4837c1ff43bf5bf6299
+        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
       - name: Check documentation
         env:
           RUSTDOCFLAGS: -D warnings
