@@ -449,17 +449,32 @@ async fn execute_github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
+    github_create_release_branch(client, repository, tmp_release_branch, &pr.title)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to create and commit to temporary release branch `{tmp_release_branch}`"
+            )
+        })?;
 
-    repository.fetch(tmp_release_branch)?;
+    repository.fetch(tmp_release_branch).with_context(|| {
+        format!("failed to fetch temporary release branch `{tmp_release_branch}` from remote")
+    })?;
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
-    repository.force_push(&format!(
-        "{}/{}:{}",
-        repository.original_remote(),
-        tmp_release_branch,
-        pr.branch()
-    ))?;
+    repository
+        .force_push(&format!(
+            "{}/{}:{}",
+            repository.original_remote(),
+            tmp_release_branch,
+            pr.branch()
+        ))
+        .with_context(|| {
+            format!(
+                "failed to force push temporary branch `{tmp_release_branch}` onto PR branch `{}`",
+                pr.branch()
+            )
+        })?;
     Ok(())
 }
 
@@ -481,7 +496,13 @@ async fn github_create_release_branch(
 ) -> anyhow::Result<()> {
     let sha = repository.current_commit_hash()?;
     client.create_branch(release_branch, &sha).await?;
-    github_graphql::commit_changes(client, repository, commit_message, release_branch).await
+    github_graphql::commit_changes(client, repository, commit_message, release_branch)
+        .await
+        .with_context(|| {
+            format!("failed to create commit via graphql on branch `{release_branch}`")
+        })?;
+    tracing::debug!("committed changes on branch `{release_branch}` via graphql");
+    Ok(())
 }
 
 fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
