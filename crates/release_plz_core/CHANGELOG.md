@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.35.0...release_plz_core-v0.36.0) - 2025-09-05
+
+### Added
+
+- use api to create tags ([#2362](https://github.com/release-plz/release-plz/pull/2362))
+
+### Fixed
+
+- delete branch only if it exists ([#2378](https://github.com/release-plz/release-plz/pull/2378))
+- show changelog preview in the PR body when changelog format is not standard ([#2367](https://github.com/release-plz/release-plz/pull/2367))
+
+### Other
+
+- improve error messages ([#2377](https://github.com/release-plz/release-plz/pull/2377))
+
 ## [0.35.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.8...release_plz_core-v0.35.0) - 2025-08-31
 
 ### Added
