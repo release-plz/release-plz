@@ -147,7 +147,7 @@ impl Repo {
     }
 
     pub fn fetch(&self, obj: &str) -> anyhow::Result<()> {
-        self.git(&["fetch", &self.original_remote, obj])?;
+        self.git(&["fetch", &self.original_remote, obj]).with_context(|| format!("failed to fetch {obj}"))?;
         Ok(())
     }
 

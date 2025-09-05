@@ -451,9 +451,7 @@ async fn execute_github_force_push(
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
     github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
 
-    repository.fetch(tmp_release_branch).with_context(|| {
-        format!("failed to fetch temporary release branch `{tmp_release_branch}` from remote")
-    })?;
+    repository.fetch(tmp_release_branch)?;
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
     repository
