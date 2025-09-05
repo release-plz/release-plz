@@ -926,7 +926,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -941,7 +941,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -956,7 +956,22 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
+        Ok(())
+    }
+
+    pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
+            .json(&json!({
+                "sha": sha,
+                "force": true
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to update ref {ref_name} with sha {sha}"))?;
         Ok(())
     }
 
