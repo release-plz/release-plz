@@ -481,7 +481,13 @@ async fn github_create_release_branch(
 ) -> anyhow::Result<()> {
     let sha = repository.current_commit_hash()?;
     client.create_branch(release_branch, &sha).await?;
-    github_graphql::commit_changes(client, repository, commit_message, release_branch).await
+    github_graphql::commit_changes(client, repository, commit_message, release_branch)
+        .await
+        .with_context(|| {
+            format!("failed to create commit via graphql on branch `{release_branch}`")
+        })?;
+    tracing::debug!("committed changes on branch `{release_branch}` via graphql");
+    Ok(())
 }
 
 fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
