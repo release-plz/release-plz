@@ -29,7 +29,7 @@ Release-plz needs a token to publish your packages to the cargo registry.
    [this](https://doc.rust-lang.org/cargo/reference/publishing.html#before-your-first-publish)
    guide.
 2. Add your cargo registry token as a secret in your repository following
-   [this](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository)
+   [this](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets#creating-secrets-for-a-repository)
    guide.
 
 As specified in the `cargo publish`
