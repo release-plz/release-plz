@@ -437,15 +437,16 @@ async fn github_force_push(
     let create_branch_result =
         github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await;
 
-    let force_push_result = execute_github_force_push(pr, repository, &tmp_release_branch).await;
     if create_branch_result.is_ok() {
+        let force_push_result =
+            execute_github_force_push(pr, repository, &tmp_release_branch).await;
         // Delete the temporary branch if it was created. Even if the push failed.
         if let Err(e) = client.delete_branch(&tmp_release_branch).await {
             tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
         }
+        force_push_result?;
     }
     create_branch_result?;
-    force_push_result?;
     Ok(())
 }
 
