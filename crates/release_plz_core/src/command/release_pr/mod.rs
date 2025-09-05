@@ -449,13 +449,7 @@ async fn execute_github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    github_create_release_branch(client, repository, tmp_release_branch, &pr.title)
-        .await
-        .with_context(|| {
-            format!(
-                "failed to create and commit to temporary release branch `{tmp_release_branch}`"
-            )
-        })?;
+    github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
 
     repository.fetch(tmp_release_branch).with_context(|| {
         format!("failed to fetch temporary release branch `{tmp_release_branch}` from remote")
