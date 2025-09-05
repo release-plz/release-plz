@@ -454,19 +454,12 @@ async fn execute_github_force_push(
     repository.fetch(tmp_release_branch)?;
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
-    repository
-        .force_push(&format!(
-            "{}/{}:{}",
-            repository.original_remote(),
-            tmp_release_branch,
-            pr.branch()
-        ))
-        .with_context(|| {
-            format!(
-                "failed to force push temporary branch `{tmp_release_branch}` onto PR branch `{}`",
-                pr.branch()
-            )
-        })?;
+    repository.force_push(&format!(
+        "{}/{}:{}",
+        repository.original_remote(),
+        tmp_release_branch,
+        pr.branch()
+    ))?;
     Ok(())
 }
 
