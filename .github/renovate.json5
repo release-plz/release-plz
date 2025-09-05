@@ -18,8 +18,8 @@
       matchManagers: [
         'github-actions',
       ],
-      // At 06:XX on Monday.
-      schedule: '* 6 * * 1',
+      // Every weekend
+      schedule: '* * * * 0,6',
       groupName: 'Github Actions',
     },
     {
@@ -38,8 +38,8 @@
         'docker-compose',
       ],
       groupName: 'Docker Compose',
-      // At 07:XX on Monday.
-      schedule: '* 7 * * 1',
+      // Every weekend
+      schedule: '* * * * 0,6',
     },
   ],
   // Receive any update that fixes security vulnerabilities.
