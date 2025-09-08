@@ -30,7 +30,8 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
     match args.command {
         Command::Update(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
-            let update_request = cmd_args.update_request(cargo_metadata)?;
+            let config = cmd_args.config.load()?;
+            let update_request = cmd_args.update_request(&config, cargo_metadata)?;
             let (packages_update, _temp_repo) = release_plz_core::update(&update_request).await?;
             println!("{}", packages_update.summary());
         }
