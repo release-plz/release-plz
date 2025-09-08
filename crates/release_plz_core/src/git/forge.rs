@@ -929,7 +929,7 @@ impl GitClient {
         // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
         // only exists locally (i.e. it has not been pushed to the remote).
         if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-            // Try to capture the body for extra diagnostics (best effort).
+            // Try to capture the body for extra diagnostics.
             let body = response
                 .text()
                 .await
