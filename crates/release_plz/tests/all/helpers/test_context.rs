@@ -297,9 +297,6 @@ fn cargo_config(username: &str) -> String {
     let config_end = r#"
 [net]
 git-fetch-with-cli = true
-
-[build]
-target-dir = "target"
     "#;
     format!("{cargo_registries}{gitea_index}{config_end}")
 }
