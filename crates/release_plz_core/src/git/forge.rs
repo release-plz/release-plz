@@ -926,7 +926,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -941,7 +941,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -956,7 +956,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
         Ok(())
     }
 
