@@ -173,9 +173,9 @@ impl Update {
             .with_context(|| {
                 format!("Cannot find file {project_manifest:?}. Make sure you are inside a rust project or that --manifest-path points to a valid Cargo.toml file.")
             })?
-            .with_dependencies_update(self.dependencies_update(&config))
-            .with_allow_dirty(self.allow_dirty(&config));
-        match self.get_repo_url(&config) {
+            .with_dependencies_update(self.dependencies_update(config))
+            .with_allow_dirty(self.allow_dirty(config));
+        match self.get_repo_url(config) {
             Ok(repo_url) => {
                 update = update.with_repo_url(repo_url);
             }
@@ -206,7 +206,7 @@ impl Update {
             let pr_link = update.repo_url().map(|url| url.git_pr_link());
             let changelog_req = ChangelogRequest {
                 release_date,
-                changelog_config: Some(self.changelog_config(&config, pr_link.as_deref())?),
+                changelog_config: Some(self.changelog_config(config, pr_link.as_deref())?),
             };
             update = update.with_changelog_req(changelog_req);
         }
@@ -311,7 +311,8 @@ mod tests {
             forge: GitForgeKind::Github,
             git_token: None,
         };
-        let req = update_args.update_request(fake_metadata()).unwrap();
+        let config = update_args.config.load().unwrap();
+        let req = update_args.update_request(&config, fake_metadata()).unwrap();
         let pkg_config = req.get_package_config("aaa");
         assert_eq!(pkg_config, release_plz_core::PackageUpdateConfig::default());
     }
