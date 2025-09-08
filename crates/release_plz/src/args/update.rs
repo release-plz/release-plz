@@ -164,9 +164,9 @@ impl Update {
 
     pub fn update_request(
         &self,
+        config: &Config,
         cargo_metadata: cargo_metadata::Metadata,
     ) -> anyhow::Result<UpdateRequest> {
-        let config = self.config.load()?;
         let project_manifest = self.manifest_path();
         check_if_cargo_lock_is_ignored_and_committed(&project_manifest)?;
         let mut update = UpdateRequest::new(cargo_metadata)
