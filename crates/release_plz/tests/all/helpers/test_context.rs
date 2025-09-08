@@ -159,6 +159,8 @@ impl TestContext {
     pub fn run_update(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
+            // Run tests in isolation to avoid flakiness
+            .env("CARGO_TARGET_DIR", "target")
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("update")
             .arg("--verbose")
@@ -170,6 +172,7 @@ impl TestContext {
     pub fn run_release_pr(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
+            // Run tests in isolation to avoid flakiness
             .env("CARGO_TARGET_DIR", "target")
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release-pr")
@@ -189,6 +192,7 @@ impl TestContext {
     pub fn run_release(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
+            // Run tests in isolation to avoid flakiness
             .env("CARGO_TARGET_DIR", "target")
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release")
