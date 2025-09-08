@@ -312,7 +312,9 @@ mod tests {
             git_token: None,
         };
         let config = update_args.config.load().unwrap();
-        let req = update_args.update_request(&config, fake_metadata()).unwrap();
+        let req = update_args
+            .update_request(&config, fake_metadata())
+            .unwrap();
         let pkg_config = req.get_package_config("aaa");
         assert_eq!(pkg_config, release_plz_core::PackageUpdateConfig::default());
     }
