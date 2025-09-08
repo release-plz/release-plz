@@ -12,7 +12,7 @@ For example:
 ```yaml
 steps:
   - name: Checkout repository
-    uses: actions/checkout@v4
+    uses: actions/checkout@v5
     with:
       fetch-depth: 0
 # highlight-next-line
@@ -56,7 +56,7 @@ If you want to run other checks before releasing (e.g. `cargo test`), you have t
          cancel-in-progress: false
        steps:
          - name: Checkout repository
-           uses: actions/checkout@v4
+           uses: actions/checkout@v5
            with:
              fetch-depth: 0
          - name: Install Rust toolchain
@@ -91,7 +91,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Rust toolchain

@@ -242,7 +242,7 @@ jobs:
       contents: write{id_token_permissions}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0{checkout_token_line}
       - name: Install Rust toolchain
@@ -267,7 +267,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0{checkout_token_line}
       - name: Install Rust toolchain
@@ -337,7 +337,7 @@ mod tests {
                   contents: write
                 steps:
                   - name: Checkout repository
-                    uses: actions/checkout@v4
+                    uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                   - name: Install Rust toolchain
@@ -362,7 +362,7 @@ mod tests {
                   cancel-in-progress: false
                 steps:
                   - name: Checkout repository
-                    uses: actions/checkout@v4
+                    uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                   - name: Install Rust toolchain
@@ -397,7 +397,7 @@ mod tests {
                   contents: write
                 steps:
                   - name: Checkout repository
-                    uses: actions/checkout@v4
+                    uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
@@ -423,7 +423,7 @@ mod tests {
                   cancel-in-progress: false
                 steps:
                   - name: Checkout repository
-                    uses: actions/checkout@v4
+                    uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
@@ -461,7 +461,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   id-token: write
                 steps:
                   - name: Checkout repository
-                    uses: actions/checkout@v4
+                    uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
@@ -490,7 +490,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   cancel-in-progress: false
                 steps:
                   - name: Checkout repository
-                    uses: actions/checkout@v4
+                    uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
