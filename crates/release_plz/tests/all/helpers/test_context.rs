@@ -170,6 +170,7 @@ impl TestContext {
     pub fn run_release_pr(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
+            .env("CARGO_TARGET_DIR", "target")
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release-pr")
             .arg("--verbose")
@@ -188,6 +189,7 @@ impl TestContext {
     pub fn run_release(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
+            .env("CARGO_TARGET_DIR", "target")
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release")
             .arg("--verbose")
@@ -295,6 +297,9 @@ fn cargo_config(username: &str) -> String {
     let config_end = r#"
 [net]
 git-fetch-with-cli = true
+
+[build]
+target-dir = "target"
     "#;
     format!("{cargo_registries}{gitea_index}{config_end}")
 }
