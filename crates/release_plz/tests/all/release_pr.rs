@@ -1342,7 +1342,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     // Merge release PR to update changelog of v0.1.0 of crate
     context.merge_release_pr().await;
 
-    let new_changelog = fs_err::read_to_string(context.repo_dir().join("CHANGELOG.md")).unwrap();
+    let new_changelog = context.read_changelog();
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
 
