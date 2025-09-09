@@ -434,21 +434,17 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let create_branch_result =
-        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await;
+    let sha =
+        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
 
-    if let Ok(sha) = create_branch_result {
-        let force_push_result =
-            execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
-        // Delete the temporary branch if it was created. Even if the push failed.
-        if let Err(e) = client.delete_branch(&tmp_release_branch).await {
-            tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
-        }
-        force_push_result?;
-    } else {
-        create_branch_result?;
+    let force_push_result =
+        execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
+    // Delete the temporary branch if it was created. Even if the push failed.
+    if let Err(e) = client.delete_branch(&tmp_release_branch).await {
+        tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
     }
-    Ok(())
+
+    force_push_result
 }
 
 async fn execute_github_force_push(
