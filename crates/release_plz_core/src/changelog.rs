@@ -71,8 +71,16 @@ impl Changelog<'_> {
             return Ok(old_changelog);
         }
         let old_header = changelog_parser::parse_header(&old_changelog);
-        let config = self.changelog_config(old_header);
+        let config = self.changelog_config(old_header.clone());
         let changelog = self.get_changelog(&config)?;
+
+        // If we successfully parsed an old header, compose manually to preserve exact formatting
+        // and avoid potential header duplication.
+        if let Some(header) = old_header {
+            return compose_changelog(&old_changelog, &changelog, header);
+        }
+
+        // Fallback: let git-cliff handle the prepend.
         let mut out = Vec::new();
         changelog
             .prepend(old_changelog, &mut out)
@@ -101,6 +109,31 @@ impl Changelog<'_> {
             bump: Bump::default(),
         }
     }
+}
+
+fn compose_changelog(
+    old_changelog: &String,
+    changelog: &GitCliffChangelog<'_>,
+    header: String,
+) -> Result<String, anyhow::Error> {
+    let mut new_out = Vec::new();
+    changelog
+        .generate(&mut new_out)
+        .context("cannot generate updated changelog")?;
+    let generated = String::from_utf8(new_out).context("cannot convert bytes to string")?;
+    let generated_header = crate::changelog_parser::parse_header(&generated);
+    let header_to_strip = if let Some(gen_h) = generated_header {
+        gen_h
+    } else {
+        header.clone()
+    };
+    let generated_body = generated
+        .strip_prefix(&header_to_strip)
+        .unwrap_or_else(|| generated.as_str());
+    let old_body = old_changelog
+        .strip_prefix(&header)
+        .unwrap_or_else(|| old_changelog.as_str());
+    Ok(format!("{header}{generated_body}{old_body}"))
 }
 
 /// Apply release-plz defaults to git config
