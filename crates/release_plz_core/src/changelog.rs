@@ -130,9 +130,7 @@ fn compose_changelog(
     let generated_body = generated
         .strip_prefix(&header_to_strip)
         .unwrap_or(generated.as_str());
-    let old_body = old_changelog
-        .strip_prefix(header)
-        .unwrap_or(old_changelog);
+    let old_body = old_changelog.strip_prefix(header).unwrap_or(old_changelog);
     Ok(format!("{header}{generated_body}{old_body}"))
 }
 
