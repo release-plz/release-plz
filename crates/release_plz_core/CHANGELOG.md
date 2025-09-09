@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.0...release_plz_core-v0.36.1) - 2025-09-09
+
+### Added
+
+- use api to update branches ([#2365](https://github.com/release-plz/release-plz/pull/2365))
+
+### Other
+
+- make changelog parsing more flexible ([#2391](https://github.com/release-plz/release-plz/pull/2391))
+- require default branch to be up to date ([#2386](https://github.com/release-plz/release-plz/pull/2386))
+- improve create branch error message ([#2385](https://github.com/release-plz/release-plz/pull/2385))
+
 ## [0.36.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.35.0...release_plz_core-v0.36.0) - 2025-09-05
 
 ### Added
