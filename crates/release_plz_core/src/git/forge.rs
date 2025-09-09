@@ -978,6 +978,21 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         Ok(())
     }
 
+    pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
+            .json(&json!({
+                "sha": sha,
+                "force": true
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to update ref {ref_name} with sha {sha}"))?;
+        Ok(())
+    }
+
     /// Delete a branch.
     pub async fn delete_branch(&self, branch_name: &str) -> anyhow::Result<()> {
         let url = match self.forge {
