@@ -116,11 +116,13 @@ fn compose_changelog(
     changelog: &GitCliffChangelog<'_>,
     header: &str,
 ) -> Result<String, anyhow::Error> {
-    let mut new_out = Vec::new();
-    changelog
-        .generate(&mut new_out)
-        .context("cannot generate updated changelog")?;
-    let generated = String::from_utf8(new_out).context("cannot convert bytes to string")?;
+    let generated = {
+        let mut new_out = Vec::new();
+        changelog
+            .generate(&mut new_out)
+            .context("cannot generate updated changelog")?;
+        String::from_utf8(new_out).context("cannot convert bytes to string")?
+    };
     let generated_header = crate::changelog_parser::parse_header(&generated);
     let header_to_strip = if let Some(gen_h) = generated_header {
         gen_h
