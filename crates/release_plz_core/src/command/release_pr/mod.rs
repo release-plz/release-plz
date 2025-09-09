@@ -439,18 +439,20 @@ async fn github_force_push(
 
     if let Ok(sha) = create_branch_result {
         let force_push_result =
-            execute_github_force_push(pr, repository, &tmp_release_branch, &sha).await;
+            execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
         // Delete the temporary branch if it was created. Even if the push failed.
         if let Err(e) = client.delete_branch(&tmp_release_branch).await {
             tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
         }
         force_push_result?;
+    } else {
+        create_branch_result?;
     }
-    create_branch_result?;
     Ok(())
 }
 
 async fn execute_github_force_push(
+    client: &GitClient,
     pr: &GitPr,
     repository: &Repo,
     tmp_release_branch: &str,
@@ -485,13 +487,13 @@ async fn github_create_release_branch(
 ) -> anyhow::Result<String> {
     let sha = repository.current_commit_hash()?;
     client.create_branch(release_branch, &sha).await?;
-    github_graphql::commit_changes(client, repository, commit_message, release_branch)
+    let sha = github_graphql::commit_changes(client, repository, commit_message, release_branch)
         .await
         .with_context(|| {
             format!("failed to create commit via graphql on branch `{release_branch}`")
         })?;
     tracing::debug!("committed changes on branch `{release_branch}` via graphql");
-    Ok(())
+    Ok(sha)
 }
 
 fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
