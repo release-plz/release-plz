@@ -82,9 +82,9 @@ attacker who has access to the `.env` file cannot read the token easily.
 
 ## `zizmor` warning
 
-[zizmor](https://github.com/woodruffw/zizmor) is a static analysis tool for GitHub Actions.
+[zizmor](https://github.com/zizmorcore/zizmor) is a static analysis tool for GitHub Actions.
 When you run it on the release-plz [workflow](./quickstart.md#3-setup-the-workflow), it will
-emit the [artipacked](https://woodruffw.github.io/zizmor/audits/#artipacked) warning:
+emit the [artipacked](https://docs.zizmor.sh/audits/#artipacked) warning:
 
 ```text
 warning[artipacked]: credential persistence through GitHub Actions artifacts
@@ -92,7 +92,7 @@ warning[artipacked]: credential persistence through GitHub Actions artifacts
    |
 24 |         - name: Checkout repository
    |  _________-
-25 | |         uses: actions/checkout@v4
+25 | |         uses: actions/checkout@v5
 26 | |         with:
 27 | |           fetch-depth: 0
    | |________________________- does not set persist-credentials: false
@@ -113,7 +113,7 @@ of the `actions/checkout` action:
 ```yaml
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 # highlight-start

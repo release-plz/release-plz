@@ -916,14 +916,32 @@ impl GitClient {
     }
 
     async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
-        self.client
+        let response = self
+            .client
             .post(format!("{}/git/refs", self.repo_url()))
             .json(&json!({
                 "ref": ref_name,
                 "sha": sha
             }))
             .send()
-            .await?
+            .await?;
+
+        // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
+        // only exists locally (i.e. it has not been pushed to the remote).
+        if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
+            // Try to capture the body for extra diagnostics.
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<failed to read response body>".to_string());
+            anyhow::bail!(
+                "failed to create ref {ref_name} with sha {sha}. \
+The commit {sha} likely hasn't been pushed to the remote repository yet. \
+Please push your local commits and run release-plz again.\nResponse body: {body}"
+            );
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;

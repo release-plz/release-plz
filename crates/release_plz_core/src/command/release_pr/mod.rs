@@ -423,24 +423,9 @@ async fn github_force_push(
     pr: &GitPr,
     repository: &Repo,
 ) -> anyhow::Result<()> {
-    // Create a temporary branch.
     let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
     repository.checkout_new_branch(&tmp_release_branch)?;
 
-    let result = execute_github_force_push(client, pr, repository, &tmp_release_branch).await;
-    // Ensure the temporary branch is deleted even if the push fails.
-    if let Err(e) = client.delete_branch(&tmp_release_branch).await {
-        tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
-    }
-    result
-}
-
-async fn execute_github_force_push(
-    client: &GitClient,
-    pr: &GitPr,
-    repository: &Repo,
-    tmp_release_branch: &str,
-) -> anyhow::Result<()> {
     // Push the "Verified" commit in the temporary branch using
     // the GitHub API.
     // We push the release-plz changes to the temporary branch instead of the release PR branch because:
@@ -449,8 +434,29 @@ async fn execute_github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let sha =
-        github_create_release_branch(client, repository, tmp_release_branch, &pr.title).await?;
+    let create_branch_result =
+        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await;
+
+    if let Ok(sha) = create_branch_result {
+        let force_push_result =
+            execute_github_force_push(pr, repository, &tmp_release_branch, &sha).await;
+        // Delete the temporary branch if it was created. Even if the push failed.
+        if let Err(e) = client.delete_branch(&tmp_release_branch).await {
+            tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
+        }
+        force_push_result?;
+    }
+    create_branch_result?;
+    Ok(())
+}
+
+async fn execute_github_force_push(
+    pr: &GitPr,
+    repository: &Repo,
+    tmp_release_branch: &str,
+    sha: &str,
+) -> anyhow::Result<()> {
+    repository.fetch(tmp_release_branch)?;
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
     client
@@ -479,7 +485,13 @@ async fn github_create_release_branch(
 ) -> anyhow::Result<String> {
     let sha = repository.current_commit_hash()?;
     client.create_branch(release_branch, &sha).await?;
-    github_graphql::commit_changes(client, repository, commit_message, release_branch).await
+    github_graphql::commit_changes(client, repository, commit_message, release_branch)
+        .await
+        .with_context(|| {
+            format!("failed to create commit via graphql on branch `{release_branch}`")
+        })?;
+    tracing::debug!("committed changes on branch `{release_branch}` via graphql");
+    Ok(())
 }
 
 fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
