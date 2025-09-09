@@ -77,7 +77,7 @@ impl Changelog<'_> {
         // If we successfully parsed an old header, compose manually to preserve exact formatting
         // and avoid potential header duplication.
         if let Some(header) = old_header {
-            return compose_changelog(&old_changelog, &changelog, header);
+            return compose_changelog(&old_changelog, &changelog, &header);
         }
 
         // Fallback: let git-cliff handle the prepend.
@@ -112,9 +112,9 @@ impl Changelog<'_> {
 }
 
 fn compose_changelog(
-    old_changelog: &String,
+    old_changelog: &str,
     changelog: &GitCliffChangelog<'_>,
-    header: String,
+    header: &str,
 ) -> Result<String, anyhow::Error> {
     let mut new_out = Vec::new();
     changelog
@@ -125,14 +125,14 @@ fn compose_changelog(
     let header_to_strip = if let Some(gen_h) = generated_header {
         gen_h
     } else {
-        header.clone()
+        header.to_string()
     };
     let generated_body = generated
         .strip_prefix(&header_to_strip)
         .unwrap_or(generated.as_str());
     let old_body = old_changelog
-        .strip_prefix(&header)
-        .unwrap_or(old_changelog.as_str());
+        .strip_prefix(header)
+        .unwrap_or(old_changelog);
     Ok(format!("{header}{generated_body}{old_body}"))
 }
 
