@@ -123,12 +123,14 @@ fn compose_changelog(
             .context("cannot generate updated changelog")?;
         String::from_utf8(new_out).context("cannot convert bytes to string")?
     };
+    // Parse the header so we can remove it later
     let generated_header = crate::changelog_parser::parse_header(&generated);
     let header_to_strip = if let Some(gen_h) = generated_header {
         gen_h
     } else {
         header.to_string()
     };
+    // Remove the header to get the changelog body
     let generated_body = generated
         .strip_prefix(&header_to_strip)
         .unwrap_or(generated.as_str());
