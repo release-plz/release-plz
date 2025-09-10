@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.144](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.143...release-plz-v0.3.144) - 2025-09-09
+
+### Added
+
+- use api to update branches ([#2365](https://github.com/release-plz/release-plz/pull/2365))
+
+### Fixed
+
+- load config once ([#2388](https://github.com/release-plz/release-plz/pull/2388))
+
+### Other
+
+- make changelog parsing more flexible ([#2391](https://github.com/release-plz/release-plz/pull/2391))
+- isolate tests by running in unique cargo target dirs ([#2387](https://github.com/release-plz/release-plz/pull/2387))
+- update github checkout action ([#2384](https://github.com/release-plz/release-plz/pull/2384))
+- require default branch to be up to date ([#2386](https://github.com/release-plz/release-plz/pull/2386))
+- improve create branch error message ([#2385](https://github.com/release-plz/release-plz/pull/2385))
+
 ## [0.3.143](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.142...release-plz-v0.3.143) - 2025-09-05
 
 ### Added
