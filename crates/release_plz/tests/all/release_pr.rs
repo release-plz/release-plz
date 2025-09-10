@@ -1345,6 +1345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     let new_changelog = context.read_changelog();
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
+    let today = today();
 
     assert_eq!(
         new_changelog,
@@ -1357,7 +1358,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0](https://localhost/{username}/{repo}/releases/tag/v0.1.0) - 2025-09-09
+## [0.1.0](https://localhost/{username}/{repo}/releases/tag/v0.1.0) - {today}
 
 ### Other
 

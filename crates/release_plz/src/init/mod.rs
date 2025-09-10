@@ -241,11 +241,13 @@ jobs:
     permissions:
       contents: write{id_token_permissions}
     steps:
-      - name: Checkout repository
+      - &checkout
+        name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0{checkout_token_line}
-      - name: Install Rust toolchain
+      - &install-rust
+        name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable{trusted_publishing_action}
       - name: Run release-plz
         uses: release-plz/action@v0.5
@@ -266,12 +268,8 @@ jobs:
       group: release-plz-${{{{ github.ref }}}}
       cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0{checkout_token_line}
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - *checkout
+      - *install-rust
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
@@ -336,11 +334,13 @@ mod tests {
                 permissions:
                   contents: write
                 steps:
-                  - name: Checkout repository
+                  - &checkout
+                    name: Checkout repository
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                  - name: Install Rust toolchain
+                  - &install-rust
+                    name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
                   - name: Run release-plz
                     uses: release-plz/action@v0.5
@@ -361,12 +361,8 @@ mod tests {
                   group: release-plz-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
-                  - name: Checkout repository
-                    uses: actions/checkout@v5
-                    with:
-                      fetch-depth: 0
-                  - name: Install Rust toolchain
-                    uses: dtolnay/rust-toolchain@stable
+                  - *checkout
+                  - *install-rust
                   - name: Run release-plz
                     uses: release-plz/action@v0.5
                     with:
@@ -396,12 +392,14 @@ mod tests {
                 permissions:
                   contents: write
                 steps:
-                  - name: Checkout repository
+                  - &checkout
+                    name: Checkout repository
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
-                  - name: Install Rust toolchain
+                  - &install-rust
+                    name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
                   - name: Run release-plz
                     uses: release-plz/action@v0.5
@@ -422,13 +420,8 @@ mod tests {
                   group: release-plz-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
-                  - name: Checkout repository
-                    uses: actions/checkout@v5
-                    with:
-                      fetch-depth: 0
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
-                  - name: Install Rust toolchain
-                    uses: dtolnay/rust-toolchain@stable
+                  - *checkout
+                  - *install-rust
                   - name: Run release-plz
                     uses: release-plz/action@v0.5
                     with:
@@ -460,12 +453,14 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   contents: write
                   id-token: write
                 steps:
-                  - name: Checkout repository
+                  - &checkout
+                    name: Checkout repository
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
                       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
-                  - name: Install Rust toolchain
+                  - &install-rust
+                    name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
                   - name: Authenticate with crates.io
                     uses: rust-lang/crates-io-auth-action@v1
@@ -489,13 +484,8 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   group: release-plz-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
-                  - name: Checkout repository
-                    uses: actions/checkout@v5
-                    with:
-                      fetch-depth: 0
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
-                  - name: Install Rust toolchain
-                    uses: dtolnay/rust-toolchain@stable
+                  - *checkout
+                  - *install-rust
                   - name: Run release-plz
                     uses: release-plz/action@v0.5
                     with:

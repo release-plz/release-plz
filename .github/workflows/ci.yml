@@ -19,18 +19,21 @@ jobs:
     name: Test Suite
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
+      - &checkout
+        name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: false
-      - name: Install cargo-semver-checks
+      - &install-semver-checks
+        name: Install cargo-semver-checks
         uses: taiki-e/install-action@57511bcdf8cdb0eab6448cb7fa632952d9f25742 # v2.59.1
         with:
           tool: cargo-semver-checks
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
-      - name: Install Rust toolchain
+      - &setup-rust
+        name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
       - name: Run tests
         run: cargo test --all-features --workspace
@@ -46,16 +49,9 @@ jobs:
           - os: macos-13
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
-      - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@57511bcdf8cdb0eab6448cb7fa632952d9f25742 # v2.59.1
-        with:
-          tool: cargo-semver-checks
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
+      - *checkout
+      - *install-semver-checks
+      - *setup-rust
       - name: Run tests
         run: cargo test --no-default-features --features all-static --workspace
 
@@ -63,10 +59,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
+      - *checkout
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
         with:
@@ -78,10 +71,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
+      - *checkout
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
         with:
@@ -93,12 +83,8 @@ jobs:
     name: Docs
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
+      - *checkout
+      - *setup-rust
       - name: Check documentation
         env:
           RUSTDOCFLAGS: -D warnings
