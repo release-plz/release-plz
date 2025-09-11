@@ -990,9 +990,10 @@ async fn release_package(
 
         // Revoke trusted publishing token if we minted one.
         if let Some(token) = minted_trusted_token.take()
-            && let Err(e) = trusted_publishing::revoke_crates_io_token(&token).await {
-                warn!("Failed to revoke trusted publishing token: {e:?}");
-            }
+            && let Err(e) = trusted_publishing::revoke_crates_io_token(&token).await
+        {
+            warn!("Failed to revoke trusted publishing token: {e:?}");
+        }
 
         info!(
             "published {} {}",
