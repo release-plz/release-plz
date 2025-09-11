@@ -65,7 +65,7 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
         urlencoding::encode(audience)
     );
 
-    let headers = get_github_actions_jwt_headers(req_token)?;
+    let headers = get_github_actions_jwt_headers(&req_token)?;
 
     let client = reqwest::Client::new();
     let resp = client.get(full_url).headers(headers).send().await?;
@@ -85,7 +85,7 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
     Ok(body.value)
 }
 
-fn get_github_actions_jwt_headers(req_token: String) -> Result<HeaderMap, anyhow::Error> {
+fn get_github_actions_jwt_headers(req_token: &str) -> Result<HeaderMap, anyhow::Error> {
     let mut headers = HeaderMap::new();
     let mut auth_header: HeaderValue = format!("Bearer {req_token}")
         .parse()
