@@ -51,6 +51,7 @@ async fn get_github_actions_jwt(audience: &str) -> anyhow::Result<String> {
     let req_url = std::env::var(env_request_url)
         .with_context(|| format!("{env_request_url} not set. If you are running in GitHub Actions,
 Please ensure the 'id-token' permission is set to 'write' in your workflow. For more information, see: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#adding-permissions-settings"))?;
+
     let env_request_token = "ACTIONS_ID_TOKEN_REQUEST_TOKEN";
     let req_token = std::env::var(env_request_token)
         .with_context(|| format!("{env_request_token} not set; not running in GitHub Actions?"))?;
@@ -76,11 +77,7 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Failed to get GitHub Actions OIDC token. Status: {}. Body: {}",
-            status,
-            body
-        );
+        anyhow::bail!("Failed to get GitHub Actions OIDC token. Status: {status}. Body: {body}");
     }
     #[derive(serde::Deserialize)]
     struct OidcResp {
@@ -112,9 +109,7 @@ async fn request_trusted_publishing_token(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         anyhow::bail!(
-            "Failed to retrieve token from Cargo registry. Status: {}. Response: {}",
-            status,
-            text
+            "Failed to retrieve token from Cargo registry. Status: {status}. Response: {text}"
         );
     }
     #[derive(serde::Deserialize)]
