@@ -65,13 +65,7 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
         urlencoding::encode(audience)
     );
 
-    let mut headers = HeaderMap::new();
-    let mut auth_header: HeaderValue = format!("Bearer {req_token}")
-        .parse()
-        .context("invalid request token")?;
-    auth_header.set_sensitive(true);
-    headers.insert(AUTHORIZATION, auth_header);
-    headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
+    let headers = get_github_actions_jwt_headers(req_token)?;
 
     let client = reqwest::Client::new();
     let resp = client.get(full_url).headers(headers).send().await?;
@@ -89,6 +83,17 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
         anyhow::bail!("Empty OIDC token received");
     }
     Ok(body.value)
+}
+
+fn get_github_actions_jwt_headers(req_token: String) -> Result<HeaderMap, anyhow::Error> {
+    let mut headers = HeaderMap::new();
+    let mut auth_header: HeaderValue = format!("Bearer {req_token}")
+        .parse()
+        .context("invalid request token")?;
+    auth_header.set_sensitive(true);
+    headers.insert(AUTHORIZATION, auth_header);
+    headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
+    Ok(headers)
 }
 
 async fn request_trusted_publishing_token(
