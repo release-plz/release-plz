@@ -588,7 +588,7 @@ impl Updater<'_> {
                     package,
                     package_path,
                     registry_package_path,
-                )?;
+                ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal
                     || is_commit_too_old(
                         repository,
