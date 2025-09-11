@@ -66,10 +66,11 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
     );
 
     let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {req_token}"))?,
-    );
+    let mut auth_header: HeaderValue = format!("Bearer {req_token}")
+        .parse()
+        .context("invalid request token")?;
+    auth_header.set_sensitive(true);
+    headers.insert(AUTHORIZATION, auth_header);
     headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
 
     let client = reqwest::Client::new();
