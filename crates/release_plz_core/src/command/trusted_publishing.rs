@@ -2,35 +2,30 @@ use anyhow::Context;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use tracing::info;
 
+const CRATES_IO_BASE_URL: &str = "https://crates.io";
 // Public API used by release logic
 pub(crate) async fn get_crates_io_token() -> anyhow::Result<String> {
-    let base = get_registry_base_url_for_crates_io();
-    let audience = audience_from_url(base);
+    let audience = audience_from_url(CRATES_IO_BASE_URL);
     info!("Retrieving GitHub Actions JWT token with audience: {audience}");
     let jwt = get_github_actions_jwt(&audience).await?;
     info!("Retrieved JWT token successfully");
-    info!("Requesting token from: {}", get_tokens_endpoint(base));
-    let token = request_trusted_publishing_token(base, &jwt).await?;
+    info!(
+        "Requesting token from: {}",
+        get_tokens_endpoint(CRATES_IO_BASE_URL)
+    );
+    let token = request_trusted_publishing_token(CRATES_IO_BASE_URL, &jwt).await?;
     info!("Retrieved token successfully");
     Ok(token)
 }
 
 pub(crate) async fn revoke_crates_io_token(token: &str) -> anyhow::Result<()> {
-    let base = get_registry_base_url_for_crates_io();
     info!(
         "Revoking trusted publishing token at {}",
-        get_tokens_endpoint(base)
+        get_tokens_endpoint(CRATES_IO_BASE_URL)
     );
-    revoke_trusted_publishing_token(base, token).await?;
+    revoke_trusted_publishing_token(CRATES_IO_BASE_URL, token).await?;
     info!("Token revoked successfully");
     Ok(())
-}
-
-// Internal helpers
-
-fn get_registry_base_url_for_crates_io() -> &'static str {
-    // Only crates.io is supported for Trusted Publishing here.
-    "https://crates.io"
 }
 
 fn get_tokens_endpoint(registry_base_url: &str) -> String {
