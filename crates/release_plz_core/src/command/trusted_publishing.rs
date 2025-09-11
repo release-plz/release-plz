@@ -35,7 +35,7 @@ fn get_registry_base_url_for_crates_io() -> &'static str {
 
 fn get_tokens_endpoint(registry_base_url: &str) -> String {
     let url = registry_base_url.trim_end_matches('/');
-    format!("{}/api/v1/trusted_publishing/tokens", url)
+    format!("{url}/api/v1/trusted_publishing/tokens")
 }
 
 pub(crate) fn audience_from_url(url: &str) -> String {
@@ -72,7 +72,7 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", req_token))?,
+        HeaderValue::from_str(&format!("Bearer {req_token}"))?,
     );
     headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
 
@@ -142,7 +142,7 @@ async fn revoke_trusted_publishing_token(
     headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
     headers.insert(
         AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", token))?,
+        HeaderValue::from_str(&format!("Bearer {token}"))?,
     );
     let client = reqwest::Client::new();
     let resp = client.delete(endpoint).headers(headers).send().await?;
