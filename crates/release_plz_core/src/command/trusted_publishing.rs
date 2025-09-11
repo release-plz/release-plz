@@ -2,6 +2,8 @@ use anyhow::Context;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use tracing::info;
 
+use crate::response_ext::ResponseExt;
+
 const CRATES_IO_BASE_URL: &str = "https://crates.io";
 // Public API used by release logic
 pub(crate) async fn get_crates_io_token() -> anyhow::Result<String> {
@@ -68,12 +70,14 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
     let headers = get_github_actions_jwt_headers(&req_token)?;
 
     let client = reqwest::Client::new();
-    let resp = client.get(full_url).headers(headers).send().await?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Failed to get GitHub Actions OIDC token. Status: {status}. Body: {body}");
-    }
+    let resp = client
+        .get(full_url)
+        .headers(headers)
+        .send()
+        .await?
+        .successful_status()
+        .await
+        .context("Failed to get GitHub Actions OIDC token")?;
     #[derive(serde::Deserialize)]
     struct OidcResp {
         value: String,
@@ -110,14 +114,10 @@ async fn request_trusted_publishing_token(
         .headers(headers)
         .body(serde_json::to_vec(&serde_json::json!({"jwt": jwt}))?)
         .send()
-        .await?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Failed to retrieve token from Cargo registry. Status: {status}. Response: {text}"
-        );
-    }
+        .await?
+        .successful_status()
+        .await
+        .context("Failed to retrieve token from Cargo registry")?;
     #[derive(serde::Deserialize)]
     struct TokenResp {
         token: String,
@@ -141,16 +141,14 @@ async fn revoke_trusted_publishing_token(
         HeaderValue::from_str(&format!("Bearer {token}"))?,
     );
     let client = reqwest::Client::new();
-    let resp = client.delete(endpoint).headers(headers).send().await?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Failed to revoke trusted publishing token. Status: {}. Response: {}",
-            status,
-            text
-        );
-    }
+    client
+        .delete(endpoint)
+        .headers(headers)
+        .send()
+        .await?
+        .successful_status()
+        .await
+        .context("Failed to revoke trusted publishing token")?;
     Ok(())
 }
 
