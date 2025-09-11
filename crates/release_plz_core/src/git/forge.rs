@@ -3,6 +3,7 @@ use crate::{GitHub, GitReleaseInfo};
 use std::collections::{HashMap, HashSet};
 
 use crate::pr::Pr;
+use crate::response_ext::ResponseExt;
 use anyhow::Context;
 use http::StatusCode;
 use itertools::Itertools;
@@ -646,7 +647,8 @@ impl GitClient {
             .get(format!("{}/labels", self.repo_url()))
             .send()
             .await?
-            .error_for_status()?
+            .successful_status()
+            .await?
             .json()
             .await
             .context("failed to parse labels")
@@ -814,7 +816,7 @@ impl GitClient {
             );
             return Ok(vec![]);
         }
-        let response = response.error_for_status()?;
+        let response = response.successful_status().await?;
         debug!("Associated PR found. Status: {}", response.status());
 
         let prs = match self.forge {
@@ -1171,33 +1173,6 @@ pub fn contributors_from_commits(commits: &[PrCommit], forge: ForgeType) -> Vec<
         .collect::<Vec<_>>();
     contributors.dedup();
     contributors
-}
-
-trait ResponseExt {
-    /// Better version of [`reqwest::Response::error_for_status`] that
-    /// also captures the response body in the error message. It will most
-    /// likely contain additional error details.
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response>;
-}
-
-impl ResponseExt for reqwest::Response {
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response> {
-        let Err(err) = self.error_for_status_ref() else {
-            return Ok(self);
-        };
-
-        let mut body = self
-            .text()
-            .await
-            .context("can't convert response body to text")?;
-
-        // If the response is JSON, try to pretty-print it.
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-            body = format!("{json:#}");
-        }
-
-        Err(err).context(format!("Response body:\n{body}"))
-    }
 }
 
 #[cfg(test)]
