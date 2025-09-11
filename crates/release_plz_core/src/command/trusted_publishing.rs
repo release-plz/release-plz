@@ -51,14 +51,14 @@ fn user_agent_value() -> String {
 }
 
 async fn get_github_actions_jwt(audience: &str) -> anyhow::Result<String> {
-    let request_url = "ACTIONS_ID_TOKEN_REQUEST_URL";
+    let env_request_url = "ACTIONS_ID_TOKEN_REQUEST_URL";
     // Follow GitHub OIDC flow using environment variables provided in Actions runners
-    let req_url = std::env::var(request_url)
-        .with_context(|| format!("{request_url} not set. If you are running in GitHub Actions,
+    let req_url = std::env::var(env_request_url)
+        .with_context(|| format!("{env_request_url} not set. If you are running in GitHub Actions,
 Please ensure the 'id-token' permission is set to 'write' in your workflow. For more information, see: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#adding-permissions-settings"))?;
-    let request_token = "ACTIONS_ID_TOKEN_REQUEST_TOKEN";
-    let req_token = std::env::var(request_token)
-        .with_context(|| format!("{request_token} not set; not running in GitHub Actions?"))?;
+    let env_request_token = "ACTIONS_ID_TOKEN_REQUEST_TOKEN";
+    let req_token = std::env::var(env_request_token)
+        .with_context(|| format!("{env_request_token} not set; not running in GitHub Actions?"))?;
 
     // Append audience query parameter
     let separator = if req_url.contains('?') { '&' } else { '?' };
