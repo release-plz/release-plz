@@ -877,22 +877,28 @@ async fn release_package(
     let mut minted_trusted_token: Option<String> = None;
     // Only attempt trusted publishing on GitHub Actions to avoid prompting/attempting locally
     let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
+    let mut trusted_publishing = None;
     if publish_token.is_none()
         && is_crates_io
         && should_publish
         && !input.dry_run
         && is_github_actions
     {
-        match trusted_publishing::get_crates_io_token().await {
-            Ok(t) => {
-                info!("Using crates.io trusted publishing token");
-                minted_trusted_token = Some(t.clone());
-                publish_token = Some(SecretString::from(t));
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to get trusted publishing token from crates.io: {e:?}. Proceeding without it."
-                );
+        trusted_publishing = trusted_publishing::TrustedPublisher::crates_io()
+            .inspect_err(|e| warn!("Failed to use trusted publishing: {e}"))
+            .ok();
+        if let Some(tp) = &trusted_publishing {
+            match tp.get_token().await {
+                Ok(t) => {
+                    info!("Using crates.io trusted publishing token");
+                    minted_trusted_token = Some(t.clone());
+                    publish_token = Some(SecretString::from(t));
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to get trusted publishing token from crates.io: {e:?}. Proceeding without it."
+                    );
+                }
             }
         }
     }
@@ -990,9 +996,11 @@ async fn release_package(
 
         // Revoke trusted publishing token if we minted one.
         if let Some(token) = minted_trusted_token.take()
-            && let Err(e) = trusted_publishing::revoke_crates_io_token(&token).await
+            && let Some(tp) = trusted_publishing.as_ref()
         {
-            warn!("Failed to revoke trusted publishing token: {e:?}");
+            if let Err(e) = tp.revoke_token(&token).await {
+                warn!("Failed to revoke trusted publishing token: {e:?}");
+            }
         }
 
         info!(
