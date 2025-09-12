@@ -34,6 +34,9 @@ Remember to follow the crates.io docs to set up trusted publishing for all your 
 Also, new crates can't be published with trusted publishing — you need to publish them
 manually the first time.
 This is a limitation of crates.io, not release-plz.
+
+Note: right now release-plz creates one token for each package you want to publish.
+If you have many packages, don't omit the token yet.
 :::
 
 Release-plz needs a token to publish your packages to the cargo registry.
