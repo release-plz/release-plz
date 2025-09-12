@@ -878,6 +878,7 @@ async fn release_package(
     let should_use_trusted_publishing = {
         let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
         publish_token.is_none()
+            && input.token.is_none()
             && is_crates_io
             && should_publish
             && !input.dry_run
