@@ -53,10 +53,6 @@ and copy the following workflow:
 ```yaml
 name: Release-plz
 
-permissions:
-  pull-requests: write
-  contents: write
-
 on:
   push:
     branches:
