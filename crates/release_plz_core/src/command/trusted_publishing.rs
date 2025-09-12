@@ -16,16 +16,6 @@ pub(crate) async fn get_crates_io_token() -> anyhow::Result<String> {
     Ok(token)
 }
 
-pub(crate) async fn revoke_crates_io_token(token: &str) -> anyhow::Result<()> {
-    info!(
-        "Revoking trusted publishing token at {}",
-        get_tokens_endpoint(CRATES_IO_BASE_URL)
-    );
-    revoke_trusted_publishing_token(CRATES_IO_BASE_URL, token).await?;
-    info!("Token revoked successfully");
-    Ok(())
-}
-
 fn get_tokens_endpoint(registry_base_url: &str) -> String {
     let url = registry_base_url.trim_end_matches('/');
     format!("{url}/api/v1/trusted_publishing/tokens")
@@ -126,11 +116,9 @@ async fn request_trusted_publishing_token(
     Ok(body.token)
 }
 
-async fn revoke_trusted_publishing_token(
-    registry_base_url: &str,
-    token: &str,
-) -> anyhow::Result<()> {
-    let endpoint = get_tokens_endpoint(registry_base_url);
+pub(crate) async fn revoke_crates_io_token(token: &str) -> anyhow::Result<()> {
+    let endpoint = get_tokens_endpoint(CRATES_IO_BASE_URL);
+    info!("Revoking trusted publishing token at {endpoint}");
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
     headers.insert(
@@ -146,6 +134,7 @@ async fn revoke_trusted_publishing_token(
         .successful_status()
         .await
         .context("Failed to revoke trusted publishing token")?;
+    info!("Token revoked successfully");
     Ok(())
 }
 
