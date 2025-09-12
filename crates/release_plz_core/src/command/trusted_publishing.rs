@@ -1,5 +1,5 @@
 use anyhow::Context;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT};
 use tracing::info;
 
 use crate::response_ext::ResponseExt;
