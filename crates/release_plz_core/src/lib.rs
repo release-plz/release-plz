@@ -11,6 +11,7 @@ mod diff;
 mod download;
 pub mod fs_utils;
 mod git;
+pub mod http_client;
 mod lock_compare;
 mod next_ver;
 mod package_compare;
@@ -26,7 +27,6 @@ pub mod semver_check;
 mod tera;
 mod tmp_repo;
 mod toml_compare;
-pub mod user_agent;
 mod version;
 
 pub use changelog::*;

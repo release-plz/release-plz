@@ -1,5 +1,5 @@
 use anyhow::Context;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use tracing::info;
 
 use crate::response_ext::ResponseExt;
@@ -77,10 +77,6 @@ fn get_github_actions_jwt_headers(req_token: &str) -> Result<HeaderMap, anyhow::
         .context("invalid request token")?;
     auth_header.set_sensitive(true);
     headers.insert(AUTHORIZATION, auth_header);
-    headers.insert(
-        USER_AGENT,
-        HeaderValue::from_str(&crate::user_agent::user_agent())?,
-    );
     Ok(headers)
 }
 
@@ -90,15 +86,9 @@ async fn request_trusted_publishing_token(
 ) -> anyhow::Result<String> {
     let endpoint = get_tokens_endpoint(registry_base_url);
     info!("Requesting token from: {endpoint}");
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        USER_AGENT,
-        HeaderValue::from_str(&crate::user_agent::user_agent())?,
-    );
-    let client = reqwest::Client::new();
+    let client = crate::http_client::http_client_builder().build()?;
     let resp = client
         .post(endpoint)
-        .headers(headers)
         .json(&serde_json::json!([{"jwt": jwt}]))
         .send()
         .await?
@@ -119,19 +109,12 @@ async fn request_trusted_publishing_token(
 pub(crate) async fn revoke_crates_io_token(token: &str) -> anyhow::Result<()> {
     let endpoint = get_tokens_endpoint(CRATES_IO_BASE_URL);
     info!("Revoking trusted publishing token at {endpoint}");
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        USER_AGENT,
-        HeaderValue::from_str(&crate::user_agent::user_agent())?,
-    );
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {token}"))?,
-    );
-    let client = reqwest::Client::new();
+
+    let client = crate::http_client::http_client_builder().build()?;
     client
         .delete(endpoint)
-        .headers(headers)
+        // TODO set sensitive
+        .header(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {token}"))?)
         .send()
         .await?
         .successful_status()

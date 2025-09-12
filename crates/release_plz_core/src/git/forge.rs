@@ -275,8 +275,7 @@ impl GitClient {
     pub fn new(forge: GitForge) -> anyhow::Result<Self> {
         let client = {
             let headers = forge.default_headers()?;
-            let reqwest_client = reqwest::Client::builder()
-                .user_agent(crate::user_agent::user_agent())
+            let reqwest_client = crate::http_client::http_client_builder()
                 .default_headers(headers)
                 .build()
                 .context("can't build Git client")?;

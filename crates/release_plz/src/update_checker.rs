@@ -22,8 +22,7 @@ pub async fn check_update() -> anyhow::Result<()> {
 }
 
 async fn get_latest_version() -> anyhow::Result<String> {
-    let client = reqwest::Client::builder()
-        .user_agent(release_plz_core::user_agent::user_agent())
+    let client = release_plz_core::http_client::http_client_builder()
         .build()
         .context("can't build GitHub client")?;
     let client_response = client
