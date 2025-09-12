@@ -28,6 +28,8 @@ If you want to use [trusted publishing](https://crates.io/docs/trusted-publishin
 don't set the `CARGO_REGISTRY_TOKEN` secret, and remove it from your workflow file
 entirely.
 
+Set `id-token: write` in the permissions of the job that runs `release-plz release`.
+
 Remember to follow the crates.io docs to set up trusted publishing for all your crates.
 Also, new crates can't be published with trusted publishing — you need to publish them
 manually the first time.
