@@ -93,13 +93,12 @@ async fn request_trusted_publishing_token(
     let endpoint = get_tokens_endpoint(registry_base_url);
     info!("Requesting token from: {endpoint}");
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
     let client = reqwest::Client::new();
     let resp = client
         .post(endpoint)
         .headers(headers)
-        .body(serde_json::to_vec(&serde_json::json!({"jwt": jwt}))?)
+        .json(&serde_json::json!([{"jwt": jwt}]))
         .send()
         .await?
         .successful_status()
