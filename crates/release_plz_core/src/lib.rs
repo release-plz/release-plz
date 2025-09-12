@@ -27,6 +27,7 @@ mod tera;
 mod tmp_repo;
 mod toml_compare;
 mod version;
+pub mod user_agent;
 
 pub use changelog::*;
 pub use command::*;

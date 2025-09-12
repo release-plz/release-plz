@@ -28,11 +28,6 @@ pub(crate) fn audience_from_url(url: &str) -> String {
         .to_string()
 }
 
-fn user_agent_value() -> String {
-    // Identify release-plz to crates.io
-    format!("release-plz/{}", env!("CARGO_PKG_VERSION"))
-}
-
 async fn get_github_actions_jwt(audience: &str) -> anyhow::Result<String> {
     let env_request_url = "ACTIONS_ID_TOKEN_REQUEST_URL";
     // Follow GitHub OIDC flow using environment variables provided in Actions runners
@@ -82,7 +77,10 @@ fn get_github_actions_jwt_headers(req_token: &str) -> Result<HeaderMap, anyhow::
         .context("invalid request token")?;
     auth_header.set_sensitive(true);
     headers.insert(AUTHORIZATION, auth_header);
-    headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_str(&crate::user_agent::user_agent())?,
+    );
     Ok(headers)
 }
 
@@ -93,7 +91,10 @@ async fn request_trusted_publishing_token(
     let endpoint = get_tokens_endpoint(registry_base_url);
     info!("Requesting token from: {endpoint}");
     let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_str(&crate::user_agent::user_agent())?,
+    );
     let client = reqwest::Client::new();
     let resp = client
         .post(endpoint)
@@ -119,7 +120,10 @@ pub(crate) async fn revoke_crates_io_token(token: &str) -> anyhow::Result<()> {
     let endpoint = get_tokens_endpoint(CRATES_IO_BASE_URL);
     info!("Revoking trusted publishing token at {endpoint}");
     let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_str(&crate::user_agent::user_agent())?,
+    );
     headers.insert(
         AUTHORIZATION,
         HeaderValue::from_str(&format!("Bearer {token}"))?,
