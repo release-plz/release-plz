@@ -995,15 +995,7 @@ async fn release_package(
 
         // Revoke trusted publishing token if we created one.
         if issued_trusted_token {
-            let tp = trusted_publishing_client
-                .as_ref()
-                .expect("trusted publishing client should exist because trusted token was issued");
-            let publish_token = publish_token
-                .as_ref()
-                .expect("publish token should exist because trusted token was issued");
-            if let Err(e) = tp.revoke_token(publish_token.expose_secret()).await {
-                warn!("Failed to revoke trusted publishing token: {e:?}");
-            }
+            revoke_token(publish_token, trusted_publishing_client).await;
         }
 
         info!(
@@ -1011,6 +1003,21 @@ async fn release_package(
             release_info.package.name, release_info.package.version
         );
         Ok(true)
+    }
+}
+
+async fn revoke_token(
+    publish_token: Option<SecretString>,
+    trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+) {
+    let tp = trusted_publishing_client
+        .as_ref()
+        .expect("trusted publishing client should exist because trusted token was issued");
+    let publish_token = publish_token
+        .as_ref()
+        .expect("publish token should exist because trusted token was issued");
+    if let Err(e) = tp.revoke_token(publish_token.expose_secret()).await {
+        warn!("Failed to revoke trusted publishing token: {e:?}");
     }
 }
 
