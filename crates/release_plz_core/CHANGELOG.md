@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.1...release_plz_core-v0.36.2) - 2025-09-12
+
+### Other
+
+- improve error messages of some http calls ([#2398](https://github.com/release-plz/release-plz/pull/2398))
+- specify at which commit we can't compare packages ([#2397](https://github.com/release-plz/release-plz/pull/2397))
+
 ## [0.36.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.0...release_plz_core-v0.36.1) - 2025-09-09
 
 ### Added
