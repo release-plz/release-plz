@@ -53,10 +53,6 @@ and copy the following workflow:
 ```yaml
 name: Release-plz
 
-permissions:
-  pull-requests: write
-  contents: write
-
 on:
   push:
     branches:
@@ -98,8 +94,8 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
-  - *checkout
-  - *install-rust
+      - *checkout
+      - *install-rust
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:

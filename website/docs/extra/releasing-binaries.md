@@ -42,9 +42,6 @@ To use this in your project, change:
 ```yaml
 name: CD # Continuous Deployment
 
-permissions:
-  contents: write
-
 on:
   release:
     types: [published]
@@ -67,6 +64,8 @@ jobs:
     name: ${{ matrix.target }}
     if: github.repository_owner == 'MyOwner' && startsWith(github.event.release.name, 'my-bin-v')
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
