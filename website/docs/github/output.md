@@ -107,8 +107,8 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
-  - *checkout
-  - *install-rust
+      - *checkout
+      - *install-rust
       - name: Run release-plz
 # highlight-next-line
         id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
