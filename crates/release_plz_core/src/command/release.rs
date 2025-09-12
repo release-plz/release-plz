@@ -870,20 +870,21 @@ async fn release_package(
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
+    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
     // Determine token to use: if none and publishing to crates.io, try Trusted Publishing.
     let mut publish_token: Option<SecretString> = token.clone();
     let mut issued_trusted_token: Option<String> = None;
-    // Only attempt trusted publishing on GitHub Actions to avoid prompting/attempting locally
-    let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
     let mut trusted_publishing = None;
-    if publish_token.is_none()
-        && is_crates_io
-        && should_publish
-        && !input.dry_run
-        && is_github_actions
-    {
+    let should_use_trusted_publishing = {
+        let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
+        publish_token.is_none()
+            && is_crates_io
+            && should_publish
+            && !input.dry_run
+            && is_github_actions
+    };
+    if should_use_trusted_publishing {
         trusted_publishing = trusted_publishing::TrustedPublisher::crates_io()
             .inspect_err(|e| warn!("Failed to use trusted publishing: {e}"))
             .ok();
@@ -938,7 +939,7 @@ async fn release_package(
             release_info,
             should_publish,
             should_create_git_tag,
-            should_create_git_relase,
+            should_create_git_release,
         );
         Ok(false)
     } else {
@@ -976,7 +977,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if should_create_git_relase {
+        if should_create_git_release {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
