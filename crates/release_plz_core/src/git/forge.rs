@@ -276,7 +276,7 @@ impl GitClient {
         let client = {
             let headers = forge.default_headers()?;
             let reqwest_client = reqwest::Client::builder()
-                .user_agent("release-plz")
+                .user_agent(crate::user_agent::user_agent())
                 .default_headers(headers)
                 .build()
                 .context("can't build Git client")?;
