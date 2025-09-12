@@ -872,7 +872,6 @@ async fn release_package(
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
-    // Determine token to use: if none and publishing to crates.io, try Trusted Publishing.
     let mut publish_token: Option<SecretString> = token.clone();
     let mut issued_trusted_token = false;
     let mut trusted_publishing_client = None;
