@@ -94,7 +94,7 @@ impl TrustedPublisher {
         let resp = self
             .client
             .post(endpoint)
-            .json(&serde_json::json!([{"jwt": jwt}]))
+            .json(&serde_json::json!({"jwt": jwt}))
             .send()
             .await?
             .successful_status()
