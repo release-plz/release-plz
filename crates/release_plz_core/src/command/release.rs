@@ -1135,7 +1135,7 @@ fn run_cargo_publish(
         args.push("--registry");
         args.push(registry);
     }
-    if let Some(token) = token.as_ref().or(input.token.as_ref()) {
+    if let Some(token) = token.as_ref() {
         args.push("--token");
         args.push(token.expose_secret());
     } else {
