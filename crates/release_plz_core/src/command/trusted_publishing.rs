@@ -1,11 +1,10 @@
 use anyhow::Context;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use tracing::info;
 
 use crate::response_ext::ResponseExt;
 
 const CRATES_IO_BASE_URL: &str = "https://crates.io";
-// Public API used by release logic
+
 pub(crate) async fn get_crates_io_token() -> anyhow::Result<String> {
     let audience = audience_from_url(CRATES_IO_BASE_URL);
     info!("Retrieving GitHub Actions JWT token with audience: {audience}");
