@@ -11,10 +11,6 @@ pub(crate) async fn get_crates_io_token() -> anyhow::Result<String> {
     info!("Retrieving GitHub Actions JWT token with audience: {audience}");
     let jwt = get_github_actions_jwt(&audience).await?;
     info!("Retrieved JWT token successfully");
-    info!(
-        "Requesting token from: {}",
-        get_tokens_endpoint(CRATES_IO_BASE_URL)
-    );
     let token = request_trusted_publishing_token(CRATES_IO_BASE_URL, &jwt).await?;
     info!("Retrieved token successfully");
     Ok(token)
@@ -105,6 +101,7 @@ async fn request_trusted_publishing_token(
     jwt: &str,
 ) -> anyhow::Result<String> {
     let endpoint = get_tokens_endpoint(registry_base_url);
+    info!("Requesting token from: {endpoint}");
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(USER_AGENT, HeaderValue::from_str(&user_agent_value())?);
