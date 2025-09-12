@@ -993,7 +993,6 @@ async fn release_package(
             git_client.create_release(&git_release_info).await?;
         }
 
-        // Revoke trusted publishing token if we created one.
         if issued_trusted_token {
             revoke_token(publish_token, trusted_publishing_client).await;
         }
