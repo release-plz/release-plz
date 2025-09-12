@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.145](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.144...release-plz-v0.3.145) - 2025-09-12
+
+### Other
+
+- use yaml anchors to simplify workflows ([#2393](https://github.com/release-plz/release-plz/pull/2393))
+- improve error messages of some http calls ([#2398](https://github.com/release-plz/release-plz/pull/2398))
+- specify at which commit we can't compare packages ([#2397](https://github.com/release-plz/release-plz/pull/2397))
+
 ## [0.3.144](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.143...release-plz-v0.3.144) - 2025-09-09
 
 ### Added
