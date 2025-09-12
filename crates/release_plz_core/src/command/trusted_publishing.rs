@@ -48,12 +48,10 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
         urlencoding::encode(audience)
     );
 
-    let headers = get_github_actions_jwt_headers(&req_token)?;
-
     let client = reqwest::Client::new();
     let resp = client
         .get(full_url)
-        .headers(headers)
+        .bearer_auth(req_token)
         .send()
         .await?
         .successful_status()
@@ -68,16 +66,6 @@ Please ensure the 'id-token' permission is set to 'write' in your workflow. For 
         anyhow::bail!("Empty OIDC token received");
     }
     Ok(body.value)
-}
-
-fn get_github_actions_jwt_headers(req_token: &str) -> Result<HeaderMap, anyhow::Error> {
-    let mut headers = HeaderMap::new();
-    let mut auth_header: HeaderValue = format!("Bearer {req_token}")
-        .parse()
-        .context("invalid request token")?;
-    auth_header.set_sensitive(true);
-    headers.insert(AUTHORIZATION, auth_header);
-    Ok(headers)
 }
 
 async fn request_trusted_publishing_token(
@@ -113,8 +101,7 @@ pub(crate) async fn revoke_crates_io_token(token: &str) -> anyhow::Result<()> {
     let client = crate::http_client::http_client_builder().build()?;
     client
         .delete(endpoint)
-        // TODO set sensitive
-        .header(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {token}"))?)
+        .bearer_auth(token)
         .send()
         .await?
         .successful_status()
