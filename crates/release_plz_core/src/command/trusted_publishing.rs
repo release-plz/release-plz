@@ -1,3 +1,5 @@
+//! Docs at <https://crates.io/docs/trusted-publishing>
+
 use anyhow::Context;
 use tracing::info;
 
@@ -26,13 +28,13 @@ impl TrustedPublisher {
     }
 
     /// Retrieve a short-lived publish token via GitHub Actions OIDC flow.
-    pub async fn get_token(&self) -> anyhow::Result<String> {
+    pub async fn issue_trusted_publishing_token(&self) -> anyhow::Result<String> {
         let audience = audience_from_url(&self.base_url);
         info!("Retrieving GitHub Actions JWT token with audience: {audience}");
         let jwt = self.get_github_actions_jwt(&audience).await?;
         info!("Retrieved JWT token successfully");
         let token = self.request_trusted_publishing_token(&jwt).await?;
-        info!("Retrieved token successfully");
+        info!("Retrieved trusted publishing token from cargo registry successfully");
         Ok(token)
     }
 

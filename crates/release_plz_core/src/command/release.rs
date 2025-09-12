@@ -889,9 +889,8 @@ async fn release_package(
             .inspect_err(|e| warn!("Failed to use trusted publishing: {e}"))
             .ok();
         if let Some(tp) = &trusted_publishing_client {
-            match tp.get_token().await {
+            match tp.issue_trusted_publishing_token().await {
                 Ok(t) => {
-                    info!("Using crates.io trusted publishing token");
                     issued_trusted_token = true;
                     publish_token = Some(SecretString::from(t));
                 }
@@ -1003,7 +1002,7 @@ async fn release_package(
             let publish_token = publish_token
                 .as_ref()
                 .expect("publish token should exist because trusted token was issued");
-            if let Err(e) = tp.revoke_token(&publish_token.expose_secret()).await {
+            if let Err(e) = tp.revoke_token(publish_token.expose_secret()).await {
                 warn!("Failed to revoke trusted publishing token: {e:?}");
             }
         }
