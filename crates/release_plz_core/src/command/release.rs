@@ -3,6 +3,7 @@ use std::{
     time::Duration,
 };
 
+use crate::command::trusted_publishing;
 use anyhow::Context;
 use cargo::util::VersionExt;
 use cargo_metadata::{
@@ -652,10 +653,18 @@ async fn release_package_if_needed(
             info!("{} {}: already published", package.name, package.version);
             continue;
         }
-        let package_was_released_at_index =
-            release_package(&mut index, input, repo, git_client, &release_info, &token)
-                .await
-                .context("failed to release package")?;
+        let is_crates_io = name.is_none();
+        let package_was_released_at_index = release_package(
+            &mut index,
+            input,
+            repo,
+            git_client,
+            &release_info,
+            &token,
+            is_crates_io,
+        )
+        .await
+        .context("failed to release package")?;
 
         if package_was_released_at_index {
             package_was_released = true;
@@ -855,16 +864,48 @@ async fn release_package(
     git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
+    is_crates_io: bool,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
+    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
+    let mut publish_token: Option<SecretString> = token.clone();
+    let mut issued_trusted_token = false;
+    let mut trusted_publishing_client = None;
+    let should_use_trusted_publishing = {
+        let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
+        publish_token.is_none()
+            && input.token.is_none()
+            && is_crates_io
+            && should_publish
+            && !input.dry_run
+            && is_github_actions
+    };
+    if should_use_trusted_publishing {
+        trusted_publishing_client = trusted_publishing::TrustedPublisher::crates_io()
+            .inspect_err(|e| warn!("Failed to use trusted publishing: {e}"))
+            .ok();
+        if let Some(tp) = &trusted_publishing_client {
+            match tp.issue_trusted_publishing_token().await {
+                Ok(t) => {
+                    issued_trusted_token = true;
+                    publish_token = Some(SecretString::from(t));
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to get trusted publishing token from crates.io: {e:?}. Proceeding without it."
+                    );
+                }
+            }
+        }
+    }
 
     if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let output = run_cargo_publish(release_info.package, input, workspace_root)
+        let output = run_cargo_publish(release_info.package, input, workspace_root, &publish_token)
             .context("failed to run cargo publish")?;
         if !output.status.success()
             || !output.stderr.contains("Uploading")
@@ -897,7 +938,7 @@ async fn release_package(
             release_info,
             should_publish,
             should_create_git_tag,
-            should_create_git_relase,
+            should_create_git_release,
         );
         Ok(false)
     } else {
@@ -935,7 +976,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if should_create_git_relase {
+        if should_create_git_release {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
@@ -953,11 +994,30 @@ async fn release_package(
             git_client.create_release(&git_release_info).await?;
         }
 
+        if issued_trusted_token {
+            revoke_token(publish_token, trusted_publishing_client).await;
+        }
+
         info!(
             "published {} {}",
             release_info.package.name, release_info.package.version
         );
         Ok(true)
+    }
+}
+
+async fn revoke_token(
+    publish_token: Option<SecretString>,
+    trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+) {
+    let tp = trusted_publishing_client
+        .as_ref()
+        .expect("trusted publishing client should exist because trusted token was issued");
+    let publish_token = publish_token
+        .as_ref()
+        .expect("publish token should exist because trusted token was issued");
+    if let Err(e) = tp.revoke_token(publish_token.expose_secret()).await {
+        warn!("Failed to revoke trusted publishing token: {e:?}");
     }
 }
 
@@ -1066,6 +1126,7 @@ fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
+    token: &Option<SecretString>,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
     args.push("--color");
@@ -1080,7 +1141,7 @@ fn run_cargo_publish(
         args.push("--registry");
         args.push(registry);
     }
-    if let Some(token) = &input.token {
+    if let Some(token) = token.as_ref().or(input.token.as_ref()) {
         args.push("--token");
         args.push(token.expose_secret());
     } else {

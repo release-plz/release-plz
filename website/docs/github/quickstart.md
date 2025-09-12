@@ -23,6 +23,22 @@ Follow the steps below to set up the GitHub Action.
 
 ## 2. Set the `CARGO_REGISTRY_TOKEN` secret
 
+:::tip
+If you want to use [trusted publishing](https://crates.io/docs/trusted-publishing),
+don't set the `CARGO_REGISTRY_TOKEN` secret, and remove it from your workflow file
+entirely.
+
+Set `id-token: write` in the permissions of the job that runs `release-plz release`.
+
+Remember to follow the crates.io docs to set up trusted publishing for all your crates.
+Also, new crates can't be published with trusted publishing — you need to publish them
+manually the first time.
+This is a limitation of crates.io, not release-plz.
+
+Note: right now release-plz creates one token for each package you want to publish.
+If you have many packages, don't omit the `CARGO_REGISTRY_TOKEN` yet.
+:::
+
 Release-plz needs a token to publish your packages to the cargo registry.
 
 1. Retrieve your registry token following
