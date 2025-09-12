@@ -874,7 +874,7 @@ async fn release_package(
 
     // Determine token to use: if none and publishing to crates.io, try Trusted Publishing.
     let mut publish_token: Option<SecretString> = token.clone();
-    let mut minted_trusted_token: Option<String> = None;
+    let mut issued_trusted_token: Option<String> = None;
     // Only attempt trusted publishing on GitHub Actions to avoid prompting/attempting locally
     let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
     let mut trusted_publishing = None;
@@ -891,7 +891,7 @@ async fn release_package(
             match tp.get_token().await {
                 Ok(t) => {
                     info!("Using crates.io trusted publishing token");
-                    minted_trusted_token = Some(t.clone());
+                    issued_trusted_token = Some(t.clone());
                     publish_token = Some(SecretString::from(t));
                 }
                 Err(e) => {
@@ -994,8 +994,8 @@ async fn release_package(
             git_client.create_release(&git_release_info).await?;
         }
 
-        // Revoke trusted publishing token if we minted one.
-        if let Some(token) = minted_trusted_token.take()
+        // Revoke trusted publishing token if we created one.
+        if let Some(token) = issued_trusted_token.take()
             && let Some(tp) = trusted_publishing.as_ref()
         {
             if let Err(e) = tp.revoke_token(&token).await {
