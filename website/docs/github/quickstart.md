@@ -36,7 +36,7 @@ manually the first time.
 This is a limitation of crates.io, not release-plz.
 
 Note: right now release-plz creates one token for each package you want to publish.
-If you have many packages, don't omit the token yet.
+If you have many packages, don't omit the `CARGO_REGISTRY_TOKEN` yet.
 :::
 
 Release-plz needs a token to publish your packages to the cargo registry.
