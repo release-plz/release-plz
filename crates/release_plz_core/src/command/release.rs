@@ -635,6 +635,7 @@ async fn release_package_if_needed(
         changelog: &changelog,
         prs: &prs,
     };
+    let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
     for CargoRegistry {
         name,
         index: primary_index,
@@ -662,6 +663,7 @@ async fn release_package_if_needed(
             &release_info,
             &token,
             is_crates_io,
+            &mut trusted_publishing_client,
         )
         .await
         .context("failed to release package")?;
@@ -670,6 +672,12 @@ async fn release_package_if_needed(
             package_was_released = true;
         }
     }
+    if let Some(tp) = trusted_publishing_client.as_ref()
+        && let Err(e) = tp.revoke_token().await
+    {
+        warn!("Failed to revoke trusted publishing token: {e:?}");
+    }
+
     let package_release = package_was_released.then_some(PackageRelease {
         package_name: package.name.to_string(),
         version: package.version.clone(),
@@ -865,6 +873,7 @@ async fn release_package(
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
     is_crates_io: bool,
+    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
@@ -873,7 +882,6 @@ async fn release_package(
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
     let mut publish_token: Option<SecretString> = token.clone();
-    let mut trusted_publishing_client = None;
     let should_use_trusted_publishing = {
         let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
         publish_token.is_none()
@@ -884,13 +892,18 @@ async fn release_package(
             && is_github_actions
     };
     if should_use_trusted_publishing {
-        match trusted_publishing::TrustedPublisher::crates_io().await {
-            Ok(tp) => {
-                publish_token = Some(tp.token().clone());
-                trusted_publishing_client = Some(tp);
-            }
-            Err(e) => {
-                warn!("Failed to use trusted publishing: {e}. Proceeding without it.");
+        // Only issue a new token if we don't already have a trusted publishing client.
+        if let Some(tp) = trusted_publishing_client.as_ref() {
+            publish_token = Some(tp.token().clone());
+        } else {
+            match trusted_publishing::TrustedPublisher::crates_io().await {
+                Ok(tp) => {
+                    publish_token = Some(tp.token().clone());
+                    *trusted_publishing_client = Some(tp);
+                }
+                Err(e) => {
+                    warn!("Failed to use trusted publishing: {e}. Proceeding without it.");
+                }
             }
         }
     }
@@ -984,12 +997,6 @@ async fn release_package(
                 pre_release: is_pre_release,
             };
             git_client.create_release(&git_release_info).await?;
-        }
-
-        if let Some(tp) = trusted_publishing_client
-            && let Err(e) = tp.revoke_token().await
-        {
-            warn!("Failed to revoke trusted publishing token: {e:?}");
         }
 
         info!(
