@@ -986,10 +986,10 @@ async fn release_package(
             git_client.create_release(&git_release_info).await?;
         }
 
-        if let Some(tp) = trusted_publishing_client {
-            if let Err(e) = tp.revoke_token().await {
-                warn!("Failed to revoke trusted publishing token: {e:?}");
-            }
+        if let Some(tp) = trusted_publishing_client
+            && let Err(e) = tp.revoke_token().await
+        {
+            warn!("Failed to revoke trusted publishing token: {e:?}");
         }
 
         info!(
