@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.146](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.145...release-plz-v0.3.146) - 2025-09-13
+
+### Added
+
+- implement trusted publishing ([#2396](https://github.com/release-plz/release-plz/pull/2396)) ([#2407](https://github.com/release-plz/release-plz/pull/2407)) ([#2406](https://github.com/release-plz/release-plz/pull/2406))
+- update trusted publishing initialization code ([#2408](https://github.com/release-plz/release-plz/pull/2408))
+
 ## [0.3.145](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.144...release-plz-v0.3.145) - 2025-09-12
 
 ### Other
