@@ -190,7 +190,8 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing
     };
 
     let cargo_registry_token = if trusted_publishing {
-        // release-plz will generate the token during trusted publishing, so we don't pass it.
+        // release-plz will generate the token during the release process if needed,
+        // so we don't need to pass the token to the action.
         String::new()
     } else {
         format!("${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}")
