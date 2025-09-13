@@ -873,7 +873,6 @@ async fn release_package(
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
     let mut publish_token: Option<SecretString> = token.clone();
-    let mut issued_trusted_token = false;
     let mut trusted_publishing_client = None;
     let should_use_trusted_publishing = {
         let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
@@ -888,7 +887,6 @@ async fn release_package(
         match trusted_publishing::TrustedPublisher::crates_io().await {
             Ok(tp) => {
                 publish_token = Some(tp.token().clone());
-                issued_trusted_token = true;
                 trusted_publishing_client = Some(tp);
             }
             Err(e) => {
@@ -988,8 +986,10 @@ async fn release_package(
             git_client.create_release(&git_release_info).await?;
         }
 
-        if issued_trusted_token {
-            revoke_token(trusted_publishing_client).await;
+        if let Some(tp) = trusted_publishing_client {
+            if let Err(e) = tp.revoke_token().await {
+                warn!("Failed to revoke trusted publishing token: {e:?}");
+            }
         }
 
         info!(
@@ -997,15 +997,6 @@ async fn release_package(
             release_info.package.name, release_info.package.version
         );
         Ok(true)
-    }
-}
-
-async fn revoke_token(trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>) {
-    let tp = trusted_publishing_client
-        .as_ref()
-        .expect("trusted publishing client should exist because trusted token was issued");
-    if let Err(e) = tp.revoke_token().await {
-        warn!("Failed to revoke trusted publishing token: {e:?}");
     }
 }
 
