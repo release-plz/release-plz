@@ -595,11 +595,16 @@ async fn release_packages(
     // The same trusted publishing token can be used for all packages.
     let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
     for package in packages {
-        if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client, &hash_kind,
-
+        if let Some(pkg_release) = release_package_if_needed(
+            input,
+            project,
+            package,
+            repo,
+            git_client,
+            &hash_kind,
             &mut trusted_publishing_client,
-            ).await?
+        )
+        .await?
         {
             package_releases.push(pkg_release);
         }
