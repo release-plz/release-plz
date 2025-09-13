@@ -190,7 +190,8 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing
     };
 
     let cargo_registry_token = if trusted_publishing {
-        "${{ steps.auth.outputs.token }}".to_string()
+        // release-plz will generate the token during trusted publishing, so we don't pass it.
+        String::new()
     } else {
         format!("${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}")
     };
@@ -198,15 +199,6 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing
     let id_token_permissions = if trusted_publishing {
         "
       id-token: write"
-    } else {
-        ""
-    };
-
-    let trusted_publishing_action = if trusted_publishing {
-        "
-      - name: Authenticate with crates.io
-        uses: rust-lang/crates-io-auth-action@v1
-        id: auth"
     } else {
         ""
     };
@@ -219,6 +211,16 @@ fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing
     } else {
         // The crate might be private, so we add the token to the PR workflow.
         // If the crate is public, it won't hurt having it here. You can also remove it if you want.
+        format!(
+            "
+          CARGO_REGISTRY_TOKEN: {cargo_registry_token}"
+        )
+    };
+
+    let release_cargo_registry_token_env = if trusted_publishing {
+        // Omit the token in the release workflow as well when using trusted publishing.
+        "".to_string()
+    } else {
         format!(
             "
           CARGO_REGISTRY_TOKEN: {cargo_registry_token}"
@@ -248,14 +250,13 @@ jobs:
           fetch-depth: 0{checkout_token_line}
       - &install-rust
         name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable{trusted_publishing_action}
+        uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
-          GITHUB_TOKEN: {github_token_secret}
-          CARGO_REGISTRY_TOKEN: {cargo_registry_token}
+          GITHUB_TOKEN: {github_token_secret}{release_cargo_registry_token_env}
 
   release-plz-pr:
     name: Release-plz PR
@@ -462,16 +463,12 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
-                  - name: Authenticate with crates.io
-                    uses: rust-lang/crates-io-auth-action@v1
-                    id: auth
                   - name: Run release-plz
                     uses: release-plz/action@v0.5
                     with:
                       command: release
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-                      CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
               release-plz-pr:
                 name: Release-plz PR
