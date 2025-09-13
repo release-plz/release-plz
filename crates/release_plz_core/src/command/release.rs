@@ -592,12 +592,22 @@ async fn release_packages(
 
     let mut package_releases: Vec<PackageRelease> = vec![];
     let hash_kind = get_hash_kind()?;
+    // The same trusted publishing token can be used for all packages.
+    let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
     for package in packages {
         if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client, &hash_kind).await?
+            release_package_if_needed(input, project, package, repo, git_client, &hash_kind,
+
+            &mut trusted_publishing_client,
+            ).await?
         {
             package_releases.push(pkg_release);
         }
+    }
+    if let Some(tp) = trusted_publishing_client.as_ref()
+        && let Err(e) = tp.revoke_token().await
+    {
+        warn!("Failed to revoke trusted publishing token: {e:?}");
     }
     let release = (!package_releases.is_empty()).then_some(Release {
         releases: package_releases,
@@ -612,6 +622,7 @@ async fn release_package_if_needed(
     repo: &Repo,
     git_client: &GitClient,
     hash_kind: &crates_index::HashKind,
+    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
@@ -635,7 +646,6 @@ async fn release_package_if_needed(
         changelog: &changelog,
         prs: &prs,
     };
-    let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
     for CargoRegistry {
         name,
         index: primary_index,
@@ -663,7 +673,7 @@ async fn release_package_if_needed(
             &release_info,
             &token,
             is_crates_io,
-            &mut trusted_publishing_client,
+            trusted_publishing_client,
         )
         .await
         .context("failed to release package")?;
@@ -671,11 +681,6 @@ async fn release_package_if_needed(
         if package_was_released_at_index {
             package_was_released = true;
         }
-    }
-    if let Some(tp) = trusted_publishing_client.as_ref()
-        && let Err(e) = tp.revoke_token().await
-    {
-        warn!("Failed to revoke trusted publishing token: {e:?}");
     }
 
     let package_release = package_was_released.then_some(PackageRelease {
