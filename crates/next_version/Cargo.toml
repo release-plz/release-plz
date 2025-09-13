@@ -1,6 +1,6 @@
 [package]
 name = "next_version"
-version = "0.2.24"
+version = "0.2.25"
 edition.workspace = true
 description = "Determine next semantic version based on conventional commits"
 license.workspace = true

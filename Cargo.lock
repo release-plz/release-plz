@@ -594,7 +594,7 @@ dependencies = [
 
 [[package]]
 name = "cargo_utils"
-version = "0.1.72"
+version = "0.1.73"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -1518,7 +1518,7 @@ dependencies = [
  "lazy-regex",
  "lazy_static",
  "log",
- "next_version 0.2.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "next_version 0.2.24",
  "regex",
  "rust-embed",
  "secrecy 0.8.0",
@@ -1586,7 +1586,7 @@ dependencies = [
 
 [[package]]
 name = "git_cmd"
-version = "0.6.25"
+version = "0.6.26"
 dependencies = [
  "anyhow",
  "camino",
@@ -3953,6 +3953,8 @@ dependencies = [
 [[package]]
 name = "next_version"
 version = "0.2.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "318b4d09572813254f5da9e4326415d834f8d27f5cfa87939320d661c4aee07b"
 dependencies = [
  "git-conventional",
  "regex",
@@ -3961,9 +3963,7 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.2.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "318b4d09572813254f5da9e4326415d834f8d27f5cfa87939320d661c4aee07b"
+version = "0.2.25"
 dependencies = [
  "git-conventional",
  "regex",
@@ -4765,7 +4765,7 @@ checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
 
 [[package]]
 name = "release-plz"
-version = "0.3.146"
+version = "0.3.147"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.36.3"
+version = "0.36.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4823,7 +4823,7 @@ dependencies = [
  "http",
  "ignore",
  "itertools",
- "next_version 0.2.24",
+ "next_version 0.2.25",
  "parse-changelog",
  "rand 0.9.2",
  "rayon",
@@ -5234,10 +5234,11 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.219"
+version = "1.0.220"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
+checksum = "ceecad4c782e936ac90ecfd6b56532322e3262b14320abf30ce89a92ffdbfe22"
 dependencies = [
+ "serde_core",
  "serde_derive",
 ]
 
@@ -5263,10 +5264,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_derive"
-version = "1.0.219"
+name = "serde_core"
+version = "1.0.220"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
+checksum = "ddba47394f3b862d6ff6efdbd26ca4673e3566a307880a0ffb98f274bbe0ec32"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.220"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60e1f3b1761e96def5ec6d04a6e7421c0404fa3cf5c0155f1e2848fae3d8cc08"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5680,7 +5690,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_logs"
-version = "0.1.32"
+version = "0.1.33"
 dependencies = [
  "tracing",
  "tracing-log",

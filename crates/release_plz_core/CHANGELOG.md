@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.3...release_plz_core-v0.36.4) - 2025-09-13
+
+### Other
+
+- update git-url-parse to 0.5 ([#2412](https://github.com/release-plz/release-plz/pull/2412))
+
 ## [0.36.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.2...release_plz_core-v0.36.3) - 2025-09-13
 
 ### Added
