@@ -10,8 +10,11 @@ jobs:
     name: Release-plz release
     runs-on: ubuntu-24.04
     if: ${{ github.repository_owner == 'release-plz' }}
+    environment: release-plz
     permissions:
       contents: write
+      # Required for trusted publishing
+      id-token: write
     steps:
       # Generating a GitHub token, so that PRs and tags created by
       # the release-plz-action can trigger actions workflows.
