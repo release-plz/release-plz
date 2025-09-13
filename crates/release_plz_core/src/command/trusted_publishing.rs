@@ -22,17 +22,12 @@ impl TrustedPublisher {
         let base_url = CRATES_IO_BASE_URL.to_string();
 
         // Issue a short-lived token immediately and store it in the struct
-        let audience = audience_from_url(&base_url);
-        info!("Retrieving GitHub Actions JWT token with audience: {audience}");
-        let jwt = get_github_actions_jwt(&client, &audience).await?;
-        info!("Retrieved JWT token successfully");
-        let token = request_trusted_publishing_token(&client, &base_url, &jwt).await?;
-        info!("Retrieved trusted publishing token from cargo registry successfully");
+        let token = issue_token(&client, &base_url).await?;
 
         Ok(Self {
             base_url,
             client,
-            token: SecretString::from(token),
+            token,
         })
     }
 
@@ -60,6 +55,19 @@ impl TrustedPublisher {
     pub fn token(&self) -> &SecretString {
         &self.token
     }
+}
+
+async fn issue_token(
+    client: &reqwest::Client,
+    base_url: &String,
+) -> Result<SecretString, anyhow::Error> {
+    let audience = audience_from_url(base_url);
+    info!("Retrieving GitHub Actions JWT token with audience: {audience}");
+    let jwt = get_github_actions_jwt(client, &audience).await?;
+    info!("Retrieved JWT token successfully");
+    let token = request_trusted_publishing_token(client, base_url, &jwt).await?;
+    info!("Retrieved trusted publishing token from cargo registry successfully");
+    Ok(SecretString::from(token))
 }
 async fn get_github_actions_jwt(
     client: &reqwest::Client,
