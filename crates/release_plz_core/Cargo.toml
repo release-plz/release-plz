@@ -1,6 +1,6 @@
 [package]
 name = "release_plz_core"
-version = "0.34.8"
+version = "0.36.3"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository = "https://github.com/release-plz/release-plz/tree/main/crates/release_plz_core"
@@ -17,8 +17,8 @@ all-static = ["cargo/vendored-libgit2", "cargo/all-static"]
 
 [dependencies]
 base64.workspace = true
-cargo_utils = { path = "../cargo_utils", version = "0.1.71" }
-git_cmd = { path = "../git_cmd", version = "0.6.24" }
+cargo_utils = { path = "../cargo_utils", version = "0.1.72" }
+git_cmd = { path = "../git_cmd", version = "0.6.25" }
 next_version = { path = "../next_version", version = "0.2" }
 
 anyhow.workspace = true
@@ -54,6 +54,7 @@ strip-ansi-escapes.workspace = true
 tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 http.workspace = true
+urlencoding.workspace = true
 
 [dev-dependencies]
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }

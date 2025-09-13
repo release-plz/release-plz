@@ -118,7 +118,7 @@ and pass it to both the `actions/checkout` and `release-plz` steps:
 ```yaml
 steps:
   - name: Checkout repository
-    uses: actions/checkout@v4
+    uses: actions/checkout@v5
     with:
       fetch-depth: 0
       # highlight-next-line
@@ -192,7 +192,7 @@ Here's how to use a GitHub App to generate a GitHub token:
          private-key: ${{ secrets.APP_PRIVATE_KEY }}
    # highlight-end
      - name: Checkout repository
-       uses: actions/checkout@v4
+       uses: actions/checkout@v5
        with:
          fetch-depth: 0
    # highlight-next-line

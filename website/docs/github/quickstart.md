@@ -23,13 +23,26 @@ Follow the steps below to set up the GitHub Action.
 
 ## 2. Set the `CARGO_REGISTRY_TOKEN` secret
 
+:::tip
+If you want to use [trusted publishing](https://crates.io/docs/trusted-publishing),
+don't set the `CARGO_REGISTRY_TOKEN` secret, and remove it from your workflow file
+entirely.
+
+Set `id-token: write` in the permissions of the job that runs `release-plz release`.
+
+Remember to follow the crates.io docs to set up trusted publishing for all your crates.
+Also, new crates can't be published with trusted publishing — you need to publish them
+manually the first time.
+This is a limitation of crates.io, not release-plz.
+:::
+
 Release-plz needs a token to publish your packages to the cargo registry.
 
 1. Retrieve your registry token following
    [this](https://doc.rust-lang.org/cargo/reference/publishing.html#before-your-first-publish)
    guide.
 2. Add your cargo registry token as a secret in your repository following
-   [this](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository)
+   [this](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets#creating-secrets-for-a-repository)
    guide.
 
 As specified in the `cargo publish`
@@ -53,10 +66,6 @@ and copy the following workflow:
 ```yaml
 name: Release-plz
 
-permissions:
-  pull-requests: write
-  contents: write
-
 on:
   push:
     branches:
@@ -71,11 +80,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Install Rust toolchain
+      - &install-rust
+        name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
         uses: release-plz/action@v0.5
@@ -96,12 +107,8 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - *checkout
+      - *install-rust
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
@@ -162,7 +169,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
           # release from the latest commit of the release PR.
@@ -199,7 +206,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
           # determine the next version and build the changelog.

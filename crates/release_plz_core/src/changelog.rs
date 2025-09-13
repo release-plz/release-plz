@@ -37,7 +37,7 @@ pub struct Changelog<'a> {
     pr_link: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Remote {
     /// Owner of the repo. E.g. `MarcoIeni`.
     pub owner: String,
@@ -71,8 +71,16 @@ impl Changelog<'_> {
             return Ok(old_changelog);
         }
         let old_header = changelog_parser::parse_header(&old_changelog);
-        let config = self.changelog_config(old_header);
+        let config = self.changelog_config(old_header.clone());
         let changelog = self.get_changelog(&config)?;
+
+        // If we successfully parsed an old header, compose manually to preserve exact formatting
+        // and avoid potential header duplication.
+        if let Some(header) = old_header {
+            return compose_changelog(&old_changelog, &changelog, &header);
+        }
+
+        // Fallback: let git-cliff handle the prepend.
         let mut out = Vec::new();
         changelog
             .prepend(old_changelog, &mut out)
@@ -101,6 +109,33 @@ impl Changelog<'_> {
             bump: Bump::default(),
         }
     }
+}
+
+fn compose_changelog(
+    old_changelog: &str,
+    changelog: &GitCliffChangelog<'_>,
+    header: &str,
+) -> Result<String, anyhow::Error> {
+    let generated = {
+        let mut new_out = Vec::new();
+        changelog
+            .generate(&mut new_out)
+            .context("cannot generate updated changelog")?;
+        String::from_utf8(new_out).context("cannot convert bytes to string")?
+    };
+    // Parse the header so we can remove it later
+    let generated_header = crate::changelog_parser::parse_header(&generated);
+    let header_to_strip = if let Some(gen_h) = generated_header {
+        gen_h
+    } else {
+        header.to_string()
+    };
+    // Remove the header to get the changelog body
+    let generated_body = generated
+        .strip_prefix(&header_to_strip)
+        .unwrap_or(generated.as_str());
+    let old_body = old_changelog.strip_prefix(header).unwrap_or(old_changelog);
+    Ok(format!("{header}{generated_body}{old_body}"))
 }
 
 /// Apply release-plz defaults to git config
@@ -236,7 +271,7 @@ fn default_git_cliff_config() -> Config {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChangelogBuilder<'a> {
     commits: Vec<Commit<'a>>,
     version: String,
@@ -310,7 +345,11 @@ impl<'a> ChangelogBuilder<'a> {
         }
     }
 
-    pub fn build(self) -> Changelog<'a> {
+    pub fn config(&self) -> Option<&Config> {
+        self.config.as_ref()
+    }
+
+    pub fn build(&self) -> Changelog<'a> {
         let git_config = self
             .config
             .clone()
@@ -319,7 +358,7 @@ impl<'a> ChangelogBuilder<'a> {
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
             .commits
-            .into_iter()
+            .iter()
             .filter_map(|c| c.process(&git_config).ok())
             .collect();
 
@@ -337,8 +376,8 @@ impl<'a> ChangelogBuilder<'a> {
             }
         }
 
-        let previous = self.previous_version.map(|ver| Release {
-            version: Some(ver),
+        let previous = self.previous_version.as_ref().map(|ver| Release {
+            version: Some(ver.clone()),
             commits: vec![],
             commit_id: None,
             timestamp: Some(0),
@@ -350,7 +389,7 @@ impl<'a> ChangelogBuilder<'a> {
 
         Changelog {
             release: Release {
-                version: Some(self.version),
+                version: Some(self.version.clone()),
                 commits,
                 commit_id: None,
                 timestamp: Some(release_date),
@@ -359,11 +398,11 @@ impl<'a> ChangelogBuilder<'a> {
                 repository: None,
                 ..Default::default()
             },
-            remote: self.remote,
-            release_link: self.release_link,
-            config: self.config,
-            package: self.package,
-            pr_link: self.pr_link,
+            remote: self.remote.clone(),
+            release_link: self.release_link.clone(),
+            config: self.config.clone(),
+            package: self.package.clone(),
+            pr_link: self.pr_link.clone(),
         }
     }
 

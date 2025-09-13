@@ -229,6 +229,11 @@ impl TestContext {
         self.push_all_changes("edit changelog");
     }
 
+    pub fn read_changelog(&self) -> String {
+        let changelog_path = self.repo_dir().join("CHANGELOG.md");
+        fs_err::read_to_string(changelog_path).unwrap()
+    }
+
     pub fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
         let crate_name = &self.gitea.repo;
         release_plz_core::PackageDownloader::new([crate_name], dest_dir.as_str())

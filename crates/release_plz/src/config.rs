@@ -385,6 +385,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             semver_check: config.semver_check != Some(false),
             changelog_update: config.changelog_update != Some(false),
             release: config.release != Some(false),
+            publish: config.publish != Some(false),
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),

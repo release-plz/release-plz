@@ -42,9 +42,6 @@ To use this in your project, change:
 ```yaml
 name: CD # Continuous Deployment
 
-permissions:
-  contents: write
-
 on:
   release:
     types: [published]
@@ -67,6 +64,8 @@ jobs:
     name: ${{ matrix.target }}
     if: github.repository_owner == 'MyOwner' && startsWith(github.event.release.name, 'my-bin-v')
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
@@ -91,7 +90,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/setup-cross-toolchain-action@v1

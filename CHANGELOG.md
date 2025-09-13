@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.146](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.145...release-plz-v0.3.146) - 2025-09-13
+
+### Added
+
+- implement trusted publishing ([#2396](https://github.com/release-plz/release-plz/pull/2396)) ([#2407](https://github.com/release-plz/release-plz/pull/2407)) ([#2406](https://github.com/release-plz/release-plz/pull/2406))
+- update trusted publishing initialization code ([#2408](https://github.com/release-plz/release-plz/pull/2408))
+
+## [0.3.145](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.144...release-plz-v0.3.145) - 2025-09-12
+
+### Other
+
+- use yaml anchors to simplify workflows ([#2393](https://github.com/release-plz/release-plz/pull/2393))
+- improve error messages of some http calls ([#2398](https://github.com/release-plz/release-plz/pull/2398))
+- specify at which commit we can't compare packages ([#2397](https://github.com/release-plz/release-plz/pull/2397))
+
+## [0.3.144](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.143...release-plz-v0.3.144) - 2025-09-09
+
+### Added
+
+- use api to update branches ([#2365](https://github.com/release-plz/release-plz/pull/2365))
+
+### Fixed
+
+- load config once ([#2388](https://github.com/release-plz/release-plz/pull/2388))
+
+### Other
+
+- make changelog parsing more flexible ([#2391](https://github.com/release-plz/release-plz/pull/2391))
+- isolate tests by running in unique cargo target dirs ([#2387](https://github.com/release-plz/release-plz/pull/2387))
+- update github checkout action ([#2384](https://github.com/release-plz/release-plz/pull/2384))
+- require default branch to be up to date ([#2386](https://github.com/release-plz/release-plz/pull/2386))
+- improve create branch error message ([#2385](https://github.com/release-plz/release-plz/pull/2385))
+
+## [0.3.143](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.142...release-plz-v0.3.143) - 2025-09-05
+
+### Added
+
+- use api to create tags ([#2362](https://github.com/release-plz/release-plz/pull/2362))
+
+### Fixed
+
+- show changelog preview in the PR body when changelog format is not standard ([#2367](https://github.com/release-plz/release-plz/pull/2367))
+- delete branch only if it exists ([#2378](https://github.com/release-plz/release-plz/pull/2378))
+
+### Other
+
+- improve error messages ([#2377](https://github.com/release-plz/release-plz/pull/2377))
+
+## [0.3.142](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.141...release-plz-v0.3.142) - 2025-08-31
+
+### Added
+
+- use api to delete branches ([#2356](https://github.com/release-plz/release-plz/pull/2356))
+- use api to create branches ([#2355](https://github.com/release-plz/release-plz/pull/2355))
+- add a fallback index to attempt the legacy hash if the primary index fails ([#2341](https://github.com/release-plz/release-plz/pull/2341))
+
+### Fixed
+
+- respect `publish = false` config during registry lookups ([#2357](https://github.com/release-plz/release-plz/pull/2357))
+- recognize gitea-actions as bot account ([#2347](https://github.com/release-plz/release-plz/pull/2347))
+
 ## [0.3.141](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.140...release-plz-v0.3.141) - 2025-08-15
 
 ### Fixed

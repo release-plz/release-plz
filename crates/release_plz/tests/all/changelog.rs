@@ -86,6 +86,7 @@ async fn release_plz_releases_a_new_project() {
     assert_eq!(packages().len(), 1);
 }
 
+// TODO: switch `### Contributors` to `=== Contributors` and make test pass
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_adds_custom_changelog() {
@@ -119,9 +120,47 @@ async fn release_plz_adds_custom_changelog() {
 
     let outcome = context.run_release_pr().success();
 
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
     let open_pr = &opened_prs[0];
+    let expected_pr_body = format!(
+        r#"
+## 🤖 New release
+
+* `{package}`: 0.1.0
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+
+owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
+
+== {package} - [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0)
+
+
+=== Other
+- add config file by {username} (gitea: {username})
+- cargo init by {username} (gitea: {username})
+- Initial commit by {username} (gitea: {username})
+
+### Contributors
+
+* @{username}
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+    );
+    assert_eq!(
+        open_pr.body.as_ref().unwrap().trim(),
+        expected_pr_body.trim()
+    );
 
     let expected_stdout = serde_json::json!({
         "prs": [{
