@@ -14,7 +14,12 @@ pub struct RepoUrl {
 
 impl RepoUrl {
     pub fn new(git_host_url: &str) -> anyhow::Result<Self> {
-        new_url(git_host_url).with_context(|| format!("cannot parse git url {git_host_url}"))
+        let git_host_url = if !git_host_url.ends_with(".git") {
+            format!("{git_host_url}.git")
+        } else {
+            git_host_url.to_string()
+        };
+        new_url(&git_host_url).with_context(|| format!("cannot parse git url {git_host_url}"))
     }
 
     pub fn from_repo(repo: &Repo) -> Result<Self, anyhow::Error> {
