@@ -1547,9 +1547,9 @@ dependencies = [
 
 [[package]]
 name = "git-url-parse"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bd3c38314ebbb54c3e27508eb103a3765576a9b1f2aacd79472ece0959cd013"
+checksum = "450c69b1ab2cbf1a3730baa40d22698eb93d9fdae7cb3c90325bfbef3f7cdf13"
 dependencies = [
  "getset",
  "nom 8.0.0",
