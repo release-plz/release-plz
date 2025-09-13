@@ -892,7 +892,6 @@ async fn release_package(
             && is_github_actions
     };
     if should_use_trusted_publishing {
-        // Only issue a new token if we don't already have a trusted publishing client.
         if let Some(tp) = trusted_publishing_client.as_ref() {
             publish_token = Some(tp.token().clone());
         } else {
