@@ -87,7 +87,7 @@ fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
     let path = git_url
         .path()
         .strip_suffix(".git")
-        .unwrap_or(&git_url.path())
+        .unwrap_or(git_url.path())
         .to_string();
     Ok(RepoUrl {
         owner: provider.owner().to_string(),
