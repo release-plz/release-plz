@@ -14,35 +14,7 @@ pub struct RepoUrl {
 
 impl RepoUrl {
     pub fn new(git_host_url: &str) -> anyhow::Result<Self> {
-        let git_url = GitUrl::parse(git_host_url)
-            .map_err(|err| anyhow!("cannot parse git url {}: {}", git_host_url, err))?;
-        let provider: GenericProvider = git_url
-            .provider_info()
-            .context("cannot determine git provider")?;
-        let owner = provider.owner().to_string();
-        let name = provider.repo().to_string();
-        let host = git_url
-            .host()
-            .with_context(|| format!("cannot find host in git url {git_host_url}"))?
-            .to_string();
-        let port = git_url.port();
-        let scheme = git_url
-            .scheme()
-            .context("cannot determine scheme")?
-            .to_string();
-        let path = git_url
-            .path()
-            .strip_suffix(".git")
-            .unwrap_or(&git_url.path())
-            .to_string();
-        Ok(RepoUrl {
-            owner,
-            name,
-            host,
-            port,
-            scheme,
-            path,
-        })
+        new_url(git_host_url).with_context(|| format!("cannot parse git url {git_host_url}"))
     }
 
     pub fn from_repo(repo: &Repo) -> Result<Self, anyhow::Error> {
@@ -101,6 +73,32 @@ impl RepoUrl {
         }
     }
 }
+
+fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
+    let git_url = GitUrl::parse(git_host_url)?;
+    let provider: GenericProvider = git_url
+        .provider_info()
+        .context("cannot determine git provider")?;
+    let host = git_url.host().context("cannot determine host")?.to_string();
+    let scheme = git_url
+        .scheme()
+        .context("cannot determine scheme")?
+        .to_string();
+    let path = git_url
+        .path()
+        .strip_suffix(".git")
+        .unwrap_or(&git_url.path())
+        .to_string();
+    Ok(RepoUrl {
+        owner: provider.owner().to_string(),
+        name: provider.repo().to_string(),
+        host,
+        port: git_url.port(),
+        scheme,
+        path,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::RepoUrl;
