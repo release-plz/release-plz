@@ -60,7 +60,7 @@ impl TrustedPublisher {
 /// Issue a trusted publishing token
 async fn issue_token(
     client: &reqwest::Client,
-    base_url: &String,
+    base_url: &str,
 ) -> Result<SecretString, anyhow::Error> {
     let audience = audience_from_url(base_url);
     info!("Retrieving GitHub Actions JWT token with audience: {audience}");
