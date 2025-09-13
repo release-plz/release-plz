@@ -1,6 +1,6 @@
 use anyhow::{Context, anyhow};
 use git_cmd::Repo;
-use git_url_parse::GitUrl;
+use git_url_parse::{GitUrl, types::provider::GenericProvider};
 
 #[derive(Debug, Clone)]
 pub struct RepoUrl {
@@ -16,19 +16,24 @@ impl RepoUrl {
     pub fn new(git_host_url: &str) -> anyhow::Result<Self> {
         let git_url = GitUrl::parse(git_host_url)
             .map_err(|err| anyhow!("cannot parse git url {}: {}", git_host_url, err))?;
-        let owner = git_url
-            .owner
-            .with_context(|| format!("cannot find owner in git url {git_host_url}"))?;
-        let name = git_url.name;
+        let provider: GenericProvider = git_url
+            .provider_info()
+            .context("cannot determine git provider")?;
+        let owner = provider.owner().to_string();
+        let name = provider.repo().to_string();
         let host = git_url
-            .host
-            .with_context(|| format!("cannot find host in git url {git_host_url}"))?;
-        let port = git_url.port;
-        let scheme = git_url.scheme.to_string();
+            .host()
+            .with_context(|| format!("cannot find host in git url {git_host_url}"))?
+            .to_string();
+        let port = git_url.port();
+        let scheme = git_url
+            .scheme()
+            .context("cannot determine scheme")?
+            .to_string();
         let path = git_url
-            .path
+            .path()
             .strip_suffix(".git")
-            .unwrap_or(&git_url.path)
+            .unwrap_or(&git_url.path())
             .to_string();
         Ok(RepoUrl {
             owner,
