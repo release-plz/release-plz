@@ -17,11 +17,11 @@ pub struct TrustedPublisher {
 
 impl TrustedPublisher {
     /// Create a trusted publisher targeting crates.io.
+    /// Also issues a trusted publishing token using GitHub Actions OIDC.
     pub async fn crates_io() -> anyhow::Result<Self> {
         let client = crate::http_client::http_client_builder().build()?;
         let base_url = CRATES_IO_BASE_URL.to_string();
 
-        // Issue a short-lived token immediately and store it in the struct
         let token = issue_token(&client, &base_url).await?;
 
         Ok(Self {
@@ -57,6 +57,7 @@ impl TrustedPublisher {
     }
 }
 
+/// Issue a trusted publishing token
 async fn issue_token(
     client: &reqwest::Client,
     base_url: &String,
