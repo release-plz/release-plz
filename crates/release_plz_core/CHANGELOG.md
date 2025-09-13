@@ -11,12 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- issue trusted publishing token once ([#2407](https://github.com/release-plz/release-plz/pull/2407))
-- implement trusted publishing ([#2396](https://github.com/release-plz/release-plz/pull/2396))
-
-### Other
-
-- trusted publisher constructor requests token ([#2406](https://github.com/release-plz/release-plz/pull/2406))
+- implement trusted publishing ([#2396](https://github.com/release-plz/release-plz/pull/2396)) ([#2407](https://github.com/release-plz/release-plz/pull/2407)) ([#2406](https://github.com/release-plz/release-plz/pull/2406))
 
 ## [0.36.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.1...release_plz_core-v0.36.2) - 2025-09-12
 
