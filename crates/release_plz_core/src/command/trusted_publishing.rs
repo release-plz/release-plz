@@ -1,6 +1,7 @@
 //! Docs at <https://crates.io/docs/trusted-publishing>
 
 use anyhow::Context;
+use secrecy::{ExposeSecret, SecretString};
 use tracing::info;
 
 use crate::response_ext::ResponseExt;
@@ -11,15 +12,27 @@ const CRATES_IO_BASE_URL: &str = "https://crates.io";
 pub struct TrustedPublisher {
     base_url: String,
     client: reqwest::Client,
+    token: SecretString,
 }
 
 impl TrustedPublisher {
     /// Create a trusted publisher targeting crates.io.
-    pub fn crates_io() -> anyhow::Result<Self> {
+    pub async fn crates_io() -> anyhow::Result<Self> {
         let client = crate::http_client::http_client_builder().build()?;
+        let base_url = CRATES_IO_BASE_URL.to_string();
+
+        // Issue a short-lived token immediately and store it in the struct
+        let audience = audience_from_url(&base_url);
+        info!("Retrieving GitHub Actions JWT token with audience: {audience}");
+        let jwt = get_github_actions_jwt(&client, &audience).await?;
+        info!("Retrieved JWT token successfully");
+        let token = request_trusted_publishing_token(&client, &base_url, &jwt).await?;
+        info!("Retrieved trusted publishing token from cargo registry successfully");
+
         Ok(Self {
-            base_url: CRATES_IO_BASE_URL.to_string(),
+            base_url,
             client,
+            token: SecretString::from(token),
         })
     }
 
@@ -27,24 +40,13 @@ impl TrustedPublisher {
         get_tokens_endpoint(&self.base_url)
     }
 
-    /// Retrieve a short-lived publish token via GitHub Actions OIDC flow.
-    pub async fn issue_trusted_publishing_token(&self) -> anyhow::Result<String> {
-        let audience = audience_from_url(&self.base_url);
-        info!("Retrieving GitHub Actions JWT token with audience: {audience}");
-        let jwt = self.get_github_actions_jwt(&audience).await?;
-        info!("Retrieved JWT token successfully");
-        let token = self.request_trusted_publishing_token(&jwt).await?;
-        info!("Retrieved trusted publishing token from cargo registry successfully");
-        Ok(token)
-    }
-
     /// Revoke a previously issued token.
-    pub async fn revoke_token(&self, token: &str) -> anyhow::Result<()> {
+    pub async fn revoke_token(&self) -> anyhow::Result<()> {
         let endpoint = self.tokens_endpoint();
         info!("Revoking trusted publishing token at {endpoint}");
         self.client
             .delete(endpoint)
-            .bearer_auth(token)
+            .bearer_auth(self.token.expose_secret())
             .send()
             .await?
             .successful_status()
@@ -54,62 +56,71 @@ impl TrustedPublisher {
         Ok(())
     }
 
-    async fn get_github_actions_jwt(&self, audience: &str) -> anyhow::Result<String> {
-        // Follow GitHub OIDC flow using environment variables provided in Actions runners
-        let req_url = read_actions_id_env_var("ACTIONS_ID_TOKEN_REQUEST_URL")?;
-        let req_token = read_actions_id_env_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")?;
-
-        // Append audience query parameter
-        let separator = if req_url.contains('?') { '&' } else { '?' };
-        let full_url = format!(
-            "{}{}audience={}",
-            req_url,
-            separator,
-            urlencoding::encode(audience)
-        );
-
-        let resp = self
-            .client
-            .get(full_url)
-            .bearer_auth(req_token)
-            .send()
-            .await?
-            .successful_status()
-            .await
-            .context("Failed to get GitHub Actions OIDC token")?;
-        #[derive(serde::Deserialize)]
-        struct OidcResp {
-            value: String,
-        }
-        let body: OidcResp = resp.json().await?;
-        if body.value.is_empty() {
-            anyhow::bail!("Empty OIDC token received");
-        }
-        Ok(body.value)
+    /// Expose the retrieved token so callers can reuse it when needed (e.g., cargo publish).
+    pub fn token(&self) -> &SecretString {
+        &self.token
     }
+}
+async fn get_github_actions_jwt(
+    client: &reqwest::Client,
+    audience: &str,
+) -> anyhow::Result<String> {
+    // Follow GitHub OIDC flow using environment variables provided in Actions runners
+    let req_url = read_actions_id_env_var("ACTIONS_ID_TOKEN_REQUEST_URL")?;
+    let req_token = read_actions_id_env_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")?;
 
-    async fn request_trusted_publishing_token(&self, jwt: &str) -> anyhow::Result<String> {
-        let endpoint = self.tokens_endpoint();
-        info!("Requesting token from: {endpoint}");
-        let resp = self
-            .client
-            .post(endpoint)
-            .json(&serde_json::json!({"jwt": jwt}))
-            .send()
-            .await?
-            .successful_status()
-            .await
-            .context("Failed to retrieve token from Cargo registry")?;
-        #[derive(serde::Deserialize)]
-        struct TokenResp {
-            token: String,
-        }
-        let body: TokenResp = resp.json().await?;
-        if body.token.is_empty() {
-            anyhow::bail!("Empty token received from registry");
-        }
-        Ok(body.token)
+    // Append audience query parameter
+    let separator = if req_url.contains('?') { '&' } else { '?' };
+    let full_url = format!(
+        "{}{}audience={}",
+        req_url,
+        separator,
+        urlencoding::encode(audience)
+    );
+
+    let resp = client
+        .get(full_url)
+        .bearer_auth(req_token)
+        .send()
+        .await?
+        .successful_status()
+        .await
+        .context("Failed to get GitHub Actions OIDC token")?;
+    #[derive(serde::Deserialize)]
+    struct OidcResp {
+        value: String,
     }
+    let body: OidcResp = resp.json().await?;
+    if body.value.is_empty() {
+        anyhow::bail!("Empty OIDC token received");
+    }
+    Ok(body.value)
+}
+
+async fn request_trusted_publishing_token(
+    client: &reqwest::Client,
+    base_url: &str,
+    jwt: &str,
+) -> anyhow::Result<String> {
+    let endpoint = get_tokens_endpoint(base_url);
+    info!("Requesting token from: {endpoint}");
+    let resp = client
+        .post(endpoint)
+        .json(&serde_json::json!({"jwt": jwt}))
+        .send()
+        .await?
+        .successful_status()
+        .await
+        .context("Failed to retrieve token from Cargo registry")?;
+    #[derive(serde::Deserialize)]
+    struct TokenResp {
+        token: String,
+    }
+    let body: TokenResp = resp.json().await?;
+    if body.token.is_empty() {
+        anyhow::bail!("Empty token received from registry");
+    }
+    Ok(body.token)
 }
 
 fn get_tokens_endpoint(registry_base_url: &str) -> String {
