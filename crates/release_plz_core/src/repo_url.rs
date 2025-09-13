@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use git_cmd::Repo;
 use git_url_parse::{GitUrl, types::provider::GenericProvider};
 
