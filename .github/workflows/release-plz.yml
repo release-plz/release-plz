@@ -12,6 +12,7 @@ jobs:
     if: ${{ github.repository_owner == 'release-plz' }}
     environment: release-plz
     permissions:
+      contents: read
       # Required for trusted publishing
       id-token: write
     steps:
