@@ -121,6 +121,7 @@ steps:
     uses: actions/checkout@v5
     with:
       fetch-depth: 0
+      persist-credentials: false
   - name: Install Rust toolchain
     uses: dtolnay/rust-toolchain@stable
   - name: Run release-plz
@@ -170,6 +171,13 @@ Here's how to use a GitHub App to generate a GitHub token:
 
    ```yaml
    steps:
+     - name: Checkout repository
+       uses: actions/checkout@v5
+       with:
+         fetch-depth: 0
+          persist-credentials: false
+     - name: Install Rust toolchain
+       uses: dtolnay/rust-toolchain@stable
    # highlight-start
      # Generating a GitHub token, so that PRs and tags created by
      # the release-plz-action can trigger actions workflows.
@@ -182,12 +190,6 @@ Here's how to use a GitHub App to generate a GitHub token:
          # GitHub App private key secret name
          private-key: ${{ secrets.APP_PRIVATE_KEY }}
    # highlight-end
-     - name: Checkout repository
-       uses: actions/checkout@v5
-       with:
-         fetch-depth: 0
-     - name: Install Rust toolchain
-       uses: dtolnay/rust-toolchain@stable
      - name: Run release-plz
        uses: release-plz/action@v0.5
        env:

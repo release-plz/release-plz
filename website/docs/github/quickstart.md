@@ -85,6 +85,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -174,6 +175,7 @@ jobs:
           # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
           # release from the latest commit of the release PR.
           fetch-depth: 0
+          persist-credentials: false
       # Use your favorite way to install the Rust toolchain.
       # The action I'm using here is a popular choice.
       - name: Install Rust toolchain
@@ -211,6 +213,7 @@ jobs:
           # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
           # determine the next version and build the changelog.
           fetch-depth: 0
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
