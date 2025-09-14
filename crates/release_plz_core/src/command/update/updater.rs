@@ -11,7 +11,10 @@ use cargo_metadata::{
     semver::Version,
 };
 use cargo_utils::{CARGO_TOML, LocalManifest};
-use git_cliff_core::contributor::RemoteContributor;
+use git_cliff_core::{
+    config::{ChangelogConfig, Config},
+    contributor::RemoteContributor,
+};
 use git_cmd::Repo;
 use next_version::NextVersion as _;
 use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
@@ -435,7 +438,7 @@ impl Updater<'_> {
             repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
         };
 
-        let changelog = {
+        let changelog_outcome = {
             let cfg = self.req.get_package_config(package.name.as_str());
             let changelog_req = cfg
                 .should_update_changelog()
@@ -469,10 +472,16 @@ impl Updater<'_> {
                 .transpose()
         }?;
 
+        let (changelog, new_changelog_entry) = match changelog_outcome {
+            Some((changelog, new_changelog_entry)) => (Some(changelog), Some(new_changelog_entry)),
+            None => (None, None),
+        };
+
         Ok(UpdateResult {
             version,
             changelog,
             semver_check,
+            new_changelog_entry,
         })
     }
 
@@ -579,7 +588,7 @@ impl Updater<'_> {
                     package,
                     package_path,
                     registry_package_path,
-                )?;
+                ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal
                     || is_commit_too_old(
                         repository,
@@ -880,6 +889,10 @@ fn pathbufs_to_check(
     Ok(paths)
 }
 
+/// Return the following tuple:
+/// - the entire changelog (with the new entries);
+/// - the new changelog entry alone
+///   (i.e. changelog body update without header and footer).
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
@@ -888,7 +901,7 @@ fn get_changelog(
     repo_url: Option<&RepoUrl>,
     release_link: Option<&str>,
     package: &Package,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
     let mut changelog_builder = ChangelogBuilder::new(
@@ -937,7 +950,7 @@ fn get_changelog(
             // This can happen when no version of the package was published,
             // but the changelog already contains the changes of the initial version
             // of the package (e.g. because a release PR was merged).
-            return Ok(old_changelog.to_string());
+            return Ok((old_changelog.to_string(), "".to_string()));
         }
     }
     let new_changelog = changelog_builder.build();
@@ -945,7 +958,30 @@ fn get_changelog(
         Some(old_changelog) => new_changelog.prepend(old_changelog)?,
         None => new_changelog.generate()?, // Old changelog doesn't exist.
     };
-    Ok(changelog)
+    let body_only =
+        new_changelog_entry(changelog_builder).context("can't determine changelog body")?;
+    Ok((changelog, body_only.unwrap_or_default()))
+}
+
+fn new_changelog_entry(changelog_builder: ChangelogBuilder) -> anyhow::Result<Option<String>> {
+    changelog_builder
+        .config()
+        .cloned()
+        .map(|c| {
+            let new_config = Config {
+                changelog: ChangelogConfig {
+                    // If we set None, later this will be overriden with the defaults.
+                    // Instead we just want the body.
+                    header: Some("".to_string()),
+                    footer: Some("".to_string()),
+                    ..c.changelog
+                },
+                ..c
+            };
+            let changelog = changelog_builder.with_config(new_config).build();
+            changelog.generate().map(|entry| entry.trim().to_string())
+        })
+        .transpose()
 }
 
 fn get_contributors(commits: &[git_cliff_core::commit::Commit]) -> Vec<RemoteContributor> {
@@ -1012,6 +1048,6 @@ mod tests {
             &fake_package::FakePackage::new("my_package").into(),
         )
         .unwrap();
-        assert_eq!(old, new);
+        assert_eq!(old, new.0);
     }
 }

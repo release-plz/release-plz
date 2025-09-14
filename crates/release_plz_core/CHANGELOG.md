@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.3...release_plz_core-v0.36.4) - 2025-09-13
+
+### Other
+
+- update git-url-parse to 0.5 ([#2412](https://github.com/release-plz/release-plz/pull/2412))
+
+## [0.36.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.2...release_plz_core-v0.36.3) - 2025-09-13
+
+### Added
+
+- implement trusted publishing ([#2396](https://github.com/release-plz/release-plz/pull/2396)) ([#2407](https://github.com/release-plz/release-plz/pull/2407)) ([#2406](https://github.com/release-plz/release-plz/pull/2406))
+
+## [0.36.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.1...release_plz_core-v0.36.2) - 2025-09-12
+
+### Other
+
+- improve error messages of some http calls ([#2398](https://github.com/release-plz/release-plz/pull/2398))
+- specify at which commit we can't compare packages ([#2397](https://github.com/release-plz/release-plz/pull/2397))
+
+## [0.36.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.0...release_plz_core-v0.36.1) - 2025-09-09
+
+### Added
+
+- use api to update branches ([#2365](https://github.com/release-plz/release-plz/pull/2365))
+
+### Other
+
+- make changelog parsing more flexible ([#2391](https://github.com/release-plz/release-plz/pull/2391))
+- require default branch to be up to date ([#2386](https://github.com/release-plz/release-plz/pull/2386))
+- improve create branch error message ([#2385](https://github.com/release-plz/release-plz/pull/2385))
+
+## [0.36.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.35.0...release_plz_core-v0.36.0) - 2025-09-05
+
+### Added
+
+- use api to create tags ([#2362](https://github.com/release-plz/release-plz/pull/2362))
+
+### Fixed
+
+- delete branch only if it exists ([#2378](https://github.com/release-plz/release-plz/pull/2378))
+- show changelog preview in the PR body when changelog format is not standard ([#2367](https://github.com/release-plz/release-plz/pull/2367))
+
+### Other
+
+- improve error messages ([#2377](https://github.com/release-plz/release-plz/pull/2377))
+
+## [0.35.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.8...release_plz_core-v0.35.0) - 2025-08-31
+
+### Added
+
+- use api to delete branches ([#2356](https://github.com/release-plz/release-plz/pull/2356))
+- use api to create branches ([#2355](https://github.com/release-plz/release-plz/pull/2355))
+- add a fallback index to attempt the legacy hash if the primary index fails ([#2341](https://github.com/release-plz/release-plz/pull/2341))
+
+### Fixed
+
+- respect `publish = false` config during registry lookups ([#2357](https://github.com/release-plz/release-plz/pull/2357))
+- recognize gitea-actions as bot account ([#2347](https://github.com/release-plz/release-plz/pull/2347))
+
 ## [0.34.8](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.34.7...release_plz_core-v0.34.8) - 2025-08-15
 
 ### Fixed

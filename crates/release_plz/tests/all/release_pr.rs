@@ -1323,3 +1323,49 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     "#]]
     .assert_eq(&binary_cargo_toml);
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn changelog_is_updated_correctly_if_no_new_line_after_h1() {
+    let context = TestContext::new().await;
+    let changelog = "# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+";
+
+    context.write_changelog(changelog);
+    context.run_release_pr().success();
+    // Merge release PR to update changelog of v0.1.0 of crate
+    context.merge_release_pr().await;
+
+    let new_changelog = context.read_changelog();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    let today = today();
+
+    assert_eq!(
+        new_changelog,
+        format!(
+            r#"# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0](https://localhost/{username}/{repo}/releases/tag/v0.1.0) - {today}
+
+### Other
+
+- edit changelog
+- cargo init
+- Initial commit
+"#
+        )
+    );
+}

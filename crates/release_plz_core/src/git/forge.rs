@@ -3,6 +3,7 @@ use crate::{GitHub, GitReleaseInfo};
 use std::collections::{HashMap, HashSet};
 
 use crate::pr::Pr;
+use crate::response_ext::ResponseExt;
 use anyhow::Context;
 use http::StatusCode;
 use itertools::Itertools;
@@ -274,8 +275,7 @@ impl GitClient {
     pub fn new(forge: GitForge) -> anyhow::Result<Self> {
         let client = {
             let headers = forge.default_headers()?;
-            let reqwest_client = reqwest::Client::builder()
-                .user_agent("release-plz")
+            let reqwest_client = crate::http_client::http_client_builder()
                 .default_headers(headers)
                 .build()
                 .context("can't build Git client")?;
@@ -646,7 +646,8 @@ impl GitClient {
             .get(format!("{}/labels", self.repo_url()))
             .send()
             .await?
-            .error_for_status()?
+            .successful_status()
+            .await?
             .json()
             .await
             .context("failed to parse labels")
@@ -814,7 +815,7 @@ impl GitClient {
             );
             return Ok(vec![]);
         }
-        let response = response.error_for_status()?;
+        let response = response.successful_status().await?;
         debug!("Associated PR found. Status: {}", response.status());
 
         let prs = match self.forge {
@@ -916,17 +917,35 @@ impl GitClient {
     }
 
     async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
-        self.client
+        let response = self
+            .client
             .post(format!("{}/git/refs", self.repo_url()))
             .json(&json!({
                 "ref": ref_name,
                 "sha": sha
             }))
             .send()
-            .await?
+            .await?;
+
+        // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
+        // only exists locally (i.e. it has not been pushed to the remote).
+        if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
+            // Try to capture the body for extra diagnostics.
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<failed to read response body>".to_string());
+            anyhow::bail!(
+                "failed to create ref {ref_name} with sha {sha}. \
+The commit {sha} likely hasn't been pushed to the remote repository yet. \
+Please push your local commits and run release-plz again.\nResponse body: {body}"
+            );
+        }
+
+        response
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -941,7 +960,7 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -956,7 +975,22 @@ impl GitClient {
             .await?
             .successful_status()
             .await
-            .context("failed to create branch")?;
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
+        Ok(())
+    }
+
+    pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
+            .json(&json!({
+                "sha": sha,
+                "force": true
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to update ref {ref_name} with sha {sha}"))?;
         Ok(())
     }
 
@@ -982,6 +1016,93 @@ impl GitClient {
             .successful_status()
             .await
             .context("failed to delete branch")?;
+        Ok(())
+    }
+
+    /// Creates an annotated tag.
+    pub async fn create_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        match self.forge {
+            ForgeType::Github => self.create_github_tag(tag_name, message, sha).await,
+            ForgeType::Gitlab => self.create_gitlab_tag(tag_name, message, sha).await,
+            ForgeType::Gitea => self.create_gitea_tag(tag_name, message, sha).await,
+        }
+    }
+
+    async fn create_github_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        let tag_object_sha = self
+            .client
+            .post(format!("{}/git/tags", self.repo_url()))
+            .json(&json!({
+                "tag": tag_name,
+                "message": message,
+                "object": sha,
+                "type": "commit"
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await?
+            .json::<serde_json::Value>()
+            .await?
+            .get("sha")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .with_context(|| {
+                format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
+            })?;
+        self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
+            .await
+    }
+
+    async fn create_gitlab_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/repository/tags", self.repo_url()))
+            .json(&json!({
+                "tag_name": tag_name,
+                "ref": sha,
+                "message": message
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
+        Ok(())
+    }
+
+    async fn create_gitea_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/tags", self.repo_url()))
+            .json(&json!({
+                "tag_name": tag_name,
+                "target": sha,
+                "message": message
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
         Ok(())
     }
 }
@@ -1051,33 +1172,6 @@ pub fn contributors_from_commits(commits: &[PrCommit], forge: ForgeType) -> Vec<
         .collect::<Vec<_>>();
     contributors.dedup();
     contributors
-}
-
-trait ResponseExt {
-    /// Better version of [`reqwest::Response::error_for_status`] that
-    /// also captures the response body in the error message. It will most
-    /// likely contain additional error details.
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response>;
-}
-
-impl ResponseExt for reqwest::Response {
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response> {
-        let Err(err) = self.error_for_status_ref() else {
-            return Ok(self);
-        };
-
-        let mut body = self
-            .text()
-            .await
-            .context("can't convert response body to text")?;
-
-        // If the response is JSON, try to pretty-print it.
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-            body = format!("{json:#}");
-        }
-
-        Err(err).context(format!("Response body:\n{body}"))
-    }
 }
 
 #[cfg(test)]

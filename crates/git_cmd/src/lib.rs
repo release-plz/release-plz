@@ -147,7 +147,8 @@ impl Repo {
     }
 
     pub fn fetch(&self, obj: &str) -> anyhow::Result<()> {
-        self.git(&["fetch", &self.original_remote, obj])?;
+        self.git(&["fetch", &self.original_remote, obj])
+            .with_context(|| format!("failed to fetch {obj}"))?;
         Ok(())
     }
 
@@ -157,7 +158,8 @@ impl Repo {
         // In other words, it will only push if no one else has pushed changes to the remote
         // branch since you last pulled. If someone else has pushed changes, the command will fail,
         // preventing you from accidentally overwriting someone else's work.
-        self.git(&["push", &self.original_remote, obj, "--force-with-lease"])?;
+        self.git(&["push", &self.original_remote, obj, "--force-with-lease"])
+            .with_context(|| format!("failed to force-push {obj}"))?;
         Ok(())
     }
 

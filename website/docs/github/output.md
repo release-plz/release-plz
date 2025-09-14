@@ -45,11 +45,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Install Rust toolchain
+      - &install-rust
+        name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
 # highlight-next-line
@@ -105,12 +107,8 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - *checkout
+      - *install-rust
       - name: Run release-plz
 # highlight-next-line
         id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
@@ -163,7 +161,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
@@ -230,7 +228,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Rust toolchain

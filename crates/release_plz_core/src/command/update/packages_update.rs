@@ -88,13 +88,17 @@ impl PackagesUpdate {
         self.updates
             .iter()
             .map(|(package, update)| {
+                let default_result = match &update.new_changelog_entry {
+                    Some(entry) => (None, Some(entry.clone())),
+                    None => (None, None),
+                };
                 let (changelog_title, changelog_notes) = match update.last_changes() {
                     Err(e) => {
                         warn!(
                             "can't determine changes in changelog of package {}: {e:?}",
                             package.name
                         );
-                        (None, None)
+                        default_result
                     }
                     Ok(Some(c)) => (Some(c.title().to_string()), Some(c.notes().to_string())),
                     Ok(None) => {
@@ -102,7 +106,7 @@ impl PackagesUpdate {
                             "no changes detected in changelog of package {}",
                             package.name
                         );
-                        (None, None)
+                        default_result
                     }
                 };
 

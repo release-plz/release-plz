@@ -24,6 +24,43 @@ pub fn parse_header(changelog: &str) -> Option<String> {
         return Some(format!("{}{}", &captures[1], &captures[2]));
     }
 
+    parse_header_fallback_strategy(changelog)
+}
+
+/// Fallback: be tolerant with formatting (e.g., no blank line after `# Changelog`).
+/// Strategy:
+/// - Ensure file starts with a Changelog H1 (case-insensitive).
+/// - If an Unreleased H2 exists, include it (line inclusive) in the header.
+/// - Otherwise, include everything up to (but not including) the first H2.
+fn parse_header_fallback_strategy(changelog: &str) -> Option<String> {
+    static START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#\s*changelog").unwrap());
+    static H2_UNRELEASED_RE: LazyLock<Regex> = LazyLock::new(|| {
+        // Multiline: match an H2 whose title is (case-insensitive) [Unreleased] or Unreleased
+        Regex::new(r"(?mi)^##\s*(?:\[?unreleased\]?)(?:\s*)$").unwrap()
+    });
+    static H2_ANY_RE: LazyLock<Regex> = LazyLock::new(|| {
+        // First H2 of any kind
+        Regex::new(r"(?m)^##\s+").unwrap()
+    });
+
+    if !START_RE.is_match(changelog) {
+        return None;
+    }
+
+    if let Some(m) = H2_UNRELEASED_RE.find(changelog) {
+        // Include the entire Unreleased line plus a trailing newline if present
+        let end = match changelog[m.end()..].find('\n') {
+            Some(_) => m.end() + 1, // include exactly one trailing "\n"
+            None => m.end(),        // no trailing newline
+        };
+        return Some(changelog[..end].to_string());
+    }
+
+    if let Some(m) = H2_ANY_RE.find(changelog) {
+        // Header is everything up to (but not including) the first H2
+        return Some(changelog[..m.start()].to_string());
+    }
+
     None
 }
 

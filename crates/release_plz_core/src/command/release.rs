@@ -3,6 +3,7 @@ use std::{
     time::Duration,
 };
 
+use crate::command::trusted_publishing;
 use anyhow::Context;
 use cargo::util::VersionExt;
 use cargo_metadata::{
@@ -591,12 +592,27 @@ async fn release_packages(
 
     let mut package_releases: Vec<PackageRelease> = vec![];
     let hash_kind = get_hash_kind()?;
+    // The same trusted publishing token can be used for all packages.
+    let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
     for package in packages {
-        if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client, &hash_kind).await?
+        if let Some(pkg_release) = release_package_if_needed(
+            input,
+            project,
+            package,
+            repo,
+            git_client,
+            &hash_kind,
+            &mut trusted_publishing_client,
+        )
+        .await?
         {
             package_releases.push(pkg_release);
         }
+    }
+    if let Some(tp) = trusted_publishing_client.as_ref()
+        && let Err(e) = tp.revoke_token().await
+    {
+        warn!("Failed to revoke trusted publishing token: {e:?}");
     }
     let release = (!package_releases.is_empty()).then_some(Release {
         releases: package_releases,
@@ -611,6 +627,7 @@ async fn release_package_if_needed(
     repo: &Repo,
     git_client: &GitClient,
     hash_kind: &crates_index::HashKind,
+    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
@@ -652,15 +669,25 @@ async fn release_package_if_needed(
             info!("{} {}: already published", package.name, package.version);
             continue;
         }
-        let package_was_released_at_index =
-            release_package(&mut index, input, repo, git_client, &release_info, &token)
-                .await
-                .context("failed to release package")?;
+        let is_crates_io = name.is_none();
+        let package_was_released_at_index = release_package(
+            &mut index,
+            input,
+            repo,
+            git_client,
+            &release_info,
+            &token,
+            is_crates_io,
+            trusted_publishing_client,
+        )
+        .await
+        .context("failed to release package")?;
 
         if package_was_released_at_index {
             package_was_released = true;
         }
     }
+
     let package_release = package_was_released.then_some(PackageRelease {
         package_name: package.name.to_string(),
         version: package.version.clone(),
@@ -848,6 +875,7 @@ struct ReleaseInfo<'a> {
 }
 
 /// Return `true` if package was published, `false` otherwise.
+#[allow(clippy::too_many_arguments)]
 async fn release_package(
     index: &mut CargoIndex,
     input: &ReleaseRequest,
@@ -855,16 +883,44 @@ async fn release_package(
     git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
+    is_crates_io: bool,
+    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let should_create_git_relase = input.is_git_release_enabled(&release_info.package.name);
+    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
+    let mut publish_token: Option<SecretString> = token.clone();
+    let should_use_trusted_publishing = {
+        let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
+        publish_token.is_none()
+            && input.token.is_none()
+            && is_crates_io
+            && should_publish
+            && !input.dry_run
+            && is_github_actions
+    };
+    if should_use_trusted_publishing {
+        if let Some(tp) = trusted_publishing_client.as_ref() {
+            publish_token = Some(tp.token().clone());
+        } else {
+            match trusted_publishing::TrustedPublisher::crates_io().await {
+                Ok(tp) => {
+                    publish_token = Some(tp.token().clone());
+                    *trusted_publishing_client = Some(tp);
+                }
+                Err(e) => {
+                    warn!("Failed to use trusted publishing: {e}. Proceeding without it.");
+                }
+            }
+        }
+    }
 
     if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let output = run_cargo_publish(release_info.package, input, workspace_root)
+        let output = run_cargo_publish(release_info.package, input, workspace_root, &publish_token)
             .context("failed to run cargo publish")?;
         if !output.status.success()
             || !output.stderr.contains("Uploading")
@@ -897,7 +953,7 @@ async fn release_package(
             release_info,
             should_publish,
             should_create_git_tag,
-            should_create_git_relase,
+            should_create_git_release,
         );
         Ok(false)
     } else {
@@ -911,8 +967,19 @@ async fn release_package(
                 "chore: Release package {} version {}",
                 release_info.package.name, release_info.package.version
             );
-            repo.tag(release_info.git_tag, &message)?;
-            repo.push(release_info.git_tag)?;
+            let should_sign_tags = repo
+                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
+                .map(|s| s.trim() == "true")?;
+            // If tag signing is enabled, create the tag locally instead of using the API
+            if should_sign_tags {
+                repo.tag(release_info.git_tag, &message)?;
+                repo.push(release_info.git_tag)?;
+            } else {
+                let sha = repo.current_commit_hash()?;
+                git_client
+                    .create_tag(release_info.git_tag, &message, &sha)
+                    .await?;
+            }
         }
 
         let contributors = get_contributors(release_info, git_client).await;
@@ -924,7 +991,7 @@ async fn release_package(
             link: "".to_string(),
             contributors,
         };
-        if should_create_git_relase {
+        if should_create_git_release {
             let release_body =
                 release_body(input, release_info.package, release_info.changelog, &remote);
             let release_config = input
@@ -1055,6 +1122,7 @@ fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
+    token: &Option<SecretString>,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
     args.push("--color");
@@ -1069,7 +1137,7 @@ fn run_cargo_publish(
         args.push("--registry");
         args.push(registry);
     }
-    if let Some(token) = &input.token {
+    if let Some(token) = token.as_ref().or(input.token.as_ref()) {
         args.push("--token");
         args.push(token.expose_secret());
     } else {
