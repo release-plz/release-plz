@@ -233,7 +233,9 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          persist-credentials: false
+          # We need to set this true to push changes
+          # This is the default, but explicitly set here for clarity as it is generally discouraged
+          persist-credentials: true
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
