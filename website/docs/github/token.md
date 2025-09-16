@@ -135,9 +135,26 @@ steps:
 ```
 
 :::caution
-If you sign the tags, release-plz needs the local credentials to push the signed tags.
-This means that you need to set `persist-credentials: true` and
-`token: ${{ secrets.RELEASE_PLZ_TOKEN }}` in the `actions/checkout` step.
+If you configured git to sign the tags,
+release-plz will use the git CLI to push the signed tags,
+because the GitHub API doesn't support signed tags.
+
+This means that your checkout step needs to look like this:
+
+```yaml
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v5
+    with:
+      fetch-depth: 0
+      # Let the git CLI use the RELEASE_PLZ_TOKEN, so that it can push the signed tags.
+# highlight-next-line
+      persist-credentials: true
+# highlight-next-line
+      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+```
+
+To check if git is configured to sign tags, run `git config --get tag.gpgSign`.
 :::
 
 ### Use a GitHub App
