@@ -134,6 +134,12 @@ steps:
       ...
 ```
 
+:::caution
+If you sign the tags, release-plz needs the local credentials to push the signed tags.
+This means that you need to set `persist-credentials: true` and
+`token: ${{ secrets.RELEASE_PLZ_TOKEN }}` in the `actions/checkout` step.
+:::
+
 ### Use a GitHub App
 
 Generate a GitHub token with a GitHub App.
