@@ -233,8 +233,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          # We need to set this true to push changes
-          # This is the default, but explicitly set here for clarity as it is generally discouraged
+# highlight-next-line
           persist-credentials: true
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -264,3 +263,15 @@ jobs:
             git push
           fi
 ```
+
+:::info
+We need to set `persist-credentials: true` to push changes via the git cli
+(i.e. run `git push`).
+release-plz itself works with `persist-credentials: false` because it uses the GitHub API
+to push changes.
+`persist-credentials: true` is the default of
+[actions/checkout](https://github.com/actions/checkout?tab=readme-ov-file#usage),
+but we explicitly set it here because it's a good security practice.
+To learn more about the `persist-credentials` option and its security implications, see the
+[zizmor](https://docs.zizmor.sh/audits/#artipacked) documentation.
+:::
