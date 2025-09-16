@@ -135,7 +135,7 @@ steps:
 ```
 
 :::caution
-If you configured git to sign the tags or you manually run `git push` in your workflow,
+If you configured git to sign the tags or you run `git push` in your workflow,
 your checkout step needs to look like this:
 
 ```yaml
