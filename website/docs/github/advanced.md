@@ -15,6 +15,7 @@ steps:
     uses: actions/checkout@v5
     with:
       fetch-depth: 0
+      persist-credentials: false
 # highlight-next-line
       submodules: recursive
 ```
@@ -59,6 +60,7 @@ If you want to run other checks before releasing (e.g. `cargo test`), you have t
            uses: actions/checkout@v5
            with:
              fetch-depth: 0
+             persist-credentials: false
          - name: Install Rust toolchain
            uses: dtolnay/rust-toolchain@stable
    # highlight-next-line
@@ -94,6 +96,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Close old release PR
