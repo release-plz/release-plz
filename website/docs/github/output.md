@@ -265,13 +265,6 @@ jobs:
 ```
 
 :::info
-We need to set `persist-credentials: true` to push changes via the git cli
-(i.e. run `git push`).
-release-plz itself works with `persist-credentials: false` because it uses the GitHub API
-to push changes.
-`persist-credentials: true` is the default of
-[actions/checkout](https://github.com/actions/checkout?tab=readme-ov-file#usage),
-but we explicitly set it here because it's a good security practice.
-To learn more about the `persist-credentials` option and its security implications, see the
-[zizmor](https://docs.zizmor.sh/audits/#artipacked) documentation.
+To learn why we set `persist-credentials: true`, see
+[Signed tags](../extra/signed-tags.md).
 :::
