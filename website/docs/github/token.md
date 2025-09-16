@@ -135,11 +135,7 @@ steps:
 ```
 
 :::caution
-If you configured git to sign the tags,
-release-plz will use the git CLI to push the signed tags,
-because the GitHub API doesn't support signed tags.
-
-This means that your checkout step needs to look like this:
+If you configured git to sign the tags, your checkout step needs to look like this:
 
 ```yaml
 steps:
@@ -154,7 +150,7 @@ steps:
       token: ${{ secrets.RELEASE_PLZ_TOKEN }}
 ```
 
-To check if git is configured to sign tags, run `git config --get tag.gpgSign`.
+For more information, see [Persist credentials](./persist-credentials.md).
 :::
 
 ### Use a GitHub App
