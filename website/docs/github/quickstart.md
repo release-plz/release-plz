@@ -85,6 +85,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -168,15 +169,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
+      - &checkout
+        name: Checkout repository
         uses: actions/checkout@v5
         with:
           # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
           # release from the latest commit of the release PR.
           fetch-depth: 0
+          persist-credentials: false
       # Use your favorite way to install the Rust toolchain.
       # The action I'm using here is a popular choice.
-      - name: Install Rust toolchain
+      - &install-rust
+        name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
         uses: release-plz/action@v0.5
@@ -205,14 +209,9 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
-          # determine the next version and build the changelog.
-          fetch-depth: 0
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      # Reuse previous steps via YAML anchors.
+      - *checkout
+      - *install-rust
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:

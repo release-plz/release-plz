@@ -50,6 +50,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -164,6 +165,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
@@ -231,6 +233,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+# highlight-next-line
+          persist-credentials: true
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
@@ -259,3 +263,8 @@ jobs:
             git push
           fi
 ```
+
+:::info
+To learn why we set `persist-credentials: true`, see
+[Persist credentials](../github/persist-credentials.md).
+:::
