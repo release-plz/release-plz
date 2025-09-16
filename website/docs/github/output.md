@@ -266,5 +266,5 @@ jobs:
 
 :::info
 To learn why we set `persist-credentials: true`, see
-[Signed tags](../github/signed-tags.md).
+[Persist credentials](../github/persist-credentials.md).
 :::

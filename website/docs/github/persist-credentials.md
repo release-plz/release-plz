@@ -1,4 +1,4 @@
-# Signed tags
+# Persist credentials
 
 :::info
 Read this section if you configured git to sign tags, i.e. if
