@@ -44,6 +44,7 @@ const sidebars = {
         "github/update",
         "github/advanced",
         "github/security",
+        "github/persist-credentials",
       ],
     },
     "config",

@@ -91,7 +91,7 @@ The account that owns the PAT will be the author of the release pull
 request and the commit itself.
 If you don't want release-plz to open release pull requests and commit with
 your account, consider creating a
-[machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#personal-accounts).
+[machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#user-accounts).
 If your machine user needs a cool avatar, you can use the release-plz [logo](/img/robot_head.jpeg).
 :::
 
@@ -121,8 +121,7 @@ steps:
     uses: actions/checkout@v5
     with:
       fetch-depth: 0
-      # highlight-next-line
-      token: ${{ secrets.RELEASE_PLZ_TOKEN }} # <-- PAT secret name
+      persist-credentials: false
   - name: Install Rust toolchain
     uses: dtolnay/rust-toolchain@stable
   - name: Run release-plz
@@ -135,11 +134,24 @@ steps:
       ...
 ```
 
-:::warning
-As shown in the example below,
-you need to add the `token` field to the `actions/checkout` step, too.
-This allows release-plz to use the PAT also when spawning `git` commands,
-such as `git tag`.
+:::caution
+If you configured git to sign the tags or you run `git push` in your workflow,
+your checkout step needs to look like this:
+
+```yaml
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v5
+    with:
+      fetch-depth: 0
+      # Let the git CLI use the RELEASE_PLZ_TOKEN, so that it can push the signed tags.
+# highlight-next-line
+      persist-credentials: true
+# highlight-next-line
+      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+```
+
+For more information, see [Persist credentials](./persist-credentials.md).
 :::
 
 ### Use a GitHub App
@@ -179,6 +191,13 @@ Here's how to use a GitHub App to generate a GitHub token:
 
    ```yaml
    steps:
+     - name: Checkout repository
+       uses: actions/checkout@v5
+       with:
+         fetch-depth: 0
+         persist-credentials: false
+     - name: Install Rust toolchain
+       uses: dtolnay/rust-toolchain@stable
    # highlight-start
      # Generating a GitHub token, so that PRs and tags created by
      # the release-plz-action can trigger actions workflows.
@@ -191,14 +210,6 @@ Here's how to use a GitHub App to generate a GitHub token:
          # GitHub App private key secret name
          private-key: ${{ secrets.APP_PRIVATE_KEY }}
    # highlight-end
-     - name: Checkout repository
-       uses: actions/checkout@v5
-       with:
-         fetch-depth: 0
-   # highlight-next-line
-         token: ${{ steps.generate-token.outputs.token }}
-     - name: Install Rust toolchain
-       uses: dtolnay/rust-toolchain@stable
      - name: Run release-plz
        uses: release-plz/action@v0.5
        env:
