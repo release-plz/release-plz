@@ -34,7 +34,7 @@ jobs:
         working-directory: ./tests
       - &setup-rust
         name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39 # v1.15.0
       - name: Run tests
         run: cargo test --all-features --workspace
 
@@ -61,7 +61,7 @@ jobs:
     steps:
       - *checkout
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39 # v1.15.0
         with:
           components: rustfmt
       - name: Check formatting
@@ -73,7 +73,7 @@ jobs:
     steps:
       - *checkout
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39 # v1.15.0
         with:
           components: clippy
       - name: Clippy check

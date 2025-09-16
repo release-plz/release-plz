@@ -20,7 +20,7 @@ jobs:
           # `true` is the default value.
           persist-credentials: true
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ac90e63697ac2784f4ecfe2964e1a285c304003a # v1.14.1
+        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39 # v1.15.0
       - name: Cargo assist
         uses: MarcoIeni/cargo-assist@dcc6e09df20675c6351c5b34f94dac66ae29a9ea # v0.1.1
         with:
