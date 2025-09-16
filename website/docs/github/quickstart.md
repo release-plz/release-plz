@@ -176,6 +176,15 @@ jobs:
           # `fetch-depth: 0` is needed to clone all the git history, which is necessary to
           # release from the latest commit of the release PR.
           fetch-depth: 0
+          # `persist-credentials` is set to false because it's a good security practice.
+          # release-plz itself works with `persist-credentials: false` because it uses the
+          # GitHub API to push changes.
+          # Unfortunately, the GitHub API doesn't support signed tags, so if you sign commits
+          # (i.e. `git config --get commit.gpgSign` is `true`),
+          # release-plz will use the git CLI to push the signed tags, so
+          # you need to set `persist-credentials: true` to give the git CLI access to the
+          # GitHub token.
+          # To learn more about this option and its security implications, see https://docs.zizmor.sh/audits/#artipacked.
           persist-credentials: false
       # Use your favorite way to install the Rust toolchain.
       # The action I'm using here is a popular choice.
