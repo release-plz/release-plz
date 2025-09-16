@@ -195,7 +195,7 @@ Here's how to use a GitHub App to generate a GitHub token:
        uses: actions/checkout@v5
        with:
          fetch-depth: 0
-          persist-credentials: false
+         persist-credentials: false
      - name: Install Rust toolchain
        uses: dtolnay/rust-toolchain@stable
    # highlight-start
