@@ -3,12 +3,14 @@ name: Cargo Assist
 on:
   push:
 
+permissions: {}
+
 jobs:
   cargo-assist:
     name: Cargo assist
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # to allow pushing commits
     steps:
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
