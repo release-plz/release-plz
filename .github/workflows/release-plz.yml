@@ -15,8 +15,7 @@ jobs:
     environment: release-plz
     permissions:
       contents: read
-      # Required for trusted publishing
-      id-token: write
+      id-token: write # Required for trusted publishing
     steps:
       - &checkout
         name: Checkout repository

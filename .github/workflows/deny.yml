@@ -12,8 +12,11 @@ on:
       - "**/Cargo.lock"
   pull_request:
 
+permissions: {}
+
 jobs:
   audit:
+    name: Audit dependencies
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -22,4 +25,4 @@ jobs:
           persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@f2ba7abc2abebaf185c833c3961145a3c275caad # v2.0.13
         with:
-          rust-version: 1.86.0
+          rust-version: 1.89.0

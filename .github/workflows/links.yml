@@ -9,8 +9,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
-  linkChecker:
+  link-checker:
+    name: Link Checker
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

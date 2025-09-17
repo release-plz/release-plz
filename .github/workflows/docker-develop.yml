@@ -5,8 +5,11 @@ on:
     branches:
       - main
 
+permissions: {}
+
 jobs:
   build-and-push:
+    name: Build and Push dev Docker Image
     strategy:
       matrix:
         include:
