@@ -45,6 +45,7 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-buildx-
+          lookup-only: true
 
       - name: Login to DockerHub
         if: github.event_name != 'pull_request'
