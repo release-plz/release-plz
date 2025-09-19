@@ -438,18 +438,6 @@ impl PackageConfig {
     }
 }
 
-/// Whether to run cargo-semver-checks or not.
-/// Note: you can only run cargo-semver-checks on a library.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum SemverCheck {
-    /// Run cargo-semver-checks.
-    #[default]
-    Yes,
-    /// Don't run cargo-semver-checks.
-    No,
-}
-
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ReleaseType {
