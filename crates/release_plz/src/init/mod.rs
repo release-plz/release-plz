@@ -179,15 +179,6 @@ fn write_actions_yaml(github_token: &str, trusted_publishing: bool) -> anyhow::R
 
 fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing: bool) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
-    let is_default_token = github_token == GITHUB_TOKEN;
-    let checkout_token_line = if is_default_token {
-        "".to_string()
-    } else {
-        format!(
-            "
-          token: {github_token_secret}"
-        )
-    };
 
     let cargo_registry_token = if trusted_publishing {
         // release-plz will generate the token during the release process if needed,
@@ -248,7 +239,8 @@ jobs:
         name: Checkout repository
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0{checkout_token_line}
+          fetch-depth: 0
+          persist-credentials: false
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -341,6 +333,7 @@ mod tests {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
+                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -399,7 +392,7 @@ mod tests {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -460,7 +453,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
