@@ -4,7 +4,6 @@ use anyhow::{Context, bail};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct Gitea {
@@ -43,21 +42,4 @@ impl Gitea {
         headers.insert(reqwest::header::AUTHORIZATION, auth_header);
         Ok(headers)
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct RepoPr {
-    pub id: u64,
-    pub head: Commit,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Commit {
-    #[serde(rename = "ref")]
-    pub ref_field: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct EditPullRequest {
-    state: &'static str,
 }
