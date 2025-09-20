@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - &setup-rust
         name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921
         with:
           toolchain: stable
       # Generating a GitHub token, so that PRs and tags created by
