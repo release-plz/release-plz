@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.4...release_plz_core-v0.36.5) - 2025-09-26
+
+### Other
+
+- update git-url-parse to v0.6.0 ([#2427](https://github.com/release-plz/release-plz/pull/2427))
+- remove unused structs ([#2426](https://github.com/release-plz/release-plz/pull/2426))
+
 ## [0.36.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.3...release_plz_core-v0.36.4) - 2025-09-13
 
 ### Other
