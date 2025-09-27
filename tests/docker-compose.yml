@@ -25,7 +25,7 @@ services:
   # We use postgres as a database for Gitea.
   # With SqlLite I had problems related to database locks.
   db:
-    image: docker.io/library/postgres:17
+    image: docker.io/library/postgres:18
     restart: always
     environment:
       - POSTGRES_USER=gitea
