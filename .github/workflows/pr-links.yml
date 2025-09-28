@@ -6,12 +6,15 @@ on:
     branches:
       - main
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   check-links:
+    name: Check links
     runs-on: ubuntu-24.04
 
     steps:

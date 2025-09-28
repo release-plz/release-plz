@@ -12,7 +12,7 @@ assert_cmd = "2.0.17"
 base64 = "0.22.1"
 camino = "1.1.12"
 cargo_metadata = "0.22.0"
-cargo = { version = "0.90.0", default-features = false }
+cargo = { version = "0.91.0", default-features = false }
 chrono = { version = "0.4.42", default-features = false }
 clap = "4.5.47"
 clap_complete = "4.5.57"
@@ -24,7 +24,7 @@ fake = "4.4.0"
 fs-err = "3.1.1"
 git-cliff-core = { version = "2.10.0", default-features = false }
 git-conventional = "0.12.9"
-git-url-parse = "0.5.1"
+git-url-parse = "0.6.0"
 h2 = "0.4"
 http = "1.3.1"
 ignore = "0.4.23"

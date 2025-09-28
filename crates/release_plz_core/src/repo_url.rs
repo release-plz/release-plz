@@ -95,8 +95,8 @@ fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
         .unwrap_or(git_url.path())
         .to_string();
     Ok(RepoUrl {
-        owner: provider.owner().to_string(),
-        name: provider.repo().to_string(),
+        owner: provider.owner().clone(),
+        name: provider.repo().clone(),
         host,
         port: git_url.port(),
         scheme,

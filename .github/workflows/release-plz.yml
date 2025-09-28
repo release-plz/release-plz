@@ -5,6 +5,8 @@ on:
     branches:
       - main
 
+permissions: {}
+
 jobs:
   release-plz-release:
     name: Release-plz release
@@ -12,10 +14,20 @@ jobs:
     if: ${{ github.repository_owner == 'release-plz' }}
     environment: release-plz
     permissions:
-      contents: write
-      # Required for trusted publishing
-      id-token: write
+      contents: read
+      id-token: write # Required for trusted publishing
     steps:
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - &setup-rust
+        name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: stable
       # Generating a GitHub token, so that PRs and tags created by
       # the release-plz-action can trigger actions workflows.
       - name: Generate GitHub token
@@ -24,22 +36,10 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - &checkout
-        name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          fetch-depth: 0
-          token: ${{ steps.generate-token.outputs.token }}
-          # Allow the release-plz action to push.
-          # `true` is the default value.
-          persist-credentials: true
-      - &setup-rust
-        name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
-        with:
-          toolchain: stable
+          # pull-requests permission is not needed for the `release` command, so restricting it to contents only
+          permission-contents: write
       - name: Run release-plz
-        uses: release-plz/action@main
+        uses: release-plz/action@acb9246af4d59a270d1d4058a8b9af8c3f3a2559 # v0.5.117
         with:
           command: release
         env:
@@ -50,12 +50,13 @@ jobs:
     runs-on: ubuntu-24.04
     if: ${{ github.repository_owner == 'release-plz' }}
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      - *checkout
+      - *setup-rust
       # Generating a GitHub token, so that PRs and tags created by
       # the release-plz-action can trigger actions workflows.
       - name: Generate GitHub token
@@ -64,10 +65,10 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - *checkout
-      - *setup-rust
+          permission-contents: write
+          permission-pull-requests: write
       - name: Run release-plz
-        uses: release-plz/action@main
+        uses: release-plz/action@acb9246af4d59a270d1d4058a8b9af8c3f3a2559 # v0.5.117
         with:
           command: release-pr
         env:
