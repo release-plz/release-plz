@@ -23,6 +23,8 @@ jobs:
           persist-credentials: true
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39 # v1.15.0
+        with:
+          components: clippy, rustfmt
       - name: Cargo assist
         uses: MarcoIeni/cargo-assist@dcc6e09df20675c6351c5b34f94dac66ae29a9ea # v0.1.1
         with:
