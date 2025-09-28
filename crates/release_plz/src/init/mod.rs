@@ -4,6 +4,7 @@ use std::io::Write;
 
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
+use git_cliff_core::tag;
 use release_plz_core::{Project, ReleaseMetadata, ReleaseMetadataBuilder};
 use std::collections::HashSet;
 
@@ -39,9 +40,11 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
         store_cargo_token()?;
     }
 
+    let tag_signing = !should_use_tag_signing()?;
+
     enable_pr_permissions(&repo_url)?;
     let github_token = store_github_token()?;
-    write_actions_yaml(github_token, trusted_publishing)?;
+    write_actions_yaml(github_token, trusted_publishing, tag_signing)?;
 
     let secrets_stored = !trusted_publishing || github_token != GITHUB_TOKEN;
     print_recap(&repo_url, secrets_stored);
@@ -59,6 +62,12 @@ fn actions_file() -> Utf8PathBuf {
 fn should_use_trusted_publishing() -> anyhow::Result<bool> {
     ask_confirmation(
         "👉 Do you want to use trusted publishing? (Recommended). Learn more at https://crates.io/docs/trusted-publishing.",
+    )
+}
+
+fn should_use_tag_signing() -> anyhow::Result<bool> {
+    ask_confirmation(
+        "👉 Do you want to disable tag signing? (Recommended). Learn more at https://release-plz.dev/docs/github/persist-credentials.",
     )
 }
 
@@ -167,20 +176,20 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
     Ok(input != "n")
 }
 
-fn write_actions_yaml(github_token: &str, trusted_publishing: bool) -> anyhow::Result<()> {
+fn write_actions_yaml(github_token: &str, trusted_publishing: bool, tag_signing: bool) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
     let owner = gh::repo_owner()?;
-    let action_yaml = action_yaml(&branch, github_token, &owner, trusted_publishing);
+    let action_yaml = action_yaml(&branch, github_token, &owner, trusted_publishing, tag_signing);
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing: bool) -> String {
+fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing: bool, tag_signing: bool) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
-    let checkout_token_line = if is_default_token {
+    let checkout_token_line = if is_default_token || tag_signing {
         "".to_string()
     } else {
         format!(
@@ -248,7 +257,8 @@ jobs:
         name: Checkout repository
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0{checkout_token_line}
+          fetch-depth: 0
+          persist-credentials: {tag_signing}{checkout_token_line}
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -341,6 +351,7 @@ mod tests {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
+                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -373,7 +384,7 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner", false));
+        .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner", false, false));
     }
 
     #[test]
@@ -399,7 +410,7 @@ mod tests {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -432,7 +443,7 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false));
+        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false, false));
     }
 }
 
@@ -460,7 +471,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -491,5 +502,65 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
         "#]]
-    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true));
+    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true, false));
+}
+
+#[test]
+fn actions_yaml_string_with_tag_signing_is_correct() {
+    expect_test::expect![[r#"
+            name: Release-plz
+
+            on:
+              push:
+                branches:
+                  - main
+
+            jobs:
+              release-plz-release:
+                name: Release-plz release
+                runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
+                permissions:
+                  contents: write
+                steps:
+                  - &checkout
+                    name: Checkout repository
+                    uses: actions/checkout@v5
+                    with:
+                      fetch-depth: 0
+                      persist-credentials: true
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                  - &install-rust
+                    name: Install Rust toolchain
+                    uses: dtolnay/rust-toolchain@stable
+                  - name: Run release-plz
+                    uses: release-plz/action@v0.5
+                    with:
+                      command: release
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+              release-plz-pr:
+                name: Release-plz PR
+                runs-on: ubuntu-latest
+                if: ${{ github.repository_owner == 'owner' }}
+                permissions:
+                  pull-requests: write
+                  contents: write
+                concurrency:
+                  group: release-plz-${{ github.ref }}
+                  cancel-in-progress: false
+                steps:
+                  - *checkout
+                  - *install-rust
+                  - name: Run release-plz
+                    uses: release-plz/action@v0.5
+                    with:
+                      command: release-pr
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        "#]]
+    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false, true));
 }
