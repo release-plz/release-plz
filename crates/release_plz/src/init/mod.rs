@@ -4,7 +4,6 @@ use std::io::Write;
 
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use git_cliff_core::tag;
 use release_plz_core::{Project, ReleaseMetadata, ReleaseMetadataBuilder};
 use std::collections::HashSet;
 
@@ -62,14 +61,14 @@ fn actions_file() -> Utf8PathBuf {
 fn should_use_trusted_publishing() -> anyhow::Result<bool> {
     ask_confirmation(
         "👉 Do you want to use trusted publishing? (Recommended). Learn more at https://crates.io/docs/trusted-publishing.",
-        true
+        true,
     )
 }
 
 fn should_use_tag_signing() -> anyhow::Result<bool> {
     ask_confirmation(
         "👉 Do you want to enable tag signing? (Not recommended). Learn more at https://release-plz.dev/docs/github/persist-credentials.",
-        false
+        false,
     )
 }
 
@@ -121,7 +120,7 @@ fn enable_pr_permissions(repo_url: &str) -> anyhow::Result<()> {
 fn store_github_token() -> anyhow::Result<&'static str> {
     let should_create_token = ask_confirmation(
         "👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.",
-        true
+        true,
     )?;
 
     let github_token = if should_create_token {
