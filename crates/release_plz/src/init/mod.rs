@@ -249,7 +249,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0{checkout_token_line}
-          persist-credentials: false
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -342,7 +341,6 @@ mod tests {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      persist-credentials: false
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -401,7 +399,7 @@ mod tests {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      persist-credentials: false
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -462,7 +460,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     uses: actions/checkout@v5
                     with:
                       fetch-depth: 0
-                      persist-credentials: false
+                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
