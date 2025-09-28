@@ -211,7 +211,7 @@ fn action_yaml(
 ) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
-    let checkout_token_line = if is_default_token && !tag_signing {
+    let checkout_token_line = if !tag_signing || is_default_token {
         "".to_string()
     } else {
         format!(
