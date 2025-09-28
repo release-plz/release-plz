@@ -176,17 +176,33 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
     Ok(input != "n")
 }
 
-fn write_actions_yaml(github_token: &str, trusted_publishing: bool, tag_signing: bool) -> anyhow::Result<()> {
+fn write_actions_yaml(
+    github_token: &str,
+    trusted_publishing: bool,
+    tag_signing: bool,
+) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
     let owner = gh::repo_owner()?;
-    let action_yaml = action_yaml(&branch, github_token, &owner, trusted_publishing, tag_signing);
+    let action_yaml = action_yaml(
+        &branch,
+        github_token,
+        &owner,
+        trusted_publishing,
+        tag_signing,
+    );
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
     fs_err::write(actions_file(), action_yaml).context("error while writing GitHub action file")?;
     Ok(())
 }
 
-fn action_yaml(branch: &str, github_token: &str, owner: &str, trusted_publishing: bool, tag_signing: bool) -> String {
+fn action_yaml(
+    branch: &str,
+    github_token: &str,
+    owner: &str,
+    trusted_publishing: bool,
+    tag_signing: bool,
+) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if is_default_token || tag_signing {
@@ -443,7 +459,13 @@ mod tests {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-        .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false, false));
+        .assert_eq(&action_yaml(
+            "main",
+            CUSTOM_GITHUB_TOKEN,
+            "owner",
+            false,
+            false,
+        ));
     }
 }
 
@@ -502,7 +524,13 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
         "#]]
-    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", true, false));
+    .assert_eq(&action_yaml(
+        "main",
+        CUSTOM_GITHUB_TOKEN,
+        "owner",
+        true,
+        false,
+    ));
 }
 
 #[test]
@@ -562,5 +590,11 @@ fn actions_yaml_string_with_tag_signing_is_correct() {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "#]]
-    .assert_eq(&action_yaml("main", CUSTOM_GITHUB_TOKEN, "owner", false, true));
+    .assert_eq(&action_yaml(
+        "main",
+        CUSTOM_GITHUB_TOKEN,
+        "owner",
+        false,
+        true,
+    ));
 }
