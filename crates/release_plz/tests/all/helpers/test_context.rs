@@ -60,10 +60,10 @@ impl TestContext {
     }
 
     pub fn package_path(&self, package_name: &str) -> Utf8PathBuf {
-        if !self.is_workspace {
-            self.repo_dir()
-        } else {
+        if self.is_workspace {
             self.repo_dir().join(CRATES_DIR).join(package_name)
+        } else {
+            self.repo_dir()
         }
     }
 
