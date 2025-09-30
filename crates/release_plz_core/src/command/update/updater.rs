@@ -616,7 +616,7 @@ impl Updater<'_> {
                     // as part of the release.
                     // We can process the next package.
                     break;
-                } else if registry_package.package.version != package.version {
+                } else if registry_package.package.version < package.version {
                     info!(
                         "{}: the local package has already a different version with respect to the registry package, so release-plz will not update it",
                         package.name
