@@ -205,3 +205,64 @@ async fn release_plz_does_not_releases_twice() {
     let outcome = context.run_release().success();
     outcome.stdout("{\"releases\":[]}\n");
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_can_do_backports() {
+    let context = TestContext::new().await;
+
+    let crate_name = &context.gitea.repo;
+
+    // Running `release` the first time, releases the project
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.1.0",
+                "version": "0.1.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Publish a new breaking release
+    context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
+    // We need to update the Cargo.lock file to reflect the new version
+    context.run_cargo_check();
+    context.push_all_changes("breaking release");
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.2.0",
+                "version": "0.2.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Publish a backport release
+    context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 1));
+    // We need to update the Cargo.lock file to reflect the new version
+    context.run_cargo_check();
+    context.push_all_changes("backport release");
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.1.1",
+                "version": "0.1.1",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+}

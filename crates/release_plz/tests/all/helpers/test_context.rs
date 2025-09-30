@@ -32,11 +32,12 @@ pub struct TestContext {
     test_dir: Utf8TempDir,
     /// Release-plz git client. It's here just for code reuse.
     git_client: GitClient,
+    is_workspace: bool,
     pub repo: Repo,
 }
 
 impl TestContext {
-    async fn init_context() -> Self {
+    async fn init_context(is_workspace: bool) -> Self {
         test_logs::init();
         let repo_name = fake_utils::fake_id();
         let gitea = GiteaContext::new(repo_name).await;
@@ -53,12 +54,17 @@ impl TestContext {
             gitea,
             test_dir,
             git_client,
+            is_workspace,
             repo,
         }
     }
 
     pub fn package_path(&self, package_name: &str) -> Utf8PathBuf {
-        self.repo_dir().join(CRATES_DIR).join(package_name)
+        if !self.is_workspace {
+            self.repo_dir()
+        } else {
+            self.repo_dir().join(CRATES_DIR).join(package_name)
+        }
     }
 
     pub fn set_package_version(&self, package_name: &str, version: &Version) {
@@ -91,10 +97,10 @@ impl TestContext {
     }
 
     pub async fn new() -> Self {
-        let context = Self::init_context().await;
+        let context = Self::init_context(false).await;
         let package = TestPackage::new(&context.gitea.repo);
         package.cargo_init(context.repo.directory());
-        context.generate_cargo_lock();
+        context.run_cargo_check();
         context.push_all_changes("cargo init");
         context
     }
@@ -105,7 +111,7 @@ impl TestContext {
     }
 
     pub async fn new_workspace_with_packages(crates: &[TestPackage]) -> Self {
-        let context = Self::init_context().await;
+        let context = Self::init_context(true).await;
         let root_cargo_toml = {
             let quoted_crates: Vec<String> = crates
                 .iter()
@@ -128,7 +134,7 @@ impl TestContext {
             package.write_dependencies(&crate_dir);
         }
 
-        context.generate_cargo_lock();
+        context.run_cargo_check();
         context.push_all_changes("cargo init");
         context
     }
@@ -148,7 +154,7 @@ impl TestContext {
         self.repo.git(&["pull"]).unwrap();
     }
 
-    fn generate_cargo_lock(&self) {
+    pub fn run_cargo_check(&self) {
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
             .arg("check")
