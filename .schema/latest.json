@@ -13,6 +13,7 @@
         "commit_preprocessors": null,
         "header": null,
         "link_parsers": null,
+        "postprocessors": null,
         "protect_breaking_commits": null,
         "sort_commits": null,
         "tag_pattern": null,
@@ -113,6 +114,16 @@
           ],
           "items": {
             "$ref": "#/$defs/LinkParser"
+          }
+        },
+        "postprocessors": {
+          "description": "An array of postprocessors for manipulating the rendered changelog.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/TextProcessor"
           }
         },
         "protect_breaking_commits": {
