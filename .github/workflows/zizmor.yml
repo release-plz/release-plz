@@ -6,7 +6,8 @@ on:
       - main
   pull_request:
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   zizmor:
