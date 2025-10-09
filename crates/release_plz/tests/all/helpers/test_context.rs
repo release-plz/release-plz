@@ -63,6 +63,7 @@ impl TestContext {
         if self.is_workspace {
             self.repo_dir().join(CRATES_DIR).join(package_name)
         } else {
+            // If it's not a workspace, the package is at the root of the repo.
             self.repo_dir()
         }
     }
@@ -154,6 +155,7 @@ impl TestContext {
         self.repo.git(&["pull"]).unwrap();
     }
 
+    /// Running this will create the Cargo.lock file if missing.
     pub fn run_cargo_check(&self) {
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
