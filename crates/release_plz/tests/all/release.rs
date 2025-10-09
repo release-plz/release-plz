@@ -247,7 +247,8 @@ async fn release_plz_can_do_backports() {
     .to_string();
     outcome.stdout(format!("{expected_stdout}\n"));
 
-    // Publish a backport release
+    // Publish a backport release.
+    // It's a backport because v0.1.1 < v0.2.0.
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 1));
     // We need to update the Cargo.lock file to reflect the new version
     context.run_cargo_check();
