@@ -243,7 +243,7 @@ impl Update {
                 if provided_path.exists() {
                     provided_path
                 } else {
-                    anyhow::bail!("cannot read {:?}", provided_path)
+                    anyhow::bail!("cannot read {provided_path:?}")
                 }
             }
             None => &default_config_path,

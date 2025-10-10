@@ -174,8 +174,7 @@ impl Cloner {
         let is_empty = dest_path.read_dir()?.next().is_none();
         if !is_empty {
             bail!(
-                "destination path '{}' already exists and is not an empty directory.",
-                dest_path
+                "destination path '{dest_path}' already exists and is not an empty directory."
             );
         }
 

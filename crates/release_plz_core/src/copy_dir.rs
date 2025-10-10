@@ -27,7 +27,7 @@ pub(crate) fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>>(
 /// `to` is created if it doesn't exist.
 pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow::Result<()> {
     let from = from.as_ref();
-    anyhow::ensure!(from.is_dir(), "not a directory: {:?}", from);
+    anyhow::ensure!(from.is_dir(), "not a directory: {from:?}");
     let dir_name = from
         .components()
         .next_back()

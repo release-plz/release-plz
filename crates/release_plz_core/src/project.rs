@@ -83,8 +83,7 @@ impl Project {
             packages.retain(|p| *p.name == pac);
             anyhow::ensure!(
                 !packages.is_empty(),
-                "package `{}` not found. If it exists, is it public?",
-                pac
+                "package `{pac}` not found. If it exists, is it public?"
             );
         }
 
