@@ -118,7 +118,7 @@ pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Res
         }
         Some(r) => registries
             .remove(r)
-            .with_context(|| anyhow::anyhow!("The registry '{}' could not be found", r))?,
+            .with_context(|| anyhow::anyhow!("The registry '{r}' could not be found"))?,
     };
 
     // search this linked list and find the tail
@@ -126,7 +126,7 @@ pub fn registry_url(manifest_path: &Path, registry: Option<&str>) -> anyhow::Res
         let is_crates_io = replace_with == CRATES_IO_INDEX;
         source = registries
             .remove(replace_with)
-            .with_context(|| anyhow::anyhow!("The source '{}' could not be found", replace_with))?;
+            .with_context(|| anyhow::anyhow!("The source '{replace_with}' could not be found"))?;
         if is_crates_io {
             source
                 .registry

@@ -67,5 +67,5 @@ fn assign_partial_req(
 }
 
 fn unsupported_version_req(req: &str) -> anyhow::Error {
-    anyhow::anyhow!("Support for modifying {} is currently unsupported", req)
+    anyhow::anyhow!("Support for modifying {req} is currently unsupported")
 }

@@ -55,7 +55,7 @@ impl LocalManifest {
     /// Construct the `LocalManifest` corresponding to the `Path` provided.
     pub fn try_new(path: &Utf8Path) -> anyhow::Result<Self> {
         if !path.is_absolute() {
-            anyhow::bail!("can only edit absolute paths, got {}", path);
+            anyhow::bail!("can only edit absolute paths, got {path}");
         }
         let data = fs_err::read_to_string(path).context("Failed to read manifest contents")?;
         let manifest = data.parse().context("Unable to parse Cargo.toml")?;
