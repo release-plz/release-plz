@@ -533,7 +533,7 @@ impl Updater<'_> {
             if config.should_publish() {
                 let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
                 anyhow::ensure!(
-                    package.version < registry_package.package.version,
+                    package.version <= registry_package.package.version,
                     "local package `{}` has a greater version ({}) with respect to the registry package ({}), but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish the new version of this package.",
                     package.name,
                     package.version,
