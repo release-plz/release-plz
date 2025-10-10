@@ -39,11 +39,11 @@ pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
         store_cargo_token()?;
     }
 
-    let tag_signing = should_use_tag_signing()?;
+    let persist_credentials = should_use_persist_credentials()?;
 
     enable_pr_permissions(&repo_url)?;
     let github_token = store_github_token()?;
-    write_actions_yaml(github_token, trusted_publishing, tag_signing)?;
+    write_actions_yaml(github_token, trusted_publishing, persist_credentials)?;
 
     let secrets_stored = !trusted_publishing || github_token != GITHUB_TOKEN;
     print_recap(&repo_url, secrets_stored);
@@ -64,7 +64,7 @@ fn should_use_trusted_publishing() -> anyhow::Result<bool> {
     )
 }
 
-fn should_use_tag_signing() -> anyhow::Result<bool> {
+fn should_use_persist_credentials() -> anyhow::Result<bool> {
     ask_confirmation(
         "👉 Do you want to set `persist-credentials: false` in CI? If yes, you can't use tag signing. (Recommended). Learn more at https://release-plz.dev/docs/github/persist-credentials.",
     )
@@ -178,7 +178,7 @@ fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
 fn write_actions_yaml(
     github_token: &str,
     trusted_publishing: bool,
-    tag_signing: bool,
+    persist_credentials: bool,
 ) -> anyhow::Result<()> {
     let branch = gh::default_branch()?;
     let owner = gh::repo_owner()?;
@@ -187,7 +187,7 @@ fn write_actions_yaml(
         github_token,
         &owner,
         trusted_publishing,
-        tag_signing,
+        persist_credentials,
     );
     fs_err::create_dir_all(actions_file_parent())
         .context("failed to create GitHub actions workflows directory")?;
@@ -200,11 +200,11 @@ fn action_yaml(
     github_token: &str,
     owner: &str,
     trusted_publishing: bool,
-    tag_signing: bool,
+    persist_credentials: bool,
 ) -> String {
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
-    let checkout_token_line = if !tag_signing || is_default_token {
+    let checkout_token_line = if !persist_credentials || is_default_token {
         "".to_string()
     } else {
         format!(
@@ -273,7 +273,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          persist-credentials: {tag_signing}{checkout_token_line}
+          persist-credentials: {persist_credentials}{checkout_token_line}
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -533,7 +533,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
 }
 
 #[test]
-fn actions_yaml_string_with_tag_signing_is_correct() {
+fn actions_yaml_string_with_persist_credentials_is_correct() {
     expect_test::expect![[r#"
             name: Release-plz
 
