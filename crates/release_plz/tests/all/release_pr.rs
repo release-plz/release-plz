@@ -121,6 +121,111 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_can_do_backport_prs() {
+    let context = TestContext::new().await;
+
+    let crate_name = &context.gitea.repo;
+
+    // Running `release` the first time, releases the project
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.1.0",
+                "version": "0.1.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Publish a new breaking release
+    context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
+    // We need to update the Cargo.lock file to reflect the new version
+    context.run_cargo_check();
+    context.push_all_changes("breaking release");
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.2.0",
+                "version": "0.2.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Open a release PR for a backport
+    context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 0));
+
+    // Non-breaking change
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+    let write_lib_file = |content: &str, commit_message: &str| {
+        fs_err::write(&lib_file, content).unwrap();
+        context.push_all_changes(commit_message);
+    };
+    write_lib_file("pub fn foo() {}", "backport edit");
+
+    context.run_release_pr().success();
+
+    let today = today();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
+    pretty_assertions::assert_eq!(
+        pr_body,
+        format!(
+            r#"
+## 🤖 New release
+
+* `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+
+### Other
+
+- backport edit
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+        )
+        .trim()
+    );
+    context.merge_release_pr().await;
+
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.1.1",
+                "version": "0.1.1",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
     assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
