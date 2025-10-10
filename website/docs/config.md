@@ -861,6 +861,11 @@ commit_parsers = [
     { message = "^.*", group = "Changed" },
 ]
 
+postprocessors = [
+    # Format the rendered changelog using `dprint`
+    { pattern = ".*", replace = "dprint fmt --stdin md" }
+]
+
 link_parsers = [
     { pattern = "RFC(\\d+)", text = "ietf-rfc$1", href = "https://datatracker.ietf.org/doc/html/rfc$1"}
 ]
@@ -1016,6 +1021,20 @@ The `$COMMIT_SHA` environment variable is set when executing the command.
 For example, you can read the commit itself:
 
 - `{ pattern = '.*', replace_command = 'git show -s --format=%B $COMMIT_SHA' }`
+
+#### The `postprocessors` field
+
+An array of postprocessors for manipulating the rendered changelog. It can be used, for example, to
+enforce to run a formatter.
+
+```toml
+postprocessors = [
+    # Format the rendered changelog using `dprint`
+    { pattern = ".*", replace = "dprint fmt --stdin md" }
+]
+```
+
+Postprocessors use the same syntax as commit preprocessors, so check the section above for examples.
 
 #### The `commit_parsers` field
 
