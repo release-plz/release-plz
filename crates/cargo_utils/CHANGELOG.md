@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.74](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.73...cargo_utils-v0.1.74) - 2025-10-10
+
+### Other
+
+- cargo update and fix clippy lints ([#2450](https://github.com/release-plz/release-plz/pull/2450))
+
 ## [0.1.73](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.72...cargo_utils-v0.1.73) - 2025-09-13
 
 ### Other

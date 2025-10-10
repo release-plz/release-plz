@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.148](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.147...release-plz-v0.3.148) - 2025-10-10
+
+### Added
+
+- set `persist-credentials: false` in init ([#2417](https://github.com/release-plz/release-plz/pull/2417))
+- Add support for postprocessors in changelog ([#2445](https://github.com/release-plz/release-plz/pull/2445))
+- release-plz can now publish backport PRs ([#2438](https://github.com/release-plz/release-plz/pull/2438))
+
+### Other
+
+- cargo update and fix clippy lints ([#2450](https://github.com/release-plz/release-plz/pull/2450))
+- remove unused structs ([#2426](https://github.com/release-plz/release-plz/pull/2426))
+- update git-url-parse to v0.6.0 ([#2427](https://github.com/release-plz/release-plz/pull/2427))
+
 ## [0.3.147](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.146...release-plz-v0.3.147) - 2025-09-13
 
 ### Other
