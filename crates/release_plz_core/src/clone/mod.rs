@@ -173,9 +173,7 @@ impl Cloner {
         // Cloning into an existing directory is only allowed if the directory is empty.
         let is_empty = dest_path.read_dir()?.next().is_none();
         if !is_empty {
-            bail!(
-                "destination path '{dest_path}' already exists and is not an empty directory."
-            );
+            bail!("destination path '{dest_path}' already exists and is not an empty directory.");
         }
 
         self.clone_single(crate_, dest_path, src)
