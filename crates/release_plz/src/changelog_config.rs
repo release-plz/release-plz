@@ -17,6 +17,8 @@ pub struct ChangelogCfg {
     pub trim: Option<bool>,
     /// An array of commit preprocessors for manipulating the commit messages before parsing/grouping them.
     pub commit_preprocessors: Option<Vec<TextProcessor>>,
+    /// An array of postprocessors for manipulating the rendered changelog.
+    pub postprocessors: Option<Vec<TextProcessor>>,
     /// How to sort the commits inside the various sections.
     pub sort_commits: Option<Sorting>,
     /// An array of link parsers for extracting external references, and turning them into URLs, using regex.
@@ -175,6 +177,8 @@ pub fn to_git_cliff_config(
 ) -> anyhow::Result<git_cliff_core::config::Config> {
     let commit_preprocessors: Vec<git_cliff_core::config::TextProcessor> =
         to_opt_vec(cfg.commit_preprocessors, "commit_preprocessors")?;
+    let postprocessors: Vec<git_cliff_core::config::TextProcessor> =
+        to_opt_vec(cfg.postprocessors, "postprocessors")?;
     let link_parsers: Vec<git_cliff_core::config::LinkParser> =
         to_opt_vec(cfg.link_parsers, "link_parsers")?;
     let tag_pattern = to_opt_regex(cfg.tag_pattern.as_deref(), "tag_pattern")?;
@@ -191,7 +195,7 @@ pub fn to_git_cliff_config(
             header: default_changelog_config.header,
             body: cfg.body.unwrap_or(default_changelog_config.body),
             trim: cfg.trim.unwrap_or(default_changelog_config.trim),
-            postprocessors: vec![],
+            postprocessors,
             footer: None,
             ..ChangelogConfig::default()
         },
@@ -239,6 +243,10 @@ mod tests {
                 { pattern = "pattern2", replace = "replace2", replace_command = "replace_command2" }
             ]
 
+            postprocessors = [
+                { pattern = ".*", replace = "replace", replace_command = "replace_command" },
+            ]
+
             commit_parsers = [
                 { message = "message", body = "body", group = "group", default_scope = "default_scope", scope = "scope", skip = true, field = "field", pattern = "pattern"}
             ]
@@ -255,7 +263,11 @@ mod tests {
                 header: Some("Changelog".to_string()),
                 body: "Body".to_string(),
                 trim: true,
-                postprocessors: vec![],
+                postprocessors: vec![git_cliff_core::config::TextProcessor {
+                    pattern: regex::Regex::new(".*").unwrap(),
+                    replace: Some("replace".to_string()),
+                    replace_command: Some("replace_command".to_string()),
+                }],
                 footer: None,
                 ..ChangelogConfig::default()
             },

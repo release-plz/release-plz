@@ -36,8 +36,6 @@ jobs:
             os: windows-2022
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
-          - target: x86_64-apple-darwin
-            os: macos-13
           - target: x86_64-pc-windows-msvc
             os: windows-2022
           - target: x86_64-unknown-linux-musl
@@ -47,7 +45,7 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
           - target: aarch64-apple-darwin
-            os: macos-13
+            os: macos-14
           - target: x86_64-unknown-freebsd
             os: ubuntu-22.04
     timeout-minutes: 60
@@ -57,12 +55,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@2fcdc490d667999e01ddbbf0f2823181beef6b39 # v1.15.0
+        uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
       - uses: taiki-e/setup-cross-toolchain-action@84e58a47fc2bcd3821a2aa8c153595bbffb0e10f # v1.32.1
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@67cc679904bee382389bf22082124fa963c6f6bd # v2.61.3
+      - uses: taiki-e/install-action@7ec692fc37da04f8da31c22ba9f3b71ef267e650 # v2.62.24
         with:
           tool: cross
         if: contains(matrix.target, '-musl')

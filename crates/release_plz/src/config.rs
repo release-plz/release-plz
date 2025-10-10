@@ -738,7 +738,7 @@ unknown = false"#;
               |
             4 | unknown = false
               | ^^^^^^^
-            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
+            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
         "#]]
         .assert_eq(&error);
     }
