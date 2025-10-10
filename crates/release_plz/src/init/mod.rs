@@ -61,14 +61,12 @@ fn actions_file() -> Utf8PathBuf {
 fn should_use_trusted_publishing() -> anyhow::Result<bool> {
     ask_confirmation(
         "👉 Do you want to use trusted publishing? (Recommended). Learn more at https://crates.io/docs/trusted-publishing.",
-        true,
     )
 }
 
 fn should_use_tag_signing() -> anyhow::Result<bool> {
     ask_confirmation(
-        "👉 Do you want to enable tag signing? (Not recommended). Learn more at https://release-plz.dev/docs/github/persist-credentials.",
-        false,
+        "👉 Do you want to set `persist-credentials: false` in CI? If yes, you can't use tag signing. (Recommended). Learn more at https://release-plz.dev/docs/github/persist-credentials.",
     )
 }
 
@@ -120,7 +118,6 @@ fn enable_pr_permissions(repo_url: &str) -> anyhow::Result<()> {
 fn store_github_token() -> anyhow::Result<&'static str> {
     let should_create_token = ask_confirmation(
         "👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.",
-        true,
     )?;
 
     let github_token = if should_create_token {
@@ -170,16 +167,12 @@ fn read_stdin() -> anyhow::Result<String> {
     Ok(input)
 }
 
-fn ask_confirmation(question: &str, default: bool) -> anyhow::Result<bool> {
-    print!(
-        "{question} ({}/{}) ",
-        if default { "Y" } else { "y" },
-        if default { "n" } else { "N" }
-    );
+fn ask_confirmation(question: &str) -> anyhow::Result<bool> {
+    print!("{question} (Y/n) ");
     std::io::stdout().flush().unwrap();
     let input = read_stdin()?;
     let input = input.trim().to_lowercase();
-    Ok(input != if default { "n" } else { "y" })
+    Ok(input != "n")
 }
 
 fn write_actions_yaml(
