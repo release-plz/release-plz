@@ -618,7 +618,7 @@ impl Updater<'_> {
                     break;
                 } else if registry_package.package.version < package.version {
                     info!(
-                        "{}: the local package has already a greater version ({}) with respect to the registry package ({}), so release-plz will not update it",
+                        "{}: the local package has already a greater or equal version ({}) with respect to the registry package ({}), so release-plz will not update it",
                         package.name, package.version, registry_package.package.version
                     );
                     diff.set_version_unpublished();
