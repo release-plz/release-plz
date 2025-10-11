@@ -21,6 +21,11 @@ The GitHub action accepts the following input variables:
   Valid values: `github`, `gitea`, `gitlab`. *(Defaults to `github`)*.
 - `verbose`: Print module and source location in logs.
   I.e. adds the `-v` flag to the command. *(Defaults to `false`).*
+- `dry_run`: Add the `--dry-run` flag to the `release` command.
+  If the input `command` is left unspecified (and so both `release` and `release-pr` are ran),
+  the `--dry-run` flag is only added to the `release` command
+  (the flag isn't added to the `release-pr` command).
+  Useful if you're only interested in whether or not a release (pr) would be created.
 
 You can specify the input variables by using the `with` keyword.
 For example:
@@ -37,6 +42,7 @@ steps:
       registry: my-registry
       manifest_path: rust-crates/my-crate/Cargo.toml
       version: 0.3.70
+      dry_run: true
 # highlight-end
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
