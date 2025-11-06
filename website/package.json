@@ -32,7 +32,7 @@
     "devDependencies": {
         "@docusaurus/module-type-aliases": "^3.6.1",
         "markdownlint-cli": "^0.45.0",
-        "sharp": "0.34.4",
+        "sharp": "0.34.5",
         "tsx": "4.20.6"
     },
     "browserslist": {
