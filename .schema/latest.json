@@ -40,6 +40,9 @@
         "changelog_update": null,
         "dependencies_update": null,
         "features_always_increment_minor": null,
+        "git_only": null,
+        "git_only_release_tag_prefix": null,
+        "git_only_release_tag_suffix": null,
         "git_release_body": null,
         "git_release_draft": null,
         "git_release_enable": null,
@@ -293,6 +296,30 @@
             "null"
           ]
         },
+        "git_only": {
+          "title": "Git Only",
+          "description": "If true, use git tags to determine the latest version instead of the registry.\nIf unspecified at package level, inherits from workspace config.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_only_release_tag_prefix": {
+          "title": "Git Only Release Tag Prefix",
+          "description": "Literal string prefix for release tags when git_only is enabled.\nIf unspecified at package level, inherits from workspace config.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git_only_release_tag_suffix": {
+          "title": "Git Only Release Tag Suffix",
+          "description": "Literal string suffix for release tags when git_only is enabled.\nIf unspecified at package level, inherits from workspace config.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "git_release_body": {
           "title": "Git Release Body",
           "description": "Tera template of the git release body created by release-plz.",
@@ -541,6 +568,27 @@
           "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
           "type": [
             "boolean",
+            "null"
+          ]
+        },
+        "git_only": {
+          "description": "Use git tags for release information\nDefault: false\n\nIf true, release-plz will use git tags to determine what the latest version of the package\nis (i.e newest version is v0.1.3 and is associated with commit ac83762)\nIf false, release-plz will use crates.io release information to get the latest version",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_only_release_tag_prefix": {
+          "description": "Literal string prefix for release tags when git_only is enabled.\nOptional. For example: \"v\" matches \"v1.2.3\", \"package-v\" matches \"package-v1.2.3\".\nDefault: empty string (tags like \"1.2.3\")",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "git_only_release_tag_suffix": {
+          "description": "Literal string suffix for release tags when git_only is enabled.\nOptional. For example: \"-release\" matches \"v1.2.3-release\".\nDefault: empty string (no suffix)",
+          "type": [
+            "string",
             "null"
           ]
         },

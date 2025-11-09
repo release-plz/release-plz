@@ -45,6 +45,15 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+
+    /// Use git tags to determine latest package release
+    git_only: Option<bool>,
+
+    /// Literal string prefix for release tags when git_only is enabled
+    git_only_release_tag_prefix: Option<String>,
+
+    /// Literal string suffix for release tags when git_only is enabled
+    git_only_release_tag_suffix: Option<String>,
 }
 
 impl UpdateRequest {
@@ -64,6 +73,9 @@ impl UpdateRequest {
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            git_only: None,
+            git_only_release_tag_prefix: None,
+            git_only_release_tag_suffix: None,
         })
     }
 
@@ -229,6 +241,75 @@ impl UpdateRequest {
 
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
+    }
+
+    pub fn git_only(&self) -> Option<bool> {
+        self.git_only
+    }
+
+    pub fn git_only_release_tag_prefix(&self) -> Option<&str> {
+        self.git_only_release_tag_prefix.as_deref()
+    }
+
+    pub fn git_only_release_tag_suffix(&self) -> Option<&str> {
+        self.git_only_release_tag_suffix.as_deref()
+    }
+
+    pub fn with_git_only(mut self, git_only: Option<bool>) -> Self {
+        self.git_only = git_only;
+        self
+    }
+
+    pub fn with_git_only_release_tag_prefix(mut self, prefix: Option<String>) -> Self {
+        self.git_only_release_tag_prefix = prefix;
+        self
+    }
+
+    pub fn with_git_only_release_tag_suffix(mut self, suffix: Option<String>) -> Self {
+        self.git_only_release_tag_suffix = suffix;
+        self
+    }
+
+    /// Determine if git_only mode should be used for a specific package.
+    /// Package-level config overrides workspace-level config.
+    pub fn should_use_git_only(&self, package_name: &str) -> bool {
+        let pkg_config = self.get_package_config(package_name);
+
+        // Package config takes precedence
+        if let Some(git_only) = pkg_config.git_only() {
+            return git_only;
+        }
+
+        // Fall back to workspace config
+        self.git_only.unwrap_or(false)
+    }
+
+    /// Get the git_only release tag prefix for a specific package.
+    /// Package-level config overrides workspace-level config.
+    pub fn get_package_git_only_prefix(&self, package_name: &str) -> Option<String> {
+        let pkg_config = self.get_package_config(package_name);
+
+        // Package config takes precedence
+        if let Some(prefix) = pkg_config.git_only_release_tag_prefix() {
+            return Some(prefix.to_string());
+        }
+
+        // Fall back to workspace config
+        self.git_only_release_tag_prefix.clone()
+    }
+
+    /// Get the git_only release tag suffix for a specific package.
+    /// Package-level config overrides workspace-level config.
+    pub fn get_package_git_only_suffix(&self, package_name: &str) -> Option<String> {
+        let pkg_config = self.get_package_config(package_name);
+
+        // Package config takes precedence
+        if let Some(suffix) = pkg_config.git_only_release_tag_suffix() {
+            return Some(suffix.to_string());
+        }
+
+        // Fall back to workspace config
+        self.git_only_release_tag_suffix.clone()
     }
 }
 

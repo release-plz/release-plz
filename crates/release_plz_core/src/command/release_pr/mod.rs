@@ -7,6 +7,7 @@ use anyhow::Context;
 use serde::Serialize;
 use tracing::{debug, info, instrument};
 use url::Url;
+pub(crate) mod git;
 
 use crate::git::forge::{
     ForgeType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
@@ -132,12 +133,16 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     let tmp_project_root =
         new_project_root(&original_project_root, tmp_project_root_parent.path())?;
 
+    // NOTE: I was planning on using worktrees here too, but a bunch of the tests started failing
+    // so I went back to using full copies.
     let local_manifest = tmp_project_manifest_dir.join(CARGO_TOML);
     let new_update_request = input
         .update_request
         .clone()
         .set_local_manifest(&local_manifest)
         .context("can't find temporary project")?;
+
+    // determine what packages we will be updating
     let (packages_to_update, _temp_repository) = update(&new_update_request)
         .await
         .context("failed to update packages")?;
@@ -145,15 +150,18 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         .update_request
         .git_client()?
         .context("can't find git client")?;
+
+    let unreleased_package_worktree_repo =
+        Repo::new(&tmp_project_root).context("create new repo")?;
+
     if !packages_to_update.updates().is_empty() {
-        let repo = Repo::new(tmp_project_root)?;
-        let there_are_commits_to_push = repo.is_clean().is_err();
+        let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
         if there_are_commits_to_push {
             let pr = open_or_update_release_pr(
                 &local_manifest,
                 &packages_to_update,
                 &git_client,
-                &repo,
+                &unreleased_package_worktree_repo,
                 ReleasePrOptions {
                     draft: input.draft,
                     pr_name: input.pr_name_template.clone(),

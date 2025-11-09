@@ -210,6 +210,24 @@ impl Updater<'_> {
             .project
             .publishable_packages()
             .iter()
+            .filter(|&p| {
+                // if we don't have a package for a git only tag, we need to explicitly skip it
+                //
+                // also not sure why we are doing that check here, might be better to just filter
+                // out the packages we aren't releasing / publishing before we even determine the
+                // next versions
+                let using_git_only = self.req.should_use_git_only(&p.name);
+                let has_registry_pkg = registry_packages.get_registry_package(&p.name).is_some();
+                // Skip if git_only is enabled but there's no registry package (no matching tag)
+                if using_git_only && !has_registry_pkg {
+                    debug!(
+                        "Skipping package `{}` - git_only enabled but no matching tag found",
+                        p.name
+                    );
+                    return false;
+                }
+                true
+            })
             .map(|&p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
@@ -527,8 +545,13 @@ impl Updater<'_> {
             .project
             .git_tag(&package.name, &package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
-        if tag_commit.is_some() {
+
+        // Check if git_only is enabled for this package
+        let using_git_only = self.req.should_use_git_only(&package.name);
+
+        if tag_commit.is_some() && !using_git_only {
             // Only check registry for packages that should be published
+            // Skip this check if git_only is enabled (we don't use registry in that mode)
             let config = self.req.get_package_config(&package.name);
             if config.should_publish() {
                 let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
@@ -549,6 +572,17 @@ impl Updater<'_> {
             tag_commit.as_deref(),
             &mut diff,
         )?;
+
+        // Clean up cargo package artifacts created during diff calculation.
+        // `cargo package --list` creates files in target/package/ which can interfere with checkout.
+        // The target directory is created in the package directory, not the repository root.
+        let target_package_dir = package_path.join("target").join("package");
+        if target_package_dir.exists() {
+            if let Err(e) = fs_err::remove_dir_all(&target_package_dir) {
+                warn!("failed to clean up target/package directory before checkout: {e:?}");
+            }
+        }
+
         repository
             .checkout_head()
             .context("can't checkout to head after calculating diff")?;
@@ -589,14 +623,13 @@ impl Updater<'_> {
                     package_path,
                     registry_package_path,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                if are_packages_equal
-                    || is_commit_too_old(
-                        repository,
-                        tag_commit,
-                        registry_package.published_at_sha1(),
-                        &current_commit_hash,
-                    )
-                {
+                let commit_too_old = is_commit_too_old(
+                    repository,
+                    tag_commit,
+                    registry_package.published_at_sha1(),
+                    &current_commit_hash,
+                );
+                if are_packages_equal || commit_too_old {
                     debug!(
                         "next version calculated starting from commits after `{current_commit_hash}`"
                     );

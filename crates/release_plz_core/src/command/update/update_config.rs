@@ -23,6 +23,15 @@ pub struct UpdateConfig {
     pub features_always_increment_minor: bool,
     /// Template for the git tag created by release-plz.
     pub tag_name_template: Option<String>,
+    /// Whether to use git tags instead of registry for determining package versions.
+    /// If unspecified at package level, inherits from workspace config.
+    pub git_only: Option<bool>,
+    /// Literal string prefix for release tags when git_only is enabled.
+    /// If unspecified at package level, inherits from workspace config.
+    pub git_only_release_tag_prefix: Option<String>,
+    /// Literal string suffix for release tags when git_only is enabled.
+    /// If unspecified at package level, inherits from workspace config.
+    pub git_only_release_tag_suffix: Option<String>,
 }
 
 /// Package-specific config
@@ -58,6 +67,18 @@ impl PackageUpdateConfig {
     pub fn should_publish(&self) -> bool {
         self.generic.publish
     }
+
+    pub fn git_only(&self) -> Option<bool> {
+        self.generic.git_only
+    }
+
+    pub fn git_only_release_tag_prefix(&self) -> Option<&str> {
+        self.generic.git_only_release_tag_prefix.as_deref()
+    }
+
+    pub fn git_only_release_tag_suffix(&self) -> Option<&str> {
+        self.generic.git_only_release_tag_suffix.as_deref()
+    }
 }
 
 impl Default for UpdateConfig {
@@ -68,6 +89,9 @@ impl Default for UpdateConfig {
             release: true,
             publish: true,
             features_always_increment_minor: false,
+            git_only: None,
+            git_only_release_tag_prefix: None,
+            git_only_release_tag_suffix: None,
             tag_name_template: None,
             changelog_path: None,
         }

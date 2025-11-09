@@ -22,7 +22,7 @@ use crate::{
     workspace_packages,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Project {
     /// Publishable packages.
     packages: Vec<Package>,
@@ -117,6 +117,10 @@ impl Project {
     /// Get all packages, including non-publishable.
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
+    }
+
+    pub fn workspace_packages_mut(&mut self) -> &mut Vec<Package> {
+        &mut self.packages
     }
 
     /// Copy this project in a temporary repository and return the repository.

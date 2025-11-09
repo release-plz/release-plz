@@ -37,6 +37,27 @@ impl Repo {
         })
     }
 
+    /// Initializes git within a directory.
+    /// Returns Ok(None) if the repository is already initialized, otherwise returns a repo
+    /// NOTE: This function doesn't set the author / email, nor does it provide any commits. Some
+    /// git actions may behave differently if there isn't a commit.
+    #[instrument(skip(path), fields(path = path.as_ref().as_str()))]
+    pub fn init_simple(path: impl AsRef<Utf8Path>) -> anyhow::Result<()> {
+        // first, we check if the repo exists
+        if std::path::Path::new(&format!("{}/.git", path.as_ref().as_str())).exists() {
+            debug!(
+                "git repository already exists at {}, not creating a new one",
+                path.as_ref()
+            );
+            return Ok(());
+        }
+
+        // create the repo
+        git_in_dir(path.as_ref(), &["init"]).context("init git directory")?;
+        debug!("initialized repo at {}", path.as_ref());
+        Ok(())
+    }
+
     pub fn directory(&self) -> &Utf8Path {
         &self.directory
     }
@@ -216,9 +237,20 @@ impl Repo {
     }
 
     /// Adds a detached git worktree at the given path checked out at the given object.
-    pub fn add_worktree(&self, path: impl AsRef<str>, object: &str) -> anyhow::Result<()> {
-        self.git(&["worktree", "add", "--detach", path.as_ref(), object])
-            .context("failed to create git worktree")?;
+    /// If object is none, we checkout at HEAD
+    /// Returns a new repo object at the new worktree
+    pub fn add_worktree(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        object: Option<&str>,
+    ) -> anyhow::Result<()> {
+        if let Some(commit) = object {
+            self.git(&["worktree", "add", "-f", path.as_ref().as_str(), commit])
+                .context(format!("create git worktree at commit {commit}"))?;
+        } else {
+            self.git(&["worktree", "add", "-f", path.as_ref().as_str()])
+                .context("create git worktree at HEAD")?;
+        }
 
         Ok(())
     }
@@ -229,6 +261,38 @@ impl Repo {
             .context("failed to remove worktree")?;
 
         Ok(())
+    }
+
+    // NOTE: Because we are potentially switching to a git crate like git2, I am keeping this
+    // interface as general as possible rather than creating new types for CommitHash or GitTag. If
+    // we end up scrapping that, it may be worth creating those types.
+    //
+    // NOTE: creatordate sorts by commit date, most recent first, so we should get the tag that
+    // matches the release regex for the most recent commit.
+    #[instrument(skip(self))]
+    pub fn get_tags_with_commits(&self) -> anyhow::Result<Vec<(String, String)>> {
+        let o = self
+            .git(&[
+                "for-each-ref",
+                "--sort=-creatordate",
+                "--format=%(refname:short) %(object)",
+                "refs/tags",
+            ])
+            .context("get tags with messages")?;
+
+        // split up input into lines of the following structure:
+        // v0.1.0 3214bd8bd2f36c5e7ae55f1f85994eb6f952b08c
+        let lines: Vec<String> = o.split("\n").map(|x| x.to_string()).collect();
+
+        // now we split each line into their components
+        let split_lines: Vec<(String, String)> = lines
+            .iter()
+            .filter(|line| line.contains(" ")) // if something doesn't have a space, we just filter
+            .map(|x| x.split_at(x.find(" ").unwrap())) // unwrap should be safe because of ^
+            .map(|(y, z)| (y.to_string(), z.to_string()))
+            .collect();
+
+        Ok(split_lines)
     }
 
     /// Get `nth` commit starting from `1`.
@@ -289,9 +353,14 @@ impl Repo {
             .context("can't determine current commit hash")
     }
 
-    /// Create a git tag
+    /// Create a git tag (annotated)
     pub fn tag(&self, name: &str, message: &str) -> anyhow::Result<String> {
         self.git(&["tag", "-m", message, name])
+    }
+
+    /// Create a lightweight git tag (no message, just a reference to a commit)
+    pub fn tag_lightweight(&self, name: &str) -> anyhow::Result<String> {
+        self.git(&["tag", name])
     }
 
     /// Get the commit hash of the given tag
