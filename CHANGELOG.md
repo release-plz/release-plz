@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.149](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.148...release-plz-v0.3.149) - 2025-11-15
+
+### Other
+
+- update dependencies and fix clippy lint ([#2472](https://github.com/release-plz/release-plz/pull/2472))
+- update Cargo.toml dependencies
+
 ## [0.3.148](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.147...release-plz-v0.3.148) - 2025-10-10
 
 ### Added
