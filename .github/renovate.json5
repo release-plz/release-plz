@@ -41,6 +41,15 @@
       // Every weekend
       schedule: '* * * * 0,6',
     },
+    "regexManagers": [
+    {
+      "fileMatch": ["security\\.md$"],
+      "matchStrings": [
+        "uses: release-plz/action@\\s*(?<currentValue>[a-f0-9]{40})"
+      ],
+      "datasourceTemplate": "github-tags",
+    }
+  ]
   ],
   // Receive any update that fixes security vulnerabilities.
   // We need this because we disabled "patch" updates for Rust.
