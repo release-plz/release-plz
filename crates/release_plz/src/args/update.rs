@@ -114,6 +114,8 @@ pub struct Update {
     /// In a workspace update all member's who reference the crate's version.
     #[arg(long)]
     disable_dependant_updates: bool,
+    /// Maximum number of commits to analyze when the package hasn't been published yet.
+    /// Default: 1000.
     #[arg(long)]
     max_analyze_commits: Option<u32>,
     #[arg(long)]

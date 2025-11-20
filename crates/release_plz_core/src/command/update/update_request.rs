@@ -14,6 +14,8 @@ use crate::{ChangelogRequest, GitClient, GitForge, PackagePath as _, RepoUrl, fs
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
+pub const DEFAULT_MAX_ANALYZE_COMMITS: u32 = 1000;
+
 #[derive(Debug, Clone)]
 pub struct UpdateRequest {
     /// The manifest of the project you want to update.
@@ -140,7 +142,8 @@ impl UpdateRequest {
     }
 
     pub fn max_analyze_commits(&self) -> u32 {
-        self.max_analyze_commits.unwrap_or(u32::MAX)
+        self.max_analyze_commits
+            .unwrap_or(DEFAULT_MAX_ANALYZE_COMMITS)
     }
 
     pub fn with_check_only(self, check_only: bool) -> Self {
