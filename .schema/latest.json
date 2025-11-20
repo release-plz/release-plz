@@ -48,6 +48,7 @@
         "git_release_type": null,
         "git_tag_enable": null,
         "git_tag_name": null,
+        "max_analyze_commits": null,
         "pr_body": null,
         "pr_branch_prefix": null,
         "pr_draft": false,
@@ -611,6 +612,15 @@
             "string",
             "null"
           ]
+        },
+        "max_analyze_commits": {
+          "description": "Maximum number of commits to analize.\n- If not provided: will analize all commits up until the previous release.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
         },
         "pr_body": {
           "title": "PR Body",
