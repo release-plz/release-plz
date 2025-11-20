@@ -644,6 +644,7 @@ To exclude certain commits from the changelog, use the [commit_parsers](#the-com
 
 Maximum number of commits to analyze when the package hasn't been published yet (i.e. there is no
 release in the registry).
+
 - Default: `1000`.
 - This limit is ignored for packages that already have a release in the registry.
 
