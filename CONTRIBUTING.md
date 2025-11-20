@@ -45,7 +45,7 @@ cargo test
 - Run all tests:
 
   ```shell
-  <!-- cargo test --all-features --workspace -->
+  cargo test --all-features --workspace
   ```
 
 - Check to see if there are code formatting issues
