@@ -95,7 +95,7 @@ impl GithubCommit {
 
     // format a graphql query json payload to create commit on branch
     async fn to_query_json(&self) -> Result<serde_json::Value> {
-        let GithubCommit {
+        let Self {
             owner_slash_repo,
             branch,
             message,

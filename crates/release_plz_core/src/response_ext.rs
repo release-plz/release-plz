@@ -8,7 +8,7 @@ pub(crate) trait ResponseExt {
 }
 
 impl ResponseExt for reqwest::Response {
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response> {
+    async fn successful_status(self) -> anyhow::Result<Self> {
         let Err(err) = self.error_for_status_ref() else {
             return Ok(self);
         };

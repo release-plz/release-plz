@@ -78,7 +78,7 @@ impl PackagesUpdate {
                         package.name, incompatibilities
                     )
                 }
-                SemverCheck::Compatible | SemverCheck::Skipped => "".to_string(),
+                SemverCheck::Compatible | SemverCheck::Skipped => String::new(),
             })
             .collect()
     }

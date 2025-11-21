@@ -33,7 +33,7 @@ pub struct ChangelogCfg {
 
 impl ChangelogCfg {
     pub fn is_default(&self) -> bool {
-        let default_config = ChangelogCfg::default();
+        let default_config = Self::default();
         &default_config == self
     }
 }
@@ -71,8 +71,8 @@ pub enum Sorting {
 impl std::fmt::Display for Sorting {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Sorting::Oldest => write!(f, "oldest"),
-            Sorting::Newest => write!(f, "newest"),
+            Self::Oldest => write!(f, "oldest"),
+            Self::Newest => write!(f, "newest"),
         }
     }
 }

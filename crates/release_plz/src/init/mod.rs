@@ -205,7 +205,7 @@ fn action_yaml(
     let github_token_secret = format!("${{{{ secrets.{github_token} }}}}");
     let is_default_token = github_token == GITHUB_TOKEN;
     let checkout_token_line = if !persist_credentials || is_default_token {
-        "".to_string()
+        String::new()
     } else {
         format!(
             "
@@ -232,7 +232,7 @@ fn action_yaml(
         // For public crates, the cargo registry token is not needed in the PR workflow.
         // So if we use trusted publishing, we can omit it.
         // Trusted publishing also works for private crates, and if that's your case, write the token manually.
-        "".to_string()
+        String::new()
     } else {
         // The crate might be private, so we add the token to the PR workflow.
         // If the crate is public, it won't hurt having it here. You can also remove it if you want.
@@ -244,7 +244,7 @@ fn action_yaml(
 
     let release_cargo_registry_token_env = if trusted_publishing {
         // Omit the token in the release workflow as well when using trusted publishing.
-        "".to_string()
+        String::new()
     } else {
         format!(
             "

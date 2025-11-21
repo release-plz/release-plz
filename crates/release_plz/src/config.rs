@@ -237,8 +237,8 @@ pub struct PackageSpecificConfig {
 
 impl PackageSpecificConfig {
     /// Merge the package-specific configuration with the global configuration.
-    pub fn merge(self, default: PackageConfig) -> PackageSpecificConfig {
-        PackageSpecificConfig {
+    pub fn merge(self, default: PackageConfig) -> Self {
+        Self {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,

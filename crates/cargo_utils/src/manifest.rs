@@ -60,7 +60,7 @@ impl str::FromStr for Manifest {
     fn from_str(input: &str) -> ::std::result::Result<Self, Self::Err> {
         let d: toml_edit::DocumentMut = input.parse().context("Manifest not valid TOML")?;
 
-        Ok(Manifest { data: d })
+        Ok(Self { data: d })
     }
 }
 

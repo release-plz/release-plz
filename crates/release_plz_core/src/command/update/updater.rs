@@ -950,7 +950,7 @@ fn get_changelog(
             // This can happen when no version of the package was published,
             // but the changelog already contains the changes of the initial version
             // of the package (e.g. because a release PR was merged).
-            return Ok((old_changelog.to_string(), "".to_string()));
+            return Ok((old_changelog.to_string(), String::new()));
         }
     }
     let new_changelog = changelog_builder.build();
@@ -972,8 +972,8 @@ fn new_changelog_entry(changelog_builder: ChangelogBuilder) -> anyhow::Result<Op
                 changelog: ChangelogConfig {
                     // If we set None, later this will be overriden with the defaults.
                     // Instead we just want the body.
-                    header: Some("".to_string()),
-                    footer: Some("".to_string()),
+                    header: Some(String::new()),
+                    footer: Some(String::new()),
                     ..c.changelog
                 },
                 ..c
