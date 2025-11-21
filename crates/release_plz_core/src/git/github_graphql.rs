@@ -150,14 +150,14 @@ impl GithubCommit {
 }
 
 fn mutation() -> String {
-    const MUTATION: &str = r#"
+    const MUTATION: &str = r"
             mutation($input: CreateCommitOnBranchInput!) {
               createCommitOnBranch(input: $input) {
                 commit {
                   oid
                 }
               }
-            }"#;
+            }";
 
     MUTATION.replace(|c: char| c.is_whitespace(), "")
 }

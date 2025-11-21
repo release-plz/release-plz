@@ -13,7 +13,7 @@ use tracing::warn;
 
 use crate::changelog_parser;
 
-pub const CHANGELOG_HEADER: &str = r#"# Changelog
+pub const CHANGELOG_HEADER: &str = r"# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-"#;
+";
 
 pub const CHANGELOG_FILENAME: &str = "CHANGELOG.md";
 pub const RELEASE_LINK: &str = "release_link";
