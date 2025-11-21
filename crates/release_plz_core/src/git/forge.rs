@@ -306,6 +306,40 @@ impl GitClient {
         }
     }
 
+    /// Checks if a release with the given tag already exists.
+    pub async fn release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => self.github_release_exists(tag_name).await,
+            ForgeType::Gitlab => self.gitlab_release_exists(tag_name).await,
+        }
+    }
+
+    async fn github_release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        let url = format!("{}/releases/tags/{}", self.repo_url(), tag_name);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                anyhow::bail!("Unexpected status code when checking release: {}", status)
+            }
+        }
+    }
+
+    async fn gitlab_release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        let url = format!("{}/releases/{}", self.remote.base_url, tag_name);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                anyhow::bail!("Unexpected status code when checking release: {}", status)
+            }
+        }
+    }
+
     /// Creates a GitHub/Gitea release.
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         match self.forge {

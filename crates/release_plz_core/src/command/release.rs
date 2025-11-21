@@ -651,6 +651,9 @@ async fn release_package_if_needed(
         changelog: &changelog,
         prs: &prs,
     };
+    // Track if any registry was published to (even if already published)
+    let mut any_registry_has_package = false;
+
     for CargoRegistry {
         name,
         index: primary_index,
@@ -667,25 +670,37 @@ async fn release_package_if_needed(
 
         if pkg_is_published {
             info!("{} {}: already published", package.name, package.version);
-            continue;
-        }
-        let is_crates_io = name.is_none();
-        let package_was_released_at_index = release_package(
-            &mut index,
-            input,
-            repo,
-            git_client,
-            &release_info,
-            &token,
-            is_crates_io,
-            trusted_publishing_client,
-        )
-        .await
-        .context("failed to release package")?;
+            any_registry_has_package = true;
+            // Don't continue - still need to create git tag and release
+        } else {
+            let is_crates_io = name.is_none();
+            let package_was_released_at_index = release_package(
+                &mut index,
+                input,
+                repo,
+                git_client,
+                &release_info,
+                &token,
+                is_crates_io,
+                trusted_publishing_client,
+            )
+            .await
+            .context("failed to release package")?;
 
-        if package_was_released_at_index {
-            package_was_released = true;
+            if package_was_released_at_index {
+                package_was_released = true;
+                any_registry_has_package = true;
+            }
         }
+    }
+
+    // Create git tag and GitHub release if package is in any registry
+    // This ensures git operations happen even if package was already published
+    if any_registry_has_package {
+        create_git_tag_and_release(input, repo, git_client, &release_info)
+            .await
+            .context("failed to create git tag and release")?;
+        package_was_released = true;
     }
 
     let package_release = package_was_released.then_some(PackageRelease {
@@ -874,13 +889,94 @@ struct ReleaseInfo<'a> {
     prs: &'a [Pr],
 }
 
+/// Creates git tag and GitHub release if they don't already exist.
+/// This function is idempotent - it checks if each resource exists before creating.
+async fn create_git_tag_and_release(
+    input: &ReleaseRequest,
+    repo: &Repo,
+    git_client: &GitClient,
+    release_info: &ReleaseInfo<'_>,
+) -> anyhow::Result<()> {
+    if input.dry_run {
+        return Ok(());
+    }
+
+    let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
+    // Create git tag if needed and it doesn't exist
+    if should_create_git_tag && !repo.tag_exists(release_info.git_tag)? {
+        let message = format!(
+            "chore: Release package {} version {}",
+            release_info.package.name, release_info.package.version
+        );
+        let should_sign_tags = repo
+            .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
+            .map(|s| s.trim() == "true")?;
+
+        if should_sign_tags {
+            repo.tag(release_info.git_tag, &message)?;
+            repo.push(release_info.git_tag)?;
+        } else {
+            let sha = repo.current_commit_hash()?;
+            git_client
+                .create_tag(release_info.git_tag, &message, &sha)
+                .await?;
+        }
+        info!("created git tag {}", release_info.git_tag);
+    } else if should_create_git_tag {
+        info!("skipping creation of git tag {}: already exists", release_info.git_tag);
+    }
+
+    // Create GitHub release if needed and it doesn't exist
+    if should_create_git_release {
+        let release_already_exists = git_client
+            .release_exists(release_info.git_tag)
+            .await
+            .unwrap_or(false);
+
+        if release_already_exists {
+            info!(
+                "skipping creation of git release for {} {}: already exists",
+                release_info.package.name, release_info.package.version
+            );
+        } else {
+            let contributors = get_contributors(release_info, git_client).await;
+            let remote = Remote {
+                owner: "".to_string(),
+                repo: "".to_string(),
+                link: "".to_string(),
+                contributors,
+            };
+            let release_body =
+                release_body(input, release_info.package, release_info.changelog, &remote);
+            let release_config = input
+                .get_package_config(&release_info.package.name)
+                .git_release;
+            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
+            let git_release_info = GitReleaseInfo {
+                git_tag: release_info.git_tag.to_string(),
+                release_name: release_info.release_name.to_string(),
+                release_body,
+                draft: release_config.draft,
+                latest: release_config.latest,
+                pre_release: is_pre_release,
+            };
+            git_client.create_release(&git_release_info).await?;
+            info!("created git release for {} {}", release_info.package.name, release_info.package.version);
+        }
+    }
+
+    Ok(())
+}
+
 /// Return `true` if package was published, `false` otherwise.
 #[allow(clippy::too_many_arguments)]
 async fn release_package(
     index: &mut CargoIndex,
     input: &ReleaseRequest,
-    repo: &Repo,
-    git_client: &GitClient,
+    _repo: &Repo,
+    _git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
     is_crates_io: bool,
@@ -937,7 +1033,7 @@ async fn release_package(
                     "skipping publish of {} {}: already published",
                     release_info.package.name, release_info.package.version
                 );
-                return Ok(false);
+                // Don't return early - continue to create git tag and release if needed
             } else {
                 anyhow::bail!(
                     "failed to publish {}: {}",
@@ -961,53 +1057,8 @@ async fn release_package(
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if should_create_git_tag {
-            // Use same tag message of cargo-release
-            let message = format!(
-                "chore: Release package {} version {}",
-                release_info.package.name, release_info.package.version
-            );
-            let should_sign_tags = repo
-                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
-                .map(|s| s.trim() == "true")?;
-            // If tag signing is enabled, create the tag locally instead of using the API
-            if should_sign_tags {
-                repo.tag(release_info.git_tag, &message)?;
-                repo.push(release_info.git_tag)?;
-            } else {
-                let sha = repo.current_commit_hash()?;
-                git_client
-                    .create_tag(release_info.git_tag, &message, &sha)
-                    .await?;
-            }
-        }
-
-        let contributors = get_contributors(release_info, git_client).await;
-
-        // TODO fill the rest
-        let remote = Remote {
-            owner: "".to_string(),
-            repo: "".to_string(),
-            link: "".to_string(),
-            contributors,
-        };
-        if should_create_git_release {
-            let release_body =
-                release_body(input, release_info.package, release_info.changelog, &remote);
-            let release_config = input
-                .get_package_config(&release_info.package.name)
-                .git_release;
-            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
-            let git_release_info = GitReleaseInfo {
-                git_tag: release_info.git_tag.to_string(),
-                release_name: release_info.release_name.to_string(),
-                release_body,
-                draft: release_config.draft,
-                latest: release_config.latest,
-                pre_release: is_pre_release,
-            };
-            git_client.create_release(&git_release_info).await?;
-        }
+        // Git tag and release creation is now handled separately in create_git_tag_and_release
+        // to allow retrying failed GitHub releases even when package is already published
 
         info!(
             "published {} {}",
