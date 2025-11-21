@@ -322,7 +322,7 @@ impl GitClient {
             StatusCode::OK => Ok(true),
             StatusCode::NOT_FOUND => Ok(false),
             status => {
-                anyhow::bail!("Unexpected status code when checking release: {}", status)
+                anyhow::bail!("Unexpected status code when checking release: {status}")
             }
         }
     }
@@ -335,7 +335,7 @@ impl GitClient {
             StatusCode::OK => Ok(true),
             StatusCode::NOT_FOUND => Ok(false),
             status => {
-                anyhow::bail!("Unexpected status code when checking release: {}", status)
+                anyhow::bail!("Unexpected status code when checking release: {status}")
             }
         }
     }

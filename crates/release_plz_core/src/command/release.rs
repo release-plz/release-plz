@@ -925,7 +925,10 @@ async fn create_git_tag_and_release(
         }
         info!("created git tag {}", release_info.git_tag);
     } else if should_create_git_tag {
-        info!("skipping creation of git tag {}: already exists", release_info.git_tag);
+        info!(
+            "skipping creation of git tag {}: already exists",
+            release_info.git_tag
+        );
     }
 
     // Create GitHub release if needed and it doesn't exist
@@ -963,7 +966,10 @@ async fn create_git_tag_and_release(
                 pre_release: is_pre_release,
             };
             git_client.create_release(&git_release_info).await?;
-            info!("created git release for {} {}", release_info.package.name, release_info.package.version);
+            info!(
+                "created git release for {} {}",
+                release_info.package.name, release_info.package.version
+            );
         }
     }
 
