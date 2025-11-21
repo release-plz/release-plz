@@ -1030,14 +1030,14 @@ mod tests {
         let next_version = Version::new(1, 1, 0);
         let changelog_req = ChangelogRequest::default();
 
-        let old = r#"## [1.1.0] - 1970-01-01
+        let old = r"## [1.1.0] - 1970-01-01
 
 ### fix bugs
 - my awesomefix
 
 ### other
 - complex update
-"#;
+";
         let new = get_changelog(
             &commits,
             &next_version,

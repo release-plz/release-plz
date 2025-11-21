@@ -32,7 +32,7 @@ mod tests {
 
     #[test]
     fn parse_pr_correctly() {
-        let changelog_entry = r#"
+        let changelog_entry = r"
 ### Added
 - use cargo registry environment variable to authenticate in private sparse registry ([#1435](https://github.com/release-plz/release-plz/pull/1435))
 
@@ -42,7 +42,7 @@ mod tests {
 - add clippy lints ([#1439](https://github.com/release-plz/release-plz/pull/1439))
 - add `if_not_else` clippy lint ([#1438](https://github.com/release-plz/release-plz/pull/1438))
 - update dependencies ([#1437](https://github.com/release-plz/release-plz/pull/1437))
-"#;
+";
         let prs = prs_from_text(changelog_entry);
         assert_eq!(
             prs,

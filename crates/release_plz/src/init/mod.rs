@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn actions_yaml_string_is_correct() {
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             name: Release-plz
 
             on:
@@ -398,13 +398,13 @@ mod tests {
                     env:
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        "#]]
+        "]]
         .assert_eq(&action_yaml("main", GITHUB_TOKEN, "owner", false, false));
     }
 
     #[test]
     fn actions_yaml_string_with_custom_token_is_correct() {
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             name: Release-plz
 
             on:
@@ -457,7 +457,7 @@ mod tests {
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        "#]]
+        "]]
         .assert_eq(&action_yaml(
             "main",
             CUSTOM_GITHUB_TOKEN,
@@ -470,7 +470,7 @@ mod tests {
 
 #[test]
 fn actions_yaml_string_with_trusted_publishing_is_correct() {
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
             name: Release-plz
 
             on:
@@ -522,7 +522,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                       command: release-pr
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
-        "#]]
+        "]]
     .assert_eq(&action_yaml(
         "main",
         CUSTOM_GITHUB_TOKEN,
@@ -534,7 +534,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
 
 #[test]
 fn actions_yaml_string_with_persist_credentials_is_correct() {
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
             name: Release-plz
 
             on:
@@ -588,7 +588,7 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        "#]]
+        "]]
     .assert_eq(&action_yaml(
         "main",
         CUSTOM_GITHUB_TOKEN,

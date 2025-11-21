@@ -305,10 +305,10 @@ fn cargo_config(username: &str) -> String {
         username
     );
 
-    let config_end = r#"
+    let config_end = r"
 [net]
 git-fetch-with-cli = true
-    "#;
+    ";
     format!("{cargo_registries}{gitea_index}{config_end}")
 }
 

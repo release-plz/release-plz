@@ -126,7 +126,7 @@ async fn release_plz_adds_custom_changelog() {
     assert_eq!(opened_prs.len(), 1);
     let open_pr = &opened_prs[0];
     let expected_pr_body = format!(
-        r#"
+        r"
 ## 🤖 New release
 
 * `{package}`: 0.1.0
@@ -155,7 +155,7 @@ owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
     );
     assert_eq!(
         open_pr.body.as_ref().unwrap().trim(),
@@ -250,7 +250,7 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
         .await;
     // Since `one` depends from `two`, the new changelog entry of `one` comes before the entry of
     // `two`.
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
 
         All notable changes to this project will be documented in this file.
@@ -269,7 +269,7 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
 
         ### Other
         - cargo init
-    "#]]
+    "]]
     .assert_eq(&changelog);
 }
 
@@ -302,7 +302,7 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 
     let changelog = fs_err::read_to_string(context.repo.directory().join("CHANGELOG.md")).unwrap();
 
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
 
         All notable changes to this project will be documented in this file.
@@ -321,7 +321,7 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 
         ### Other
         - cargo init
-    "#]]
+    "]]
     .assert_eq(&changelog);
 }
 
@@ -348,7 +348,7 @@ async fn raw_message_contains_entire_commit_message() {
 
     let changelog = fs_err::read_to_string(context.repo.directory().join("CHANGELOG.md")).unwrap();
 
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
 
         All notable changes to this project will be documented in this file.
@@ -371,7 +371,7 @@ async fn raw_message_contains_entire_commit_message() {
 
         raw_message: Initial commit
         message: Initial commit
-    "#]]
+    "]]
     .assert_eq(&changelog);
 }
 
@@ -402,7 +402,7 @@ async fn pr_link_is_expanded() {
     assert_eq!(
         changelog.trim(),
         format!(
-            r#"
+            r"
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -422,7 +422,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - non-conventional commit ([#2](https://localhost/{username}/{package}/pulls/2))
 - cargo init
-- Initial commit"#,
+- Initial commit",
         )
         .trim()
     );
