@@ -95,7 +95,7 @@ impl Updater<'_> {
                 // We need to update this package only if one of its dependencies has changed.
                 packages_to_check_for_deps.push(p);
                 continue;
-            };
+            }
             let next_version = self.get_next_version(
                 new_workspace_version.as_ref(),
                 p,

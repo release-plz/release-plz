@@ -293,8 +293,8 @@ impl GitClient {
             GitForge::Gitlab(g) => (ForgeType::Gitlab, g.remote),
         };
         Ok(Self {
-            remote,
             forge,
+            remote,
             client,
         })
     }

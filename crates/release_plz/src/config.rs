@@ -210,10 +210,9 @@ fn parse_duration_unit(input: &str) -> anyhow::Result<(&str, DurationUnit)> {
             anyhow::bail!(
                 "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
             )
-        } else {
-            // Default to seconds if no unit specified
-            Ok((input, DurationUnit::Seconds))
         }
+        // Default to seconds if no unit specified
+        Ok((input, DurationUnit::Seconds))
     } else {
         anyhow::bail!("input cannot be empty");
     }

@@ -7,11 +7,10 @@ use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
 fn assert_cargo_semver_checks_is_installed() {
-    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
-        panic!(
-            "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
-        );
-    }
+    assert!(
+        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
+        "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
+    );
 }
 
 #[tokio::test]

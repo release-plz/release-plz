@@ -52,8 +52,8 @@ pub fn get_registry_packages(
     local_packages: &[&Package],
     registry: Option<&str>,
 ) -> anyhow::Result<PackagesCollection> {
-    let (temp_dir, registry_packages) = match registry_manifest {
-        Some(manifest) => (
+    let (temp_dir, registry_packages) = if let Some(manifest) = registry_manifest {
+        (
             None,
             next_ver::publishable_packages_from_manifest(manifest)?
                 .into_iter()
@@ -62,21 +62,20 @@ pub fn get_registry_packages(
                     sha1: None,
                 })
                 .collect(),
-        ),
-        None => {
-            let temp_dir = tempdir().context("failed to get a temporary directory")?;
-            let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
+        )
+    } else {
+        let temp_dir = tempdir().context("failed to get a temporary directory")?;
+        let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
 
-            let registry_packages =
-                download_packages_from_registry(local_packages, registry, directory)?;
+        let registry_packages =
+            download_packages_from_registry(local_packages, registry, directory)?;
 
-            // After downloading the package, we initialize a git repo in the package.
-            // This is because if cargo doesn't find a git repo in the package, it doesn't
-            // show hidden files in `cargo package --list` output.
-            let registry_packages = initialize_registry_package(registry_packages)
-                .context("failed to initialize repository package")?;
-            (Some(temp_dir), registry_packages)
-        }
+        // After downloading the package, we initialize a git repo in the package.
+        // This is because if cargo doesn't find a git repo in the package, it doesn't
+        // show hidden files in `cargo package --list` output.
+        let registry_packages = initialize_registry_package(registry_packages)
+            .context("failed to initialize repository package")?;
+        (Some(temp_dir), registry_packages)
     };
     let registry_packages: BTreeMap<String, RegistryPackage> = registry_packages
         .into_iter()
