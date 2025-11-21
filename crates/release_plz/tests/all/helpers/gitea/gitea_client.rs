@@ -118,7 +118,7 @@ impl GiteaContext {
     }
 
     pub async fn get_file_content(&self, branch: &str, file_path: &str) -> String {
-        use base64::Engine as _;
+        use base64::Engine;
         let request_path = format!("{}/contents/{}", self.repo_url(), file_path);
         let response = self
             .client
@@ -139,12 +139,49 @@ impl GiteaContext {
             .unwrap();
         String::from_utf8(content).unwrap()
     }
+
+    /// Get all releases for this repository
+    pub async fn get_releases(&self) -> Vec<GiteaReleaseWithId> {
+        let request_path = format!("{}/releases", self.repo_url());
+        self.client
+            .get(&request_path)
+            .basic_auth(&self.user.username, Some(&self.user.password))
+            .send()
+            .await
+            .unwrap()
+            .ok_if_2xx()
+            .await
+            .unwrap()
+            .json::<Vec<GiteaReleaseWithId>>()
+            .await
+            .unwrap()
+    }
+
+    /// Delete a release by its ID
+    pub async fn delete_release(&self, release_id: &u64) {
+        let request_path = format!("{}/releases/{}", self.repo_url(), release_id);
+        self.client
+            .delete(&request_path)
+            .basic_auth(&self.user.username, Some(&self.user.password))
+            .send()
+            .await
+            .unwrap()
+            .ok_if_2xx()
+            .await
+            .unwrap();
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
 pub struct GiteaRelease {
     pub name: String,
     pub body: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct GiteaReleaseWithId {
+    pub id: u64,
+    pub tag_name: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
