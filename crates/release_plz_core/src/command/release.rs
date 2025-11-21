@@ -697,10 +697,13 @@ async fn release_package_if_needed(
     // Create git tag and GitHub release if package is in any registry
     // This ensures git operations happen even if package was already published
     if any_registry_has_package {
-        create_git_tag_and_release(input, repo, git_client, &release_info)
+        let git_ops_performed = create_git_tag_and_release(input, repo, git_client, &release_info)
             .await
             .context("failed to create git tag and release")?;
-        package_was_released = true;
+        // Only mark as released if we actually did something (published or created git resources)
+        if git_ops_performed {
+            package_was_released = true;
+        }
     }
 
     let package_release = package_was_released.then_some(PackageRelease {
@@ -891,18 +894,21 @@ struct ReleaseInfo<'a> {
 
 /// Creates git tag and GitHub release if they don't already exist.
 /// This function is idempotent - it checks if each resource exists before creating.
+/// Returns `true` if any git operation was performed, `false` if everything already existed.
 async fn create_git_tag_and_release(
     input: &ReleaseRequest,
     repo: &Repo,
     git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     if input.dry_run {
-        return Ok(());
+        return Ok(false);
     }
 
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
+    let mut created_something = false;
 
     // Create git tag if needed and it doesn't exist
     if should_create_git_tag && !repo.tag_exists(release_info.git_tag)? {
@@ -924,6 +930,7 @@ async fn create_git_tag_and_release(
                 .await?;
         }
         info!("created git tag {}", release_info.git_tag);
+        created_something = true;
     } else if should_create_git_tag {
         info!(
             "skipping creation of git tag {}: already exists",
@@ -970,10 +977,11 @@ async fn create_git_tag_and_release(
                 "created git release for {} {}",
                 release_info.package.name, release_info.package.version
             );
+            created_something = true;
         }
     }
 
-    Ok(())
+    Ok(created_something)
 }
 
 /// Return `true` if package was published, `false` otherwise.
