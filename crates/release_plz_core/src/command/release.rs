@@ -911,31 +911,48 @@ async fn create_git_tag_and_release(
     let mut created_something = false;
 
     // Create git tag if needed and it doesn't exist
-    if should_create_git_tag && !repo.tag_exists(release_info.git_tag)? {
-        let message = format!(
-            "chore: Release package {} version {}",
-            release_info.package.name, release_info.package.version
-        );
-        let should_sign_tags = repo
-            .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
-            .map(|s| s.trim() == "true")?;
+    if should_create_git_tag {
+        // Check if tag exists locally
+        let tag_exists_locally = repo.tag_exists(release_info.git_tag)?;
 
-        if should_sign_tags {
-            repo.tag(release_info.git_tag, &message)?;
-            repo.push(release_info.git_tag)?;
+        if !tag_exists_locally {
+            let message = format!(
+                "chore: Release package {} version {}",
+                release_info.package.name, release_info.package.version
+            );
+            let should_sign_tags = repo
+                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
+                .map(|s| s.trim() == "true")?;
+
+            if should_sign_tags {
+                repo.tag(release_info.git_tag, &message)?;
+                repo.push(release_info.git_tag)?;
+                info!("created git tag {}", release_info.git_tag);
+                created_something = true;
+            } else {
+                let sha = repo.current_commit_hash()?;
+                match git_client.create_tag(release_info.git_tag, &message, &sha).await {
+                    Ok(_) => {
+                        info!("created git tag {}", release_info.git_tag);
+                        created_something = true;
+                    }
+                    Err(e) => {
+                        // Check if error is "tag already exists" - if so, treat as success
+                        let error_msg = e.to_string();
+                        if error_msg.contains("tag already exists") || error_msg.contains("already_exists") {
+                            info!("skipping creation of git tag {}: already exists", release_info.git_tag);
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
+            }
         } else {
-            let sha = repo.current_commit_hash()?;
-            git_client
-                .create_tag(release_info.git_tag, &message, &sha)
-                .await?;
+            info!(
+                "skipping creation of git tag {}: already exists",
+                release_info.git_tag
+            );
         }
-        info!("created git tag {}", release_info.git_tag);
-        created_something = true;
-    } else if should_create_git_tag {
-        info!(
-            "skipping creation of git tag {}: already exists",
-            release_info.git_tag
-        );
     }
 
     // Create GitHub release if needed and it doesn't exist
