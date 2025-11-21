@@ -915,7 +915,12 @@ async fn create_git_tag_and_release(
         // Check if tag exists locally
         let tag_exists_locally = repo.tag_exists(release_info.git_tag)?;
 
-        if !tag_exists_locally {
+        if tag_exists_locally {
+            info!(
+                "skipping creation of git tag {}: already exists",
+                release_info.git_tag
+            );
+        } else {
             let message = format!(
                 "chore: Release package {} version {}",
                 release_info.package.name, release_info.package.version
@@ -931,7 +936,10 @@ async fn create_git_tag_and_release(
                 created_something = true;
             } else {
                 let sha = repo.current_commit_hash()?;
-                match git_client.create_tag(release_info.git_tag, &message, &sha).await {
+                match git_client
+                    .create_tag(release_info.git_tag, &message, &sha)
+                    .await
+                {
                     Ok(_) => {
                         info!("created git tag {}", release_info.git_tag);
                         created_something = true;
@@ -939,19 +947,19 @@ async fn create_git_tag_and_release(
                     Err(e) => {
                         // Check if error is "tag already exists" - if so, treat as success
                         let error_msg = e.to_string();
-                        if error_msg.contains("tag already exists") || error_msg.contains("already_exists") {
-                            info!("skipping creation of git tag {}: already exists", release_info.git_tag);
+                        if error_msg.contains("tag already exists")
+                            || error_msg.contains("already_exists")
+                        {
+                            info!(
+                                "skipping creation of git tag {}: already exists",
+                                release_info.git_tag
+                            );
                         } else {
                             return Err(e);
                         }
                     }
                 }
             }
-        } else {
-            info!(
-                "skipping creation of git tag {}: already exists",
-                release_info.git_tag
-            );
         }
     }
 
