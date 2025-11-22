@@ -1056,7 +1056,6 @@ async fn release_package(
                     "skipping publish of {} {}: already published",
                     release_info.package.name, release_info.package.version
                 );
-                // Don't return early - continue to create git tag and release if needed
             } else {
                 anyhow::bail!(
                     "failed to publish {}: {}",
