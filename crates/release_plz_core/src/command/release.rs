@@ -928,9 +928,28 @@ async fn create_git_tag_and_release(
 
             if should_sign_tags {
                 repo.tag(release_info.git_tag, &message)?;
-                repo.push(release_info.git_tag)?;
-                info!("created git tag {}", release_info.git_tag);
-                created_something = true;
+                // Try to push the tag. If it fails because the tag already exists remotely, that's ok.
+                match repo.push(release_info.git_tag) {
+                    Ok(_) => {
+                        info!("created git tag {}", release_info.git_tag);
+                        created_something = true;
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        // Check if the error is due to the tag already existing remotely
+                        if error_msg.contains("already exists")
+                            || error_msg.contains("non-fast-forward")
+                            || error_msg.contains("rejected")
+                        {
+                            info!(
+                                "skipping creation of git tag {}: already exists remotely",
+                                release_info.git_tag
+                            );
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
             } else {
                 let sha = repo.current_commit_hash()?;
                 // create_tag returns true if created, false if already existed (409 Conflict)
