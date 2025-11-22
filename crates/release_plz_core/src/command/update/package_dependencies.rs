@@ -26,7 +26,7 @@ impl PackageDependencies for Package {
         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
         let package_dir = crate::manifest_dir(&package_manifest.path)?.to_owned();
 
-        let mut deps_to_update: Vec<&Package> = vec![];
+        let mut deps_to_update: Vec<&Self> = vec![];
         for (p, next_ver) in updated_packages {
             let canonical_path = p.canonical_path()?;
             // Find the dependencies that have the same path as the updated package.

@@ -49,7 +49,7 @@ impl VersionIncrement {
         let are_commits_present = commits.peek().is_some();
         if are_commits_present {
             if !current_version.pre.is_empty() {
-                return Some(VersionIncrement::Prerelease);
+                return Some(Self::Prerelease);
             }
             // Parse commits and keep only the ones that follow conventional commits specification.
             let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();

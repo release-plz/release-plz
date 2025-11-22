@@ -59,7 +59,7 @@ impl LocalManifest {
         }
         let data = fs_err::read_to_string(path).context("Failed to read manifest contents")?;
         let manifest = data.parse().context("Unable to parse Cargo.toml")?;
-        Ok(LocalManifest {
+        Ok(Self {
             manifest,
             path: path.to_owned(),
         })

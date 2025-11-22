@@ -986,9 +986,9 @@ async fn release_package(
 
         // TODO fill the rest
         let remote = Remote {
-            owner: "".to_string(),
-            repo: "".to_string(),
-            link: "".to_string(),
+            owner: String::new(),
+            repo: String::new(),
+            link: String::new(),
             contributors,
         };
         if should_create_git_release {

@@ -45,8 +45,8 @@ pub struct Crate {
 impl Crate {
     /// Create a new [`Crate`].
     /// If `version` is not specified, the latest version is chosen.
-    pub fn new(name: String, version: Option<String>) -> Crate {
-        Crate { name, version }
+    pub fn new(name: String, version: Option<String>) -> Self {
+        Self { name, version }
     }
 }
 

@@ -206,14 +206,12 @@ fn parse_duration_unit(input: &str) -> anyhow::Result<(&str, DurationUnit)> {
     } else if let Some(stripped) = input.strip_suffix('h') {
         Ok((stripped, DurationUnit::Hours))
     } else if let Some(last_char) = input.chars().last() {
-        if last_char.is_ascii_alphabetic() {
-            anyhow::bail!(
-                "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
-            )
-        } else {
-            // Default to seconds if no unit specified
-            Ok((input, DurationUnit::Seconds))
-        }
+        anyhow::ensure!(
+            !last_char.is_ascii_alphabetic(),
+            "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
+        );
+        // Default to seconds if no unit specified
+        Ok((input, DurationUnit::Seconds))
     } else {
         anyhow::bail!("input cannot be empty");
     }
@@ -237,8 +235,8 @@ pub struct PackageSpecificConfig {
 
 impl PackageSpecificConfig {
     /// Merge the package-specific configuration with the global configuration.
-    pub fn merge(self, default: PackageConfig) -> PackageSpecificConfig {
-        PackageSpecificConfig {
+    pub fn merge(self, default: PackageConfig) -> Self {
+        Self {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
@@ -697,49 +695,49 @@ mod tests {
         let config = "[unknown]";
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 1, column 2
               |
             1 | [unknown]
               |  ^^^^^^^
             unknown field `unknown`, expected one of `workspace`, `changelog`, `package`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 
     #[test]
     fn wrong_workspace_section_is_not_deserialized() {
-        let config = r#"
+        let config = r"
 [workspace]
 unknown = false
-allow_dirty = true"#;
+allow_dirty = true";
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 2, column 1
               |
             2 | [workspace]
               | ^^^^^^^^^^^
             unknown field `unknown`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 
     #[test]
     fn wrong_changelog_section_is_not_deserialized() {
-        let config = r#"
+        let config = r"
 [changelog]
 trim = true
-unknown = false"#;
+unknown = false";
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 4, column 1
               |
             4 | unknown = false
               | ^^^^^^^
             unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 
@@ -751,13 +749,13 @@ name = "crate1"
 unknown = false"#;
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 2, column 1
               |
             2 | [[package]]
               | ^^^^^^^^^^^
             unknown field `unknown`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 

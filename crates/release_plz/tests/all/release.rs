@@ -7,7 +7,7 @@ use crate::helpers::test_context::TestContext;
 async fn release_info_contains_prs_in_changelog() {
     let context = TestContext::new().await;
 
-    let changelog = r#"
+    let changelog = r"
 # Changelog
 All notable changes to this project will be documented in this file.
 
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 - add clippy lints ([#1439](https://github.com/release-plz/release-plz/pull/1439))
 - improve uncommitted changes error message ([#1434](https://github.com/release-plz/release-plz/pull/1434))
-"#;
+";
     context.write_changelog(changelog);
 
     let crate_name = &context.gitea.repo;
@@ -93,10 +93,10 @@ async fn release_plz_releases_a_new_project_with_custom_tag_name() {
 async fn release_plz_does_not_release_a_new_project_if_release_always_is_false() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
     [workspace]
     release_always = false
-    "#;
+    ";
     context.write_release_plz_toml(config);
 
     // Running `release` doesn't release the project
@@ -168,14 +168,14 @@ async fn release_plz_releases_after_release_pr_merged() {
 
     let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
     assert_eq!(gitea_release.name, expected_release);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         Welcome to this new release! Changes:
 
         ### Other
 
         - add config file
         - cargo init
-        - Initial commit"#]]
+        - Initial commit"]]
     .assert_eq(&gitea_release.body);
 }
 
