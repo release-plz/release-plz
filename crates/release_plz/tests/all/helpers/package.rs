@@ -15,7 +15,7 @@ pub enum PackageType {
 }
 
 impl TestPackage {
-    pub fn new(name: impl AsRef<str>) -> TestPackage {
+    pub fn new(name: impl AsRef<str>) -> Self {
         Self {
             name: name.as_ref().to_string(),
             type_: PackageType::Bin,
