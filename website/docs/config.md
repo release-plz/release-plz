@@ -94,6 +94,7 @@ the following sections:
   - [`release`](#the-release-field) - Enable the processing of the packages.
   - [`release_always`](#the-release_always-field) - Release always or when you merge the release PR only.
   - [`release_commits`](#the-release_commits-field) - Customize which commits trigger a release.
+  - [`max_analyze_commits`](#the-max_analyze_commits-field) - Limit commit analysis for unpublished packages.
   - [`repo_url`](#the-repo_url-field) — Repository URL.
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
 - [`[[package]]`](#the-package-section) — Package-specific configurations.
@@ -638,6 +639,16 @@ By default, release-plz updates the package on every commit.
 The filtered commits are still included in the changelog.
 To exclude certain commits from the changelog, use the [commit_parsers](#the-commit_parsers-field) field.
 :::
+
+#### The `max_analyze_commits` field
+
+Maximum number of commits to analyze when the package hasn't been published yet (i.e. there is no
+release in the registry).
+
+- Default: `1000`.
+- This limit is ignored for packages that already have a release in the registry.
+
+If your first release needs to scan a longer history, increase this value.
 
 #### The `repo_url` field
 

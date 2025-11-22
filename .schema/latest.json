@@ -48,6 +48,7 @@
         "git_release_type": null,
         "git_tag_enable": null,
         "git_tag_name": null,
+        "max_analyze_commits": 1000,
         "pr_body": null,
         "pr_branch_prefix": null,
         "pr_draft": false,
@@ -611,6 +612,16 @@
             "string",
             "null"
           ]
+        },
+        "max_analyze_commits": {
+          "description": "Maximum number of commits to analyze when the package hasn't been published yet.\nDefault: 1000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "default": 1000,
+          "minimum": 0
         },
         "pr_body": {
           "title": "PR Body",

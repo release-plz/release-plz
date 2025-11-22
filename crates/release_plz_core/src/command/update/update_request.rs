@@ -14,6 +14,8 @@ use crate::{ChangelogRequest, GitClient, GitForge, PackagePath as _, RepoUrl, fs
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
+pub const DEFAULT_MAX_ANALYZE_COMMITS: u32 = 1000;
+
 #[derive(Debug, Clone)]
 pub struct UpdateRequest {
     /// The manifest of the project you want to update.
@@ -36,6 +38,8 @@ pub struct UpdateRequest {
     /// Allow dirty working directories to be updated.
     /// The uncommitted changes will be part of the update.
     allow_dirty: bool,
+    /// Update workspace dependants
+    dependants_update: bool,
     /// Repository Url. If present, the new changelog entry contains a link to the diff between the old and new version.
     /// Format: `https://{repo_host}/{repo_owner}/{repo_name}/compare/{old_tag}...{new_tag}`.
     repo_url: Option<RepoUrl>,
@@ -45,6 +49,11 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+    max_analyze_commits: Option<u32>,
+    /// Do not write any manifests simply check for the next version.
+    check_only: bool,
+    /// Exit 1 if any updates are needed.
+    exit_status: bool,
 }
 
 impl UpdateRequest {
@@ -60,10 +69,14 @@ impl UpdateRequest {
             registry: None,
             dependencies_update: false,
             allow_dirty: false,
+            dependants_update: true,
             repo_url: None,
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            max_analyze_commits: None,
+            check_only: false,
+            exit_status: false,
         })
     }
 
@@ -119,6 +132,37 @@ impl UpdateRequest {
             changelog_req,
             ..self
         }
+    }
+
+    pub fn with_max_analyze_commits(self, max_commits: Option<u32>) -> Self {
+        Self {
+            max_analyze_commits: max_commits,
+            ..self
+        }
+    }
+
+    pub fn max_analyze_commits(&self) -> u32 {
+        self.max_analyze_commits
+            .unwrap_or(DEFAULT_MAX_ANALYZE_COMMITS)
+    }
+
+    pub fn with_check_only(self, check_only: bool) -> Self {
+        Self { check_only, ..self }
+    }
+
+    pub fn check_only(&self) -> bool {
+        self.check_only
+    }
+
+    pub fn with_exit_status(self, exit_status: bool) -> Self {
+        Self {
+            exit_status,
+            ..self
+        }
+    }
+
+    pub fn exit_status(&self) -> bool {
+        self.exit_status
     }
 
     /// Set update config for all packages.
@@ -196,8 +240,19 @@ impl UpdateRequest {
         }
     }
 
+    pub fn with_dependants_update(self, dependants_update: bool) -> Self {
+        Self {
+            dependants_update,
+            ..self
+        }
+    }
+
     pub fn should_update_dependencies(&self) -> bool {
         self.dependencies_update
+    }
+
+    pub fn should_update_dependants(&self) -> bool {
+        self.dependants_update
     }
 
     pub fn with_allow_dirty(self, allow_dirty: bool) -> Self {

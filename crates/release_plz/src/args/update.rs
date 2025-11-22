@@ -111,6 +111,17 @@ pub struct Update {
     /// Kind of git host where your project is hosted.
     #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
     forge: GitForgeKind,
+    /// In a workspace update all member's who reference the crate's version.
+    #[arg(long)]
+    disable_dependant_updates: bool,
+    /// Maximum number of commits to analyze when the package hasn't been published yet.
+    /// Default: 1000.
+    #[arg(long)]
+    max_analyze_commits: Option<u32>,
+    #[arg(long)]
+    check_only: bool,
+    #[arg(long)]
+    exit_status: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,6 +173,10 @@ impl Update {
         self.allow_dirty || config.workspace.allow_dirty == Some(true)
     }
 
+    fn max_analyze_commits(&self, config: &Config) -> Option<u32> {
+        self.max_analyze_commits
+            .or(config.workspace.max_analyze_commits)
+    }
     pub fn update_request(
         &self,
         config: &Config,
@@ -174,6 +189,10 @@ impl Update {
                 format!("Cannot find file {project_manifest:?}. Make sure you are inside a rust project or that --manifest-path points to a valid Cargo.toml file.")
             })?
             .with_dependencies_update(self.dependencies_update(config))
+            .with_dependants_update(!self.disable_dependant_updates)
+            .with_check_only(self.check_only)
+            .with_exit_status(self.exit_status)
+            .with_max_analyze_commits(self.max_analyze_commits(config))
             .with_allow_dirty(self.allow_dirty(config));
         match self.get_repo_url(config) {
             Ok(repo_url) => {
@@ -310,6 +329,10 @@ mod tests {
             config: ConfigPath::default(),
             forge: GitForgeKind::Github,
             git_token: None,
+            disable_dependant_updates: false,
+            max_analyze_commits: None,
+            check_only: false,
+            exit_status: false,
         };
         let config = update_args.config.load().unwrap();
         let req = update_args
