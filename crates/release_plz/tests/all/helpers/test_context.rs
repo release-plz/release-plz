@@ -250,6 +250,15 @@ impl TestContext {
             .download()
             .unwrap()
     }
+
+    pub fn get_remote_tags(&self) -> Vec<String> {
+        let repo_dir = self.repo_dir();
+        let repo = Repo::new(&repo_dir).unwrap();
+        // Fetch tags from remote
+        repo.git(&["fetch", "--tags"]).unwrap();
+        // List all tags
+        repo.get_all_tags()
+    }
 }
 
 pub fn run_set_version(directory: &Utf8Path, change: &str) {

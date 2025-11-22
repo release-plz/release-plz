@@ -967,14 +967,22 @@ impl GitClient {
             return Ok(false); // Already existed
         }
 
-        // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
-        // only exists locally (i.e. it has not been pushed to the remote).
+        // GitHub returns 422 (Unprocessable Entity) for two different cases:
+        // 1. The commit SHA doesn't exist on the remote (hasn't been pushed)
+        // 2. The ref already exists (e.g., "Reference already exists")
         if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-            // Try to capture the body for extra diagnostics.
+            // Capture the body to determine which case this is
             let body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "<failed to read response body>".to_string());
+
+            // Check if this is a "ref already exists" error (idempotent case)
+            if body.contains("Reference already exists") || body.contains("already exists") {
+                return Ok(false); // Ref already existed - treat as success
+            }
+
+            // Otherwise, this is likely a missing commit error
             anyhow::bail!(
                 "failed to create ref {ref_name} with sha {sha}. \
 The commit {sha} likely hasn't been pushed to the remote repository yet. \

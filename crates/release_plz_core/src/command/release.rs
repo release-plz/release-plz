@@ -631,13 +631,6 @@ async fn release_package_if_needed(
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
-    if repo.tag_exists(&git_tag)? {
-        info!(
-            "{} {}: Already published - Tag {} already exists",
-            package.name, package.version, &git_tag
-        );
-        return Ok(None);
-    }
 
     let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
         .context("can't determine registry indexes")?;
