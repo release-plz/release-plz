@@ -671,7 +671,6 @@ async fn release_package_if_needed(
         if pkg_is_published {
             info!("{} {}: already published", package.name, package.version);
             any_registry_has_package = true;
-            // Don't continue - still need to create git tag and release
         } else {
             let is_crates_io = name.is_none();
             let package_was_released_at_index = release_package(
@@ -1073,9 +1072,6 @@ async fn release_package(
         if should_publish {
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
-
-        // Git tag and release creation is now handled separately in create_git_tag_and_release
-        // to allow retrying failed GitHub releases even when package is already published
 
         info!(
             "published {} {}",
