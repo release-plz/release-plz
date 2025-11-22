@@ -945,8 +945,7 @@ async fn create_git_tag_and_release(
                             if let Err(fetch_err) = repo.fetch(release_info.git_tag) {
                                 // If we can't fetch, we can't verify - fail with original error
                                 return Err(e).context(format!(
-                                    "failed to fetch remote tag for verification: {}",
-                                    fetch_err
+                                    "failed to fetch remote tag for verification: {fetch_err}"
                                 ));
                             }
 
