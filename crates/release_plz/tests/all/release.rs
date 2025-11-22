@@ -230,7 +230,10 @@ async fn release_plz_retries_after_crates_io_succeeds() {
 
     // Verify tag was created
     let tags = context.get_remote_tags();
-    assert!(tags.contains(&"v0.1.0".to_string()), "Tag v0.1.0 should exist");
+    assert!(
+        tags.contains(&"v0.1.0".to_string()),
+        "Tag v0.1.0 should exist"
+    );
 
     // Verify release was created
     let releases = context.gitea.get_releases().await;
