@@ -943,8 +943,8 @@ async fn create_git_tag_and_release(
                             }
 
                             // Check if the remote tag points to the same commit
-                            let remote_tag = format!("origin/{}", release_info.git_tag);
-                            if let Some(remote_commit) = repo.get_tag_commit(&remote_tag) {
+                            // After fetch, the tag is available locally as refs/tags/<tag>
+                            if let Some(remote_commit) = repo.get_tag_commit(release_info.git_tag) {
                                 if remote_commit.trim() == current_commit.trim() {
                                     // Tag exists and points to the correct commit - safe to skip
                                     info!(
