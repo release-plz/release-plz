@@ -933,12 +933,19 @@ async fn create_git_tag_and_release(
                 created_something = true;
             } else {
                 let sha = repo.current_commit_hash()?;
-                // create_tag now handles 409 Conflict gracefully (returns Ok if tag already exists remotely)
-                git_client
+                // create_tag returns true if created, false if already existed (409 Conflict)
+                let tag_was_created = git_client
                     .create_tag(release_info.git_tag, &message, &sha)
                     .await?;
-                info!("created git tag {}", release_info.git_tag);
-                created_something = true;
+                if tag_was_created {
+                    info!("created git tag {}", release_info.git_tag);
+                    created_something = true;
+                } else {
+                    info!(
+                        "skipping creation of git tag {}: already exists remotely",
+                        release_info.git_tag
+                    );
+                }
             }
         }
     }
