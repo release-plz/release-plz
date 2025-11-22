@@ -677,8 +677,6 @@ async fn release_package_if_needed(
             let package_was_released_at_index = release_package(
                 &mut index,
                 input,
-                repo,
-                git_client,
                 &release_info,
                 &token,
                 is_crates_io,
@@ -993,12 +991,9 @@ async fn create_git_tag_and_release(
 }
 
 /// Return `true` if package was published, `false` otherwise.
-#[allow(clippy::too_many_arguments)]
 async fn release_package(
     index: &mut CargoIndex,
     input: &ReleaseRequest,
-    _repo: &Repo,
-    _git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
     is_crates_io: bool,
