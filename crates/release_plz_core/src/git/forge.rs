@@ -961,6 +961,11 @@ impl GitClient {
             .send()
             .await?;
 
+        // Handle 409 Conflict as success if ref already exists (idempotent)
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(());
+        }
+
         // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
         // only exists locally (i.e. it has not been pushed to the remote).
         if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
@@ -1104,7 +1109,8 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         message: &str,
         sha: &str,
     ) -> Result<(), anyhow::Error> {
-        self.client
+        let response = self
+            .client
             .post(format!("{}/repository/tags", self.repo_url()))
             .json(&json!({
                 "tag_name": tag_name,
@@ -1112,7 +1118,14 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
                 "message": message
             }))
             .send()
-            .await?
+            .await?;
+
+        // Handle 409 Conflict as success if tag already exists
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(());
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
@@ -1125,7 +1138,8 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         message: &str,
         sha: &str,
     ) -> Result<(), anyhow::Error> {
-        self.client
+        let response = self
+            .client
             .post(format!("{}/tags", self.repo_url()))
             .json(&json!({
                 "tag_name": tag_name,
@@ -1133,7 +1147,15 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
                 "message": message
             }))
             .send()
-            .await?
+            .await?;
+
+        // Handle 409 Conflict as success if tag already exists
+        if response.status() == StatusCode::CONFLICT {
+            // Tag already exists - this is okay for idempotent operations
+            return Ok(());
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
