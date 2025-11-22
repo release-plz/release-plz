@@ -306,6 +306,40 @@ impl GitClient {
         }
     }
 
+    /// Checks if a release with the given tag already exists.
+    pub async fn release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => self.github_release_exists(tag_name).await,
+            ForgeType::Gitlab => self.gitlab_release_exists(tag_name).await,
+        }
+    }
+
+    async fn github_release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        let url = format!("{}/releases/tags/{}", self.repo_url(), tag_name);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                anyhow::bail!("Unexpected status code when checking release: {status}")
+            }
+        }
+    }
+
+    async fn gitlab_release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        let url = format!("{}/releases/{}", self.remote.base_url, tag_name);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                anyhow::bail!("Unexpected status code when checking release: {status}")
+            }
+        }
+    }
+
     /// Creates a GitHub/Gitea release.
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         match self.forge {
@@ -909,14 +943,15 @@ impl GitClient {
         match self.forge {
             ForgeType::Github => {
                 self.post_github_ref(&format!("refs/heads/{branch_name}"), sha)
-                    .await
+                    .await?;
+                Ok(())
             }
             ForgeType::Gitlab => self.post_gitlab_branch(branch_name, sha).await,
             ForgeType::Gitea => self.post_gitea_branch(branch_name, sha).await,
         }
     }
 
-    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<bool> {
         let response = self
             .client
             .post(format!("{}/git/refs", self.repo_url()))
@@ -927,14 +962,27 @@ impl GitClient {
             .send()
             .await?;
 
-        // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
-        // only exists locally (i.e. it has not been pushed to the remote).
+        // Handle 409 Conflict - ref already exists
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(false); // Already existed
+        }
+
+        // GitHub returns 422 (Unprocessable Entity) for two different cases:
+        // 1. The commit SHA doesn't exist on the remote (hasn't been pushed)
+        // 2. The ref already exists (e.g., "Reference already exists")
         if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-            // Try to capture the body for extra diagnostics.
+            // Capture the body to determine which case this is
             let body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "<failed to read response body>".to_string());
+
+            // Check if this is a "ref already exists" error (idempotent case)
+            if body.contains("Reference already exists") || body.contains("already exists") {
+                return Ok(false); // Ref already existed - treat as success
+            }
+
+            // Otherwise, this is likely a missing commit error
             anyhow::bail!(
                 "failed to create ref {ref_name} with sha {sha}. \
 The commit {sha} likely hasn't been pushed to the remote repository yet. \
@@ -946,7 +994,7 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
             .successful_status()
             .await
             .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;
-        Ok(())
+        Ok(true) // Successfully created
     }
 
     async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
@@ -1020,12 +1068,13 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
     }
 
     /// Creates an annotated tag.
+    /// Returns `Ok(true)` if the tag was created, `Ok(false)` if it already existed.
     pub async fn create_tag(
         &self,
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<bool, anyhow::Error> {
         match self.forge {
             ForgeType::Github => self.create_github_tag(tag_name, message, sha).await,
             ForgeType::Gitlab => self.create_gitlab_tag(tag_name, message, sha).await,
@@ -1038,7 +1087,7 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<bool, anyhow::Error> {
         let tag_object_sha = self
             .client
             .post(format!("{}/git/tags", self.repo_url()))
@@ -1069,8 +1118,9 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
-        self.client
+    ) -> Result<bool, anyhow::Error> {
+        let response = self
+            .client
             .post(format!("{}/repository/tags", self.repo_url()))
             .json(&json!({
                 "tag_name": tag_name,
@@ -1078,11 +1128,18 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
                 "message": message
             }))
             .send()
-            .await?
+            .await?;
+
+        // Handle 409 Conflict - tag already exists
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(false); // Already existed
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
-        Ok(())
+        Ok(true) // Successfully created
     }
 
     async fn create_gitea_tag(
@@ -1090,8 +1147,9 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
-        self.client
+    ) -> Result<bool, anyhow::Error> {
+        let response = self
+            .client
             .post(format!("{}/tags", self.repo_url()))
             .json(&json!({
                 "tag_name": tag_name,
@@ -1099,11 +1157,18 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
                 "message": message
             }))
             .send()
-            .await?
+            .await?;
+
+        // Handle 409 Conflict - tag already exists
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(false); // Already existed
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
-        Ok(())
+        Ok(true) // Successfully created
     }
 }
 

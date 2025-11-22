@@ -631,13 +631,6 @@ async fn release_package_if_needed(
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
-    if repo.tag_exists(&git_tag)? {
-        info!(
-            "{} {}: Already published - Tag {} already exists",
-            package.name, package.version, &git_tag
-        );
-        return Ok(None);
-    }
 
     let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
         .context("can't determine registry indexes")?;
@@ -651,6 +644,9 @@ async fn release_package_if_needed(
         changelog: &changelog,
         prs: &prs,
     };
+    // Track if any registry was published to (even if already published)
+    let mut any_registry_has_package = false;
+
     for CargoRegistry {
         name,
         index: primary_index,
@@ -667,23 +663,35 @@ async fn release_package_if_needed(
 
         if pkg_is_published {
             info!("{} {}: already published", package.name, package.version);
-            continue;
-        }
-        let is_crates_io = name.is_none();
-        let package_was_released_at_index = release_package(
-            &mut index,
-            input,
-            repo,
-            git_client,
-            &release_info,
-            &token,
-            is_crates_io,
-            trusted_publishing_client,
-        )
-        .await
-        .context("failed to release package")?;
+            any_registry_has_package = true;
+        } else {
+            let is_crates_io = name.is_none();
+            let package_was_released_at_index = release_package(
+                &mut index,
+                input,
+                &release_info,
+                &token,
+                is_crates_io,
+                trusted_publishing_client,
+            )
+            .await
+            .context("failed to release package")?;
 
-        if package_was_released_at_index {
+            if package_was_released_at_index {
+                package_was_released = true;
+                any_registry_has_package = true;
+            }
+        }
+    }
+
+    // Create git tag and GitHub release if package is in any registry
+    // This ensures git operations happen even if package was already published
+    if any_registry_has_package {
+        let git_ops_performed = create_git_tag_and_release(input, repo, git_client, &release_info)
+            .await
+            .context("failed to create git tag and release")?;
+        // Only mark as released if we actually did something (published or created git resources)
+        if git_ops_performed {
             package_was_released = true;
         }
     }
@@ -874,13 +882,164 @@ struct ReleaseInfo<'a> {
     prs: &'a [Pr],
 }
 
-/// Return `true` if package was published, `false` otherwise.
-#[allow(clippy::too_many_arguments)]
-async fn release_package(
-    index: &mut CargoIndex,
+/// Creates git tag and GitHub release if they don't already exist.
+/// This function is idempotent - it checks if each resource exists before creating.
+/// Returns `true` if any git operation was performed, `false` if everything already existed.
+async fn create_git_tag_and_release(
     input: &ReleaseRequest,
     repo: &Repo,
     git_client: &GitClient,
+    release_info: &ReleaseInfo<'_>,
+) -> anyhow::Result<bool> {
+    if input.dry_run {
+        return Ok(false);
+    }
+
+    let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
+
+    let mut created_something = false;
+
+    // Create git tag if needed and it doesn't exist
+    if should_create_git_tag {
+        // Check if tag exists locally
+        let tag_exists_locally = repo.tag_exists(release_info.git_tag)?;
+
+        if tag_exists_locally {
+            info!(
+                "skipping creation of git tag {}: already exists locally",
+                release_info.git_tag
+            );
+        } else {
+            let message = format!(
+                "chore: Release package {} version {}",
+                release_info.package.name, release_info.package.version
+            );
+            let should_sign_tags = repo
+                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
+                .map(|s| s.trim() == "true")?;
+
+            if should_sign_tags {
+                let current_commit = repo.current_commit_hash()?;
+                repo.tag(release_info.git_tag, &message)?;
+
+                // Try to push the tag
+                match repo.push(release_info.git_tag) {
+                    Ok(_) => {
+                        info!("created git tag {}", release_info.git_tag);
+                        created_something = true;
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        // If push failed, it might be because the tag already exists remotely
+                        // We need to verify it points to the same commit before ignoring the error
+                        if error_msg.contains("rejected") || error_msg.contains("already exists") {
+                            // Fetch the remote tag to check what commit it points to
+                            if let Err(fetch_err) = repo.fetch(release_info.git_tag) {
+                                // If we can't fetch, we can't verify - fail with original error
+                                return Err(e).context(format!(
+                                    "failed to fetch remote tag for verification: {fetch_err}"
+                                ));
+                            }
+
+                            // Check if the remote tag points to the same commit
+                            // After fetch, the tag is available locally as refs/tags/<tag>
+                            if let Some(remote_commit) = repo.get_tag_commit(release_info.git_tag) {
+                                if remote_commit.trim() == current_commit.trim() {
+                                    // Tag exists and points to the correct commit - safe to skip
+                                    info!(
+                                        "skipping creation of git tag {}: already exists remotely at correct commit",
+                                        release_info.git_tag
+                                    );
+                                } else {
+                                    // Tag exists but points to a different commit - this is an error!
+                                    anyhow::bail!(
+                                        "Tag {} already exists remotely but points to a different commit. \
+                                        Local: {}, Remote: {}. This indicates a version conflict.",
+                                        release_info.git_tag,
+                                        current_commit,
+                                        remote_commit
+                                    );
+                                }
+                            } else {
+                                // Couldn't get remote tag commit - fail with original error
+                                return Err(e).context("could not verify remote tag commit");
+                            }
+                        } else {
+                            // Some other push error - propagate it
+                            return Err(e);
+                        }
+                    }
+                }
+            } else {
+                let sha = repo.current_commit_hash()?;
+                // create_tag returns true if created, false if already existed (409 Conflict)
+                let tag_was_created = git_client
+                    .create_tag(release_info.git_tag, &message, &sha)
+                    .await?;
+                if tag_was_created {
+                    info!("created git tag {}", release_info.git_tag);
+                    created_something = true;
+                } else {
+                    info!(
+                        "skipping creation of git tag {}: already exists remotely",
+                        release_info.git_tag
+                    );
+                }
+            }
+        }
+    }
+
+    // Create GitHub release if needed and it doesn't exist
+    if should_create_git_release {
+        let release_already_exists = git_client
+            .release_exists(release_info.git_tag)
+            .await
+            .unwrap_or(false);
+
+        if release_already_exists {
+            info!(
+                "skipping creation of git release for {} {}: already exists",
+                release_info.package.name, release_info.package.version
+            );
+        } else {
+            let contributors = get_contributors(release_info, git_client).await;
+            let remote = Remote {
+                owner: "".to_string(),
+                repo: "".to_string(),
+                link: "".to_string(),
+                contributors,
+            };
+            let release_body =
+                release_body(input, release_info.package, release_info.changelog, &remote);
+            let release_config = input
+                .get_package_config(&release_info.package.name)
+                .git_release;
+            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
+            let git_release_info = GitReleaseInfo {
+                git_tag: release_info.git_tag.to_string(),
+                release_name: release_info.release_name.to_string(),
+                release_body,
+                draft: release_config.draft,
+                latest: release_config.latest,
+                pre_release: is_pre_release,
+            };
+            git_client.create_release(&git_release_info).await?;
+            info!(
+                "created git release for {} {}",
+                release_info.package.name, release_info.package.version
+            );
+            created_something = true;
+        }
+    }
+
+    Ok(created_something)
+}
+
+/// Return `true` if package was published, `false` otherwise.
+async fn release_package(
+    index: &mut CargoIndex,
+    input: &ReleaseRequest,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
     is_crates_io: bool,
@@ -937,7 +1096,6 @@ async fn release_package(
                     "skipping publish of {} {}: already published",
                     release_info.package.name, release_info.package.version
                 );
-                return Ok(false);
             } else {
                 anyhow::bail!(
                     "failed to publish {}: {}",
@@ -959,54 +1117,6 @@ async fn release_package(
     } else {
         if should_publish {
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
-        }
-
-        if should_create_git_tag {
-            // Use same tag message of cargo-release
-            let message = format!(
-                "chore: Release package {} version {}",
-                release_info.package.name, release_info.package.version
-            );
-            let should_sign_tags = repo
-                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
-                .map(|s| s.trim() == "true")?;
-            // If tag signing is enabled, create the tag locally instead of using the API
-            if should_sign_tags {
-                repo.tag(release_info.git_tag, &message)?;
-                repo.push(release_info.git_tag)?;
-            } else {
-                let sha = repo.current_commit_hash()?;
-                git_client
-                    .create_tag(release_info.git_tag, &message, &sha)
-                    .await?;
-            }
-        }
-
-        let contributors = get_contributors(release_info, git_client).await;
-
-        // TODO fill the rest
-        let remote = Remote {
-            owner: "".to_string(),
-            repo: "".to_string(),
-            link: "".to_string(),
-            contributors,
-        };
-        if should_create_git_release {
-            let release_body =
-                release_body(input, release_info.package, release_info.changelog, &remote);
-            let release_config = input
-                .get_package_config(&release_info.package.name)
-                .git_release;
-            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
-            let git_release_info = GitReleaseInfo {
-                git_tag: release_info.git_tag.to_string(),
-                release_name: release_info.release_name.to_string(),
-                release_body,
-                draft: release_config.draft,
-                latest: release_config.latest,
-                pre_release: is_pre_release,
-            };
-            git_client.create_release(&git_release_info).await?;
         }
 
         info!(
