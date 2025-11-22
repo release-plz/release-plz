@@ -206,11 +206,10 @@ fn parse_duration_unit(input: &str) -> anyhow::Result<(&str, DurationUnit)> {
     } else if let Some(stripped) = input.strip_suffix('h') {
         Ok((stripped, DurationUnit::Hours))
     } else if let Some(last_char) = input.chars().last() {
-        if last_char.is_ascii_alphabetic() {
-            anyhow::bail!(
-                "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
-            )
-        }
+        anyhow::ensure!(
+            !last_char.is_ascii_alphabetic(),
+            "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
+        );
         // Default to seconds if no unit specified
         Ok((input, DurationUnit::Seconds))
     } else {

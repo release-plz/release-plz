@@ -10,13 +10,14 @@ pub trait RepoCommand: ManifestCommand {
     fn repo_url(&self) -> Option<&str>;
 
     fn get_repo_url(&self, config: &Config) -> anyhow::Result<RepoUrl> {
-        if let Some(url) = &self.user_repo_url(config) {
-            RepoUrl::new(url)
-        } else {
-            let manifest_path = self.manifest_path();
-            let project_dir = release_plz_core::manifest_dir(&manifest_path)?;
-            let repo = Repo::new(project_dir)?;
-            RepoUrl::from_repo(&repo)
+        match &self.user_repo_url(config) {
+            Some(url) => RepoUrl::new(url),
+            None => {
+                let manifest_path = self.manifest_path();
+                let project_dir = release_plz_core::manifest_dir(&manifest_path)?;
+                let repo = Repo::new(project_dir)?;
+                RepoUrl::from_repo(&repo)
+            }
         }
     }
 
