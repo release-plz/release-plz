@@ -927,8 +927,10 @@ async fn create_git_tag_and_release(
                 .map(|s| s.trim() == "true")?;
 
             if should_sign_tags {
+                let current_commit = repo.current_commit_hash()?;
                 repo.tag(release_info.git_tag, &message)?;
-                // Try to push the tag. If it fails because the tag already exists remotely, that's ok.
+
+                // Try to push the tag
                 match repo.push(release_info.git_tag) {
                     Ok(_) => {
                         info!("created git tag {}", release_info.git_tag);
@@ -936,16 +938,43 @@ async fn create_git_tag_and_release(
                     }
                     Err(e) => {
                         let error_msg = e.to_string();
-                        // Check if the error is due to the tag already existing remotely
-                        if error_msg.contains("already exists")
-                            || error_msg.contains("non-fast-forward")
-                            || error_msg.contains("rejected")
-                        {
-                            info!(
-                                "skipping creation of git tag {}: already exists remotely",
-                                release_info.git_tag
-                            );
+                        // If push failed, it might be because the tag already exists remotely
+                        // We need to verify it points to the same commit before ignoring the error
+                        if error_msg.contains("rejected") || error_msg.contains("already exists") {
+                            // Fetch the remote tag to check what commit it points to
+                            if let Err(fetch_err) = repo.fetch(release_info.git_tag) {
+                                // If we can't fetch, we can't verify - fail with original error
+                                return Err(e).context(format!(
+                                    "failed to fetch remote tag for verification: {}",
+                                    fetch_err
+                                ));
+                            }
+
+                            // Check if the remote tag points to the same commit
+                            let remote_tag = format!("origin/{}", release_info.git_tag);
+                            if let Some(remote_commit) = repo.get_tag_commit(&remote_tag) {
+                                if remote_commit.trim() == current_commit.trim() {
+                                    // Tag exists and points to the correct commit - safe to skip
+                                    info!(
+                                        "skipping creation of git tag {}: already exists remotely at correct commit",
+                                        release_info.git_tag
+                                    );
+                                } else {
+                                    // Tag exists but points to a different commit - this is an error!
+                                    anyhow::bail!(
+                                        "Tag {} already exists remotely but points to a different commit. \
+                                        Local: {}, Remote: {}. This indicates a version conflict.",
+                                        release_info.git_tag,
+                                        current_commit,
+                                        remote_commit
+                                    );
+                                }
+                            } else {
+                                // Couldn't get remote tag commit - fail with original error
+                                return Err(e).context("could not verify remote tag commit");
+                            }
                         } else {
+                            // Some other push error - propagate it
                             return Err(e);
                         }
                     }
