@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.75](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.74...cargo_utils-v0.1.75) - 2025-11-24
+
+### Other
+
+- address code quality issues ([#2498](https://github.com/release-plz/release-plz/pull/2498))
+
 ## [0.1.74](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.73...cargo_utils-v0.1.74) - 2025-10-10
 
 ### Other
