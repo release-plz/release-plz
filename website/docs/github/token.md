@@ -118,7 +118,7 @@ and pass it to both the `actions/checkout` and `release-plz` steps:
 ```yaml
 steps:
   - name: Checkout repository
-    uses: actions/checkout@v5
+    uses: actions/checkout@v6
     with:
       fetch-depth: 0
       persist-credentials: false
@@ -141,7 +141,7 @@ your checkout step needs to look like this:
 ```yaml
 steps:
   - name: Checkout repository
-    uses: actions/checkout@v5
+    uses: actions/checkout@v6
     with:
       fetch-depth: 0
       # Let the git CLI use the RELEASE_PLZ_TOKEN, so that it can push the signed tags.
@@ -192,7 +192,7 @@ Here's how to use a GitHub App to generate a GitHub token:
    ```yaml
    steps:
      - name: Checkout repository
-       uses: actions/checkout@v5
+       uses: actions/checkout@v6
        with:
          fetch-depth: 0
          persist-credentials: false

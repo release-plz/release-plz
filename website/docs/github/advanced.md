@@ -12,7 +12,7 @@ For example:
 ```yaml
 steps:
   - name: Checkout repository
-    uses: actions/checkout@v5
+    uses: actions/checkout@v6
     with:
       fetch-depth: 0
       persist-credentials: false
@@ -57,7 +57,7 @@ If you want to run other checks before releasing (e.g. `cargo test`), you have t
          cancel-in-progress: false
        steps:
          - name: Checkout repository
-           uses: actions/checkout@v5
+           uses: actions/checkout@v6
            with:
              fetch-depth: 0
              persist-credentials: false
@@ -93,7 +93,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
