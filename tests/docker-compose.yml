@@ -2,7 +2,7 @@ services:
   # We use Gitea as a git server.
   # We test that release-plz can open PRs, create releases, etc.
   gitea:
-    image: docker.io/gitea/gitea:1.25.1-rootless
+    image: docker.io/gitea/gitea:1.25.2-rootless
     container_name: gitea
     restart: always
     environment:
