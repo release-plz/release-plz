@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.149](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.148...release-plz-v0.3.149) - 2025-11-24
+
+### Other
+
+- update to checkout v6 action ([#2508](https://github.com/release-plz/release-plz/pull/2508))
+- address code quality issues ([#2498](https://github.com/release-plz/release-plz/pull/2498))
+- update dependencies and fix clippy lint ([#2472](https://github.com/release-plz/release-plz/pull/2472))
+
 ## [0.3.148](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.147...release-plz-v0.3.148) - 2025-10-10
 
 ### Added

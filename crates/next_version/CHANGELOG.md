@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.26](https://github.com/release-plz/release-plz/compare/next_version-v0.2.25...next_version-v0.2.26) - 2025-11-24
+
+### Other
+
+- address code quality issues ([#2498](https://github.com/release-plz/release-plz/pull/2498))
+
 ## [0.2.25](https://github.com/release-plz/release-plz/compare/next_version-v0.2.24...next_version-v0.2.25) - 2025-09-13
 
 ### Other
