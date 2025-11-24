@@ -76,9 +76,10 @@ impl GiteaContext {
                 Err(e) => {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     retries += 1;
-                    if retries > max_retries {
-                        panic!("Failed to merge PR after {max_retries} retries. Error: {e:?}");
-                    }
+                    assert!(
+                        retries <= max_retries,
+                        "Failed to merge PR after {max_retries} retries. Error: {e:?}"
+                    );
                 }
             }
         }

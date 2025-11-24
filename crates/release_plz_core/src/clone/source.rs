@@ -12,8 +12,8 @@ pub struct ClonerSource {
 impl fmt::Display for CargoSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CargoSource::CratesIo => write!(f, "crates.io"),
-            CargoSource::Registry(key) => write!(f, "{key}"),
+            Self::CratesIo => write!(f, "crates.io"),
+            Self::Registry(key) => write!(f, "{key}"),
         }
     }
 }
@@ -44,8 +44,8 @@ impl ClonerSource {
 impl CargoSource {
     pub(crate) fn to_source_id(&self, config: &GlobalContext) -> CargoResult<SourceId> {
         match self {
-            CargoSource::CratesIo => SourceId::crates_io(config),
-            CargoSource::Registry(key) => SourceId::alt_registry(config, key),
+            Self::CratesIo => SourceId::crates_io(config),
+            Self::Registry(key) => SourceId::alt_registry(config, key),
         }
     }
 }

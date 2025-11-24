@@ -95,7 +95,7 @@ impl Updater<'_> {
                 // We need to update this package only if one of its dependencies has changed.
                 packages_to_check_for_deps.push(p);
                 continue;
-            };
+            }
             let next_version = self.get_next_version(
                 new_workspace_version.as_ref(),
                 p,
@@ -950,7 +950,7 @@ fn get_changelog(
             // This can happen when no version of the package was published,
             // but the changelog already contains the changes of the initial version
             // of the package (e.g. because a release PR was merged).
-            return Ok((old_changelog.to_string(), "".to_string()));
+            return Ok((old_changelog.to_string(), String::new()));
         }
     }
     let new_changelog = changelog_builder.build();
@@ -972,8 +972,8 @@ fn new_changelog_entry(changelog_builder: ChangelogBuilder) -> anyhow::Result<Op
                 changelog: ChangelogConfig {
                     // If we set None, later this will be overriden with the defaults.
                     // Instead we just want the body.
-                    header: Some("".to_string()),
-                    footer: Some("".to_string()),
+                    header: Some(String::new()),
+                    footer: Some(String::new()),
                     ..c.changelog
                 },
                 ..c
@@ -1030,14 +1030,14 @@ mod tests {
         let next_version = Version::new(1, 1, 0);
         let changelog_req = ChangelogRequest::default();
 
-        let old = r#"## [1.1.0] - 1970-01-01
+        let old = r"## [1.1.0] - 1970-01-01
 
 ### fix bugs
 - my awesomefix
 
 ### other
 - complex update
-"#;
+";
         let new = get_changelog(
             &commits,
             &next_version,

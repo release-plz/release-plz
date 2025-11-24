@@ -13,7 +13,7 @@ use tracing::warn;
 
 use crate::changelog_parser;
 
-pub const CHANGELOG_HEADER: &str = r#"# Changelog
+pub const CHANGELOG_HEADER: &str = r"# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-"#;
+";
 
 pub const CHANGELOG_FILENAME: &str = "CHANGELOG.md";
 pub const RELEASE_LINK: &str = "release_link";
@@ -518,7 +518,7 @@ mod tests {
             .with_release_date(NaiveDate::from_ymd_opt(2015, 5, 15).unwrap())
             .build();
 
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             All notable changes to this project will be documented in this file.
@@ -537,7 +537,7 @@ mod tests {
             ### Other
 
             - simple update
-        "#]]
+        "]]
         .assert_eq(&changelog.generate().unwrap());
     }
 
@@ -552,7 +552,7 @@ mod tests {
             .with_release_link("https://github.com/release-plz/release-plz/compare/release-plz-v0.2.24...release-plz-v0.2.25")
             .build();
 
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             All notable changes to this project will be documented in this file.
@@ -567,7 +567,7 @@ mod tests {
             ### Fixed
 
             - myfix
-        "#]]
+        "]]
         .assert_eq(&changelog.generate().unwrap());
     }
 
@@ -591,7 +591,7 @@ mod tests {
             .with_release_date(NaiveDate::from_ymd_opt(2015, 5, 15).unwrap())
             .build();
 
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             All notable changes to this project will be documented in this file.
@@ -620,7 +620,7 @@ mod tests {
             ### Other
 
             - simple update
-        "#]]
+        "]]
         .assert_eq(&changelog.prepend(generated_changelog).unwrap());
     }
 
@@ -633,7 +633,7 @@ mod tests {
         let changelog = ChangelogBuilder::new(commits, "1.1.1", "my_pkg")
             .with_release_date(NaiveDate::from_ymd_opt(2015, 5, 15).unwrap())
             .build();
-        let old_body = r#"## [1.1.0] - 1970-01-01
+        let old_body = r"## [1.1.0] - 1970-01-01
 
 ### fix bugs
 
@@ -642,10 +642,10 @@ mod tests {
 ### other
 
 - complex update
-"#;
+";
         let old = format!("{CHANGELOG_HEADER}\n{old_body}");
         let new = changelog.prepend(old).unwrap();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             All notable changes to this project will be documented in this file.
@@ -674,7 +674,7 @@ mod tests {
             ### other
 
             - complex update
-        "#]]
+        "]]
         .assert_eq(&new);
     }
 
@@ -687,7 +687,7 @@ mod tests {
         let changelog = ChangelogBuilder::new(commits, "1.1.1", "my_pkg")
             .with_release_date(NaiveDate::from_ymd_opt(2015, 5, 15).unwrap())
             .build();
-        let old = r#"
+        let old = r"
 ## [1.1.0] - 1970-01-01
 
 ### fix bugs
@@ -697,9 +697,9 @@ mod tests {
 ### other
 
 - complex update
-"#;
+";
         let new = changelog.prepend(old);
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             All notable changes to this project will be documented in this file.
@@ -728,7 +728,7 @@ mod tests {
             ### other
 
             - complex update
-        "#]]
+        "]]
         .assert_eq(&new.unwrap());
     }
 
@@ -758,13 +758,13 @@ mod tests {
             })
             .build();
 
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             myfix - 1111111
 
             something else - 0000000
-        "#]]
+        "]]
         .assert_eq(&changelog.generate().unwrap());
     }
 
@@ -787,7 +787,7 @@ mod tests {
             })
             .build();
 
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             # Changelog
 
             All notable changes to this project will be documented in this file.
@@ -803,7 +803,7 @@ mod tests {
 
             - another fix
             - myfix
-        "#]]
+        "]]
         .assert_eq(&changelog.generate().unwrap());
     }
 }
@@ -818,7 +818,7 @@ fn empty_changelog_is_updated() {
         .with_release_date(NaiveDate::from_ymd_opt(2015, 5, 15).unwrap())
         .build();
     let new = changelog.prepend(CHANGELOG_HEADER);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
 
         All notable changes to this project will be documented in this file.
@@ -837,6 +837,6 @@ fn empty_changelog_is_updated() {
         ### Other
 
         - simple update
-    "#]]
+    "]]
     .assert_eq(&new.unwrap());
 }

@@ -40,7 +40,7 @@ fn set_version_updates_version_in_workspace() {
     .assert_eq(&fs_err::read_to_string(two_manifest).unwrap());
 
     let one_changelog = project_dir.join(CHANGELOG_FILENAME);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
         All notable changes to this project will be documented in this file.
 
@@ -53,11 +53,11 @@ fn set_version_updates_version_in_workspace() {
 
         ### Other
         - stuff in crate one
-    "#]]
+    "]]
     .assert_eq(&fs_err::read_to_string(one_changelog).unwrap());
 
     let two_changelog = two_dir.join(CHANGELOG_FILENAME);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
         All notable changes to this project will be documented in this file.
 
@@ -70,7 +70,7 @@ fn set_version_updates_version_in_workspace() {
 
         ### Other
         - stuff in crate two
-    "#]]
+    "]]
     .assert_eq(&fs_err::read_to_string(two_changelog).unwrap());
 }
 
@@ -95,7 +95,7 @@ fn set_version_updates_version_in_package() {
     .assert_eq(&fs_err::read_to_string(manifest).unwrap());
 
     let changelog = project_dir.join(CHANGELOG_FILENAME);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         # Changelog
         All notable changes to this project will be documented in this file.
 
@@ -108,6 +108,6 @@ fn set_version_updates_version_in_package() {
 
         ### Other
         - stuff in crate
-    "#]]
+    "]]
     .assert_eq(&fs_err::read_to_string(changelog).unwrap());
 }

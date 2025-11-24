@@ -26,7 +26,7 @@ impl RepoUrl {
         let url = repo
             .original_remote_url()
             .context("cannot determine origin url")?;
-        RepoUrl::new(&url)
+        Self::new(&url)
     }
 
     pub fn is_on_github(&self) -> bool {

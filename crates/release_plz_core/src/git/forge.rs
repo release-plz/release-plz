@@ -26,9 +26,9 @@ pub enum GitForge {
 impl GitForge {
     fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         match self {
-            GitForge::Github(g) => g.default_headers(),
-            GitForge::Gitea(g) => g.default_headers(),
-            GitForge::Gitlab(g) => g.default_headers(),
+            Self::Github(g) => g.default_headers(),
+            Self::Gitea(g) => g.default_headers(),
+            Self::Gitlab(g) => g.default_headers(),
         }
     }
 }
@@ -81,7 +81,7 @@ pub struct GitLabMrCommit {
 
 impl From<GitLabMrCommit> for PrCommit {
     fn from(value: GitLabMrCommit) -> Self {
-        PrCommit {
+        Self {
             author: None,
             sha: value.id,
         }
@@ -144,7 +144,7 @@ impl From<GitLabMr> for GitPr {
             .map(|l| Label { name: l, id: None })
             .collect();
 
-        GitPr {
+        Self {
             number: value.iid,
             html_url: value.web_url,
             head: Commit {
@@ -186,7 +186,7 @@ impl From<GitPr> for GitLabMr {
         let desc = value.body.unwrap_or_default();
         let labels: Vec<String> = value.labels.into_iter().map(|l| l.name).collect();
 
-        GitLabMr {
+        Self {
             author: GitLabAuthor {
                 id: value.user.id,
                 username: value.user.login,
@@ -238,7 +238,7 @@ pub struct PrEdit {
 
 impl From<PrEdit> for GitLabMrEdit {
     fn from(value: PrEdit) -> Self {
-        GitLabMrEdit {
+        Self {
             title: value.title,
             description: value.body,
             state_event: value.state,
@@ -293,8 +293,8 @@ impl GitClient {
             GitForge::Gitlab(g) => (ForgeType::Gitlab, g.remote),
         };
         Ok(Self {
-            remote,
             forge,
+            remote,
             client,
         })
     }

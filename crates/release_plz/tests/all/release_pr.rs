@@ -7,11 +7,10 @@ use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
 fn assert_cargo_semver_checks_is_installed() {
-    if !release_plz_core::semver_check::is_cargo_semver_checks_installed() {
-        panic!(
-            "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
-        );
-    }
+    assert!(
+        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
+        "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
+    );
 }
 
 #[tokio::test]
@@ -30,7 +29,7 @@ async fn release_plz_opens_pr_with_default_config() {
     assert_eq!(
         opened_prs[0].body.as_ref().unwrap().trim(),
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{package}`: 0.1.0
@@ -51,7 +50,7 @@ async fn release_plz_opens_pr_with_default_config() {
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -93,7 +92,7 @@ async fn release_plz_opens_pr_without_breaking_changes() {
     pretty_assertions::assert_eq!(
         pr_body,
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
@@ -113,7 +112,7 @@ async fn release_plz_opens_pr_without_breaking_changes() {
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -183,7 +182,7 @@ async fn release_plz_can_do_backport_prs() {
     pretty_assertions::assert_eq!(
         pr_body,
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
@@ -203,7 +202,7 @@ async fn release_plz_can_do_backport_prs() {
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -266,7 +265,7 @@ async fn release_plz_opens_pr_with_breaking_changes() {
     pretty_assertions::assert_eq!(
         pr_body,
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{package}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
@@ -298,7 +297,7 @@ Failed in:
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -345,7 +344,7 @@ async fn release_plz_updates_binary_when_library_changes() {
     assert_eq!(
         open_pr.body.as_ref().unwrap().trim(),
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
@@ -391,7 +390,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -435,7 +434,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     assert_eq!(
         open_pr.body.as_ref().unwrap().trim(),
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{one}`: 0.1.0
@@ -469,7 +468,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -517,7 +516,7 @@ Changes:
     assert_eq!(
         opened_prs[0].body.as_ref().unwrap().trim(),
         format!(
-            r#"
+            r"
 ### [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
 
 Package: {package} 0.1.0 -> 0.1.0
@@ -527,7 +526,7 @@ Changes:
 
 - add config file
 - cargo init
-- Initial commit"#,
+- Initial commit",
         )
         .trim()
     );
@@ -585,10 +584,10 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
 
     let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
     assert_eq!(gitea_release.name, expected_tag);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         ### Other
 
-        - move readme"#]]
+        - move readme"]]
     .assert_eq(&gitea_release.body);
 }
 
@@ -597,10 +596,10 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
 async fn release_plz_honors_features_always_increment_minor_flag() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
     [workspace]
     features_always_increment_minor = true
-    "#;
+    ";
     context.write_release_plz_toml(config);
 
     context.run_release_pr().success();
@@ -640,10 +639,10 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 
     let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
     assert_eq!(gitea_release.name, expected_tag);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         ### Added
 
-        - move readme"#]]
+        - move readme"]]
     .assert_eq(&gitea_release.body);
 }
 
@@ -705,10 +704,10 @@ async fn release_plz_detects_symlink_package_changes() {
 
     let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
     assert_eq!(gitea_release.name, expected_tag);
-    expect_test::expect![[r#"
+    expect_test::expect![[r"
         ### Added
 
-        - update readme"#]]
+        - update readme"]]
     .assert_eq(&gitea_release.body);
 }
 
@@ -887,7 +886,7 @@ async fn release_plz_updates_binary_when_library_has_breaking_changes() {
     let repo = &context.gitea.repo;
     let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
     let expected_body = format!(
-        r#"
+        r"
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
@@ -959,7 +958,7 @@ Failed in:
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
     )
     .trim()
     .to_string();
@@ -1083,7 +1082,7 @@ async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
     let repo = &context.gitea.repo;
     let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
     let expected_body = format!(
-        r#"
+        r"
 ## 🤖 New release
 
 * `{library}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
@@ -1131,7 +1130,7 @@ Failed in:
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
     )
     .trim()
     .to_string();
@@ -1360,7 +1359,7 @@ async fn release_plz_updates_binary_when_library_changes_commit_regex() {
     assert_eq!(
         open_pr.body.as_ref().unwrap().trim(),
         format!(
-            r#"
+            r"
 ## 🤖 New release
 
 * `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
@@ -1406,7 +1405,7 @@ async fn release_plz_updates_binary_when_library_changes_commit_regex() {
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."#,
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
         )
         .trim()
     );
@@ -1455,7 +1454,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     assert_eq!(
         new_changelog,
         format!(
-            r#"# Changelog
+            r"# Changelog
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -1470,7 +1469,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - edit changelog
 - cargo init
 - Initial commit
-"#
+"
         )
     );
 }

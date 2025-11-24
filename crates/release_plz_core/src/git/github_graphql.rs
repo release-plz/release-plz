@@ -95,7 +95,7 @@ impl GithubCommit {
 
     // format a graphql query json payload to create commit on branch
     async fn to_query_json(&self) -> Result<serde_json::Value> {
-        let GithubCommit {
+        let Self {
             owner_slash_repo,
             branch,
             message,
@@ -150,14 +150,14 @@ impl GithubCommit {
 }
 
 fn mutation() -> String {
-    const MUTATION: &str = r#"
+    const MUTATION: &str = r"
             mutation($input: CreateCommitOnBranchInput!) {
               createCommitOnBranch(input: $input) {
                 commit {
                   oid
                 }
               }
-            }"#;
+            }";
 
     MUTATION.replace(|c: char| c.is_whitespace(), "")
 }
