@@ -165,6 +165,9 @@ pub struct Workspace {
     ///   `release-plz-`. So if you want to create a PR that should trigger a release
     ///   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).
     pub release_always: Option<bool>,
+    /// Maximum number of commits to analize.
+    /// - If not provided: will analize all commits up until the previous release.
+    pub max_analyze_commits: Option<u32>,
 }
 
 impl Workspace {
@@ -515,6 +518,7 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
+                max_analyze_commits: None,
             },
             package: [].into(),
         }
@@ -639,6 +643,7 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
+                max_analyze_commits: None,
             },
             package: [PackageSpecificConfigWithName {
                 name: "crate1".to_string(),
