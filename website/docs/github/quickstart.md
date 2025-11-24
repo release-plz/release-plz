@@ -25,9 +25,12 @@ Follow the steps below to set up the GitHub Action.
 
 :::tip
 If you want to use [trusted publishing](https://crates.io/docs/trusted-publishing),
-don't use the `rust-lang/crates-io-auth-action@v1` action, and don't set the `CARGO_REGISTRY_TOKEN`
+don't use the
+[`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action)
+action, and don't set the `CARGO_REGISTRY_TOKEN`
 secret (if you already use `CARGO_REGISTRY_TOKEN`, remove it from your workflow file entirely).
-`release-plz` will take care of using that action for you.
+`release-plz` implements the same crates-io API calls of the `rust-lang/crates-io-auth-action`
+action, and uses them to obtain a token when necessary.
 
 Set `id-token: write` in the permissions of the job that runs `release-plz release`.
 
