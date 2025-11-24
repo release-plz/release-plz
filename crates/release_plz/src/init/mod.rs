@@ -270,7 +270,7 @@ jobs:
     steps:
       - &checkout
         name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: {persist_credentials}{checkout_token_line}
@@ -363,7 +363,7 @@ mod tests {
                 steps:
                   - &checkout
                     name: Checkout repository
-                    uses: actions/checkout@v5
+                    uses: actions/checkout@v6
                     with:
                       fetch-depth: 0
                       persist-credentials: false
@@ -422,7 +422,7 @@ mod tests {
                 steps:
                   - &checkout
                     name: Checkout repository
-                    uses: actions/checkout@v5
+                    uses: actions/checkout@v6
                     with:
                       fetch-depth: 0
                       persist-credentials: false
@@ -489,7 +489,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                 steps:
                   - &checkout
                     name: Checkout repository
-                    uses: actions/checkout@v5
+                    uses: actions/checkout@v6
                     with:
                       fetch-depth: 0
                       persist-credentials: false
@@ -552,7 +552,7 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                 steps:
                   - &checkout
                     name: Checkout repository
-                    uses: actions/checkout@v5
+                    uses: actions/checkout@v6
                     with:
                       fetch-depth: 0
                       persist-credentials: true
