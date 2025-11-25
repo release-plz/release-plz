@@ -2,8 +2,10 @@ use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    GitReleaseConfig, ReleaseRequest, fs_utils::to_utf8_path, set_version::SetVersionRequest,
-    update_request::UpdateRequest,
+    GitReleaseConfig, ReleaseRequest,
+    fs_utils::to_utf8_path,
+    set_version::SetVersionRequest,
+    update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -110,7 +112,7 @@ impl Config {
 }
 
 /// Config at the `[workspace]` level.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, JsonSchema)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Workspace {
     /// Configuration applied at the `[[package]]` level, too.
@@ -165,6 +167,32 @@ pub struct Workspace {
     ///   `release-plz-`. So if you want to create a PR that should trigger a release
     ///   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).
     pub release_always: Option<bool>,
+    /// Maximum number of commits to analyze when the package hasn't been published yet.
+    /// Default: 1000.
+    #[serde(default = "default_max_analyze_commits")]
+    #[schemars(default = "default_max_analyze_commits")]
+    pub max_analyze_commits: Option<u32>,
+}
+
+impl Default for Workspace {
+    fn default() -> Self {
+        Self {
+            packages_defaults: PackageConfig::default(),
+            allow_dirty: None,
+            changelog_config: None,
+            dependencies_update: None,
+            repo_url: None,
+            pr_name: None,
+            pr_body: None,
+            pr_draft: false,
+            pr_labels: Vec::new(),
+            pr_branch_prefix: None,
+            publish_timeout: None,
+            release_commits: None,
+            release_always: None,
+            max_analyze_commits: default_max_analyze_commits(),
+        }
+    }
 }
 
 impl Workspace {
@@ -174,6 +202,10 @@ impl Workspace {
         parse_duration(publish_timeout)
             .with_context(|| format!("invalid publish_timeout '{publish_timeout}'"))
     }
+}
+
+fn default_max_analyze_commits() -> Option<u32> {
+    Some(DEFAULT_MAX_ANALYZE_COMMITS)
 }
 
 /// Parse the duration from the input string.
@@ -515,6 +547,7 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
+                max_analyze_commits: default_max_analyze_commits(),
             },
             package: [].into(),
         }
@@ -639,6 +672,7 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
+                max_analyze_commits: default_max_analyze_commits(),
             },
             package: [PackageSpecificConfigWithName {
                 name: "crate1".to_string(),
