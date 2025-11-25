@@ -708,6 +708,7 @@ mod tests {
             publish_timeout = "10m"
             repo_url = "https://github.com/release-plz/release-plz"
             release_commits = "^feat:"
+            max_analyze_commits = 1000
 
             [changelog]
 
