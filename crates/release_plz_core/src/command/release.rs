@@ -1232,38 +1232,7 @@ async fn release_package(
             );
         }
 
-        let contributors = get_contributors(release_info, git_client).await;
-
-        // TODO fill the rest
-        let remote = Remote {
-            owner: String::new(),
-            repo: String::new(),
-            link: String::new(),
-            contributors,
-        };
-        if should_create_git_release {
-            let release_body =
-                release_body(input, release_info.package, release_info.changelog, &remote);
-            let release_config = input
-                .get_package_config(&release_info.package.name)
-                .git_release;
-            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
-            let git_release_info = GitReleaseInfo {
-                git_tag: release_info.git_tag.to_string(),
-                release_name: release_info.release_name.to_string(),
-                release_body,
-                draft: release_config.draft,
-                latest: release_config.latest,
-                pre_release: is_pre_release,
-            };
-            git_client.create_release(&git_release_info).await?;
-        }
-
-        info!(
-            "published {} {}",
-            release_info.package.name, release_info.package.version
-        );
-        Ok(true)
+        Ok(should_publish)
     }
 }
 
