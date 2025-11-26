@@ -644,6 +644,24 @@ async fn release_package_if_needed(
         changelog: &changelog,
         prs: &prs,
     };
+
+    // Create git tag and GitHub release BEFORE publishing to registries.
+    // This ensures we fail fast on tag conflicts before performing the irreversible
+    // registry publish operation. Git tags can be deleted/recreated, but published
+    // packages cannot be unpublished from crates.io.
+    let should_create_git_artifacts = input.is_git_tag_enabled(&release_info.package.name)
+        || input.is_git_release_enabled(&release_info.package.name);
+
+    if should_create_git_artifacts {
+        let git_ops_performed = create_git_tag_and_release(input, repo, git_client, &release_info)
+            .await
+            .context("failed to create git tag and release")?;
+        if git_ops_performed {
+            package_was_released = true;
+        }
+    }
+
+    // Now publish to registries (only after git operations succeeded)
     for CargoRegistry {
         name,
         index: primary_index,
@@ -676,20 +694,6 @@ async fn release_package_if_needed(
             if package_was_released_at_index {
                 package_was_released = true;
             }
-        }
-    }
-
-    // Create git tag and GitHub release if enabled, independent of registry publishing
-    let should_create_git_artifacts = input.is_git_tag_enabled(&release_info.package.name)
-        || input.is_git_release_enabled(&release_info.package.name);
-
-    if should_create_git_artifacts {
-        let git_ops_performed = create_git_tag_and_release(input, repo, git_client, &release_info)
-            .await
-            .context("failed to create git tag and release")?;
-        // Mark as released if we performed git operations or published to a registry
-        if git_ops_performed {
-            package_was_released = true;
         }
     }
 
