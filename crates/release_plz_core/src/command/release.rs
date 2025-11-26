@@ -966,18 +966,15 @@ async fn try_create_git_tag(
     }
 
     // Unsigned tag: create via API
-    // Check local tag first to avoid unnecessary API calls
-    if repo.tag_exists(release_info.git_tag)? {
-        info!(
-            "skipping creation of git tag {}: already exists locally",
-            release_info.git_tag
-        );
-        return Ok(false);
-    }
-
     let sha = repo.current_commit_hash()?;
 
-    // create_tag returns:
+    // Always call create_tag to verify remote state, even if tag exists locally.
+    // This handles retry scenarios where:
+    // - Tag was created locally but remote creation failed (network issue)
+    // - Remote tag was manually deleted
+    // - Local and remote tags point to different commits (version conflict)
+    //
+    // create_tag is idempotent and returns:
     // - true if created
     // - false if already existed at the correct commit (verified)
     // - error if already existed at a different commit
