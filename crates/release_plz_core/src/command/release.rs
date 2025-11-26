@@ -645,18 +645,55 @@ async fn release_package_if_needed(
         prs: &prs,
     };
 
+    // OPERATION ORDERING RATIONALE:
+    // We perform operations in order of reversibility, from most-reversible to least-reversible.
+    // This ensures failures leave the system in a recoverable state.
+    //
+    // Reversibility hierarchy (most to least):
+    //   1. Git tags (highly reversible: can be deleted/recreated)
+    //   2. Git releases (highly reversible: can be deleted)
+    //   3. Registry publishing (irreversible: crates.io doesn't allow unpublishing)
+    //
+    // Therefore: Git ops FIRST, registry publish SECOND
+    //
+    // We DO NOT implement rollback because:
+    // - Our `create_tag()` function is already idempotent: it detects existing tags
+    //   at the correct commit and skips re-creation (cheaper than delete+create)
+    // - If publish fails after git ops succeed, retry will skip tag recreation and
+    //   retry the publish (correct behavior, single API call per retry)
+    // - Rollback would be: delete tag → recreate on retry, requiring 2 API calls
+    // - Rollback cannot undo registry publishing (irreversible anyway)
+
+    // Pre-flight validation: ensure all registry tokens are available before creating git artifacts.
+    // This catches missing credentials early (cheap local check) without creating public tags
+    // for packages that cannot be published. Complements the git-first ordering by preventing
+    // the rare case where tags exist but publish fails due to auth issues.
+    for CargoRegistry { name, .. } in &registry_indexes {
+        input
+            .find_registry_token(name.as_deref())
+            .with_context(|| {
+                format!(
+                    "registry token not found for '{}' - cannot proceed with release",
+                    name.as_deref().unwrap_or("crates.io")
+                )
+            })?;
+    }
+
     // Create git tag and GitHub release BEFORE publishing to registries.
-    // This ensures we fail fast on tag conflicts before performing the irreversible
-    // registry publish operation. If git operations fail, the function returns early
-    // and publishing never happens, leaving the system in a clean state.
+    // This ensures we fail fast on tag conflicts (detected via SHA verification)
+    // before performing the irreversible registry publish operation.
     //
-    // If git operations succeed but publishing fails, retry will work correctly:
-    // - Tag already exists at correct SHA (idempotent check skips re-creation)
-    // - Publishing retries and eventually succeeds
+    // Failure scenarios and recovery:
     //
-    // Previous order (publish then git tag) caused permanent broken states:
-    // - Package published (irreversible) but tag creation failed
-    // - Retry couldn't fix it because package already published, tag still conflicts
+    // CASE 1: Git ops fail (tag conflict, etc.) → publishing never runs
+    //   Result: Clean state, user can fix tag conflict and retry
+    //
+    // CASE 2: Git ops succeed → publishing runs
+    //   Result: Git artifacts exist and are correct
+    //   If publish fails: Retry is safe and efficient
+    //     - Tag already exists at correct SHA
+    //     - create_tag() detects this and returns false (skip recreation)
+    //     - Single API call, proceeds to publish retry
     let should_create_git_artifacts = input.is_git_tag_enabled(&release_info.package.name)
         || input.is_git_release_enabled(&release_info.package.name);
 
