@@ -647,8 +647,16 @@ async fn release_package_if_needed(
 
     // Create git tag and GitHub release BEFORE publishing to registries.
     // This ensures we fail fast on tag conflicts before performing the irreversible
-    // registry publish operation. Git tags can be deleted/recreated, but published
-    // packages cannot be unpublished from crates.io.
+    // registry publish operation. If git operations fail, the function returns early
+    // and publishing never happens, leaving the system in a clean state.
+    //
+    // If git operations succeed but publishing fails, retry will work correctly:
+    // - Tag already exists at correct SHA (idempotent check skips re-creation)
+    // - Publishing retries and eventually succeeds
+    //
+    // Previous order (publish then git tag) caused permanent broken states:
+    // - Package published (irreversible) but tag creation failed
+    // - Retry couldn't fix it because package already published, tag still conflicts
     let should_create_git_artifacts = input.is_git_tag_enabled(&release_info.package.name)
         || input.is_git_release_enabled(&release_info.package.name);
 
