@@ -306,7 +306,7 @@
         },
         "git_only_release_tag_prefix": {
           "title": "Git Only Release Tag Prefix",
-          "description": "Literal string prefix for release tags when git_only is enabled.\nIf unspecified at package level, inherits from workspace config.",
+          "description": "Literal string prefix for release tags when `git_only` is enabled.\nIf unspecified at package level, inherits from workspace config.",
           "type": [
             "string",
             "null"
@@ -314,7 +314,7 @@
         },
         "git_only_release_tag_suffix": {
           "title": "Git Only Release Tag Suffix",
-          "description": "Literal string suffix for release tags when git_only is enabled.\nIf unspecified at package level, inherits from workspace config.",
+          "description": "Literal string suffix for release tags when `git_only` is enabled.\nIf unspecified at package level, inherits from workspace config.",
           "type": [
             "string",
             "null"
@@ -579,14 +579,14 @@
           ]
         },
         "git_only_release_tag_prefix": {
-          "description": "Literal string prefix for release tags when git_only is enabled.\nOptional. For example: \"v\" matches \"v1.2.3\", \"package-v\" matches \"package-v1.2.3\".\nDefault: empty string (tags like \"1.2.3\")",
+          "description": "Literal string prefix for release tags when `git_only` is enabled.\nOptional. For example: \"v\" matches \"v1.2.3\", \"package-v\" matches \"package-v1.2.3\".\nDefault: empty string (tags like \"1.2.3\")",
           "type": [
             "string",
             "null"
           ]
         },
         "git_only_release_tag_suffix": {
-          "description": "Literal string suffix for release tags when git_only is enabled.\nOptional. For example: \"-release\" matches \"v1.2.3-release\".\nDefault: empty string (no suffix)",
+          "description": "Literal string suffix for release tags when `git_only` is enabled.\nOptional. For example: \"-release\" matches \"v1.2.3-release\".\nDefault: empty string (no suffix)",
           "type": [
             "string",
             "null"
