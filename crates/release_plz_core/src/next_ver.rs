@@ -64,9 +64,9 @@ impl ReleaseMetadataBuilder for UpdateRequest {
 // Build regex: ^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$
 // The semantic version is captured in group 1
 fn get_release_regex(prefix: &str, suffix: &str) -> anyhow::Result<Regex> {
-    let escaped_prefix = regex::escape(&prefix);
-    let escaped_suffix = regex::escape(&suffix);
-    let release_regex_str = format!(r"^{}(\d+\.\d+\.\d+){}$", escaped_prefix, escaped_suffix);
+    let escaped_prefix = regex::escape(prefix);
+    let escaped_suffix = regex::escape(suffix);
+    let release_regex_str = format!(r"^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$");
     Regex::new(&release_regex_str).context("failed to build release tag regex")
 }
 
@@ -135,7 +135,7 @@ fn get_cargo_package(worktree: &CustomWorkTree, package_name: &str) -> anyhow::R
         .packages
         .iter()
         .find(|x| x.name == package_name)
-        .ok_or(anyhow::anyhow!("Failed to find package {:?}", package_name))?;
+        .ok_or(anyhow::anyhow!("Failed to find package {package_name:?}"))?;
 
     let new_path = format!(
         "{}/target/package/{}-{}",
@@ -150,7 +150,7 @@ fn get_cargo_package(worktree: &CustomWorkTree, package_name: &str) -> anyhow::R
 
     // create the package
     let single_package_meta = MetadataCommand::new()
-        .manifest_path(format!("{}/Cargo.toml", new_path))
+        .manifest_path(format!("{new_path}/Cargo.toml"))
         .exec()
         .context("get cargo metadata")?;
 
@@ -251,18 +251,15 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
                 get_temp_worktree_and_repo(&mut unreleased_project_repo, &package.name)
                     .context("get worktree and repo for package")?;
 
-            let (release_tag, version) = match repo
+            let Some((release_tag, version)) = repo
                 .get_release_tag(&release_regex, &package.name)
                 .context("get release tag")?
-            {
-                Some((a, b)) => (a, b),
-                None => {
-                    warn!(
-                        "no release tag matching pattern: {}",
-                        release_regex.to_string()
-                    );
-                    continue;
-                }
+            else {
+                warn!(
+                    "no release tag matching pattern: {}",
+                    release_regex.to_string()
+                );
+                continue;
             };
 
             info!("using tag `{}` (version {})", release_tag, version);

@@ -26,10 +26,10 @@ pub struct UpdateConfig {
     /// Whether to use git tags instead of registry for determining package versions.
     /// If unspecified at package level, inherits from workspace config.
     pub git_only: Option<bool>,
-    /// Literal string prefix for release tags when git_only is enabled.
+    /// Literal string prefix for release tags when `git_only` is enabled.
     /// If unspecified at package level, inherits from workspace config.
     pub git_only_release_tag_prefix: Option<String>,
-    /// Literal string suffix for release tags when git_only is enabled.
+    /// Literal string suffix for release tags when `git_only` is enabled.
     /// If unspecified at package level, inherits from workspace config.
     pub git_only_release_tag_suffix: Option<String>,
 }

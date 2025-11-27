@@ -26,7 +26,7 @@ impl CustomRepo {
     ) -> Result<CustomWorkTree> {
         // Use tempfile::Builder to generate a unique path (prevents timestamp collisions)
         let prefix = if let Some(suffix) = path_suffix {
-            format!("release-plz-{}-", suffix)
+            format!("release-plz-{suffix}-")
         } else {
             "release-plz-worktree-".to_string()
         };
@@ -118,7 +118,7 @@ impl CustomRepo {
         // opted for the highest since it was less work and both of them seem reasonable.
         release_tags.sort_by(|a, b| b.1.cmp(&a.1));
 
-        Ok(release_tags.get(0).cloned())
+        Ok(release_tags.first().cloned())
     }
 
     /// Get the commit associated with the tag (either an annotated tag, or a lightweight tag)
@@ -135,20 +135,13 @@ impl CustomRepo {
                     return true;
                 }
 
-                let tag = match self.repo.find_tag(oid) {
-                    Ok(t) => t,
-                    Err(_) => {
-                        // Not an annotated tag, skip
-                        return true;
-                    }
+                let Ok(tag) = self.repo.find_tag(oid) else {
+                    return true;
                 };
 
-                let tag_name_from_repo = match tag.name() {
-                    Some(name) => name,
-                    None => {
-                        warn!("Annotated tag has no name, skipping");
-                        return true;
-                    }
+                let Some(tag_name_from_repo) = tag.name() else {
+                    warn!("Annotated tag has no name, skipping");
+                    return true;
                 };
 
                 if tag_name_from_repo == tag_name {
@@ -185,21 +178,21 @@ impl CustomRepo {
         }
 
         // If not found as annotated tag, try as lightweight tag
-        let tag_ref_name = format!("refs/tags/{}", tag_name);
+        let tag_ref_name = format!("refs/tags/{tag_name}");
         match self.repo.find_reference(&tag_ref_name) {
             Ok(reference) => {
                 // Resolve the reference to get the commit it points to
-                let target_id = reference.target().ok_or_else(|| {
-                    anyhow::anyhow!("Lightweight tag '{}' has no target", tag_name)
-                })?;
+                let target_id = reference
+                    .target()
+                    .ok_or_else(|| anyhow::anyhow!("Lightweight tag '{tag_name}' has no target"))?;
 
                 // Verify it points to a commit
                 let object = self.repo.find_object(target_id, None).with_context(|| {
-                    format!("Failed to find object for lightweight tag '{}'", tag_name)
+                    format!("Failed to find object for lightweight tag '{tag_name}'")
                 })?;
 
                 let commit = object.peel_to_commit().with_context(|| {
-                    format!("Lightweight tag '{}' does not point to a commit", tag_name)
+                    format!("Lightweight tag '{tag_name}' does not point to a commit")
                 })?;
 
                 info!("Found lightweight tag '{}'", tag_name);
@@ -207,11 +200,8 @@ impl CustomRepo {
             }
             Err(_) => {
                 bail!(
-                    "No tag found with name '{}'. \
-                    Please create a tag with 'git tag {}' (lightweight) or 'git tag -a {}' (annotated).",
-                    tag_name,
-                    tag_name,
-                    tag_name
+                    "No tag found with name '{tag_name}'. \
+                    Please create a tag with 'git tag {tag_name}' (lightweight) or 'git tag -a {tag_name}' (annotated)."
                 )
             }
         }
@@ -291,7 +281,7 @@ impl CustomRepo {
 /// We maintain a handle to the temp dir so it doesn't delete itself before the worktree is cleaned
 /// up
 /// NOTE: As stated in the destructor docs: "The fields of a struct are dropped in declaration order."
-/// https://doc.rust-lang.org/reference/destructors.html
+/// <https://doc.rust-lang.org/reference/destructors.html>
 pub struct CustomWorkTree {
     worktree: Worktree,
     _tmp_dir_handle: TempDir,

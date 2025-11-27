@@ -577,10 +577,10 @@ impl Updater<'_> {
         // `cargo package --list` creates files in target/package/ which can interfere with checkout.
         // The target directory is created in the package directory, not the repository root.
         let target_package_dir = package_path.join("target").join("package");
-        if target_package_dir.exists() {
-            if let Err(e) = fs_err::remove_dir_all(&target_package_dir) {
-                warn!("failed to clean up target/package directory before checkout: {e:?}");
-            }
+        if target_package_dir.exists()
+            && let Err(e) = fs_err::remove_dir_all(&target_package_dir)
+        {
+            warn!("failed to clean up target/package directory before checkout: {e:?}");
         }
 
         repository

@@ -49,10 +49,10 @@ pub struct UpdateRequest {
     /// Use git tags to determine latest package release
     git_only: Option<bool>,
 
-    /// Literal string prefix for release tags when git_only is enabled
+    /// Literal string prefix for release tags when `git_only` is enabled
     git_only_release_tag_prefix: Option<String>,
 
-    /// Literal string suffix for release tags when git_only is enabled
+    /// Literal string suffix for release tags when `git_only` is enabled
     git_only_release_tag_suffix: Option<String>,
 }
 
@@ -270,7 +270,7 @@ impl UpdateRequest {
         self
     }
 
-    /// Determine if git_only mode should be used for a specific package.
+    /// Determine if `git_only` mode should be used for a specific package.
     /// Package-level config overrides workspace-level config.
     pub fn should_use_git_only(&self, package_name: &str) -> bool {
         let pkg_config = self.get_package_config(package_name);
@@ -284,7 +284,7 @@ impl UpdateRequest {
         self.git_only.unwrap_or(false)
     }
 
-    /// Get the git_only release tag prefix for a specific package.
+    /// Get the `git_only` release tag prefix for a specific package.
     /// Package-level config overrides workspace-level config.
     pub fn get_package_git_only_prefix(&self, package_name: &str) -> Option<String> {
         let pkg_config = self.get_package_config(package_name);
@@ -298,7 +298,7 @@ impl UpdateRequest {
         self.git_only_release_tag_prefix.clone()
     }
 
-    /// Get the git_only release tag suffix for a specific package.
+    /// Get the `git_only` release tag suffix for a specific package.
     /// Package-level config overrides workspace-level config.
     pub fn get_package_git_only_suffix(&self, package_name: &str) -> Option<String> {
         let pkg_config = self.get_package_config(package_name);

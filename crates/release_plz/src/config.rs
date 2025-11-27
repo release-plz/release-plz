@@ -174,12 +174,12 @@ pub struct Workspace {
     /// If false, release-plz will use crates.io release information to get the latest version
     pub git_only: Option<bool>,
 
-    /// Literal string prefix for release tags when git_only is enabled.
+    /// Literal string prefix for release tags when `git_only` is enabled.
     /// Optional. For example: "v" matches "v1.2.3", "package-v" matches "package-v1.2.3".
     /// Default: empty string (tags like "1.2.3")
     pub git_only_release_tag_prefix: Option<String>,
 
-    /// Literal string suffix for release tags when git_only is enabled.
+    /// Literal string suffix for release tags when `git_only` is enabled.
     /// Optional. For example: "-release" matches "v1.2.3-release".
     /// Default: empty string (no suffix)
     pub git_only_release_tag_suffix: Option<String>,
@@ -398,11 +398,11 @@ pub struct PackageConfig {
     /// If unspecified at package level, inherits from workspace config.
     pub git_only: Option<bool>,
     /// # Git Only Release Tag Prefix
-    /// Literal string prefix for release tags when git_only is enabled.
+    /// Literal string prefix for release tags when `git_only` is enabled.
     /// If unspecified at package level, inherits from workspace config.
     pub git_only_release_tag_prefix: Option<String>,
     /// # Git Only Release Tag Suffix
-    /// Literal string suffix for release tags when git_only is enabled.
+    /// Literal string suffix for release tags when `git_only` is enabled.
     /// If unspecified at package level, inherits from workspace config.
     pub git_only_release_tag_suffix: Option<String>,
 }
