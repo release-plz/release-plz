@@ -207,6 +207,9 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     // See the note on the custom worktree Drop impl for more details
     let mut worktrees: Vec<CustomWorkTree> = Vec::new();
 
+    // Initialize registry_packages - will be populated if we download from registry
+    let mut registry_packages = PackagesCollection::default();
+
     // Process git_only packages
     if !git_only_packages.is_empty() {
         debug!(
@@ -313,7 +316,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             // Retrieve the latest published version of the packages.
             // Release-plz will compare the registry packages with the local packages,
             // to determine the new commits.
-            let registry_packages = registry_packages::get_registry_packages(
+            registry_packages = registry_packages::get_registry_packages(
                 input.registry_manifest(),
                 &publishable_registry_packages,
                 input.registry(),
@@ -335,7 +338,9 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         }
     }
 
-    let release_packages = PackagesCollection::default().with_packages(all_packages);
+    // SAFETY: We have to reuse registry_packages here instead of instantiating a new object
+    // because otherwise the temp dir contained within it gets dropped and cleaned up.
+    let release_packages = registry_packages.with_packages(all_packages);
 
     // Create a temporary isolated repository for git operations.
     // This ensures that git checkouts and other operations don't affect the user's working directory.
