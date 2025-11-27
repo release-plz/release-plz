@@ -45,7 +45,22 @@ impl Config {
         &self,
         is_changelog_update_disabled: bool,
         update_request: UpdateRequest,
-    ) -> UpdateRequest {
+    ) -> anyhow::Result<UpdateRequest> {
+        // Validate workspace defaults (applies to all packages without specific config)
+        let effective_git_only = self
+            .workspace
+            .packages_defaults
+            .git_only
+            .or(self.workspace.git_only);
+        let effective_publish = self.workspace.packages_defaults.publish;
+
+        if effective_git_only == Some(true) && effective_publish == Some(true) {
+            anyhow::bail!(
+                "Workspace config: 'git_only' and 'publish' are mutually exclusive. \
+                When git_only is enabled, publish must be explicitly set to false."
+            );
+        }
+
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
             default_update_config.changelog_update = false.into();
@@ -55,12 +70,23 @@ impl Config {
         for (package, config) in self.packages() {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
+
+            // Effective git_only includes workspace-level setting
+            let effective_git_only = update_config.common.git_only.or(self.workspace.git_only);
+            let effective_publish = update_config.common.publish;
+
+            if effective_git_only == Some(true) && effective_publish == Some(true) {
+                anyhow::bail!(
+                    "Package '{package}': 'git_only' and 'publish' are mutually exclusive. \
+                    When git_only is enabled, publish must be explicitly set to false."
+                );
+            }
             if is_changelog_update_disabled {
                 update_config.common.changelog_update = false.into();
             }
             update_request = update_request.with_package_config(package, update_config.into());
         }
-        update_request
+        Ok(update_request)
     }
 
     pub fn fill_set_version_config(
@@ -81,7 +107,22 @@ impl Config {
         allow_dirty: bool,
         no_verify: bool,
         release_request: ReleaseRequest,
-    ) -> ReleaseRequest {
+    ) -> anyhow::Result<ReleaseRequest> {
+        // Validate workspace defaults (applies to all packages without specific config)
+        let effective_git_only = self
+            .workspace
+            .packages_defaults
+            .git_only
+            .or(self.workspace.git_only);
+        let effective_publish = self.workspace.packages_defaults.publish;
+
+        if effective_git_only == Some(true) && effective_publish == Some(true) {
+            anyhow::bail!(
+                "Workspace config: 'git_only' and 'publish' are mutually exclusive. \
+                When git_only is enabled, publish must be explicitly set to false."
+            );
+        }
+
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
             default_config.publish_no_verify = Some(true);
@@ -96,6 +137,17 @@ impl Config {
             let mut release_config = config.clone();
             release_config = release_config.merge(self.workspace.packages_defaults.clone());
 
+            // Effective git_only includes workspace-level setting
+            let effective_git_only = release_config.common.git_only.or(self.workspace.git_only);
+            let effective_publish = release_config.common.publish;
+
+            if effective_git_only == Some(true) && effective_publish == Some(true) {
+                anyhow::bail!(
+                    "Package '{package}': 'git_only' and 'publish' are mutually exclusive. \
+                    When git_only is enabled, publish must be explicitly set to false."
+                );
+            }
+
             if no_verify {
                 release_config.common.publish_no_verify = Some(true);
             }
@@ -105,7 +157,7 @@ impl Config {
             release_request =
                 release_request.with_package_config(package, release_config.common.into());
         }
-        release_request
+        Ok(release_request)
     }
 }
 

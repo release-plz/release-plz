@@ -207,7 +207,7 @@ impl Update {
         }
 
         // override workspace configuration with package specific configuration
-        update = config.fill_update_config(self.no_changelog, update);
+        update = config.fill_update_config(self.no_changelog, update)?;
 
         {
             // update the release date

@@ -651,3 +651,103 @@ git_only_release_tag_prefix = "pkg3-v"
         "Changed package pkg2 should be in PR"
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_with_publish_enabled_fails_validation() {
+    let context = TestContext::new().await;
+
+    // Configure with both git_only = true and publish not disabled
+    // This should fail validation because they are mutually exclusive
+    let config = r#"
+[workspace]
+git_only = true
+git_only_release_tag_prefix = "v"
+publish = true
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tag
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Make a commit
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    // Run release-pr should fail due to validation error
+    let error = context.run_release_pr().failure().to_string();
+    assert!(
+        error.contains("git_only")
+            && error.contains("publish")
+            && error.contains("mutually exclusive"),
+        "Expected validation error about git_only and publish being mutually exclusive, got: {error}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_with_publish_disabled_succeeds() {
+    let context = TestContext::new().await;
+
+    // Configure with git_only = true and publish = false - this is valid
+    let config = r#"
+[workspace]
+git_only = true
+git_only_release_tag_prefix = "v"
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tag
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Make a commit
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    // Run release-pr should succeed
+    context.run_release_pr().success();
+
+    // Verify PR was created
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_workspace_with_package_publish_enabled_fails() {
+    let context = TestContext::new_workspace(&["pkg-a", "pkg-b"]).await;
+
+    // Workspace has git_only = true, but pkg-a has publish = true
+    // This should fail validation
+    let config = r#"
+[workspace]
+git_only = true
+git_only_release_tag_prefix = "v"
+
+[[package]]
+name = "pkg-a"
+publish = true
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tags
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Make a commit to pkg-a
+    let readme = context.package_path("pkg-a").join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update pkg-a readme");
+
+    // Run release-pr should fail due to validation error
+    let error = context.run_release_pr().failure().to_string();
+    assert!(
+        error.contains("git_only")
+            && error.contains("publish")
+            && error.contains("mutually exclusive"),
+        "Expected validation error about git_only and publish being mutually exclusive, got: {error}"
+    );
+}
