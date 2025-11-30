@@ -912,7 +912,7 @@ async fn release_package(
                     *trusted_publishing_client = Some(tp);
                 }
                 Err(e) => {
-                    warn!("Failed to use trusted publishing: {e}. Proceeding without it.");
+                    warn!("Failed to use trusted publishing: {e:#}. Proceeding without it.");
                 }
             }
         }
