@@ -14,6 +14,8 @@ use crate::{ChangelogRequest, GitClient, GitForge, PackagePath as _, RepoUrl, fs
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
+pub const DEFAULT_MAX_ANALYZE_COMMITS: u32 = 1000;
+
 #[derive(Debug, Clone)]
 pub struct UpdateRequest {
     /// The manifest of the project you want to update.
@@ -45,6 +47,7 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+    max_analyze_commits: Option<u32>,
 }
 
 impl UpdateRequest {
@@ -64,6 +67,7 @@ impl UpdateRequest {
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            max_analyze_commits: None,
         })
     }
 
@@ -88,6 +92,11 @@ impl UpdateRequest {
             .transpose()
     }
 
+    pub fn max_analyze_commits(&self) -> u32 {
+        self.max_analyze_commits
+            .unwrap_or(DEFAULT_MAX_ANALYZE_COMMITS)
+    }
+
     pub fn cargo_metadata(&self) -> &Metadata {
         &self.metadata
     }
@@ -102,6 +111,13 @@ impl UpdateRequest {
     pub fn with_git_client(self, git: GitForge) -> Self {
         Self {
             git: Some(git),
+            ..self
+        }
+    }
+
+    pub fn with_max_analyze_commits(self, max_commits: Option<u32>) -> Self {
+        Self {
+            max_analyze_commits: max_commits,
             ..self
         }
     }
