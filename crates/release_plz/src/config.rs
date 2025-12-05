@@ -264,7 +264,6 @@ impl Default for Workspace {
             git_only: None,
             git_only_release_tag_prefix: None,
             git_only_release_tag_suffix: None,
-          
         }
     }
 }
