@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.6...release_plz_core-v0.36.7) - 2025-12-05
+
+### Other
+
+- Limit first-release commit scan and document max_analyze_commits ([#2497](https://github.com/release-plz/release-plz/pull/2497))
+- Show full error message for trusted publishing token failure ([#2516](https://github.com/release-plz/release-plz/pull/2516))
+
 ## [0.36.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.5...release_plz_core-v0.36.6) - 2025-11-24
 
 ### Other
