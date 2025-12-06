@@ -8,6 +8,19 @@ export type TweetItem = Tweet & {
 
 const TWEETS: TweetItem[] = [
   {
+    url: 'https://www.linkedin.com/posts/nicholas-matsakis-615614_crates-io-now-supports-setting-up-trusted-activity-7397955814906363904-5SJJ',
+    handle: 'nikomatsakis',
+    name: 'Niko Matsakis',
+    date: 'Nov 22, 2025',
+    content: (
+      <>
+        Between release-plz and trusted publishing and cargo-semver-checks we are getting to a very cool place. My dream is that you get it all setup for free with "cargo new".
+      </>
+    ),
+    showOnHomepage: true,
+    githubUsername: 'nikomatsakis',
+  },
+  {
     url: 'https://hachyderm.io/@hds/112870965641243862',
     handle: 'hds',
     name: 'Hayden Stainsby',
