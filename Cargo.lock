@@ -4282,6 +4282,7 @@ dependencies = [
  "fs-err",
  "git-cliff-core",
  "git-url-parse",
+ "git2",
  "git_cmd",
  "h2",
  "http",
