@@ -208,6 +208,73 @@ async fn release_plz_does_not_releases_twice() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_retries_after_crates_io_succeeds() {
+    let context = TestContext::new().await;
+
+    let crate_name = &context.gitea.repo;
+
+    // Running `release` the first time, releases the project
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.1.0",
+                "version": "0.1.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Verify tag was created
+    let tags = context.get_remote_tags();
+    assert!(
+        tags.contains(&"v0.1.0".to_string()),
+        "Tag v0.1.0 should exist"
+    );
+
+    // Verify release was created
+    let releases = context.gitea.get_releases().await;
+    assert_eq!(releases.len(), 1, "Should have 1 release");
+    assert_eq!(releases[0].tag_name, "v0.1.0");
+
+    // Delete the GitHub release (simulating a scenario where release creation failed)
+    context.gitea.delete_release(&releases[0].id).await;
+
+    // Verify release was deleted
+    let releases_after_delete = context.gitea.get_releases().await;
+    assert_eq!(releases_after_delete.len(), 0, "Release should be deleted");
+
+    // Running `release` again should recreate the GitHub release
+    // It should NOT try to republish to crates.io (already published)
+    // It should NOT try to recreate the tag (already exists)
+    // It SHOULD recreate the GitHub release
+    let outcome = context.run_release().success();
+
+    // Should report that a release was created
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": "v0.1.0",
+                "version": "0.1.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Verify the GitHub release was recreated
+    let final_releases = context.gitea.get_releases().await;
+    assert_eq!(final_releases.len(), 1, "Release should be recreated");
+    assert_eq!(final_releases[0].tag_name, "v0.1.0");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_can_do_backports() {
     let context = TestContext::new().await;
 
