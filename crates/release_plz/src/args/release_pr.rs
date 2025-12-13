@@ -15,6 +15,8 @@ pub struct ReleasePr {
 }
 
 impl ReleasePr {
+    // combines the user provided configuration and package / workspace metadata into an internal
+    // representation that can be passed around internally.
     pub fn release_pr_req(
         &self,
         config: &Config,
@@ -25,6 +27,7 @@ impl ReleasePr {
         let pr_body = config.workspace.pr_body.clone();
         let pr_labels = config.workspace.pr_labels.clone();
         let pr_draft = config.workspace.pr_draft;
+
         let update_request = self.update.update_request(config, cargo_metadata)?;
         let request = ReleasePrRequest::new(update_request)
             .mark_as_draft(pr_draft)
