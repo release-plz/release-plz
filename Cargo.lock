@@ -344,9 +344,9 @@ dependencies = [
 
 [[package]]
 name = "camino"
-version = "1.2.1"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "276a59bf2b2c967788139340c9f0c5b12d7fd6630315c15c217e559de85d2609"
+checksum = "e629a66d692cb9ff1a1c664e41771b3dcaf961985a9774c0eb0bd1b51cf60a48"
 dependencies = [
  "serde_core",
 ]
@@ -1314,9 +1314,9 @@ dependencies = [
 
 [[package]]
 name = "fs-err"
-version = "3.2.0"
+version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62d91fd049c123429b018c47887d3f75a265540dd3c30ba9cb7bae9197edb03a"
+checksum = "824f08d01d0f496b3eca4f001a13cf17690a6ee930043d20817f547455fd98f8"
 dependencies = [
  "autocfg",
  "tokio",
@@ -1463,9 +1463,9 @@ dependencies = [
 
 [[package]]
 name = "git-cliff-core"
-version = "2.10.1"
+version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6434f59a70c587c9d900dacebddd3fd9bc12afc7445f991f5ee420f30ba071a"
+checksum = "cbd61daf6ea17b21fbb5e931efb43af1e3a7f6c4a24344983b16a8667b670ca4"
 dependencies = [
  "bincode",
  "cacache",
@@ -3684,9 +3684,9 @@ dependencies = [
 
 [[package]]
 name = "os_info"
-version = "3.13.0"
+version = "3.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c39b5918402d564846d5aba164c09a66cc88d232179dfd3e3c619a25a268392"
+checksum = "e4022a17595a00d6a369236fdae483f0de7f0a339960a53118b818238e132224"
 dependencies = [
  "android_system_properties",
  "log",
@@ -4324,9 +4324,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.12.25"
+version = "0.12.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6eff9328d40131d43bd911d42d79eb6a47312002a4daefc9e37f17e74a7701a"
+checksum = "3b4c14b2d9afca6a60277086b0cc6a6ae0b568f6f7916c943a8cdc79f8be240f"
 dependencies = [
  "base64 0.22.1",
  "bytes",
