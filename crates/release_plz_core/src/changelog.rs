@@ -92,12 +92,9 @@ impl Changelog<'_> {
         &'a self,
         config: &'a Config,
     ) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
-        let mut changelog = GitCliffChangelog::new(
-            vec![self.release.clone()],
-            config.clone(),
-            None,
-        )
-        .context("error while building changelog")?;
+        let mut changelog =
+            GitCliffChangelog::new(vec![self.release.clone()], config.clone(), None)
+                .context("error while building changelog")?;
         add_package_context(&mut changelog, &self.package)?;
         add_release_link_context(&mut changelog, self.release_link.as_deref())?;
         add_remote_context(&mut changelog, self.remote.as_ref())?;
