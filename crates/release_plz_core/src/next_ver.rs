@@ -171,7 +171,6 @@ fn get_cargo_package(worktree: &CustomWorkTree, package_name: &str) -> anyhow::R
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
     info!("determining next version");
     let overrides = input.packages_config().overridden_packages();
-
     let local_project = Project::new(
         input.local_manifest(),
         input.single_package(),

@@ -194,6 +194,7 @@ impl Update {
                 e
             ),
         }
+
         if let Some(registry_manifest_path) = &self.registry_manifest_path {
             let registry_manifest_path = to_utf8_path(registry_manifest_path)?;
             update = update
@@ -202,9 +203,7 @@ impl Update {
                     format!("cannot find project manifest {registry_manifest_path:?}")
                 })?;
         }
-
         update = config.fill_update_config(self.no_changelog, update)?;
-
         {
             let release_date = self
                 .release_date
@@ -221,7 +220,6 @@ impl Update {
             };
             update = update.with_changelog_req(changelog_req);
         }
-
         if let Some(package) = &self.package {
             update = update.with_single_package(package.clone());
         }
