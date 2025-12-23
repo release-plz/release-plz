@@ -580,7 +580,7 @@
           ]
         },
         "git_only_release_tag_prefix": {
-          "description": "Literal string prefix for release tags when `git_only` is enabled.\nOptional. For example: \"v\" matches \"v1.2.3\", \"package-v\" matches \"package-v1.2.3\".\nDefault: empty string (tags like \"1.2.3\")",
+          "description": "Literal string prefix for release tags when `git_only` is enabled.\nOptional. For example: \"v\" matches \"v1.2.3\", \"package-v\" matches \"package-v1.2.3\".\nDefault: \"v\" (tags like \"v1.2.3\")",
           "type": [
             "string",
             "null"
