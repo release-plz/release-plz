@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, bail};
 use cargo_metadata::semver::Version;
 use git2::{Oid, Repository, Worktree, WorktreePruneOptions};
 use regex::Regex;
@@ -13,7 +13,7 @@ pub struct CustomRepo {
 }
 
 impl CustomRepo {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         info!("Opening git repo at {:?}", path.as_ref());
         let repo = Repository::open(path).context("open repository")?;
         Ok(Self { repo })
@@ -23,7 +23,7 @@ impl CustomRepo {
         &mut self,
         path_suffix: Option<&str>,
         name: &str,
-    ) -> Result<CustomWorkTree> {
+    ) -> anyhow::Result<CustomWorkTree> {
         // Use tempfile::Builder to generate a unique path (prevents timestamp collisions)
         let prefix = if let Some(suffix) = path_suffix {
             format!("release-plz-{suffix}-")
@@ -55,7 +55,7 @@ impl CustomRepo {
         })
     }
 
-    pub fn get_tags(&self) -> Result<Vec<String>> {
+    pub fn get_tags(&self) -> anyhow::Result<Vec<String>> {
         let tags: Vec<String> = self
             .repo
             .tag_names(None)
@@ -75,7 +75,7 @@ impl CustomRepo {
         &self,
         release_tag_regex: &Regex,
         package_name: &str,
-    ) -> Result<Option<(String, Version)>> {
+    ) -> anyhow::Result<Option<(String, Version)>> {
         // get the tags for this repo
         let tags = self.get_tags().context("get tags for package")?;
         debug!("Found {} total tags: {:?}", tags.len(), tags);
@@ -125,7 +125,7 @@ impl CustomRepo {
     /// We purposefully dont return option here because a tag MUST be associated with a commit,
     /// either through reference in an annotated tag object or just pointing to a commit
     /// (lightweight)
-    pub fn get_tag_commit(&self, tag_name: &str) -> Result<String> {
+    pub fn get_tag_commit(&self, tag_name: &str) -> anyhow::Result<String> {
         // First, try to find as an annotated tag
         let mut commit: Option<Oid> = None;
         self.repo
@@ -208,7 +208,7 @@ impl CustomRepo {
     }
 
     /// Checkout a particular commit
-    pub fn checkout_commit(&mut self, commit_sha: &str) -> Result<()> {
+    pub fn checkout_commit(&mut self, commit_sha: &str) -> anyhow::Result<()> {
         // first we convert the string to an Oid
         let id = Oid::from_str(commit_sha).context("convert commit sha to oid")?;
 
@@ -230,7 +230,7 @@ impl CustomRepo {
     }
 
     /// Delete a local branch
-    pub fn delete_branch(&mut self, branch_name: &str) -> Result<()> {
+    pub fn delete_branch(&mut self, branch_name: &str) -> anyhow::Result<()> {
         let mut branch = self
             .repo
             .find_branch(branch_name, git2::BranchType::Local)
@@ -240,7 +240,7 @@ impl CustomRepo {
     }
 
     /// Clean up existing worktree and its branch if they exist
-    pub fn cleanup_worktree_if_exists(&mut self, name: &str) -> Result<()> {
+    pub fn cleanup_worktree_if_exists(&mut self, name: &str) -> anyhow::Result<()> {
         let trees: Vec<String> = self
             .repo
             .worktrees()
