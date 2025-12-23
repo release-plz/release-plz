@@ -37,27 +37,6 @@ impl Repo {
         })
     }
 
-    /// Initializes git within a directory.
-    /// Returns Ok(None) if the repository is already initialized, otherwise returns a repo
-    /// NOTE: This function doesn't set the author / email, nor does it provide any commits. Some
-    /// git actions may behave differently if there isn't a commit.
-    #[instrument(skip(path), fields(path = path.as_ref().as_str()))]
-    pub fn init_simple(path: impl AsRef<Utf8Path>) -> anyhow::Result<()> {
-        // first, we check if the repo exists
-        if std::path::Path::new(&format!("{}/.git", path.as_ref().as_str())).exists() {
-            debug!(
-                "git repository already exists at {}, not creating a new one",
-                path.as_ref()
-            );
-            return Ok(());
-        }
-
-        // create the repo
-        git_in_dir(path.as_ref(), &["init"]).context("init git directory")?;
-        debug!("initialized repo at {}", path.as_ref());
-        Ok(())
-    }
-
     pub fn directory(&self) -> &Utf8Path {
         &self.directory
     }
@@ -237,20 +216,9 @@ impl Repo {
     }
 
     /// Adds a detached git worktree at the given path checked out at the given object.
-    /// If object is none, we checkout at HEAD
-    /// Returns a new repo object at the new worktree
-    pub fn add_worktree(
-        &self,
-        path: impl AsRef<Utf8Path>,
-        object: Option<&str>,
-    ) -> anyhow::Result<()> {
-        if let Some(commit) = object {
-            self.git(&["worktree", "add", "-f", path.as_ref().as_str(), commit])
-                .context(format!("create git worktree at commit {commit}"))?;
-        } else {
-            self.git(&["worktree", "add", "-f", path.as_ref().as_str()])
-                .context("create git worktree at HEAD")?;
-        }
+    pub fn add_worktree(&self, path: impl AsRef<str>, object: &str) -> anyhow::Result<()> {
+        self.git(&["worktree", "add", "--detach", path.as_ref(), object])
+            .context("failed to create git worktree")?;
 
         Ok(())
     }
