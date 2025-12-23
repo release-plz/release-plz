@@ -6,11 +6,10 @@ use tracing::info;
 async fn git_only_with_default_prefix() {
     let context = TestContext::new().await;
 
-    // Configure git_only with "v" prefix
+    // Configure git_only (prefix defaults to "v")
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -72,10 +71,11 @@ git_only_release_tag_suffix = "-prod"
 async fn git_only_no_prefix_no_suffix() {
     let context = TestContext::new().await;
 
-    // Configure with no prefix or suffix (empty strings)
+    // Configure with no prefix or suffix (explicitly set empty prefix to override default "v")
     let config = r#"
 [workspace]
 git_only = true
+git_only_release_tag_prefix = ""
 "#;
     context.write_release_plz_toml(config);
 
@@ -107,7 +107,6 @@ async fn git_only_finds_highest_version_tag() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -150,7 +149,6 @@ async fn git_only_ignores_non_matching_tags() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -181,11 +179,10 @@ async fn git_only_no_matching_tag_skips_package() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
-    // Create tag that doesn't match the pattern
+    // Create tag that doesn't match the default "v" pattern
     context.repo.tag("release-0.1.0", "Release 0.1.0").unwrap();
 
     // Make a fix commit
@@ -210,7 +207,6 @@ async fn git_only_no_tags_at_all() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -238,7 +234,6 @@ async fn git_only_fix_commit_patch_bump() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -265,7 +260,6 @@ async fn git_only_feat_commit_minor_bump() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 features_always_increment_minor = true
 "#;
     context.write_release_plz_toml(config);
@@ -293,7 +287,6 @@ async fn git_only_respects_release_commits_regex() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 release_commits = "^feat:"
 "#;
     context.write_release_plz_toml(config);
@@ -380,12 +373,11 @@ git_only_release_tag_prefix = "lib2-v"
 async fn git_only_per_package_prefix() {
     let context = TestContext::new_workspace(&["api", "core"]).await;
 
-    // Workspace level: git_only with "v" prefix
+    // Workspace level: git_only with default "v" prefix
     // Package "api": override with "api-v" prefix
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 
 [[package]]
 name = "api"
@@ -395,7 +387,7 @@ git_only_release_tag_prefix = "api-v"
 
     // Tag the initial state (Cargo.toml already has 0.1.0)
     // In a workspace, each package needs its own tag with its configured prefix
-    // api has custom prefix "api-v", core inherits workspace prefix "v"
+    // api has custom prefix "api-v", core inherits workspace default prefix "v"
     context
         .repo
         .tag("api-v0.1.0", "Release api v0.1.0")
@@ -430,7 +422,6 @@ async fn git_only_with_lightweight_tags() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -461,7 +452,6 @@ async fn git_only_mixed_annotated_and_lightweight_tags() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -496,7 +486,6 @@ async fn git_only_invalid_tag_format() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -527,7 +516,6 @@ async fn git_only_multiple_commits_between_releases() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 "#;
     context.write_release_plz_toml(config);
 
@@ -566,7 +554,6 @@ async fn git_only_breaking_change() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 features_always_increment_minor = true
 "#;
     context.write_release_plz_toml(config);
@@ -662,7 +649,6 @@ async fn git_only_with_publish_enabled_fails_validation() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 publish = true
 "#;
     context.write_release_plz_toml(config);
@@ -694,7 +680,6 @@ async fn git_only_with_publish_disabled_succeeds() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 publish = false
 "#;
     context.write_release_plz_toml(config);
@@ -726,7 +711,6 @@ async fn git_only_workspace_with_package_publish_enabled_fails() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 
 [[package]]
 name = "pkg-a"
@@ -762,7 +746,6 @@ async fn git_only_with_publish_enabled_fails_validation_release_cmd() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "v"
 publish = true
 "#;
     context.write_release_plz_toml(config);

@@ -230,7 +230,7 @@ pub struct Workspace {
 
     /// Literal string prefix for release tags when `git_only` is enabled.
     /// Optional. For example: "v" matches "v1.2.3", "package-v" matches "package-v1.2.3".
-    /// Default: empty string (tags like "1.2.3")
+    /// Default: "v" (tags like "v1.2.3")
     pub git_only_release_tag_prefix: Option<String>,
 
     /// Literal string suffix for release tags when `git_only` is enabled.

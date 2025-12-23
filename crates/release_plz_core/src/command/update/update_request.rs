@@ -302,16 +302,19 @@ impl UpdateRequest {
 
     /// Get the `git_only` release tag prefix for a specific package.
     /// Package-level config overrides workspace-level config.
-    pub fn get_package_git_only_prefix(&self, package_name: &str) -> Option<String> {
+    /// Default: `"v"` (matches tags like `v1.2.3`)
+    pub fn get_package_git_only_prefix(&self, package_name: &str) -> String {
         let pkg_config = self.get_package_config(package_name);
 
         // Package config takes precedence
         if let Some(prefix) = pkg_config.git_only_release_tag_prefix() {
-            return Some(prefix.to_string());
+            return prefix.to_string();
         }
 
-        // Fall back to workspace config
-        self.git_only_release_tag_prefix.clone()
+        // Fall back to workspace config, or default to "v"
+        self.git_only_release_tag_prefix
+            .clone()
+            .unwrap_or_else(|| "v".to_string())
     }
 
     /// Get the `git_only` release tag suffix for a specific package.

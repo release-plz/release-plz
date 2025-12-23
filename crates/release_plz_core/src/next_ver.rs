@@ -233,10 +233,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
 
             // get the release regex for this package
             let release_regex = get_release_regex(
-                input
-                    .get_package_git_only_prefix(&package.name)
-                    .unwrap_or_default()
-                    .as_str(),
+                &input.get_package_git_only_prefix(&package.name),
                 input
                     .get_package_git_only_suffix(&package.name)
                     .unwrap_or_default()
