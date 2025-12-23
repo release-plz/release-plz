@@ -92,9 +92,11 @@ the following sections:
   - [`publish_all_features`](#the-publish_all_features-field) — Pass `--all-features` to `cargo publish`.
   - [`publish_timeout`](#the-publish_timeout-field) — `cargo publish` timeout.
   - [`release`](#the-release-field) - Enable the processing of the packages.
-  - [`release_always`](#the-release_always-field) - Release always or when you merge the release PR only.
+  - [`release_always`](#the-release_always-field) - Release always or when you merge the release PR
+    only.
   - [`release_commits`](#the-release_commits-field) - Customize which commits trigger a release.
-  - [`max_analyze_commits`](#the-max_analyze_commits-field) - Limit commit analysis for unpublished packages.
+  - [`max_analyze_commits`](#the-max_analyze_commits-field) - Limit commit analysis for unpublished
+    packages.
   - [`repo_url`](#the-repo_url-field) — Repository URL.
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
 - [`[[package]]`](#the-package-section) — Package-specific configurations.

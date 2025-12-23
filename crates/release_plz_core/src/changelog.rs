@@ -92,8 +92,9 @@ impl Changelog<'_> {
         &'a self,
         config: &'a Config,
     ) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
-        let mut changelog = GitCliffChangelog::new(vec![self.release.clone()], config, None)
-            .context("error while building changelog")?;
+        let mut changelog =
+            GitCliffChangelog::new(vec![self.release.clone()], config.clone(), None)
+                .context("error while building changelog")?;
         add_package_context(&mut changelog, &self.package)?;
         add_release_link_context(&mut changelog, self.release_link.as_deref())?;
         add_remote_context(&mut changelog, self.remote.as_ref())?;
@@ -180,6 +181,7 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         },
         exclude_paths: git_config.exclude_paths,
         include_paths: git_config.include_paths,
+        fail_on_unmatched_commit: git_config.fail_on_unmatched_commit,
     }
 }
 
