@@ -19,6 +19,7 @@ impl CustomRepo {
         Ok(Self { repo })
     }
 
+    /// Create a worktree at a random path in a temporary directory
     pub fn temp_worktree(
         &mut self,
         path_suffix: Option<&str>,

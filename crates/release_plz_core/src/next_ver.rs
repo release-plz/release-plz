@@ -61,8 +61,8 @@ impl ReleaseMetadataBuilder for UpdateRequest {
     }
 }
 
-// Build regex: ^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$
-// The semantic version is captured in group 1
+/// Build regex: ^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$
+/// The semantic version is captured in group 1
 fn get_release_regex(prefix: &str, suffix: &str) -> anyhow::Result<Regex> {
     let escaped_prefix = regex::escape(prefix);
     let escaped_suffix = regex::escape(suffix);
@@ -70,13 +70,13 @@ fn get_release_regex(prefix: &str, suffix: &str) -> anyhow::Result<Regex> {
     Regex::new(&release_regex_str).context("failed to build release tag regex")
 }
 
-// create a temporary worktree and its associated repo
-//
-// if using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
-// considered different objects with different methods so we return both. The drop order for these
-// doesn't actually matter, because the repo will become invalid when the worktree drops. But we
-// typically want to drop the repo first jsut to avoid the possibility of someone using an invalid
-// repo.
+/// create a temporary worktree and its associated repo
+///
+/// if using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
+/// considered different objects with different methods so we return both. The drop order for these
+/// doesn't actually matter, because the repo will become invalid when the worktree drops. But we
+/// typically want to drop the repo first jsut to avoid the possibility of someone using an invalid
+/// repo.
 fn get_temp_worktree_and_repo(
     original_repo: &mut CustomRepo,
     package_name: &str,
@@ -99,7 +99,7 @@ fn get_temp_worktree_and_repo(
     Ok((repo, worktree))
 }
 
-// run cargo publish within a worktree
+/// run cargo publish within a worktree
 fn run_cargo_publish(worktree: &CustomWorkTree) -> anyhow::Result<()> {
     // run cargo package so we get the proper format
     let output = std::process::Command::new("cargo")
@@ -367,43 +367,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         .packages_to_update(&release_packages, &repository.repo, input.local_manifest())
         .await?;
     Ok((packages_to_update, repository))
-}
-
-pub async fn delete_existing_worktree(path: &Utf8Path) -> anyhow::Result<()> {
-    // We still have to check if this worktree exists already. It shouldn't, but because NTP
-    // could in theory step the clock back, we may as well check.
-    let f = tokio::fs::File::open(&path).await;
-
-    // doesn't exist, great
-    if f.as_ref().is_err_and(|x| x.kind() == ErrorKind::NotFound) {
-        debug!("{path} not found, nothing to delete");
-    }
-    // does exist, delete it
-    else {
-        match f?.metadata().await {
-            Ok(m) if m.is_dir() => {
-                warn!(
-                    "{path} already exists, are you a time traveller? Just kidding, but we are deleting it for consistency"
-                );
-                tokio::fs::remove_dir_all(&path)
-                    .await
-                    .context("delete existing unreleased package")?;
-            }
-
-            // either file or symlink, i don't think we care though? we'll just remove it
-            Ok(_) => {
-                warn!("{path} already exists as a file, deleting it");
-                tokio::fs::remove_file(&path)
-                    .await
-                    .context("delete existing unreleased package file")?;
-            }
-
-            // if its not found, then great!
-            Err(e) => return Err(anyhow::anyhow!(e)),
-        };
-    }
-
-    Ok(())
 }
 
 pub fn root_repo_path(local_manifest: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {

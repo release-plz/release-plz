@@ -5,8 +5,7 @@ mod update_config;
 pub mod update_request;
 pub mod updater;
 
-use crate::PackagePath;
-use crate::tmp_repo::TempRepo;
+use crate::{PackagePath, tmp_repo::TempRepo};
 use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
