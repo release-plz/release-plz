@@ -482,15 +482,12 @@ pub struct PackageConfig {
     pub release: Option<bool>,
     /// # Git Only
     /// If true, use git tags to determine the latest version instead of the registry.
-    /// If unspecified at package level, inherits from workspace config.
     pub git_only: Option<bool>,
     /// # Git Only Release Tag Prefix
     /// Literal string prefix for release tags when `git_only` is enabled.
-    /// If unspecified at package level, inherits from workspace config.
     pub git_only_release_tag_prefix: Option<String>,
     /// # Git Only Release Tag Suffix
     /// Literal string suffix for release tags when `git_only` is enabled.
-    /// If unspecified at package level, inherits from workspace config.
     pub git_only_release_tag_suffix: Option<String>,
 }
 
