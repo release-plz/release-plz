@@ -22,7 +22,6 @@ use cargo_metadata::{MetadataCommand, TargetKind};
 use chrono::NaiveDate;
 use regex::Regex;
 use std::collections::BTreeMap;
-use std::io::ErrorKind;
 use std::path::PathBuf;
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, trace, warn};
@@ -61,7 +60,7 @@ impl ReleaseMetadataBuilder for UpdateRequest {
     }
 }
 
-/// Build regex: ^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$
+/// Build regex: `^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$`
 /// The semantic version is captured in group 1
 fn get_release_regex(prefix: &str, suffix: &str) -> anyhow::Result<Regex> {
     let escaped_prefix = regex::escape(prefix);
