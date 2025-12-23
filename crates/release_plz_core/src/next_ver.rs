@@ -363,7 +363,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             "uncommitted changes stashed by release-plz",
         ])?;
     }
-
     let packages_to_update = updater
         .packages_to_update(&release_packages, &repository.repo, input.local_manifest())
         .await?;

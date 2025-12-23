@@ -119,10 +119,6 @@ impl Project {
         self.packages.iter().collect()
     }
 
-    pub fn workspace_packages_mut(&mut self) -> &mut Vec<Package> {
-        &mut self.packages
-    }
-
     /// Copy this project in a temporary repository and return the repository.
     /// We copy the project in another directory in order to avoid altering it.
     pub(crate) fn get_repo(&self) -> anyhow::Result<TempRepo> {

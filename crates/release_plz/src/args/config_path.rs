@@ -62,7 +62,7 @@ impl ConfigPath {
 fn load_config(path: &Path) -> anyhow::Result<Option<Config>> {
     match read_to_string(path) {
         Ok(contents) => {
-            let config: Config = toml::from_str(&contents)
+            let config = toml::from_str(&contents)
                 .with_context(|| format!("invalid config file {}", path.display()))?;
             info!("using release-plz config file {}", path.display());
             Ok(Some(config))
