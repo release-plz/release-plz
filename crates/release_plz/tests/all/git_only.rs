@@ -751,3 +751,36 @@ publish = true
         "Expected validation error about git_only and publish being mutually exclusive, got: {error}"
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_with_publish_enabled_fails_validation_release_cmd() {
+    let context = TestContext::new().await;
+
+    // Configure with both git_only = true and publish = true
+    // This should fail validation because they are mutually exclusive
+    let config = r#"
+[workspace]
+git_only = true
+git_only_release_tag_prefix = "v"
+publish = true
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tag
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Make a commit
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    // Run release command should fail due to validation error
+    let error = context.run_release().failure().to_string();
+    assert!(
+        error.contains("git_only")
+            && error.contains("publish")
+            && error.contains("mutually exclusive"),
+        "Expected validation error about git_only and publish being mutually exclusive, got: {error}"
+    );
+}
