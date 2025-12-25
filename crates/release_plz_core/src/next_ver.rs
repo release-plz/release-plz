@@ -24,7 +24,7 @@ use regex::Regex;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use toml_edit::TableLike;
-use tracing::{debug, info, instrument, trace, warn};
+use tracing::{debug, info, instrument, trace};
 
 // Used to indicate that this is a dummy commit with no corresponding ID available.
 // It should be at least 7 characters long to avoid a panic in git-cliff
@@ -253,9 +253,10 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
                 .get_release_tag(&release_regex, &package.name)
                 .context("get release tag")?
             else {
-                warn!(
-                    "no release tag matching pattern: {}",
-                    release_regex.to_string()
+                info!(
+                    "No release tag found for package `{}` matching pattern `{}`. \
+                     Package will be treated as initial release.",
+                    package.name, release_regex
                 );
                 continue;
             };

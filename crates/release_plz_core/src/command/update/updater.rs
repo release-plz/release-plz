@@ -210,24 +210,6 @@ impl Updater<'_> {
             .project
             .publishable_packages()
             .iter()
-            .filter(|&p| {
-                // if we don't have a package for a git only tag, we need to explicitly skip it
-                //
-                // also not sure why we are doing that check here, might be better to just filter
-                // out the packages we aren't releasing / publishing before we even determine the
-                // next versions
-                let using_git_only = self.req.should_use_git_only(&p.name);
-                let has_registry_pkg = registry_packages.get_registry_package(&p.name).is_some();
-                // Skip if git_only is enabled but there's no registry package (no matching tag)
-                if using_git_only && !has_registry_pkg {
-                    debug!(
-                        "Skipping package `{}` - git_only enabled but no matching tag found",
-                        p.name
-                    );
-                    return false;
-                }
-                true
-            })
             .map(|&p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
