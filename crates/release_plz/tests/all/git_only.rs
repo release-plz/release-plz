@@ -754,8 +754,7 @@ publish = true
         error.contains("git_only")
             && error.contains("publish")
             && error.contains("mutually exclusive"),
-        "Expected validation error about git_only and publish being mutually exclusive, got: {}",
-        error
+        "Expected validation error about git_only and publish being mutually exclusive, got: {error}",
     );
 }
 
