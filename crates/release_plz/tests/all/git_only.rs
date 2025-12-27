@@ -775,3 +775,57 @@ publish = true
         "Expected validation error about git_only and publish being mutually exclusive, got: {error}"
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_release_creates_tag() {
+    use cargo_metadata::semver::Version;
+
+    let context = TestContext::new().await;
+
+    // Configure with git_only = true and publish = false
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tag and update Cargo.toml to match
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Update version and make a new commit
+    context.set_package_version(&context.gitea.repo, &Version::parse("0.1.1").unwrap());
+    context.run_cargo_check();
+    context.push_all_changes("fix: bug fix");
+
+    let crate_name = &context.gitea.repo;
+    let expected_tag = "v0.1.1";
+
+    // Verify tag doesn't exist yet
+    let is_tag_created = || {
+        context.repo.git(&["fetch", "--tags"]).unwrap();
+        context.repo.tag_exists(expected_tag).unwrap()
+    };
+    assert!(!is_tag_created(), "Tag should not exist before release");
+
+    // Run release command
+    let outcome = context.run_release().success();
+
+    // Verify JSON output shows the release
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": crate_name,
+                "prs": [],
+                "tag": expected_tag,
+                "version": "0.1.1",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Verify the tag was created
+    assert!(is_tag_created(), "Tag should exist after release");
+}
