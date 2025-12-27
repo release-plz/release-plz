@@ -555,16 +555,6 @@ impl Updater<'_> {
             &mut diff,
         )?;
 
-        // Clean up cargo package artifacts created during diff calculation.
-        // `cargo package --list` creates files in target/package/ which can interfere with checkout.
-        // The target directory is created in the package directory, not the repository root.
-        let target_package_dir = package_path.join("target").join("package");
-        if target_package_dir.exists()
-            && let Err(e) = fs_err::remove_dir_all(&target_package_dir)
-        {
-            warn!("failed to clean up target/package directory before checkout: {e:?}");
-        }
-
         repository
             .checkout_head()
             .context("can't checkout to head after calculating diff")?;
