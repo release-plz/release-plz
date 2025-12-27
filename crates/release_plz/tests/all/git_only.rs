@@ -407,7 +407,10 @@ git_only_release_tag_name = "api-v{{ version }}"
         .repo
         .tag("api-v0.1.0", "Release api v0.1.0")
         .unwrap();
-    context.repo.tag("core-v0.1.0", "Release core v0.1.0").unwrap();
+    context
+        .repo
+        .tag("core-v0.1.0", "Release core v0.1.0")
+        .unwrap();
 
     // Make changes to api package
     let api_file = context.package_path("api").join("src").join("lib.rs");
