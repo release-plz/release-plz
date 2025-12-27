@@ -80,8 +80,8 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
-  - [`git_only`](#the-git_only-field) — Determine version from git tags instead of cargo registry.
-  - [`git_only_release_tag_name`](#the-git_only_release_tag_name-field) — Pattern for matching git-only release tags.
+  - [`git_only`](#the-git_only-field) — Use git tags instead of cargo registry.
+  - [`git_only_release_tag_name`](#the-git_only_release_tag_name-field) — Git-only release tag pattern.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
   - [`pr_name`](#the-pr_name-field) — Customize the name of the release Pull Request.
@@ -116,8 +116,9 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field-package-section) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field-package-section) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field-package-section) — Customize git tag pattern.
-  - [`git_only`](#the-git_only-field-package-section) — Determine version from git tags instead of cargo registry.
-  - [`git_only_release_tag_name`](#the-git_only_release_tag_name-field-package-section) — Pattern for matching git-only release tags.
+  - [`git_only`](#the-git_only-field-package-section) — Use git tags instead of cargo registry.
+  - [`git_only_release_tag_name`](#the-git_only_release_tag_name-field-package-section)
+    — Git-only release tag pattern.
   - [`publish`](#the-publish-field-package-section) — Publish to cargo registry.
   - [`publish_allow_dirty`](#the-publish_allow_dirty-field-package-section) — Package dirty directories.
   - [`publish_no_verify`](#the-publish_no_verify-field-package-section) — Don't verify package build.
@@ -348,7 +349,8 @@ Enable git-only mode, which determines package versions from git tags instead of
 When `git_only` is enabled:
 
 - The package will not be published to any cargo registry (`cargo publish` is skipped).
-- Version detection is based on git tags matching the [`git_only_release_tag_name`](#the-git_only_release_tag_name-field) pattern.
+- Version detection is based on git tags matching the
+  [`git_only_release_tag_name`](#the-git_only_release_tag_name-field) pattern.
 - If no matching tag is found, the package is treated as an initial release.
 
 :::warning
