@@ -1,5 +1,6 @@
 use crate::command::git::{CustomRepo, CustomWorkTree};
 use crate::registry_packages::{PackagesCollection, RegistryPackage};
+use crate::tera::{default_tag_name_template, render_template, tera_context};
 use crate::tmp_repo::TempRepo;
 use crate::update_request::UpdateRequest;
 use crate::updater::Updater;
@@ -60,13 +61,31 @@ impl ReleaseMetadataBuilder for UpdateRequest {
     }
 }
 
-/// Build regex: `^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$`
-/// The semantic version is captured in group 1
-fn get_release_regex(prefix: &str, suffix: &str) -> anyhow::Result<Regex> {
-    let escaped_prefix = regex::escape(prefix);
-    let escaped_suffix = regex::escape(suffix);
-    let release_regex_str = format!(r"^{escaped_prefix}(\d+\.\d+\.\d+){escaped_suffix}$");
-    Regex::new(&release_regex_str).context("failed to build release tag regex")
+/// Build a regex from a Tera template for matching release tags.
+/// The template supports `{{ package }}` and `{{ version }}` variables.
+/// - `{{ package }}` is replaced with the escaped package name
+/// - `{{ version }}` is replaced with a semver capture group `(\d+\.\d+\.\d+)`
+///
+/// For example, template `{{ package }}-v{{ version }}` with package "mylib"
+/// becomes regex `^mylib-v(\d+\.\d+\.\d+)$`
+///
+/// NOTE: We use the existing Tera infrastructure here even though it's slightly more complex
+/// than direct string replacement. This keeps the template handling consolidated in one place.
+fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex> {
+    // Use a placeholder version that we can find and replace with the regex capture group
+    const VERSION_PLACEHOLDER: &str = "0.0.0-VERSION-PLACEHOLDER";
+
+    // Render the template using the existing Tera infrastructure
+    let context = tera_context(package_name, VERSION_PLACEHOLDER);
+    let rendered = render_template(template, &context, "git_only_release_tag")
+        .context("failed to render git_only_release_tag_name template")?;
+
+    // Escape for regex, then replace the placeholder with the version capture group
+    let escaped = regex::escape(&rendered);
+    let pattern = escaped.replace(&regex::escape(VERSION_PLACEHOLDER), r"(\d+\.\d+\.\d+)");
+
+    let full_regex = format!(r"^{pattern}$");
+    Regex::new(&full_regex).context("build release tag regex")
 }
 
 /// create a temporary worktree and its associated repo
@@ -215,6 +234,9 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             git_only_packages.len()
         );
 
+        // Determine if this is a multi-package workspace for default template
+        let is_multi_package = local_project.publishable_packages().len() > 1;
+
         // create the repo we'll be spinning worktrees from
         let mut unreleased_project_repo = CustomRepo::open(
             input
@@ -230,15 +252,14 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             let _enter = ispan.enter();
             ispan.record("package_name", package.name.to_string());
 
+            // Get the release tag template, falling back to default based on project structure
+            let template = input
+                .get_package_git_only_tag_name(&package.name)
+                .unwrap_or_else(|| default_tag_name_template(is_multi_package));
+
             // get the release regex for this package
-            let release_regex = get_release_regex(
-                &input.get_package_git_only_prefix(&package.name),
-                input
-                    .get_package_git_only_suffix(&package.name)
-                    .unwrap_or_default()
-                    .as_str(),
-            )
-            .context("get release regex")?;
+            let release_regex =
+                get_release_regex(&template, &package.name).context("get release regex")?;
             info!(
                 "looking for tags matching pattern: {}",
                 release_regex.to_string()
@@ -477,4 +498,75 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
         .get("path")
         .and_then(|i| i.as_str())
         .and_then(|relpath| dunce::canonicalize(package_dir.join(relpath)).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_regex_version_only_template() {
+        let regex = get_release_regex("v{{ version }}", "ignored").unwrap();
+
+        // Matches valid tags
+        assert!(regex.is_match("v1.2.3"));
+        assert!(regex.is_match("v0.0.1"));
+
+        // Rejects invalid formats
+        assert!(!regex.is_match("1.2.3")); // missing v
+        assert!(!regex.is_match("v1.2")); // incomplete semver
+        assert!(!regex.is_match("v1.2.3.4")); // too many parts
+
+        // Captures version correctly
+        let captures = regex.captures("v1.2.3").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "1.2.3");
+    }
+
+    #[test]
+    fn release_regex_package_and_version_template() {
+        let regex = get_release_regex("{{ package }}-v{{ version }}", "mylib").unwrap();
+
+        // Matches correct package
+        assert!(regex.is_match("mylib-v1.2.3"));
+
+        // Rejects wrong package or format
+        assert!(!regex.is_match("otherlib-v1.2.3"));
+        assert!(!regex.is_match("mylib-1.2.3")); // missing v
+        assert!(!regex.is_match("v1.2.3")); // missing package
+
+        // Captures version correctly
+        let captures = regex.captures("mylib-v4.5.6").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "4.5.6");
+    }
+
+    #[test]
+    fn release_regex_custom_template() {
+        let regex = get_release_regex("release-{{ version }}-prod", "ignored").unwrap();
+
+        // Matches custom format
+        assert!(regex.is_match("release-1.2.3-prod"));
+
+        // Rejects partial matches
+        assert!(!regex.is_match("release-1.2.3"));
+        assert!(!regex.is_match("v1.2.3"));
+
+        // Captures version correctly
+        let captures = regex.captures("release-0.1.0-prod").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "0.1.0");
+    }
+
+    #[test]
+    fn release_regex_escapes_special_chars_in_package_name() {
+        let regex = get_release_regex("{{ package }}-v{{ version }}", "my.package").unwrap();
+
+        // Dot is literal, not "any char"
+        assert!(regex.is_match("my.package-v1.2.3"));
+        assert!(!regex.is_match("myXpackage-v1.2.3"));
+    }
+
+    #[test]
+    fn release_regex_invalid_tera_syntax() {
+        let result = get_release_regex("{{ invalid syntax", "mylib");
+        assert!(result.is_err());
+    }
 }

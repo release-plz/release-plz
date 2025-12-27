@@ -10,7 +10,7 @@ use tracing::debug;
 
 use crate::{
     PackagePath as _,
-    tera::{PACKAGE_VAR, VERSION_VAR, tera_context, tera_var},
+    tera::{default_tag_name_template, tera_context},
 };
 use crate::{
     Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
@@ -162,13 +162,8 @@ impl Project {
             ),
         };
 
-        let template = template.unwrap_or({
-            if self.contains_multiple_pub_packages {
-                format!("{}-v{}", tera_var(PACKAGE_VAR), tera_var(VERSION_VAR))
-            } else {
-                format!("v{}", tera_var(VERSION_VAR))
-            }
-        });
+        let template = template
+            .unwrap_or_else(|| default_tag_name_template(self.contains_multiple_pub_packages));
 
         let context = tera_context(package_name, version);
         crate::tera::render_template(&template, &context, template_name)

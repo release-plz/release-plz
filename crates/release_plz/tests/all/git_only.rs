@@ -35,12 +35,11 @@ git_only = true
 async fn git_only_with_prefix_and_suffix() {
     let context = TestContext::new().await;
 
-    // Configure with both prefix and suffix
+    // Configure with a custom tag template
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = "release-"
-git_only_release_tag_suffix = "-prod"
+git_only_release_tag_name = "release-{{ version }}-prod"
 "#;
     context.write_release_plz_toml(config);
 
@@ -71,15 +70,15 @@ git_only_release_tag_suffix = "-prod"
 async fn git_only_no_prefix_no_suffix() {
     let context = TestContext::new().await;
 
-    // Configure with no prefix or suffix (explicitly set empty prefix to override default "v")
+    // Configure with no prefix (just version) to override default "v{{ version }}"
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_prefix = ""
+git_only_release_tag_name = "{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
-    // Create initial release tag without prefix/suffix
+    // Create initial release tag without prefix
     context.repo.tag("0.1.0", "Release 0.1.0").unwrap();
 
     // Make a fix commit
@@ -346,18 +345,12 @@ release_commits = "^feat:"
 async fn git_only_workspace_level_applies_to_all() {
     let context = TestContext::new_workspace(&["lib1", "lib2"]).await;
 
-    // In workspace git_only mode, each package needs a unique prefix to distinguish tags
+    // In workspace git_only mode, each package needs a unique tag pattern to distinguish tags
+    // Using {{ package }} variable which will be replaced with the package name
     let config = r#"
 [workspace]
 git_only = true
-
-[[package]]
-name = "lib1"
-git_only_release_tag_prefix = "lib1-v"
-
-[[package]]
-name = "lib2"
-git_only_release_tag_prefix = "lib2-v"
+git_only_release_tag_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
@@ -395,26 +388,26 @@ git_only_release_tag_prefix = "lib2-v"
 async fn git_only_per_package_prefix() {
     let context = TestContext::new_workspace(&["api", "core"]).await;
 
-    // Workspace level: git_only with default "v" prefix
-    // Package "api": override with "api-v" prefix
+    // Workspace level: git_only with default template "{{ package }}-v{{ version }}"
+    // Package "api": override with custom template "api-v{{ version }}"
     let config = r#"
 [workspace]
 git_only = true
 
 [[package]]
 name = "api"
-git_only_release_tag_prefix = "api-v"
+git_only_release_tag_name = "api-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
     // Tag the initial state (Cargo.toml already has 0.1.0)
-    // In a workspace, each package needs its own tag with its configured prefix
-    // api has custom prefix "api-v", core inherits workspace default prefix "v"
+    // In a workspace, each package needs its own tag with its configured template
+    // api has custom template "api-v{{ version }}", core inherits workspace default "{{ package }}-v{{ version }}"
     context
         .repo
         .tag("api-v0.1.0", "Release api v0.1.0")
         .unwrap();
-    context.repo.tag("v0.1.0", "Release core v0.1.0").unwrap();
+    context.repo.tag("core-v0.1.0", "Release core v0.1.0").unwrap();
 
     // Make changes to api package
     let api_file = context.package_path("api").join("src").join("lib.rs");
@@ -601,21 +594,11 @@ features_always_increment_minor = true
 async fn git_only_multiple_packages_changed_workspace() {
     let context = TestContext::new_workspace(&["pkg1", "pkg2", "pkg3"]).await;
 
+    // Use workspace-level template with {{ package }} variable for all packages
     let config = r#"
 [workspace]
 git_only = true
-
-[[package]]
-name = "pkg1"
-git_only_release_tag_prefix = "pkg1-v"
-
-[[package]]
-name = "pkg2"
-git_only_release_tag_prefix = "pkg2-v"
-
-[[package]]
-name = "pkg3"
-git_only_release_tag_prefix = "pkg3-v"
+git_only_release_tag_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 

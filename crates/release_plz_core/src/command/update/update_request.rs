@@ -51,11 +51,10 @@ pub struct UpdateRequest {
     /// Use git tags to determine latest package release
     git_only: Option<bool>,
 
-    /// Literal string prefix for release tags when `git_only` is enabled
-    git_only_release_tag_prefix: Option<String>,
+    /// Tera template for matching release tags when `git_only` is enabled.
+    /// Supports `{{ package }}` and `{{ version }}` variables.
+    git_only_release_tag_name: Option<String>,
 
-    /// Literal string suffix for release tags when `git_only` is enabled
-    git_only_release_tag_suffix: Option<String>,
     max_analyze_commits: Option<u32>,
 }
 
@@ -77,8 +76,7 @@ impl UpdateRequest {
             release_commits: None,
             git: None,
             git_only: None,
-            git_only_release_tag_prefix: None,
-            git_only_release_tag_suffix: None,
+            git_only_release_tag_name: None,
             max_analyze_commits: None,
         })
     }
@@ -263,12 +261,8 @@ impl UpdateRequest {
         self.git_only
     }
 
-    pub fn git_only_release_tag_prefix(&self) -> Option<&str> {
-        self.git_only_release_tag_prefix.as_deref()
-    }
-
-    pub fn git_only_release_tag_suffix(&self) -> Option<&str> {
-        self.git_only_release_tag_suffix.as_deref()
+    pub fn git_only_release_tag_name(&self) -> Option<&str> {
+        self.git_only_release_tag_name.as_deref()
     }
 
     pub fn with_git_only(mut self, git_only: Option<bool>) -> Self {
@@ -276,13 +270,8 @@ impl UpdateRequest {
         self
     }
 
-    pub fn with_git_only_release_tag_prefix(mut self, prefix: Option<String>) -> Self {
-        self.git_only_release_tag_prefix = prefix;
-        self
-    }
-
-    pub fn with_git_only_release_tag_suffix(mut self, suffix: Option<String>) -> Self {
-        self.git_only_release_tag_suffix = suffix;
+    pub fn with_git_only_release_tag_name(mut self, tag_name: Option<String>) -> Self {
+        self.git_only_release_tag_name = tag_name;
         self
     }
 
@@ -300,35 +289,18 @@ impl UpdateRequest {
         self.git_only.unwrap_or(false)
     }
 
-    /// Get the `git_only` release tag prefix for a specific package.
+    /// Get the `git_only` release tag name template for a specific package.
     /// Package-level config overrides workspace-level config.
-    /// Default: `"v"` (matches tags like `v1.2.3`)
-    pub fn get_package_git_only_prefix(&self, package_name: &str) -> String {
+    pub fn get_package_git_only_tag_name(&self, package_name: &str) -> Option<String> {
         let pkg_config = self.get_package_config(package_name);
 
         // Package config takes precedence
-        if let Some(prefix) = pkg_config.git_only_release_tag_prefix() {
-            return prefix.to_string();
-        }
-
-        // Fall back to workspace config, or default to "v"
-        self.git_only_release_tag_prefix
-            .clone()
-            .unwrap_or_else(|| "v".to_string())
-    }
-
-    /// Get the `git_only` release tag suffix for a specific package.
-    /// Package-level config overrides workspace-level config.
-    pub fn get_package_git_only_suffix(&self, package_name: &str) -> Option<String> {
-        let pkg_config = self.get_package_config(package_name);
-
-        // Package config takes precedence
-        if let Some(suffix) = pkg_config.git_only_release_tag_suffix() {
-            return Some(suffix.to_string());
+        if let Some(tag_name) = pkg_config.git_only_release_tag_name() {
+            return Some(tag_name.to_string());
         }
 
         // Fall back to workspace config
-        self.git_only_release_tag_suffix.clone()
+        self.git_only_release_tag_name.clone()
     }
 }
 

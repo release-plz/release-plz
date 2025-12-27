@@ -41,8 +41,7 @@
         "dependencies_update": null,
         "features_always_increment_minor": null,
         "git_only": null,
-        "git_only_release_tag_prefix": null,
-        "git_only_release_tag_suffix": null,
+        "git_only_release_tag_name": null,
         "git_release_body": null,
         "git_release_draft": null,
         "git_release_enable": null,
@@ -305,17 +304,9 @@
             "null"
           ]
         },
-        "git_only_release_tag_prefix": {
-          "title": "Git Only Release Tag Prefix",
-          "description": "Literal string prefix for release tags when `git_only` is enabled.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "git_only_release_tag_suffix": {
-          "title": "Git Only Release Tag Suffix",
-          "description": "Literal string suffix for release tags when `git_only` is enabled.",
+        "git_only_release_tag_name": {
+          "title": "Git Only Release Tag Name",
+          "description": "Tera template for matching release tags when `git_only` is enabled.\nSupports `{{ package }}` and `{{ version }}` variables.",
           "type": [
             "string",
             "null"
@@ -579,15 +570,8 @@
             "null"
           ]
         },
-        "git_only_release_tag_prefix": {
-          "description": "Literal string prefix for release tags when `git_only` is enabled.\nOptional. For example: \"v\" matches \"v1.2.3\", \"package-v\" matches \"package-v1.2.3\".\nDefault: \"v\" (tags like \"v1.2.3\")",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "git_only_release_tag_suffix": {
-          "description": "Literal string suffix for release tags when `git_only` is enabled.\nOptional. For example: \"-release\" matches \"v1.2.3-release\".\nDefault: empty string (no suffix)",
+        "git_only_release_tag_name": {
+          "description": "Tera template for matching release tags when `git_only` is enabled.\nSupports `{{ package }}` and `{{ version }}` variables.\nDefault for single package: `v{{ version }}` (matches tags like `v1.2.3`)\nDefault for workspace: `{{ package }}-v{{ version }}` (matches tags like `mypackage-v1.2.3`)",
           "type": [
             "string",
             "null"

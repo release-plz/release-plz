@@ -25,10 +25,9 @@ pub struct UpdateConfig {
     pub tag_name_template: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
-    /// Literal string prefix for release tags when `git_only` is enabled.
-    pub git_only_release_tag_prefix: Option<String>,
-    /// Literal string suffix for release tags when `git_only` is enabled.
-    pub git_only_release_tag_suffix: Option<String>,
+    /// Tera template for matching release tags when `git_only` is enabled.
+    /// Supports `{{ package }}` and `{{ version }}` variables.
+    pub git_only_release_tag_name: Option<String>,
 }
 
 /// Package-specific config
@@ -69,12 +68,8 @@ impl PackageUpdateConfig {
         self.generic.git_only
     }
 
-    pub fn git_only_release_tag_prefix(&self) -> Option<&str> {
-        self.generic.git_only_release_tag_prefix.as_deref()
-    }
-
-    pub fn git_only_release_tag_suffix(&self) -> Option<&str> {
-        self.generic.git_only_release_tag_suffix.as_deref()
+    pub fn git_only_release_tag_name(&self) -> Option<&str> {
+        self.generic.git_only_release_tag_name.as_deref()
     }
 }
 
@@ -87,8 +82,7 @@ impl Default for UpdateConfig {
             publish: true,
             features_always_increment_minor: false,
             git_only: None,
-            git_only_release_tag_prefix: None,
-            git_only_release_tag_suffix: None,
+            git_only_release_tag_name: None,
             tag_name_template: None,
             changelog_path: None,
         }

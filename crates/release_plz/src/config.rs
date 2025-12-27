@@ -228,15 +228,11 @@ pub struct Workspace {
     /// If false, release-plz will use crates.io release information to get the latest version
     pub git_only: Option<bool>,
 
-    /// Literal string prefix for release tags when `git_only` is enabled.
-    /// Optional. For example: "v" matches "v1.2.3", "package-v" matches "package-v1.2.3".
-    /// Default: "v" (tags like "v1.2.3")
-    pub git_only_release_tag_prefix: Option<String>,
-
-    /// Literal string suffix for release tags when `git_only` is enabled.
-    /// Optional. For example: "-release" matches "v1.2.3-release".
-    /// Default: empty string (no suffix)
-    pub git_only_release_tag_suffix: Option<String>,
+    /// Tera template for matching release tags when `git_only` is enabled.
+    /// Supports `{{ package }}` and `{{ version }}` variables.
+    /// Default for single package: `v{{ version }}` (matches tags like `v1.2.3`)
+    /// Default for workspace: `{{ package }}-v{{ version }}` (matches tags like `mypackage-v1.2.3`)
+    pub git_only_release_tag_name: Option<String>,
     /// Maximum number of commits to analyze when the package hasn't been published yet.
     /// Default: 1000.
     #[serde(default = "default_max_analyze_commits")]
@@ -262,8 +258,7 @@ impl Default for Workspace {
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
             git_only: None,
-            git_only_release_tag_prefix: None,
-            git_only_release_tag_suffix: None,
+            git_only_release_tag_name: None,
         }
     }
 }
@@ -483,12 +478,10 @@ pub struct PackageConfig {
     /// # Git Only
     /// If true, use git tags to determine the latest version instead of the registry.
     pub git_only: Option<bool>,
-    /// # Git Only Release Tag Prefix
-    /// Literal string prefix for release tags when `git_only` is enabled.
-    pub git_only_release_tag_prefix: Option<String>,
-    /// # Git Only Release Tag Suffix
-    /// Literal string suffix for release tags when `git_only` is enabled.
-    pub git_only_release_tag_suffix: Option<String>,
+    /// # Git Only Release Tag Name
+    /// Tera template for matching release tags when `git_only` is enabled.
+    /// Supports `{{ package }}` and `{{ version }}` variables.
+    pub git_only_release_tag_name: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -502,8 +495,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
             git_only: config.git_only,
-            git_only_release_tag_prefix: config.git_only_release_tag_prefix,
-            git_only_release_tag_suffix: config.git_only_release_tag_suffix,
+            git_only_release_tag_name: config.git_only_release_tag_name,
         }
     }
 }
@@ -544,12 +536,9 @@ impl PackageConfig {
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
             release: self.release.or(default.release),
             git_only: self.git_only.or(default.git_only),
-            git_only_release_tag_prefix: self
-                .git_only_release_tag_prefix
-                .or(default.git_only_release_tag_prefix),
-            git_only_release_tag_suffix: self
-                .git_only_release_tag_suffix
-                .or(default.git_only_release_tag_suffix),
+            git_only_release_tag_name: self
+                .git_only_release_tag_name
+                .or(default.git_only_release_tag_name),
         }
     }
 
@@ -640,8 +629,7 @@ mod tests {
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
                 git_only: None,
-                git_only_release_tag_prefix: None,
-                git_only_release_tag_suffix: None,
+                git_only_release_tag_name: None,
                 max_analyze_commits: default_max_analyze_commits(),
             },
             package: [].into(),
@@ -768,8 +756,7 @@ mod tests {
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
                 git_only: None,
-                git_only_release_tag_prefix: None,
-                git_only_release_tag_suffix: None,
+                git_only_release_tag_name: None,
                 max_analyze_commits: default_max_analyze_commits(),
             },
             package: [PackageSpecificConfigWithName {

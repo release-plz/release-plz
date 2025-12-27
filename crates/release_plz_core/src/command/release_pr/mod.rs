@@ -149,10 +149,9 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         .git_client()?
         .context("can't find git client")?;
 
-    let unreleased_package_worktree_repo =
-        Repo::new(&tmp_project_root).context("create new repo")?;
-
     if !packages_to_update.updates().is_empty() {
+        let unreleased_package_worktree_repo =
+            Repo::new(&tmp_project_root).context("create new repo")?;
         let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
         if there_are_commits_to_push {
             let pr = open_or_update_release_pr(
