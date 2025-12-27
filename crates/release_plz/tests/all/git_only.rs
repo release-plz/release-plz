@@ -173,7 +173,7 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_no_matching_tag_skips_package() {
+async fn git_only_no_matching_tag_creates_initial_release() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -191,17 +191,28 @@ git_only = true
     context.push_all_changes("fix: update readme");
 
     // Run release-pr
-    let outcome = context.run_release_pr().success();
+    let _outcome = context.run_release_pr().success();
 
-    // Verify no PR was created (package skipped due to no matching tag)
-    outcome.stdout("{\"prs\":[]}\n");
+    // Verify PR was created for initial release
     let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 0);
+    assert_eq!(
+        opened_prs.len(),
+        1,
+        "Expected PR for initial release when no matching tag exists"
+    );
+
+    // Verify it's a release PR with a version
+    let pr = &opened_prs[0];
+    assert!(
+        pr.title.contains("0.1") || pr.title.contains("release"),
+        "PR title should contain version or 'release': {}",
+        pr.title
+    );
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_no_tags_at_all() {
+async fn git_only_no_tags_creates_initial_release() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -218,12 +229,23 @@ git_only = true
     context.push_all_changes("fix: update readme");
 
     // Run release-pr
-    let outcome = context.run_release_pr().success();
+    let _outcome = context.run_release_pr().success();
 
-    // Verify no PR was created
-    outcome.stdout("{\"prs\":[]}\n");
+    // Verify PR was created for initial release
     let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 0);
+    assert_eq!(
+        opened_prs.len(),
+        1,
+        "Expected PR for initial release when no tags exist"
+    );
+
+    // Verify it's a release PR with a version
+    let pr = &opened_prs[0];
+    assert!(
+        pr.title.contains("0.1") || pr.title.contains("release"),
+        "PR title should contain version or 'release': {}",
+        pr.title
+    );
 }
 
 #[tokio::test]
@@ -732,7 +754,7 @@ publish = true
         error.contains("git_only")
             && error.contains("publish")
             && error.contains("mutually exclusive"),
-        "Expected validation error about git_only and publish being mutually exclusive, got: {error}"
+        "Expected validation error about git_only and publish being mutually exclusive, got: {error}",
     );
 }
 
