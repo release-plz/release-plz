@@ -81,7 +81,6 @@ the following sections:
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
   - [`git_only`](#the-git_only-field) — Use git tags instead of cargo registry.
-  - [`git_only_release_tag_name`](#the-git_only_release_tag_name-field) — Git-only release tag pattern.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
   - [`pr_name`](#the-pr_name-field) — Customize the name of the release Pull Request.
@@ -117,8 +116,6 @@ the following sections:
   - [`git_tag_enable`](#the-git_tag_enable-field-package-section) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field-package-section) — Customize git tag pattern.
   - [`git_only`](#the-git_only-field-package-section) — Use git tags instead of cargo registry.
-  - [`git_only_release_tag_name`](#the-git_only_release_tag_name-field-package-section)
-    — Git-only release tag pattern.
   - [`publish`](#the-publish-field-package-section) — Publish to cargo registry.
   - [`publish_allow_dirty`](#the-publish_allow_dirty-field-package-section) — Package dirty directories.
   - [`publish_no_verify`](#the-publish_no_verify-field-package-section) — Don't verify package build.
@@ -350,7 +347,7 @@ When `git_only` is enabled:
 
 - The package will not be published to any cargo registry (`cargo publish` is skipped).
 - Version detection is based on git tags matching the
-  [`git_only_release_tag_name`](#the-git_only_release_tag_name-field) pattern.
+  [`git_tag_name`](#the-git_tag_name-field) pattern.
 - If no matching tag is found, the package is treated as an initial release.
 
 :::warning
@@ -366,34 +363,6 @@ git_only = true
 
 This field can be overridden in the [`[package]`](#the-package-section) section.
 
-#### The `git_only_release_tag_name` field
-
-[Tera template](https://keats.github.io/tera/docs/#templates) pattern used to match release tags
-when [`git_only`](#the-git_only-field) mode is enabled.
-This pattern is used to find existing release tags and extract version information.
-
-By default, it's:
-
-- `"{{ package }}-v{{ version }}"` for workspaces containing more than one public package.
-- `"v{{ version }}"` for projects containing a single crate or
-  workspaces containing just one public package.
-
-Where:
-
-- `{{ package }}` is the name of the package.
-- `{{ version }}` is the version (matched as a semver pattern).
-
-Example with a custom tag format:
-
-```toml
-[workspace]
-git_only = true
-git_only_release_tag_name = "release-{{ package }}-{{ version }}"
-```
-
-This would match tags like `release-mylib-1.2.3`.
-
-This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `pr_name` field
 
@@ -839,9 +808,6 @@ Overrides the [`workspace.git_tag_name`](#the-git_tag_name-field) field.
 
 Overrides the [`workspace.git_only`](#the-git_only-field) field.
 
-#### The `git_only_release_tag_name` field (`package` section)
-
-Overrides the [`workspace.git_only_release_tag_name`](#the-git_only_release_tag_name-field) field.
 
 #### The `publish` field (`package` section)
 

@@ -232,9 +232,6 @@ impl Update {
         if let Some(git_only) = config.workspace.packages_defaults.git_only {
             update = update.with_git_only(Some(git_only));
         }
-        if let Some(tag_name) = &config.workspace.packages_defaults.git_only_release_tag_name {
-            update = update.with_git_only_release_tag_name(Some(tag_name.clone()));
-        }
         if let Some(repo) = update.repo_url()
             && let Some(git_client) = self.git_forge(repo.clone())?
         {

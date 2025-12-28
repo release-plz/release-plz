@@ -51,10 +51,6 @@ pub struct UpdateRequest {
     /// Use git tags to determine latest package release
     git_only: Option<bool>,
 
-    /// Tera template for matching release tags when `git_only` is enabled.
-    /// Supports `{{ package }}` and `{{ version }}` variables.
-    git_only_release_tag_name: Option<String>,
-
     max_analyze_commits: Option<u32>,
 }
 
@@ -76,7 +72,6 @@ impl UpdateRequest {
             release_commits: None,
             git: None,
             git_only: None,
-            git_only_release_tag_name: None,
             max_analyze_commits: None,
         })
     }
@@ -261,17 +256,8 @@ impl UpdateRequest {
         self.git_only
     }
 
-    pub fn git_only_release_tag_name(&self) -> Option<&str> {
-        self.git_only_release_tag_name.as_deref()
-    }
-
     pub fn with_git_only(mut self, git_only: Option<bool>) -> Self {
         self.git_only = git_only;
-        self
-    }
-
-    pub fn with_git_only_release_tag_name(mut self, tag_name: Option<String>) -> Self {
-        self.git_only_release_tag_name = tag_name;
         self
     }
 
@@ -289,18 +275,11 @@ impl UpdateRequest {
         self.git_only.unwrap_or(false)
     }
 
-    /// Get the `git_only` release tag name template for a specific package.
+    /// Get the release tag name template for a specific package.
     /// Package-level config overrides workspace-level config.
-    pub fn get_package_git_only_tag_name(&self, package_name: &str) -> Option<String> {
+    pub fn get_package_tag_name(&self, package_name: &str) -> Option<String> {
         let pkg_config = self.get_package_config(package_name);
-
-        // Package config takes precedence
-        if let Some(tag_name) = pkg_config.git_only_release_tag_name() {
-            return Some(tag_name.to_string());
-        }
-
-        // Fall back to workspace config
-        self.git_only_release_tag_name.clone()
+        pkg_config.generic.tag_name_template.clone()
     }
 }
 

@@ -40,7 +40,7 @@ async fn git_only_with_custom_tag_name() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_name = "release-{{ version }}-prod"
+git_tag_name = "release-{{ version }}-prod"
 "#;
     context.write_release_plz_toml(config);
 
@@ -290,7 +290,7 @@ async fn git_only_workspace_level_applies_to_all() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_name = "{{ package }}-v{{ version }}"
+git_tag_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
@@ -361,7 +361,7 @@ git_only = true
 
 [[package]]
 name = "api"
-git_only_release_tag_name = "api-v{{ version }}"
+git_tag_name = "api-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
@@ -553,7 +553,7 @@ async fn git_only_multiple_packages_changed_workspace() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_name = "{{ package }}-v{{ version }}"
+git_tag_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 

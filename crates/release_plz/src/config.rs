@@ -408,12 +408,6 @@ pub struct PackageConfig {
     /// is (i.e newest version is v0.1.3 and is associated with commit ac83762).
     /// If false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.
     pub git_only: Option<bool>,
-    /// # Git Only Release Tag Name
-    /// Tera template for matching release tags when `git_only` is enabled.
-    /// Supports `{{ package }}` and `{{ version }}` variables.
-    /// Default for single package: `v{{ version }}` (matches tags like `v1.2.3`)
-    /// Default for workspace: `{{ package }}-v{{ version }}` (matches tags like `mypackage-v1.2.3`)
-    pub git_only_release_tag_name: Option<String>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
@@ -475,7 +469,6 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
             git_only: config.git_only,
-            git_only_release_tag_name: config.git_only_release_tag_name,
         }
     }
 }
@@ -516,9 +509,6 @@ impl PackageConfig {
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
             release: self.release.or(default.release),
             git_only: self.git_only.or(default.git_only),
-            git_only_release_tag_name: self
-                .git_only_release_tag_name
-                .or(default.git_only_release_tag_name),
         }
     }
 

@@ -77,8 +77,8 @@ fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex
 
     // Render the template using the existing Tera infrastructure
     let context = tera_context(package_name, VERSION_PLACEHOLDER);
-    let rendered = render_template(template, &context, "git_only_release_tag")
-        .context("failed to render git_only_release_tag_name template")?;
+    let rendered = render_template(template, &context, "release_tag_name")
+        .context("failed to render release tag name template")?;
 
     // Escape for regex, then replace the placeholder with the version capture group
     let escaped = regex::escape(&rendered);
@@ -254,7 +254,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
 
             // Get the release tag template, falling back to default based on project structure
             let template = input
-                .get_package_git_only_tag_name(&package.name)
+                .get_package_tag_name(&package.name)
                 .unwrap_or_else(|| default_tag_name_template(is_multi_package));
 
             // get the release regex for this package
