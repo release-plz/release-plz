@@ -428,6 +428,13 @@ pub struct PackageConfig {
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
+    /// # Git Only
+    /// If true, use git tags to determine the latest version instead of the registry.
+    pub git_only: Option<bool>,
+    /// # Git Only Release Tag Name
+    /// Tera template for matching release tags when `git_only` is enabled.
+    /// Supports `{{ package }}` and `{{ version }}` variables.
+    pub git_only_release_tag_name: Option<String>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
@@ -476,13 +483,6 @@ pub struct PackageConfig {
     /// # Release
     /// Used to toggle off the update/release process for a workspace or package.
     pub release: Option<bool>,
-    /// # Git Only
-    /// If true, use git tags to determine the latest version instead of the registry.
-    pub git_only: Option<bool>,
-    /// # Git Only Release Tag Name
-    /// Tera template for matching release tags when `git_only` is enabled.
-    /// Supports `{{ package }}` and `{{ version }}` variables.
-    pub git_only_release_tag_name: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
