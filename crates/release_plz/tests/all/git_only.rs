@@ -585,16 +585,46 @@ git_only_release_tag_name = "{{ package }}-v{{ version }}"
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
 
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap();
-    // Both changed packages should be mentioned
-    assert!(
-        pr_body.contains("pkg1"),
-        "Changed package pkg1 should be in PR"
-    );
-    assert!(
-        pr_body.contains("pkg2"),
-        "Changed package pkg2 should be in PR"
-    );
+    assert_eq!(format!("
+## 🤖 New release
+
+* `pkg1`: 0.1.0 -> 0.1.1
+* `pkg2`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `pkg1`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/pkg1-v0.1.0...pkg1-v0.1.1) - {today}
+
+### Added
+
+- update pkg1 and pkg2
+</blockquote>
+
+## `pkg2`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/pkg2-v0.1.0...pkg2-v0.1.1) - {today}
+
+### Added
+
+- update pkg1 and pkg2
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).").trim(),
+   pr_body.trim());
 }
 
 #[tokio::test]
