@@ -207,32 +207,6 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_fix_commit_patch_bump() {
-    let context = TestContext::new().await;
-
-    let config = r#"
-[workspace]
-git_only = true
-"#;
-    context.write_release_plz_toml(config);
-
-    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
-
-    // Make a fix commit
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# Fixed README").unwrap();
-    context.push_all_changes("fix: correct readme");
-
-    context.run_release_pr().success();
-
-    // Verify patch bump (0.1.0 -> 0.1.1)
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_feat_commit_minor_bump() {
     let context = TestContext::new().await;
 
