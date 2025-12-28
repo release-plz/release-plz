@@ -219,6 +219,12 @@ features_always_increment_minor = true
 
     context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
 
+    let readme = context.repo_dir().join("README.md");
+
+    // Make a fix commit
+    fs_err::write(&readme, "# Fix 1").unwrap();
+    context.push_all_changes("fix: first fix");
+
     // Make a feature commit
     let new_file = context.repo_dir().join("src").join("feature.rs");
     fs_err::write(&new_file, "// New feature").unwrap();
@@ -505,44 +511,6 @@ git_only = true
     // Should use v0.1.0 (only valid tag) and bump to v0.1.1
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_multiple_commits_between_releases() {
-    let context = TestContext::new().await;
-
-    let config = r#"
-[workspace]
-git_only = true
-"#;
-    context.write_release_plz_toml(config);
-
-    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
-
-    // Make multiple commits
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# Fix 1").unwrap();
-    context.push_all_changes("fix: first fix");
-
-    fs_err::write(&readme, "# Fix 2").unwrap();
-    context.push_all_changes("fix: second fix");
-
-    let new_file = context.repo_dir().join("src").join("new.rs");
-    fs_err::write(&new_file, "// New feature").unwrap();
-    context.push_all_changes("feat: add new feature");
-
-    fs_err::write(&readme, "# Fix 3").unwrap();
-    context.push_all_changes("fix: third fix");
-
-    // Run release-pr
-    context.run_release_pr().success();
-
-    // All commits should be included in a single PR
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    // Feat commit should be included, triggering patch bump
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
 }
 
