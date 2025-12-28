@@ -168,11 +168,7 @@ git_only = true
 
     // Verify it's a release PR with a version
     let pr = &opened_prs[0];
-    assert!(
-        pr.title.contains("0.1") || pr.title.contains("release"),
-        "PR title should contain version or 'release': {}",
-        pr.title
-    );
+    assert_eq!(pr.title, "chore: release v0.1.0");
 }
 
 #[tokio::test]
