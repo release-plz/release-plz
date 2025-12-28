@@ -99,6 +99,12 @@ impl Repo {
         Ok(())
     }
 
+    pub fn disable_gpg_signing(&self) -> anyhow::Result<()> {
+        self.git(&["config", "commit.gpgsign", "false"])
+            .context("failed to disable gpg signing")?;
+        Ok(())
+    }
+
     /// Get the list of changed files.
     /// `filter` is applied for each line of `git status --porcelain`.
     /// Only changes for which `filter` returns true are returned.
