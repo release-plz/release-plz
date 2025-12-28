@@ -1,3 +1,5 @@
+use release_plz_core::fs_utils::Utf8TempDir;
+
 use crate::helpers::{test_context::TestContext, today};
 
 #[tokio::test]
@@ -813,4 +815,9 @@ publish = false
 
     // Verify the tag was created
     assert!(is_tag_created(), "Tag should exist after release");
+
+    // Verify no packages were published (since publish = false)
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context.download_package(dest_dir.path());
+    assert!(packages.is_empty());
 }
