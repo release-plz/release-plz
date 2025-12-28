@@ -19,6 +19,8 @@ impl Repo {
         git_in_dir(directory, &["add", "."]).unwrap();
         git_in_dir(directory, &["commit", "-m", "add README"]).unwrap();
         debug!("repo initialized at {:?}", directory);
-        Self::new(directory).unwrap()
+        let repo = Self::new(directory).unwrap();
+        repo.disable_gpg_signing().unwrap();
+        repo
     }
 }
