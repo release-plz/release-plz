@@ -338,7 +338,7 @@ Where:
 
 Enable git-only mode, which determines package versions from git tags instead of the cargo registry.
 
-- If `true`, release-plz will look for existing release tags in git to determine the current
+- If `true`, release-plz will look for existing git tags to determine the current
   version, rather than checking the cargo registry. This is useful for packages that are not
   published to crates.io but still need version management.
 - If `false`, release-plz uses the cargo registry to determine the current version. *(Default)*.
