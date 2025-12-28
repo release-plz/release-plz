@@ -382,10 +382,35 @@ git_only_release_tag_name = "api-v{{ version }}"
 
     let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
 
-    // Verify "api" package is in the PR (it was changed)
-    assert!(
-        pr_body.contains("api"),
-        "Changed package 'api' should be in PR"
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `api`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/api-v0.1.0...api-v0.1.1) - {today}
+
+### Added
+
+- update api
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
     );
 }
 
