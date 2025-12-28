@@ -589,7 +589,9 @@ git_only_release_tag_name = "{{ package }}-v{{ version }}"
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap();
-    assert_eq!(format!("
+    assert_eq!(
+        format!(
+            "
 ## 🤖 New release
 
 * `pkg1`: 0.1.0 -> 0.1.1
@@ -623,8 +625,11 @@ git_only_release_tag_name = "{{ package }}-v{{ version }}"
 </p></details>
 
 ---
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).").trim(),
-   pr_body.trim());
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
+    );
 }
 
 #[tokio::test]
