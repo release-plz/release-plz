@@ -1,4 +1,4 @@
-use crate::helpers::test_context::TestContext;
+use crate::helpers::{test_context::TestContext, today};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -308,10 +308,35 @@ git_only_release_tag_name = "{{ package }}-v{{ version }}"
     assert_eq!(opened_prs.len(), 1);
     let pr_body = opened_prs[0].body.as_ref().unwrap();
 
-    // Verify lib1 is mentioned (it was changed)
-    assert!(
-        pr_body.contains("lib1"),
-        "Changed package lib1 should be in PR"
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `lib1`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/lib1-v0.1.0...lib1-v0.1.1) - {today}
+
+### Added
+
+- update lib1
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
     );
 }
 
