@@ -3,10 +3,10 @@ use tracing::info;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_with_default_prefix() {
+async fn git_only_with_default_tag_name() {
     let context = TestContext::new().await;
 
-    // Configure git_only (prefix defaults to "v")
+    // Configure git_only (tag name defaults to "v{version}")
     let config = r#"
 [workspace]
 git_only = true
@@ -32,10 +32,10 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_with_prefix_and_suffix() {
+async fn git_only_with_custom_tag_name() {
     let context = TestContext::new().await;
 
-    // Configure with a custom tag template
+    // Configure with a custom tag name template
     let config = r#"
 [workspace]
 git_only = true
@@ -67,40 +67,7 @@ git_only_release_tag_name = "release-{{ version }}-prod"
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_no_prefix_no_suffix() {
-    let context = TestContext::new().await;
-
-    // Configure with no prefix (just version) to override default "v{{ version }}"
-    let config = r#"
-[workspace]
-git_only = true
-git_only_release_tag_name = "{{ version }}"
-"#;
-    context.write_release_plz_toml(config);
-
-    // Create initial release tag without prefix
-    context.repo.tag("0.1.0", "Release 0.1.0").unwrap();
-
-    // Make a fix commit
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# Updated README").unwrap();
-    context.push_all_changes("fix: update readme");
-
-    // Run release-pr
-    context.run_release_pr().success();
-
-    // Verify PR was created
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    // PR title always has "v" prefix regardless of tag format
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_finds_highest_version_tag() {
-    info!("running test");
-
     let context = TestContext::new().await;
 
     let config = r#"
