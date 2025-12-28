@@ -229,10 +229,10 @@ impl Update {
         if let Some(release_commits) = &config.workspace.release_commits {
             update = update.with_release_commits(release_commits)?;
         }
-        if let Some(git_only) = config.workspace.git_only {
+        if let Some(git_only) = config.workspace.packages_defaults.git_only {
             update = update.with_git_only(Some(git_only));
         }
-        if let Some(tag_name) = &config.workspace.git_only_release_tag_name {
+        if let Some(tag_name) = &config.workspace.packages_defaults.git_only_release_tag_name {
             update = update.with_git_only_release_tag_name(Some(tag_name.clone()));
         }
         if let Some(repo) = update.repo_url()

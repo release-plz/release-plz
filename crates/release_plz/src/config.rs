@@ -49,11 +49,7 @@ impl Config {
         update_request: UpdateRequest,
     ) -> anyhow::Result<UpdateRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        let effective_git_only = self
-            .workspace
-            .packages_defaults
-            .git_only
-            .or(self.workspace.git_only);
+        let effective_git_only = self.workspace.packages_defaults.git_only;
 
         validate_git_only_settings(effective_git_only, self.workspace.packages_defaults.publish)
             .context("wrong workspace context")?;
@@ -69,7 +65,10 @@ impl Config {
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
 
             // Effective git_only includes workspace-level setting
-            let effective_git_only = update_config.common.git_only.or(self.workspace.git_only);
+            let effective_git_only = update_config
+                .common
+                .git_only
+                .or(self.workspace.packages_defaults.git_only);
 
             validate_git_only_settings(effective_git_only, update_config.common.publish)
                 .with_context(|| format!("Wrong configuration of package {package}"))?;
@@ -102,11 +101,7 @@ impl Config {
         release_request: ReleaseRequest,
     ) -> anyhow::Result<ReleaseRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        let effective_git_only = self
-            .workspace
-            .packages_defaults
-            .git_only
-            .or(self.workspace.git_only);
+        let effective_git_only = self.workspace.packages_defaults.git_only;
         let effective_publish = self.workspace.packages_defaults.publish;
 
         if effective_git_only == Some(true) && effective_publish == Some(true) {
@@ -131,7 +126,10 @@ impl Config {
             release_config = release_config.merge(self.workspace.packages_defaults.clone());
 
             // Effective git_only includes workspace-level setting
-            let effective_git_only = release_config.common.git_only.or(self.workspace.git_only);
+            let effective_git_only = release_config
+                .common
+                .git_only
+                .or(self.workspace.packages_defaults.git_only);
             let effective_publish = release_config.common.publish;
 
             if effective_git_only == Some(true) && effective_publish == Some(true) {
@@ -220,20 +218,6 @@ pub struct Workspace {
     ///   `release-plz-`. So if you want to create a PR that should trigger a release
     ///   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).
     pub release_always: Option<bool>,
-
-    /// Use git tags for release information
-    /// Default: false
-    ///
-    /// If true, release-plz will use git tags to determine what the latest version of the package
-    /// is (i.e newest version is v0.1.3 and is associated with commit ac83762)
-    /// If false, release-plz will use crates.io release information to get the latest version
-    pub git_only: Option<bool>,
-
-    /// Tera template for matching release tags when `git_only` is enabled.
-    /// Supports `{{ package }}` and `{{ version }}` variables.
-    /// Default for single package: `v{{ version }}` (matches tags like `v1.2.3`)
-    /// Default for workspace: `{{ package }}-v{{ version }}` (matches tags like `mypackage-v1.2.3`)
-    pub git_only_release_tag_name: Option<String>,
     /// Maximum number of commits to analyze when the package hasn't been published yet.
     /// Default: 1000.
     #[serde(default = "default_max_analyze_commits")]
@@ -258,8 +242,6 @@ impl Default for Workspace {
             release_commits: None,
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
-            git_only: None,
-            git_only_release_tag_name: None,
         }
     }
 }
@@ -429,11 +411,16 @@ pub struct PackageConfig {
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
     /// # Git Only
-    /// If true, use git tags to determine the latest version instead of the registry.
+    /// Use git tags for release information.
+    /// If true, release-plz will use git tags to determine what the latest version of the package
+    /// is (i.e newest version is v0.1.3 and is associated with commit ac83762).
+    /// If false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.
     pub git_only: Option<bool>,
     /// # Git Only Release Tag Name
     /// Tera template for matching release tags when `git_only` is enabled.
     /// Supports `{{ package }}` and `{{ version }}` variables.
+    /// Default for single package: `v{{ version }}` (matches tags like `v1.2.3`)
+    /// Default for workspace: `{{ package }}-v{{ version }}` (matches tags like `mypackage-v1.2.3`)
     pub git_only_release_tag_name: Option<String>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
@@ -629,8 +616,6 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
-                git_only: None,
-                git_only_release_tag_name: None,
                 max_analyze_commits: default_max_analyze_commits(),
             },
             package: [].into(),
@@ -756,8 +741,6 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
-                git_only: None,
-                git_only_release_tag_name: None,
                 max_analyze_commits: default_max_analyze_commits(),
             },
             package: [PackageSpecificConfigWithName {
