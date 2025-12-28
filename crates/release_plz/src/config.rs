@@ -49,10 +49,8 @@ impl Config {
         update_request: UpdateRequest,
     ) -> anyhow::Result<UpdateRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        let effective_git_only = self.workspace.packages_defaults.git_only;
-
-        validate_git_only_settings(effective_git_only, self.workspace.packages_defaults.publish)
-            .context("wrong workspace context")?;
+        validate_git_only_settings(self.workspace.packages_defaults.git_only, self.workspace.packages_defaults.publish)
+            .context("Wrong workspace context")?;
 
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
@@ -101,15 +99,8 @@ impl Config {
         release_request: ReleaseRequest,
     ) -> anyhow::Result<ReleaseRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        let effective_git_only = self.workspace.packages_defaults.git_only;
-        let effective_publish = self.workspace.packages_defaults.publish;
-
-        if effective_git_only == Some(true) && effective_publish == Some(true) {
-            anyhow::bail!(
-                "Workspace config: 'git_only' and 'publish' are mutually exclusive. \
-                When git_only is enabled, publish must be explicitly set to false."
-            );
-        }
+        validate_git_only_settings(self.workspace.packages_defaults.git_only, self.workspace.packages_defaults.publish)
+            .context("Wrong workspace context")?;
 
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
@@ -130,14 +121,9 @@ impl Config {
                 .common
                 .git_only
                 .or(self.workspace.packages_defaults.git_only);
-            let effective_publish = release_config.common.publish;
 
-            if effective_git_only == Some(true) && effective_publish == Some(true) {
-                anyhow::bail!(
-                    "Package '{package}': 'git_only' and 'publish' are mutually exclusive. \
-                    When git_only is enabled, publish must be explicitly set to false."
-                );
-            }
+            validate_git_only_settings(effective_git_only, release_config.common.publish)
+                .with_context(|| format!("Wrong configuration of package {package}"))?;
 
             if no_verify {
                 release_config.common.publish_no_verify = Some(true);
