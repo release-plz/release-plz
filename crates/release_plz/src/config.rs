@@ -54,14 +54,9 @@ impl Config {
             .packages_defaults
             .git_only
             .or(self.workspace.git_only);
-        let effective_publish = self.workspace.packages_defaults.publish;
 
-        if effective_git_only == Some(true) && effective_publish == Some(true) {
-            anyhow::bail!(
-                "Workspace config: 'git_only' and 'publish' are mutually exclusive. \
-                When git_only is enabled, publish must be explicitly set to false."
-            );
-        }
+        validate_git_only_settings(effective_git_only, self.workspace.packages_defaults.publish)
+            .context("wrong workspace context")?;
 
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
@@ -75,14 +70,10 @@ impl Config {
 
             // Effective git_only includes workspace-level setting
             let effective_git_only = update_config.common.git_only.or(self.workspace.git_only);
-            let effective_publish = update_config.common.publish;
 
-            if effective_git_only == Some(true) && effective_publish == Some(true) {
-                anyhow::bail!(
-                    "Package '{package}': 'git_only' and 'publish' are mutually exclusive. \
-                    When git_only is enabled, publish must be explicitly set to false."
-                );
-            }
+            validate_git_only_settings(effective_git_only, update_config.common.publish)
+                .with_context(|| format!("Wrong configuration of package {package}"))?;
+
             if is_changelog_update_disabled {
                 update_config.common.changelog_update = false.into();
             }
@@ -161,6 +152,16 @@ impl Config {
         }
         Ok(release_request)
     }
+}
+
+fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
+    if git_only == Some(true) && publish == Some(true) {
+        anyhow::bail!(
+            "Config options 'git_only' and 'publish' are mutually exclusive. \
+            When git_only is enabled, publish must be explicitly set to false."
+        );
+    }
+    Ok(())
 }
 
 /// Config at the `[workspace]` level.
