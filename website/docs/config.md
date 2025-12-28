@@ -363,7 +363,6 @@ git_only = true
 
 This field can be overridden in the [`[package]`](#the-package-section) section.
 
-
 #### The `pr_name` field
 
 [Tera template](https://keats.github.io/tera/docs/#templates) of pull request's name that
@@ -807,7 +806,6 @@ Overrides the [`workspace.git_tag_name`](#the-git_tag_name-field) field.
 #### The `git_only` field (`package` section)
 
 Overrides the [`workspace.git_only`](#the-git_only-field) field.
-
 
 #### The `publish` field (`package` section)
 
