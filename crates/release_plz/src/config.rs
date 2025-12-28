@@ -49,8 +49,11 @@ impl Config {
         update_request: UpdateRequest,
     ) -> anyhow::Result<UpdateRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        validate_git_only_settings(self.workspace.packages_defaults.git_only, self.workspace.packages_defaults.publish)
-            .context("Wrong workspace context")?;
+        validate_git_only_settings(
+            self.workspace.packages_defaults.git_only,
+            self.workspace.packages_defaults.publish,
+        )
+        .context("Wrong workspace context")?;
 
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
@@ -99,8 +102,11 @@ impl Config {
         release_request: ReleaseRequest,
     ) -> anyhow::Result<ReleaseRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        validate_git_only_settings(self.workspace.packages_defaults.git_only, self.workspace.packages_defaults.publish)
-            .context("Wrong workspace context")?;
+        validate_git_only_settings(
+            self.workspace.packages_defaults.git_only,
+            self.workspace.packages_defaults.publish,
+        )
+        .context("Wrong workspace context")?;
 
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
