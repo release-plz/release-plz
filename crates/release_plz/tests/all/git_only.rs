@@ -1,5 +1,4 @@
 use crate::helpers::test_context::TestContext;
-use tracing::info;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
