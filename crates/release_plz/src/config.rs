@@ -67,14 +67,30 @@ impl Config {
         if is_changelog_update_disabled {
             default_update_config.changelog_update = false.into();
         }
+        // Merge workspace-level git_only settings into default config
+        if default_update_config.git_only.is_none() {
+            default_update_config.git_only = self.workspace.git_only;
+        }
+        if default_update_config.git_only_release_tag_name.is_none() {
+            default_update_config.git_only_release_tag_name =
+                self.workspace.git_only_release_tag_name.clone();
+        }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
         for (package, config) in self.packages() {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
 
-            // Effective git_only includes workspace-level setting
-            let effective_git_only = update_config.common.git_only.or(self.workspace.git_only);
+            // Merge workspace-level git_only settings into package config
+            if update_config.common.git_only.is_none() {
+                update_config.common.git_only = self.workspace.git_only;
+            }
+            if update_config.common.git_only_release_tag_name.is_none() {
+                update_config.common.git_only_release_tag_name =
+                    self.workspace.git_only_release_tag_name.clone();
+            }
+
+            let effective_git_only = update_config.common.git_only;
             let effective_publish = update_config.common.publish;
 
             if effective_git_only == Some(true) && effective_publish == Some(true) {
@@ -132,6 +148,14 @@ impl Config {
         if allow_dirty {
             default_config.publish_allow_dirty = Some(true);
         }
+        // Merge workspace-level git_only settings into default config
+        if default_config.git_only.is_none() {
+            default_config.git_only = self.workspace.git_only;
+        }
+        if default_config.git_only_release_tag_name.is_none() {
+            default_config.git_only_release_tag_name =
+                self.workspace.git_only_release_tag_name.clone();
+        }
         let mut release_request =
             release_request.with_default_package_config(default_config.into());
 
@@ -139,8 +163,16 @@ impl Config {
             let mut release_config = config.clone();
             release_config = release_config.merge(self.workspace.packages_defaults.clone());
 
-            // Effective git_only includes workspace-level setting
-            let effective_git_only = release_config.common.git_only.or(self.workspace.git_only);
+            // Merge workspace-level git_only settings into package config
+            if release_config.common.git_only.is_none() {
+                release_config.common.git_only = self.workspace.git_only;
+            }
+            if release_config.common.git_only_release_tag_name.is_none() {
+                release_config.common.git_only_release_tag_name =
+                    self.workspace.git_only_release_tag_name.clone();
+            }
+
+            let effective_git_only = release_config.common.git_only;
             let effective_publish = release_config.common.publish;
 
             if effective_git_only == Some(true) && effective_publish == Some(true) {

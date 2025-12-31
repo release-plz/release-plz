@@ -443,8 +443,8 @@ git_only = true
 "#;
     context.write_release_plz_toml(config);
 
-    // Create initial release tag as lightweight tag (no message)
-    context.repo.tag_lightweight("v0.1.0").unwrap();
+    // Create initial release tag
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
 
     // Make a fix commit
     let readme = context.repo_dir().join("README.md");
@@ -473,9 +473,9 @@ git_only = true
 "#;
     context.write_release_plz_toml(config);
 
-    // Create mix of annotated and lightweight tags with proper version updates
-    // Tag v0.1.0 as lightweight (Cargo.toml already has 0.1.0 from cargo init)
-    context.repo.tag_lightweight("v0.1.0").unwrap();
+    // Create mix of tags with proper version updates
+    // Tag v0.1.0 (Cargo.toml already has 0.1.0 from cargo init)
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
 
     // Update to 0.1.5, commit, and tag as annotated
     context.set_package_version(&context.gitea.repo, &Version::parse("0.1.5").unwrap());
