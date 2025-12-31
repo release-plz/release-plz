@@ -49,31 +49,15 @@ impl Config {
         update_request: UpdateRequest,
     ) -> anyhow::Result<UpdateRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        let effective_git_only = self
-            .workspace
-            .packages_defaults
-            .git_only
-            .or(self.workspace.git_only);
-        let effective_publish = self.workspace.packages_defaults.publish;
-
-        if effective_git_only == Some(true) && effective_publish == Some(true) {
-            anyhow::bail!(
-                "Workspace config: 'git_only' and 'publish' are mutually exclusive. \
-                When git_only is enabled, publish must be explicitly set to false."
-            );
-        }
+        validate_git_only_settings(
+            self.workspace.packages_defaults.git_only,
+            self.workspace.packages_defaults.publish,
+        )
+        .context("Wrong workspace context")?;
 
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
             default_update_config.changelog_update = false.into();
-        }
-        // Merge workspace-level git_only settings into default config
-        if default_update_config.git_only.is_none() {
-            default_update_config.git_only = self.workspace.git_only;
-        }
-        if default_update_config.git_only_release_tag_name.is_none() {
-            default_update_config.git_only_release_tag_name =
-                self.workspace.git_only_release_tag_name.clone();
         }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
@@ -81,24 +65,15 @@ impl Config {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
 
-            // Merge workspace-level git_only settings into package config
-            if update_config.common.git_only.is_none() {
-                update_config.common.git_only = self.workspace.git_only;
-            }
-            if update_config.common.git_only_release_tag_name.is_none() {
-                update_config.common.git_only_release_tag_name =
-                    self.workspace.git_only_release_tag_name.clone();
-            }
+            // Effective git_only includes workspace-level setting
+            let effective_git_only = update_config
+                .common
+                .git_only
+                .or(self.workspace.packages_defaults.git_only);
 
-            let effective_git_only = update_config.common.git_only;
-            let effective_publish = update_config.common.publish;
+            validate_git_only_settings(effective_git_only, update_config.common.publish)
+                .with_context(|| format!("Wrong configuration of package {package}"))?;
 
-            if effective_git_only == Some(true) && effective_publish == Some(true) {
-                anyhow::bail!(
-                    "Package '{package}': 'git_only' and 'publish' are mutually exclusive. \
-                    When git_only is enabled, publish must be explicitly set to false."
-                );
-            }
             if is_changelog_update_disabled {
                 update_config.common.changelog_update = false.into();
             }
@@ -127,19 +102,11 @@ impl Config {
         release_request: ReleaseRequest,
     ) -> anyhow::Result<ReleaseRequest> {
         // Validate workspace defaults (applies to all packages without specific config)
-        let effective_git_only = self
-            .workspace
-            .packages_defaults
-            .git_only
-            .or(self.workspace.git_only);
-        let effective_publish = self.workspace.packages_defaults.publish;
-
-        if effective_git_only == Some(true) && effective_publish == Some(true) {
-            anyhow::bail!(
-                "Workspace config: 'git_only' and 'publish' are mutually exclusive. \
-                When git_only is enabled, publish must be explicitly set to false."
-            );
-        }
+        validate_git_only_settings(
+            self.workspace.packages_defaults.git_only,
+            self.workspace.packages_defaults.publish,
+        )
+        .context("Wrong workspace context")?;
 
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
@@ -148,14 +115,6 @@ impl Config {
         if allow_dirty {
             default_config.publish_allow_dirty = Some(true);
         }
-        // Merge workspace-level git_only settings into default config
-        if default_config.git_only.is_none() {
-            default_config.git_only = self.workspace.git_only;
-        }
-        if default_config.git_only_release_tag_name.is_none() {
-            default_config.git_only_release_tag_name =
-                self.workspace.git_only_release_tag_name.clone();
-        }
         let mut release_request =
             release_request.with_default_package_config(default_config.into());
 
@@ -163,24 +122,14 @@ impl Config {
             let mut release_config = config.clone();
             release_config = release_config.merge(self.workspace.packages_defaults.clone());
 
-            // Merge workspace-level git_only settings into package config
-            if release_config.common.git_only.is_none() {
-                release_config.common.git_only = self.workspace.git_only;
-            }
-            if release_config.common.git_only_release_tag_name.is_none() {
-                release_config.common.git_only_release_tag_name =
-                    self.workspace.git_only_release_tag_name.clone();
-            }
+            // Effective git_only includes workspace-level setting
+            let effective_git_only = release_config
+                .common
+                .git_only
+                .or(self.workspace.packages_defaults.git_only);
 
-            let effective_git_only = release_config.common.git_only;
-            let effective_publish = release_config.common.publish;
-
-            if effective_git_only == Some(true) && effective_publish == Some(true) {
-                anyhow::bail!(
-                    "Package '{package}': 'git_only' and 'publish' are mutually exclusive. \
-                    When git_only is enabled, publish must be explicitly set to false."
-                );
-            }
+            validate_git_only_settings(effective_git_only, release_config.common.publish)
+                .with_context(|| format!("Wrong configuration of package {package}"))?;
 
             if no_verify {
                 release_config.common.publish_no_verify = Some(true);
@@ -193,6 +142,16 @@ impl Config {
         }
         Ok(release_request)
     }
+}
+
+fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
+    if git_only == Some(true) && publish == Some(true) {
+        anyhow::bail!(
+            "Config options 'git_only' and 'publish' are mutually exclusive. \
+            When git_only is enabled, publish must be explicitly set to false."
+        );
+    }
+    Ok(())
 }
 
 /// Config at the `[workspace]` level.
@@ -251,20 +210,6 @@ pub struct Workspace {
     ///   `release-plz-`. So if you want to create a PR that should trigger a release
     ///   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).
     pub release_always: Option<bool>,
-
-    /// Use git tags for release information
-    /// Default: false
-    ///
-    /// If true, release-plz will use git tags to determine what the latest version of the package
-    /// is (i.e newest version is v0.1.3 and is associated with commit ac83762)
-    /// If false, release-plz will use crates.io release information to get the latest version
-    pub git_only: Option<bool>,
-
-    /// Tera template for matching release tags when `git_only` is enabled.
-    /// Supports `{{ package }}` and `{{ version }}` variables.
-    /// Default for single package: `v{{ version }}` (matches tags like `v1.2.3`)
-    /// Default for workspace: `{{ package }}-v{{ version }}` (matches tags like `mypackage-v1.2.3`)
-    pub git_only_release_tag_name: Option<String>,
     /// Maximum number of commits to analyze when the package hasn't been published yet.
     /// Default: 1000.
     #[serde(default = "default_max_analyze_commits")]
@@ -289,8 +234,6 @@ impl Default for Workspace {
             release_commits: None,
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
-            git_only: None,
-            git_only_release_tag_name: None,
         }
     }
 }
@@ -459,6 +402,12 @@ pub struct PackageConfig {
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
+    /// # Git Only
+    /// Use git tags for release information.
+    /// If true, release-plz will use git tags to determine what the latest version of the package
+    /// is (i.e newest version is v0.1.3 and is associated with commit ac83762).
+    /// If false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.
+    pub git_only: Option<bool>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
@@ -507,13 +456,6 @@ pub struct PackageConfig {
     /// # Release
     /// Used to toggle off the update/release process for a workspace or package.
     pub release: Option<bool>,
-    /// # Git Only
-    /// If true, use git tags to determine the latest version instead of the registry.
-    pub git_only: Option<bool>,
-    /// # Git Only Release Tag Name
-    /// Tera template for matching release tags when `git_only` is enabled.
-    /// Supports `{{ package }}` and `{{ version }}` variables.
-    pub git_only_release_tag_name: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -527,7 +469,6 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
             git_only: config.git_only,
-            git_only_release_tag_name: config.git_only_release_tag_name,
         }
     }
 }
@@ -568,9 +509,6 @@ impl PackageConfig {
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
             release: self.release.or(default.release),
             git_only: self.git_only.or(default.git_only),
-            git_only_release_tag_name: self
-                .git_only_release_tag_name
-                .or(default.git_only_release_tag_name),
         }
     }
 
@@ -660,8 +598,6 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
-                git_only: None,
-                git_only_release_tag_name: None,
                 max_analyze_commits: default_max_analyze_commits(),
             },
             package: [].into(),
@@ -787,8 +723,6 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
-                git_only: None,
-                git_only_release_tag_name: None,
                 max_analyze_commits: default_max_analyze_commits(),
             },
             package: [PackageSpecificConfigWithName {

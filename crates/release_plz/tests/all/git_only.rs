@@ -1,12 +1,13 @@
-use crate::helpers::test_context::TestContext;
-use tracing::info;
+use release_plz_core::fs_utils::Utf8TempDir;
+
+use crate::helpers::{test_context::TestContext, today};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_with_default_prefix() {
+async fn git_only_with_default_tag_name() {
     let context = TestContext::new().await;
 
-    // Configure git_only (prefix defaults to "v")
+    // Configure git_only (tag name defaults to "v{version}")
     let config = r#"
 [workspace]
 git_only = true
@@ -32,14 +33,14 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_with_prefix_and_suffix() {
+async fn git_only_with_custom_tag_name() {
     let context = TestContext::new().await;
 
-    // Configure with a custom tag template
+    // Configure with a custom tag name template
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_name = "release-{{ version }}-prod"
+git_tag_name = "release-{{ version }}-prod"
 "#;
     context.write_release_plz_toml(config);
 
@@ -67,40 +68,7 @@ git_only_release_tag_name = "release-{{ version }}-prod"
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_no_prefix_no_suffix() {
-    let context = TestContext::new().await;
-
-    // Configure with no prefix (just version) to override default "v{{ version }}"
-    let config = r#"
-[workspace]
-git_only = true
-git_only_release_tag_name = "{{ version }}"
-"#;
-    context.write_release_plz_toml(config);
-
-    // Create initial release tag without prefix
-    context.repo.tag("0.1.0", "Release 0.1.0").unwrap();
-
-    // Make a fix commit
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# Updated README").unwrap();
-    context.push_all_changes("fix: update readme");
-
-    // Run release-pr
-    context.run_release_pr().success();
-
-    // Verify PR was created
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    // PR title always has "v" prefix regardless of tag format
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_finds_highest_version_tag() {
-    info!("running test");
-
     let context = TestContext::new().await;
 
     let config = r#"
@@ -202,11 +170,7 @@ git_only = true
 
     // Verify it's a release PR with a version
     let pr = &opened_prs[0];
-    assert!(
-        pr.title.contains("0.1") || pr.title.contains("release"),
-        "PR title should contain version or 'release': {}",
-        pr.title
-    );
+    assert_eq!(pr.title, "chore: release v0.1.0");
 }
 
 #[tokio::test]
@@ -240,37 +204,7 @@ git_only = true
 
     // Verify it's a release PR with a version
     let pr = &opened_prs[0];
-    assert!(
-        pr.title.contains("0.1") || pr.title.contains("release"),
-        "PR title should contain version or 'release': {}",
-        pr.title
-    );
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_fix_commit_patch_bump() {
-    let context = TestContext::new().await;
-
-    let config = r#"
-[workspace]
-git_only = true
-"#;
-    context.write_release_plz_toml(config);
-
-    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
-
-    // Make a fix commit
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# Fixed README").unwrap();
-    context.push_all_changes("fix: correct readme");
-
-    context.run_release_pr().success();
-
-    // Verify patch bump (0.1.0 -> 0.1.1)
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    assert_eq!(pr.title, "chore: release v0.1.0");
 }
 
 #[tokio::test]
@@ -286,6 +220,12 @@ features_always_increment_minor = true
     context.write_release_plz_toml(config);
 
     context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    let readme = context.repo_dir().join("README.md");
+
+    // Make a fix commit
+    fs_err::write(&readme, "# Fix 1").unwrap();
+    context.push_all_changes("fix: first fix");
 
     // Make a feature commit
     let new_file = context.repo_dir().join("src").join("feature.rs");
@@ -350,7 +290,7 @@ async fn git_only_workspace_level_applies_to_all() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_name = "{{ package }}-v{{ version }}"
+git_tag_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
@@ -376,10 +316,35 @@ git_only_release_tag_name = "{{ package }}-v{{ version }}"
     assert_eq!(opened_prs.len(), 1);
     let pr_body = opened_prs[0].body.as_ref().unwrap();
 
-    // Verify lib1 is mentioned (it was changed)
-    assert!(
-        pr_body.contains("lib1"),
-        "Changed package lib1 should be in PR"
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `lib1`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/lib1-v0.1.0...lib1-v0.1.1) - {today}
+
+### Added
+
+- update lib1
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
     );
 }
 
@@ -396,7 +361,7 @@ git_only = true
 
 [[package]]
 name = "api"
-git_only_release_tag_name = "api-v{{ version }}"
+git_tag_name = "api-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
@@ -425,10 +390,35 @@ git_only_release_tag_name = "api-v{{ version }}"
 
     let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
 
-    // Verify "api" package is in the PR (it was changed)
-    assert!(
-        pr_body.contains("api"),
-        "Changed package 'api' should be in PR"
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `api`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/api-v0.1.0...api-v0.1.1) - {today}
+
+### Added
+
+- update api
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
     );
 }
 
@@ -528,44 +518,6 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_multiple_commits_between_releases() {
-    let context = TestContext::new().await;
-
-    let config = r#"
-[workspace]
-git_only = true
-"#;
-    context.write_release_plz_toml(config);
-
-    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
-
-    // Make multiple commits
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# Fix 1").unwrap();
-    context.push_all_changes("fix: first fix");
-
-    fs_err::write(&readme, "# Fix 2").unwrap();
-    context.push_all_changes("fix: second fix");
-
-    let new_file = context.repo_dir().join("src").join("new.rs");
-    fs_err::write(&new_file, "// New feature").unwrap();
-    context.push_all_changes("feat: add new feature");
-
-    fs_err::write(&readme, "# Fix 3").unwrap();
-    context.push_all_changes("fix: third fix");
-
-    // Run release-pr
-    context.run_release_pr().success();
-
-    // All commits should be included in a single PR
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    // Feat commit should be included, triggering patch bump
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_breaking_change() {
     let context = TestContext::new().await;
 
@@ -601,7 +553,7 @@ async fn git_only_multiple_packages_changed_workspace() {
     let config = r#"
 [workspace]
 git_only = true
-git_only_release_tag_name = "{{ package }}-v{{ version }}"
+git_tag_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
@@ -635,15 +587,50 @@ git_only_release_tag_name = "{{ package }}-v{{ version }}"
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
 
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap();
-    // Both changed packages should be mentioned
-    assert!(
-        pr_body.contains("pkg1"),
-        "Changed package pkg1 should be in PR"
-    );
-    assert!(
-        pr_body.contains("pkg2"),
-        "Changed package pkg2 should be in PR"
+    assert_eq!(
+        format!(
+            "
+## 🤖 New release
+
+* `pkg1`: 0.1.0 -> 0.1.1
+* `pkg2`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `pkg1`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/pkg1-v0.1.0...pkg1-v0.1.1) - {today}
+
+### Added
+
+- update pkg1 and pkg2
+</blockquote>
+
+## `pkg2`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/pkg2-v0.1.0...pkg2-v0.1.1) - {today}
+
+### Added
+
+- update pkg1 and pkg2
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
     );
 }
 
@@ -828,4 +815,9 @@ publish = false
 
     // Verify the tag was created
     assert!(is_tag_created(), "Tag should exist after release");
+
+    // Verify no packages were published (since publish = false)
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context.download_package(dest_dir.path());
+    assert!(packages.is_empty());
 }

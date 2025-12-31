@@ -17,7 +17,7 @@ pub fn tera_var(var_name: &str) -> String {
 /// - Multi-package workspace: `{{ package }}-v{{ version }}` (e.g., `mylib-v1.2.3`)
 /// - Single package: `v{{ version }}` (e.g., `v1.2.3`)
 ///
-/// This is used as the default for both `git_tag_name` and `git_only_release_tag_name`
+/// This is used as the default for `git_tag_name`
 /// when no custom template is specified.
 pub fn default_tag_name_template(is_multi_package: bool) -> String {
     if is_multi_package {
