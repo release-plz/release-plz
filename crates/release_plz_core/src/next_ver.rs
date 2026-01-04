@@ -1,3 +1,7 @@
+use crate::command::git::{CustomRepo, CustomWorkTree};
+use crate::registry_packages::{PackagesCollection, RegistryPackage};
+use crate::tera::{default_tag_name_template, render_template, tera_context};
+use crate::tmp_repo::TempRepo;
 use crate::update_request::UpdateRequest;
 use crate::updater::Updater;
 use crate::{
@@ -8,26 +12,27 @@ use crate::{
     package_path::manifest_dir,
     registry_packages::{self},
     semver_check::SemverCheck,
-    tmp_repo::TempRepo,
 };
 use anyhow::Context;
-use cargo_metadata::TargetKind;
 use cargo_metadata::{
     Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
+use cargo_metadata::{MetadataCommand, TargetKind};
 use chrono::NaiveDate;
+use regex::Regex;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use toml_edit::TableLike;
-use tracing::{instrument, trace};
+use tracing::{debug, info, instrument, trace};
 
 // Used to indicate that this is a dummy commit with no corresponding ID available.
 // It should be at least 7 characters long to avoid a panic in git-cliff
 // (Git-cliff assumes it's a valid commit ID).
 pub(crate) const NO_COMMIT_ID: &str = "0000000";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReleaseMetadata {
     /// Template for the git tag created by release-plz.
     pub tag_name_template: Option<String>,
@@ -56,9 +61,134 @@ impl ReleaseMetadataBuilder for UpdateRequest {
     }
 }
 
+/// Build a regex from a Tera template for matching release tags.
+/// The template supports `{{ package }}` and `{{ version }}` variables.
+/// - `{{ package }}` is replaced with the escaped package name
+/// - `{{ version }}` is replaced with a semver capture group `(\d+\.\d+\.\d+)`
+///
+/// For example, template `{{ package }}-v{{ version }}` with package "mylib"
+/// becomes regex `^mylib-v(\d+\.\d+\.\d+)$`
+///
+/// NOTE: We use the existing Tera infrastructure here even though it's slightly more complex
+/// than direct string replacement. This keeps the template handling consolidated in one place.
+fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex> {
+    // Use a placeholder version that we can find and replace with the regex capture group
+    const VERSION_PLACEHOLDER: &str = "0.0.0-VERSION-PLACEHOLDER";
+
+    // Render the template using the existing Tera infrastructure
+    let context = tera_context(package_name, VERSION_PLACEHOLDER);
+    let rendered = render_template(template, &context, "release_tag_name")
+        .context("failed to render release tag name template")?;
+
+    // Escape for regex, then replace the placeholder with the version capture group
+    let escaped = regex::escape(&rendered);
+    let pattern = escaped.replace(&regex::escape(VERSION_PLACEHOLDER), r"(\d+\.\d+\.\d+)");
+
+    let full_regex = format!(r"^{pattern}$");
+    Regex::new(&full_regex).context("build release tag regex")
+}
+
+/// create a temporary worktree and its associated repo
+///
+/// if using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
+/// considered different objects with different methods so we return both. The drop order for these
+/// doesn't actually matter, because the repo will become invalid when the worktree drops. But we
+/// typically want to drop the repo first jsut to avoid the possibility of someone using an invalid
+/// repo.
+fn get_temp_worktree_and_repo(
+    original_repo: &mut CustomRepo,
+    package_name: &str,
+) -> anyhow::Result<(CustomRepo, CustomWorkTree)> {
+    // Clean up any existing worktree with this name
+    original_repo
+        .cleanup_worktree_if_exists(package_name)
+        .context("cleanup existing worktree")?;
+
+    // make a worktree for the package
+    let worktree = original_repo
+        .temp_worktree(Some(package_name), package_name)
+        .context("build worktree for package")?;
+
+    // create repo at new worktree
+    // git2 worktrees don't really contain any functionality, so we have to create a repo
+    // using that path
+    let repo = CustomRepo::open(worktree.path()).context("open repo for package")?;
+
+    Ok((repo, worktree))
+}
+
+/// run cargo publish within a worktree
+fn run_cargo_publish(worktree: &CustomWorkTree) -> anyhow::Result<()> {
+    // run cargo package so we get the proper format
+    let output = std::process::Command::new("cargo")
+        .args(["package", "--allow-dirty"])
+        .current_dir(worktree.path())
+        .output()
+        .context("run cargo package in worktree")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "cargo package failed: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+fn get_cargo_package(worktree: &CustomWorkTree, package_name: &str) -> anyhow::Result<Package> {
+    // create the package / registry package
+    let rust_package = MetadataCommand::new()
+        .manifest_path(format!(
+            "{}/Cargo.toml",
+            worktree
+                .path()
+                .to_str()
+                .context("convert worktree path to str")?
+        ))
+        .exec()
+        .context("get cargo metadata")?;
+
+    let package_details = rust_package
+        .packages
+        .iter()
+        .find(|x| x.name == package_name)
+        .ok_or(anyhow::anyhow!("Failed to find package {package_name:?}"))?;
+
+    let new_path = format!(
+        "{}/target/package/{}-{}",
+        worktree
+            .path()
+            .to_str()
+            .context("convert worktree path to str")?,
+        package_details.name,
+        package_details.version
+    );
+    info!("package for {} is at {}", package_name, new_path);
+
+    // create the package
+    let single_package_meta = MetadataCommand::new()
+        .manifest_path(format!("{new_path}/Cargo.toml"))
+        .exec()
+        .context("get cargo metadata")?;
+
+    // get the package details
+    let single_package = single_package_meta
+        .workspace_packages()
+        .into_iter()
+        .find(|p| p.name == package_name)
+        .ok_or(anyhow::Error::msg("Couldn't find the package"))?
+        .clone();
+
+    Ok(single_package)
+}
+
 /// Determine next version of packages
+/// Any packages that will be updated will be returned, alongside whether we update the workspace
+/// The temp repository is an isolated copy used for git operations
 #[instrument(skip_all)]
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
+    info!("determining next version");
     let overrides = input.packages_config().overridden_packages();
     let local_project = Project::new(
         input.local_manifest(),
@@ -71,15 +201,166 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         project: &local_project,
         req: input,
     };
-    // Retrieve the latest published version of the packages.
-    // Release-plz will compare the registry packages with the local packages,
-    // to determine the new commits.
-    let registry_packages = registry_packages::get_registry_packages(
-        input.registry_manifest(),
-        &local_project.publishable_packages(),
-        input.registry(),
-    )?;
 
+    // Separate packages based on per-package git_only configuration
+    let workspace_packages = input.cargo_metadata().workspace_packages();
+    let mut git_only_packages = Vec::new();
+    let mut registry_packages_list = Vec::new();
+
+    for package in &workspace_packages {
+        if input.should_use_git_only(&package.name) {
+            git_only_packages.push(*package);
+        } else {
+            registry_packages_list.push(*package);
+        }
+    }
+
+    // We'll collect all packages packages we'll be updating in a single map
+    let mut all_packages: BTreeMap<String, RegistryPackage> = BTreeMap::new();
+
+    // SAFETY: We need to prevent the worktrees from being dropped because their Drop
+    // implementation cleans up the worktrees.
+    //
+    // See the note on the custom worktree Drop impl for more details
+    let mut worktrees: Vec<CustomWorkTree> = Vec::new();
+
+    // Initialize registry_packages - will be populated if we download from registry
+    let mut registry_packages = PackagesCollection::default();
+
+    // Process git_only packages
+    if !git_only_packages.is_empty() {
+        debug!(
+            "Processing {} packages in git_only mode",
+            git_only_packages.len()
+        );
+
+        // Determine if this is a multi-package workspace for default template
+        let is_multi_package = local_project.publishable_packages().len() > 1;
+
+        // create the repo we'll be spinning worktrees from
+        let mut unreleased_project_repo = CustomRepo::open(
+            input
+                .local_manifest_dir()
+                .context("get local manifest dir")?,
+        )
+        .context("create unreleased repo for spinning worktrees")?;
+
+        for package in git_only_packages {
+            // enter a new span for each package, just for clarity and avoiding needing to pollute
+            // all of our logs with the package name
+            let ispan = tracing::info_span!("git_only_package");
+            let _enter = ispan.enter();
+            ispan.record("package_name", package.name.to_string());
+
+            // Get the release tag template, falling back to default based on project structure
+            let template = input
+                .get_package_tag_name(&package.name)
+                .unwrap_or_else(|| default_tag_name_template(is_multi_package));
+
+            // get the release regex for this package
+            let release_regex =
+                get_release_regex(&template, &package.name).context("get release regex")?;
+            info!(
+                "looking for tags matching pattern: {}",
+                release_regex.to_string()
+            );
+
+            // get the temporary worktree and repo that we run cargo package in
+            let (mut repo, worktree) =
+                get_temp_worktree_and_repo(&mut unreleased_project_repo, &package.name)
+                    .context("get worktree and repo for package")?;
+
+            let Some((release_tag, version)) = repo
+                .get_release_tag(&release_regex, &package.name)
+                .context("get release tag")?
+            else {
+                info!(
+                    "No release tag found for package `{}` matching pattern `{}`. \
+                     Package will be treated as initial release.",
+                    package.name, release_regex
+                );
+                continue;
+            };
+
+            info!("using tag `{}` (version {})", release_tag, version);
+
+            // get the commit associated with the release tag
+            let release_commit = repo
+                .get_tag_commit(&release_tag)
+                .context("get release tag commit")?;
+
+            // checkout that commit in the worktree
+            repo.checkout_commit(&release_commit)
+                .context("checkout release commit for package")?;
+
+            // run cargo publish so we have our finalized package
+            run_cargo_publish(&worktree).context("run cargo publish")?;
+
+            // get the package
+            let single_package = get_cargo_package(&worktree, &package.name)
+                .context("get cargo package from worktree")?;
+
+            // add it to the B Tree map
+            all_packages.insert(
+                single_package.name.to_string(),
+                RegistryPackage::new(single_package, Some(release_commit)),
+            );
+
+            // SEE SAFETY NOTE ABOVE
+            worktrees.push(worktree);
+        }
+    }
+
+    // Process non-git_only packages (download from registry)
+    if !registry_packages_list.is_empty() {
+        debug!(
+            "Processing {} packages from registry",
+            registry_packages_list.len()
+        );
+
+        // Filter to only publishable packages for registry download
+        let publishable_registry_packages: Vec<&Package> = registry_packages_list
+            .into_iter()
+            .filter(|p| {
+                local_project
+                    .publishable_packages()
+                    .iter()
+                    .any(|pub_pkg| pub_pkg.name == p.name)
+            })
+            .collect();
+
+        if !publishable_registry_packages.is_empty() {
+            // Retrieve the latest published version of the packages.
+            // Release-plz will compare the registry packages with the local packages,
+            // to determine the new commits.
+            registry_packages = registry_packages::get_registry_packages(
+                input.registry_manifest(),
+                &publishable_registry_packages,
+                input.registry(),
+            )?;
+
+            // Merge registry packages into all_packages
+            // We need to extract the packages from PackagesCollection
+            for package_name in publishable_registry_packages.iter().map(|p| &p.name) {
+                if let Some(reg_pkg) = registry_packages.get_registry_package(package_name) {
+                    all_packages.insert(
+                        package_name.to_string(),
+                        RegistryPackage::new(
+                            reg_pkg.package.clone(),
+                            reg_pkg.published_at_sha1().map(|s| s.to_string()),
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    // SAFETY: We have to reuse registry_packages here instead of instantiating a new object
+    // because otherwise the temp dir contained within it gets dropped and cleaned up.
+    let release_packages = registry_packages.with_packages(all_packages);
+
+    // Create a temporary isolated repository for git operations.
+    // This ensures that git checkouts and other operations don't affect the user's working directory.
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
@@ -100,7 +381,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         ])?;
     }
     let packages_to_update = updater
-        .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
+        .packages_to_update(&release_packages, &repository.repo, input.local_manifest())
         .await?;
     Ok((packages_to_update, repository))
 }
@@ -217,4 +498,75 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
         .get("path")
         .and_then(|i| i.as_str())
         .and_then(|relpath| dunce::canonicalize(package_dir.join(relpath)).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_regex_version_only_template() {
+        let regex = get_release_regex("v{{ version }}", "ignored").unwrap();
+
+        // Matches valid tags
+        assert!(regex.is_match("v1.2.3"));
+        assert!(regex.is_match("v0.0.1"));
+
+        // Rejects invalid formats
+        assert!(!regex.is_match("1.2.3")); // missing v
+        assert!(!regex.is_match("v1.2")); // incomplete semver
+        assert!(!regex.is_match("v1.2.3.4")); // too many parts
+
+        // Captures version correctly
+        let captures = regex.captures("v1.2.3").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "1.2.3");
+    }
+
+    #[test]
+    fn release_regex_package_and_version_template() {
+        let regex = get_release_regex("{{ package }}-v{{ version }}", "mylib").unwrap();
+
+        // Matches correct package
+        assert!(regex.is_match("mylib-v1.2.3"));
+
+        // Rejects wrong package or format
+        assert!(!regex.is_match("otherlib-v1.2.3"));
+        assert!(!regex.is_match("mylib-1.2.3")); // missing v
+        assert!(!regex.is_match("v1.2.3")); // missing package
+
+        // Captures version correctly
+        let captures = regex.captures("mylib-v4.5.6").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "4.5.6");
+    }
+
+    #[test]
+    fn release_regex_custom_template() {
+        let regex = get_release_regex("release-{{ version }}-prod", "ignored").unwrap();
+
+        // Matches custom format
+        assert!(regex.is_match("release-1.2.3-prod"));
+
+        // Rejects partial matches
+        assert!(!regex.is_match("release-1.2.3"));
+        assert!(!regex.is_match("v1.2.3"));
+
+        // Captures version correctly
+        let captures = regex.captures("release-0.1.0-prod").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "0.1.0");
+    }
+
+    #[test]
+    fn release_regex_escapes_special_chars_in_package_name() {
+        let regex = get_release_regex("{{ package }}-v{{ version }}", "my.package").unwrap();
+
+        // Dot is literal, not "any char"
+        assert!(regex.is_match("my.package-v1.2.3"));
+        assert!(!regex.is_match("myXpackage-v1.2.3"));
+    }
+
+    #[test]
+    fn release_regex_invalid_tera_syntax() {
+        let result = get_release_regex("{{ invalid syntax", "mylib");
+        assert!(result.is_err());
+    }
 }
