@@ -101,7 +101,9 @@ impl Repo {
 
     pub fn disable_gpg_signing(&self) -> anyhow::Result<()> {
         self.git(&["config", "commit.gpgsign", "false"])
-            .context("failed to disable gpg signing")?;
+            .context("failed to disable commit gpg signing")?;
+        self.git(&["config", "tag.gpgsign", "false"])
+            .context("failed to disable tag gpg signing")?;
         Ok(())
     }
 
