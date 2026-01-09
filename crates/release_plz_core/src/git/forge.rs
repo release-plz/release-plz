@@ -306,6 +306,40 @@ impl GitClient {
         }
     }
 
+    /// Checks if a release with the given tag already exists.
+    pub async fn release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        match self.forge {
+            ForgeType::Github | ForgeType::Gitea => self.github_release_exists(tag_name).await,
+            ForgeType::Gitlab => self.gitlab_release_exists(tag_name).await,
+        }
+    }
+
+    async fn github_release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        let url = format!("{}/releases/tags/{}", self.repo_url(), tag_name);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                anyhow::bail!("Unexpected status code when checking release: {status}")
+            }
+        }
+    }
+
+    async fn gitlab_release_exists(&self, tag_name: &str) -> anyhow::Result<bool> {
+        let url = format!("{}/releases/{}", self.remote.base_url, tag_name);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                anyhow::bail!("Unexpected status code when checking release: {status}")
+            }
+        }
+    }
+
     /// Creates a GitHub/Gitea release.
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         match self.forge {
@@ -909,14 +943,15 @@ impl GitClient {
         match self.forge {
             ForgeType::Github => {
                 self.post_github_ref(&format!("refs/heads/{branch_name}"), sha)
-                    .await
+                    .await?;
+                Ok(())
             }
             ForgeType::Gitlab => self.post_gitlab_branch(branch_name, sha).await,
             ForgeType::Gitea => self.post_gitea_branch(branch_name, sha).await,
         }
     }
 
-    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<bool> {
         let response = self
             .client
             .post(format!("{}/git/refs", self.repo_url()))
@@ -927,14 +962,29 @@ impl GitClient {
             .send()
             .await?;
 
-        // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
-        // only exists locally (i.e. it has not been pushed to the remote).
+        // Handle 409 Conflict - ref already exists
+        if response.status() == StatusCode::CONFLICT {
+            // Verify the existing ref points to the expected SHA
+            return self.verify_github_ref_sha(ref_name, sha).await;
+        }
+
+        // GitHub returns 422 (Unprocessable Entity) for two different cases:
+        // 1. The commit SHA doesn't exist on the remote (hasn't been pushed)
+        // 2. The ref already exists (e.g., "Reference already exists")
         if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-            // Try to capture the body for extra diagnostics.
+            // Capture the body to determine which case this is
             let body = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "<failed to read response body>".to_string());
+
+            // Check if this is a "ref already exists" error (idempotent case)
+            if body.contains("already exists") {
+                // Verify the existing ref points to the expected SHA
+                return self.verify_github_ref_sha(ref_name, sha).await;
+            }
+
+            // Otherwise, this is likely a missing commit error
             anyhow::bail!(
                 "failed to create ref {ref_name} with sha {sha}. \
 The commit {sha} likely hasn't been pushed to the remote repository yet. \
@@ -946,7 +996,79 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
             .successful_status()
             .await
             .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;
-        Ok(())
+        Ok(true) // Successfully created
+    }
+
+    /// Fetches the SHA and type that a GitHub ref points to.
+    /// Returns (sha, type) where type is "commit", "tag", "tree", or "blob".
+    async fn get_github_ref_sha_and_type(
+        &self,
+        ref_name: &str,
+    ) -> anyhow::Result<(String, String)> {
+        let response = self
+            .client
+            .get(format!("{}/git/{}", self.repo_url(), ref_name))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to fetch ref {ref_name}"))?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        let object = json
+            .get("object")
+            .with_context(|| format!("missing 'object' in ref {ref_name} response"))?;
+
+        let sha = object
+            .get("sha")
+            .and_then(|s| s.as_str())
+            .with_context(|| format!("failed to extract SHA from ref {ref_name} response"))?;
+
+        let obj_type = object
+            .get("type")
+            .and_then(|t| t.as_str())
+            .with_context(|| format!("failed to extract type from ref {ref_name} response"))?;
+
+        Ok((sha.to_string(), obj_type.to_string()))
+    }
+
+    /// Fetches the SHA that a GitHub ref points to.
+    async fn get_github_ref_sha(&self, ref_name: &str) -> anyhow::Result<String> {
+        let (sha, _type) = self.get_github_ref_sha_and_type(ref_name).await?;
+        Ok(sha)
+    }
+
+    /// Common verification logic for checking if a ref/tag points to the expected SHA.
+    /// Returns Ok(false) if SHA matches (idempotent success).
+    /// Returns Err if SHA differs (version conflict).
+    fn verify_sha_match(
+        ref_name: &str,
+        expected_sha: &str,
+        actual_sha: &str,
+        forge_name: &str,
+    ) -> anyhow::Result<bool> {
+        if actual_sha == expected_sha {
+            // Ref/tag exists and points to the correct commit - idempotent success
+            Ok(false)
+        } else {
+            // Ref/tag exists but points to a different commit - version conflict
+            anyhow::bail!(
+                "{forge_name} ref/tag {ref_name} already exists but points to a different commit. \
+                 Expected: {expected_sha}, Actual: {actual_sha}. This indicates a version conflict."
+            )
+        }
+    }
+
+    /// Verifies that an existing GitHub ref points to the expected SHA.
+    /// Returns Ok(false) if the ref exists at the correct SHA (idempotent success).
+    /// Returns Err if the ref points to a different SHA (version conflict).
+    async fn verify_github_ref_sha(
+        &self,
+        ref_name: &str,
+        expected_sha: &str,
+    ) -> anyhow::Result<bool> {
+        let actual_sha = self.get_github_ref_sha(ref_name).await?;
+        Self::verify_sha_match(ref_name, expected_sha, &actual_sha, "GitHub")
     }
 
     async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
@@ -1020,12 +1142,13 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
     }
 
     /// Creates an annotated tag.
+    /// Returns `Ok(true)` if the tag was created, `Ok(false)` if it already existed.
     pub async fn create_tag(
         &self,
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<bool, anyhow::Error> {
         match self.forge {
             ForgeType::Github => self.create_github_tag(tag_name, message, sha).await,
             ForgeType::Gitlab => self.create_gitlab_tag(tag_name, message, sha).await,
@@ -1038,30 +1161,76 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
-        let tag_object_sha = self
-            .client
-            .post(format!("{}/git/tags", self.repo_url()))
-            .json(&json!({
-                "tag": tag_name,
-                "message": message,
-                "object": sha,
-                "type": "commit"
-            }))
-            .send()
-            .await?
-            .successful_status()
-            .await?
-            .json::<serde_json::Value>()
-            .await?
-            .get("sha")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .with_context(|| {
-                format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
-            })?;
-        self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
-            .await
+    ) -> Result<bool, anyhow::Error> {
+        let ref_name = format!("refs/tags/{tag_name}");
+
+        // Check if tag already exists to avoid creating duplicate tag objects with different timestamps
+        match self.get_github_ref_sha_and_type(&ref_name).await {
+            Ok((existing_sha, obj_type)) => {
+                // Tag exists - verify it points to the correct commit
+                if obj_type == "commit" {
+                    // Lightweight tag: ref points directly to commit, verify directly
+                    Self::verify_sha_match(&ref_name, sha, &existing_sha, "GitHub")
+                } else if obj_type == "tag" {
+                    // Annotated tag: ref points to tag object, need to fetch it to get commit
+                    let tag_object = self
+                        .client
+                        .get(format!("{}/git/tags/{}", self.repo_url(), existing_sha))
+                        .send()
+                        .await?
+                        .successful_status()
+                        .await
+                        .with_context(|| {
+                            format!("failed to fetch existing tag object {existing_sha}")
+                        })?
+                        .json::<serde_json::Value>()
+                        .await?;
+
+                    let commit_sha = tag_object
+                        .get("object")
+                        .and_then(|obj| obj.get("sha"))
+                        .and_then(|s| s.as_str())
+                        .with_context(|| {
+                            "failed to extract commit SHA from tag object".to_string()
+                        })?;
+
+                    Self::verify_sha_match(&ref_name, sha, commit_sha, "GitHub")
+                } else {
+                    // Unexpected type (tree, blob)
+                    anyhow::bail!(
+                        "Tag {ref_name} points to unexpected object type '{obj_type}' (expected 'commit' or 'tag')"
+                    )
+                }
+            }
+            Err(_) => {
+                // Tag doesn't exist - create it
+                // First, create the tag object (annotated tag)
+                let tag_object_sha = self
+                    .client
+                    .post(format!("{}/git/tags", self.repo_url()))
+                    .json(&json!({
+                        "tag": tag_name,
+                        "message": message,
+                        "object": sha,
+                        "type": "commit"
+                    }))
+                    .send()
+                    .await?
+                    .successful_status()
+                    .await?
+                    .json::<serde_json::Value>()
+                    .await?
+                    .get("sha")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .with_context(|| {
+                        format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
+                    })?;
+
+                // Then, create the ref pointing to the tag object
+                self.post_github_ref(&ref_name, &tag_object_sha).await
+            }
+        }
     }
 
     async fn create_gitlab_tag(
@@ -1069,8 +1238,9 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
-        self.client
+    ) -> Result<bool, anyhow::Error> {
+        let response = self
+            .client
             .post(format!("{}/repository/tags", self.repo_url()))
             .json(&json!({
                 "tag_name": tag_name,
@@ -1078,11 +1248,54 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
                 "message": message
             }))
             .send()
-            .await?
+            .await?;
+
+        // Handle 409 Conflict - tag already exists
+        if response.status() == StatusCode::CONFLICT {
+            // Verify the existing tag points to the expected SHA
+            return self.verify_gitlab_tag_sha(tag_name, sha).await;
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
-        Ok(())
+        Ok(true) // Successfully created
+    }
+
+    /// Fetches the SHA that a GitLab tag points to.
+    async fn get_gitlab_tag_sha(&self, tag_name: &str) -> anyhow::Result<String> {
+        let response = self
+            .client
+            .get(format!("{}/repository/tags/{}", self.repo_url(), tag_name))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to fetch GitLab tag {tag_name}"))?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        let sha = json
+            .get("commit")
+            .and_then(|commit| commit.get("id"))
+            .and_then(|id| id.as_str())
+            .with_context(|| {
+                format!("failed to extract SHA from GitLab tag {tag_name} response")
+            })?;
+
+        Ok(sha.to_string())
+    }
+
+    /// Verifies that an existing GitLab tag points to the expected SHA.
+    /// Returns Ok(false) if the tag exists at the correct SHA (idempotent success).
+    /// Returns Err if the tag points to a different SHA (version conflict).
+    async fn verify_gitlab_tag_sha(
+        &self,
+        tag_name: &str,
+        expected_sha: &str,
+    ) -> anyhow::Result<bool> {
+        let actual_sha = self.get_gitlab_tag_sha(tag_name).await?;
+        Self::verify_sha_match(tag_name, expected_sha, &actual_sha, "GitLab")
     }
 
     async fn create_gitea_tag(
@@ -1090,8 +1303,9 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
         tag_name: &str,
         message: &str,
         sha: &str,
-    ) -> Result<(), anyhow::Error> {
-        self.client
+    ) -> Result<bool, anyhow::Error> {
+        let response = self
+            .client
             .post(format!("{}/tags", self.repo_url()))
             .json(&json!({
                 "tag_name": tag_name,
@@ -1099,11 +1313,52 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
                 "message": message
             }))
             .send()
-            .await?
+            .await?;
+
+        // Handle 409 Conflict - tag already exists
+        if response.status() == StatusCode::CONFLICT {
+            // Verify the existing tag points to the expected SHA
+            return self.verify_gitea_tag_sha(tag_name, sha).await;
+        }
+
+        response
             .successful_status()
             .await
             .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
-        Ok(())
+        Ok(true) // Successfully created
+    }
+
+    /// Fetches the SHA that a Gitea tag points to.
+    async fn get_gitea_tag_sha(&self, tag_name: &str) -> anyhow::Result<String> {
+        let response = self
+            .client
+            .get(format!("{}/tags/{}", self.repo_url(), tag_name))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to fetch Gitea tag {tag_name}"))?;
+
+        let json = response.json::<serde_json::Value>().await?;
+        let sha = json
+            .get("commit")
+            .and_then(|commit| commit.get("sha"))
+            .and_then(|s| s.as_str())
+            .with_context(|| format!("failed to extract SHA from Gitea tag {tag_name} response"))?;
+
+        Ok(sha.to_string())
+    }
+
+    /// Verifies that an existing Gitea tag points to the expected SHA.
+    /// Returns Ok(false) if the tag exists at the correct SHA (idempotent success).
+    /// Returns Err if the tag points to a different SHA (version conflict).
+    async fn verify_gitea_tag_sha(
+        &self,
+        tag_name: &str,
+        expected_sha: &str,
+    ) -> anyhow::Result<bool> {
+        let actual_sha = self.get_gitea_tag_sha(tag_name).await?;
+        Self::verify_sha_match(tag_name, expected_sha, &actual_sha, "Gitea")
     }
 }
 
@@ -1216,5 +1471,75 @@ mod tests {
         ];
         let contributors = contributors_from_commits(&commits, ForgeType::Gitea);
         assert_eq!(contributors, vec!["marco"]);
+    }
+
+    #[test]
+    fn test_verify_sha_match_when_shas_equal() {
+        let ref_name = "refs/tags/v1.0.0";
+        let sha = "abc123def456";
+
+        let result = GitClient::verify_sha_match(ref_name, sha, sha, "GitHub");
+
+        assert!(result.is_ok(), "Should succeed when SHAs match");
+        assert!(
+            !result.unwrap(),
+            "Should return false (ref already existed, not created)"
+        );
+    }
+
+    #[test]
+    fn test_verify_sha_match_when_shas_differ() {
+        let ref_name = "refs/tags/v1.0.0";
+        let expected_sha = "abc123def456";
+        let actual_sha = "xyz789different";
+
+        let result = GitClient::verify_sha_match(ref_name, expected_sha, actual_sha, "GitHub");
+
+        assert!(result.is_err(), "Should error when SHAs differ");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("version conflict"),
+            "Error should mention version conflict"
+        );
+        assert!(
+            err_msg.contains(expected_sha),
+            "Error should show expected SHA"
+        );
+        assert!(err_msg.contains(actual_sha), "Error should show actual SHA");
+    }
+
+    #[test]
+    fn test_verify_sha_match_is_forge_agnostic() {
+        let ref_name = "refs/tags/v1.0.0";
+        let sha = "abc123def456";
+
+        // Test all three forge types use same logic and behave identically
+        let github_result = GitClient::verify_sha_match(ref_name, sha, sha, "GitHub");
+        let gitlab_result = GitClient::verify_sha_match(ref_name, sha, sha, "GitLab");
+        let gitea_result = GitClient::verify_sha_match(ref_name, sha, sha, "Gitea");
+
+        // All should succeed with identical results
+        assert!(
+            !github_result.unwrap(),
+            "GitHub should return false (idempotent)"
+        );
+        assert!(
+            !gitlab_result.unwrap(),
+            "GitLab should return false (idempotent)"
+        );
+        assert!(
+            !gitea_result.unwrap(),
+            "Gitea should return false (idempotent)"
+        );
+
+        // Test error case - all forges should error identically
+        let different_sha = "xyz789different";
+        let github_err = GitClient::verify_sha_match(ref_name, sha, different_sha, "GitHub");
+        let gitlab_err = GitClient::verify_sha_match(ref_name, sha, different_sha, "GitLab");
+        let gitea_err = GitClient::verify_sha_match(ref_name, sha, different_sha, "Gitea");
+
+        assert!(github_err.is_err(), "GitHub should error on SHA mismatch");
+        assert!(gitlab_err.is_err(), "GitLab should error on SHA mismatch");
+        assert!(gitea_err.is_err(), "Gitea should error on SHA mismatch");
     }
 }
