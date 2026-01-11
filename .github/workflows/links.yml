@@ -27,8 +27,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           fail: true
+          # remap is a workaround for github fragments
           args: |
             --no-progress
             --include-fragments
             --accept '100..=103, 200..=299, 429'
+            --remap "https://github.com/(.*?)/(.*?)/blob/(.*?)/(.*#.*)$ https://raw.githubusercontent.com/$1/$2/$3/$4"
             .
