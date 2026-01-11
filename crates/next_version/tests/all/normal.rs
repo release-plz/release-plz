@@ -122,6 +122,21 @@ fn non_conventional_commit_with_custom_major_increment_regex_increments_major_ve
 }
 
 #[test]
+fn conventional_commit_with_matching_description_does_not_trigger_custom_regex() {
+    // The word "minor" appears in the description, but not in the type
+    // For conventional commits, only the type should be checked
+    let commits = ["fix: a minor bug"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_minor_increment_regex("minor")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4) // Patch, not minor
+    );
+}
+
+#[test]
 fn commit_with_scope() {
     let commits = ["feat(my_scope)!: this is a test commit"];
     let version = Version::new(1, 0, 0);
