@@ -88,7 +88,7 @@ fn commit_with_custom_minor_increment_regex_increments_minor_version() {
     let version = Version::new(1, 2, 3);
     assert_eq!(
         VersionUpdater::new()
-            .with_custom_minor_increment_regex("minor")
+            .with_custom_minor_increment_regex("^minor")
             .unwrap()
             .increment(&version, commits),
         Version::new(1, 3, 0)
