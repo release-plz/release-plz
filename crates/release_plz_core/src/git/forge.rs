@@ -442,12 +442,17 @@ impl GitClient {
     }
 
     async fn opened_prs_page(&self, page: i32, page_size: usize) -> anyhow::Result<Vec<GitPr>> {
+        let mut url = Url::parse(&self.pulls_url()).context("invalid pulls URL")?;
+        {
+            let mut qp = url.query_pairs_mut();
+            qp.append_pair("state", self.param_value_pr_state_open());
+            qp.append_pair("page", &page.to_string());
+            qp.append_pair(self.per_page(), &page_size.to_string());
+        }
+
         let resp = self
             .client
-            .get(self.pulls_url())
-            .query(&[("state", self.param_value_pr_state_open())])
-            .query(&[("page", page)])
-            .query(&[(self.per_page(), page_size)])
+            .get(url)
             .send()
             .await?
             .successful_status()
