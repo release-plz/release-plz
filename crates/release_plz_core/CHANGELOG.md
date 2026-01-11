@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.8](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.7...release_plz_core-v0.36.8) - 2026-01-11
+
+### Other
+
+- update to reqwest 0.13 ([#2570](https://github.com/release-plz/release-plz/pull/2570))
+- update git-cliff to version 2.11 ([#2537](https://github.com/release-plz/release-plz/pull/2537))
+
 ## [0.36.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.6...release_plz_core-v0.36.7) - 2025-12-05
 
 ### Other
