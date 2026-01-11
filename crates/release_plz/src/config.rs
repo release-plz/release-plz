@@ -407,6 +407,10 @@ pub struct PackageConfig {
     /// # Release
     /// Used to toggle off the update/release process for a workspace or package.
     pub release: Option<bool>,
+    /// # Custom Minor Increment Regex
+    /// Custom regex to match commit types that should trigger a minor version increment.
+    /// Useful when using non-conventional commit prefixes.
+    pub custom_minor_increment_regex: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -419,6 +423,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
+            custom_minor_increment_regex: config.custom_minor_increment_regex,
         }
     }
 }
@@ -458,6 +463,9 @@ impl PackageConfig {
             git_tag_enable: self.git_tag_enable.or(default.git_tag_enable),
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
             release: self.release.or(default.release),
+            custom_minor_increment_regex: self
+                .custom_minor_increment_regex
+                .or(default.custom_minor_increment_regex),
         }
     }
 
@@ -812,5 +820,34 @@ unknown = false"#;
             parse_duration("-30s").unwrap_err().to_string(),
             "invalid duration number"
         );
+    }
+
+    #[test]
+    fn custom_minor_increment_regex_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            custom_minor_increment_regex = \"minor|enhancement\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config
+            .workspace
+            .packages_defaults
+            .custom_minor_increment_regex = Some("minor|enhancement".to_string());
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn custom_minor_increment_regex_is_serialized() {
+        let mut config = create_base_workspace_config();
+        config
+            .workspace
+            .packages_defaults
+            .custom_minor_increment_regex = Some("minor|enhancement".to_string());
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
     }
 }
