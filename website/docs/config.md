@@ -214,7 +214,8 @@ control which commits bump the minor version.
 
 - If the commit message is a conventional commit, the regex is matched against the commit type
   (the part before the `:` in a commit message).
-- If the commit message is not a conventional commit, the regex is matched against the entire commit message.
+- If the commit message is not a conventional commit, the regex is matched against the entire commit
+  message.
 
 Example:
 
