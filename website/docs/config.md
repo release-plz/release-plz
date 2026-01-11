@@ -223,7 +223,7 @@ The supported git releases are:
 
 - [GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
 - [Gitea](https://docs.gitea.io/en-us/)
-- [GitLab](https://docs.gitlab.com/ee/user/project/releases/#releases)
+- [GitLab](https://docs.gitlab.com/ee/user/project/releases/)
 
 #### The `git_release_name` field
 
