@@ -1,6 +1,7 @@
 name: Links
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -29,6 +30,4 @@ jobs:
           fail: true
           args: |
             --no-progress
-            --include-fragments
-            --accept '100..=103, 200..=299, 429'
             .
