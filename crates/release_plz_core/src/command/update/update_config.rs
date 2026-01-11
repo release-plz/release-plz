@@ -23,6 +23,8 @@ pub struct UpdateConfig {
     pub features_always_increment_minor: bool,
     /// Template for the git tag created by release-plz.
     pub tag_name_template: Option<String>,
+    /// Whether to use git tags instead of registry for determining package versions.
+    pub git_only: Option<bool>,
 }
 
 /// Package-specific config
@@ -58,6 +60,10 @@ impl PackageUpdateConfig {
     pub fn should_publish(&self) -> bool {
         self.generic.publish
     }
+
+    pub fn git_only(&self) -> Option<bool> {
+        self.generic.git_only
+    }
 }
 
 impl Default for UpdateConfig {
@@ -68,6 +74,7 @@ impl Default for UpdateConfig {
             release: true,
             publish: true,
             features_always_increment_minor: false,
+            git_only: None,
             tag_name_template: None,
             changelog_path: None,
         }

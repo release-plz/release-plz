@@ -297,9 +297,14 @@ impl Repo {
             .context("can't determine current commit hash")
     }
 
-    /// Create a git tag
+    /// Create a git tag (annotated)
     pub fn tag(&self, name: &str, message: &str) -> anyhow::Result<String> {
         self.git(&["tag", "-m", message, name])
+    }
+
+    /// Create a lightweight git tag (no message, just a reference to a commit)
+    pub fn tag_lightweight(&self, name: &str) -> anyhow::Result<String> {
+        self.git(&["tag", name])
     }
 
     /// Get the commit hash of the given tag
