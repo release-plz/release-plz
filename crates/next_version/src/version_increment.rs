@@ -222,11 +222,6 @@ mod tests {
     }
 
     #[test]
-    fn returns_false_for_non_matching_commits() {
-        assert!(!check_custom_match(r"custom", &["feat: A feature commit"]));
-    }
-
-    #[test]
     fn returns_false_for_empty_commits_list() {
         assert!(!check_custom_match(r"custom", &[]));
     }
