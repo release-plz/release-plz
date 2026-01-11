@@ -70,6 +70,7 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
+    "RUSTSEC-2025-0141",
     "RUSTSEC-2025-0140",
     "RUSTSEC-2024-0370",
 ]
