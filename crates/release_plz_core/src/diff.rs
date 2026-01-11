@@ -64,7 +64,7 @@ impl Diff {
     }
 
     pub fn should_update_version(&self) -> bool {
-        self.registry_package_exists && !self.commits.is_empty()
+        self.registry_package_exists && !self.commits.is_empty() && self.is_version_published
     }
 
     pub fn set_version_unpublished(&mut self) {
