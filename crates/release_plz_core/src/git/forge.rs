@@ -442,7 +442,6 @@ impl GitClient {
     }
 
     async fn opened_prs_page(&self, page: i32, page_size: usize) -> anyhow::Result<Vec<GitPr>> {
-        // reqwest_middleware::RequestBuilder doesn't expose `query`, so build the URL manually.
         let mut url = Url::parse(&self.pulls_url()).context("invalid pulls URL")?;
         {
             let mut qp = url.query_pairs_mut();
