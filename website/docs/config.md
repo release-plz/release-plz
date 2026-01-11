@@ -212,7 +212,9 @@ A custom regex pattern to match commit types that should trigger a minor version
 This is useful when you use non-conventional commit prefixes (like emoji prefixes) and want to
 control which commits bump the minor version.
 
-The regex is matched against the commit type (the part before the `:` in a commit message).
+- If the commit message is a conventional commit, the regex is matched against the commit type
+  (the part before the `:` in a commit message).
+- If the commit message is not a conventional commit, the regex is matched against the entire commit message.
 
 Example:
 
