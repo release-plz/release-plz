@@ -12,8 +12,8 @@ pub enum VersionIncrement {
     Prerelease,
 }
 
-fn is_there_a_custom_match(regex: Option<&Regex>, commits: &[Commit]) -> bool {
-    regex.is_some_and(|r| commits.iter().any(|commit| r.is_match(&commit.type_())))
+fn is_there_a_custom_match(regex: Option<&Regex>, commit_messages: &[&str]) -> bool {
+    regex.is_some_and(|r| commit_messages.iter().any(|msg| r.is_match(msg)))
 }
 
 impl VersionIncrement {
@@ -61,6 +61,10 @@ impl VersionIncrement {
             Some(Self::from_conventional_commits(
                 current_version,
                 &commits,
+                &commit_messages
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<&str>>(),
                 updater,
             ))
         } else {
@@ -98,6 +102,7 @@ impl VersionIncrement {
     fn from_conventional_commits(
         current: &Version,
         commits: &[Commit],
+        commit_messages: &[&str],
         updater: &VersionUpdater,
     ) -> Self {
         let is_there_a_feature = || {
@@ -110,7 +115,10 @@ impl VersionIncrement {
 
         let is_major_bump = || {
             (is_there_a_breaking_change
-                || is_there_a_custom_match(updater.custom_major_increment_regex.as_ref(), commits))
+                || is_there_a_custom_match(
+                    updater.custom_major_increment_regex.as_ref(),
+                    commit_messages,
+                ))
                 && (current.major != 0 || updater.breaking_always_increment_major)
         };
 
@@ -123,7 +131,10 @@ impl VersionIncrement {
                 || current.major == 0 && current.minor != 0 && is_there_a_breaking_change;
             is_feat_bump()
                 || is_breaking_bump()
-                || is_there_a_custom_match(updater.custom_minor_increment_regex.as_ref(), commits)
+                || is_there_a_custom_match(
+                    updater.custom_minor_increment_regex.as_ref(),
+                    commit_messages,
+                )
         };
 
         if is_major_bump() {
@@ -154,15 +165,23 @@ mod tests {
     #[test]
     fn returns_true_for_matching_custom_type() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![Commit::parse("custom: A custom commit").unwrap()];
+        let commits = vec!["custom: A custom commit"];
 
         assert!(is_there_a_custom_match(Some(&regex), &commits));
     }
 
     #[test]
-    fn returns_false_for_non_custom_commit_types() {
+    fn returns_true_for_matching_non_conventional_commit() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![Commit::parse("feat: A feature commit").unwrap()];
+        let commits = vec!["A non-conventional commit with custom keyword"];
+
+        assert!(is_there_a_custom_match(Some(&regex), &commits));
+    }
+
+    #[test]
+    fn returns_false_for_non_matching_commit() {
+        let regex = Regex::new(r"custom").unwrap();
+        let commits = vec!["feat: A feature commit"];
 
         assert!(!is_there_a_custom_match(Some(&regex), &commits));
     }
@@ -170,7 +189,7 @@ mod tests {
     #[test]
     fn returns_false_for_empty_commits_list() {
         let regex = Regex::new(r"custom").unwrap();
-        let commits: Vec<Commit> = Vec::new();
+        let commits: Vec<&str> = Vec::new();
 
         assert!(!is_there_a_custom_match(Some(&regex), &commits));
     }

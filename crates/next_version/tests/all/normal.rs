@@ -96,6 +96,32 @@ fn commit_with_custom_minor_increment_regex_increments_minor_version() {
 }
 
 #[test]
+fn non_conventional_commit_with_custom_minor_increment_regex_increments_minor_version() {
+    let commits = ["Some non-conventional commit with minor keyword"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_minor_increment_regex("minor")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 3, 0)
+    );
+}
+
+#[test]
+fn non_conventional_commit_with_custom_major_increment_regex_increments_major_version() {
+    let commits = ["A commit that mentions BREAKING in the message"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_major_increment_regex("BREAKING")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(2, 0, 0)
+    );
+}
+
+#[test]
 fn commit_with_scope() {
     let commits = ["feat(my_scope)!: this is a test commit"];
     let version = Version::new(1, 0, 0);
