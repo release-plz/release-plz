@@ -65,9 +65,10 @@ pub async fn create_token(user: &GiteaUser, client: &reqwest::Client) -> String 
 }
 
 async fn create_repository(user_token: &str, repo_name: &str, client: &reqwest::Client) {
+    let mut url = reqwest::Url::parse(&super::gitea_endpoint("user/repos")).unwrap();
+    url.query_pairs_mut().append_pair("token", user_token);
     client
-        .post(super::gitea_endpoint("user/repos"))
-        .query(&[("token", user_token)])
+        .post(url)
         .json(&json!({
             "name": repo_name,
             // Automatically initialize the repository
@@ -88,11 +89,13 @@ async fn upload_registry_config(user_token: &str, username: &str, client: &reqwe
         format!("{{\"dl\":\"{cargo_url}/api/v1/crates\",\"api\":\"{cargo_url}\"}}")
     };
 
+    let mut url = reqwest::Url::parse(&super::gitea_endpoint(&format!(
+        "repos/{username}/{CARGO_INDEX_REPO}/contents/config.json"
+    )))
+    .unwrap();
+    url.query_pairs_mut().append_pair("token", user_token);
     client
-        .post(super::gitea_endpoint(&format!(
-            "repos/{username}/{CARGO_INDEX_REPO}/contents/config.json"
-        )))
-        .query(&[("token", user_token)])
+        .post(url)
         .json(&json!({
             "message": "Add config.json",
             "content": base64::engine::general_purpose::STANDARD.encode(content.as_bytes()),
