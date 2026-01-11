@@ -27,7 +27,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           fail: true
-          # remap is a workaround for github fragments
           args: |
             --no-progress
             --include-fragments
