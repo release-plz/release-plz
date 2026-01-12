@@ -124,10 +124,13 @@ impl CustomRepo {
     pub fn get_tag_commit(&self, tag_name: &str) -> anyhow::Result<String> {
         let tag_ref_name = format!("refs/tags/{tag_name}");
 
-        let reference = self
-            .repo
-            .find_reference(&tag_ref_name)
-            .with_context(|| format!("tag '{tag_name}' not found"))?;
+        let reference = self.repo.find_reference(&tag_ref_name).with_context(|| {
+            format!(
+                "No tag found with name '{tag_name}'. \
+                Please create a tag with 'git tag {tag_name}' (lightweight) \
+                or 'git tag -a {tag_name}' (annotated)."
+            )
+        })?;
 
         let object = reference
             .peel(git2::ObjectType::Commit)
