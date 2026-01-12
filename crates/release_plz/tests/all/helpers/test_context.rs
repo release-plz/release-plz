@@ -278,9 +278,6 @@ fn configure_repo(repo_dir: &Utf8Path, gitea: &GiteaContext) -> Repo {
     // set email
     repo.git(&["config", "user.email", &gitea.user.email()])
         .unwrap();
-    // disable GPG signing for tests
-    repo.git(&["config", "commit.gpgsign", "false"]).unwrap();
-
     repo.disable_gpg_signing().unwrap();
 
     create_cargo_config(repo_dir, username);
