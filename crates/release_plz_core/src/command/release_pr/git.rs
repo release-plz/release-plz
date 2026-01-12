@@ -145,7 +145,7 @@ impl CustomRepo {
                     let target = match tag.target() {
                         Ok(obj) => obj,
                         Err(e) => {
-                            error!("Error getting target for annotated tag {}: {e:?}", tag_name);
+                            error!("Error getting target for annotated tag {tag_name}: {e:?}");
                             return true;
                         }
                     };
@@ -154,8 +154,7 @@ impl CustomRepo {
                         Ok(c) => c,
                         Err(obj) => {
                             error!(
-                                "Annotated tag {} does not point to a commit, points to {:?}",
-                                tag_name,
+                                "Annotated tag {tag_name} does not point to a commit, points to {:?}",
                                 obj.kind()
                             );
                             return true;
