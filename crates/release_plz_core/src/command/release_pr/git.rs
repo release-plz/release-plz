@@ -78,7 +78,7 @@ impl CustomRepo {
     ) -> anyhow::Result<Option<(String, Version)>> {
         // get the tags for this repo
         let tags = self.get_tags().context("get tags for package")?;
-        debug!("Found {} total tags: {:?}", tags.len(), tags);
+        debug!("Found {} total tags: {tags:?}", tags.len());
 
         // Find the most recent release tags
         let tag_results: Vec<(String, Result<Version, _>)> = tags
@@ -89,10 +89,7 @@ impl CustomRepo {
                         .get(1)
                         .expect("capture group 1 must exist in our regex")
                         .as_str();
-                    debug!(
-                        "Tag `{}` matches pattern, version string: {}",
-                        tag, version_str
-                    );
+                    debug!("Tag `{tag}` matches pattern, version string: {version_str}");
                     (tag.clone(), Version::parse(version_str))
                 })
             })
@@ -106,8 +103,7 @@ impl CustomRepo {
                 Ok(version) => release_tags.push((tag, version)),
                 Err(e) => {
                     warn!(
-                        "Tag `{}` matched pattern but failed to parse version: {}",
-                        tag, e
+                        "Tag `{tag}` matched pattern but failed to parse version: {e}"
                     );
                 }
             }
