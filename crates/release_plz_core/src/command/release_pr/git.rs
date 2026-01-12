@@ -77,7 +77,9 @@ impl CustomRepo {
         package_name: &str,
     ) -> anyhow::Result<Option<(String, Version)>> {
         // get the tags for this repo
-        let tags = self.get_tags().context("get tags for package")?;
+        let tags = self
+            .get_tags()
+            .with_context(|| format!("get tags for package {package_name}"))?;
         debug!("Found {} total tags: {tags:?}", tags.len());
 
         // Find the most recent release tags
@@ -102,9 +104,7 @@ impl CustomRepo {
             match version_result {
                 Ok(version) => release_tags.push((tag, version)),
                 Err(e) => {
-                    warn!(
-                        "Tag `{tag}` matched pattern but failed to parse version: {e}"
-                    );
+                    warn!("Tag `{tag}` matched pattern but failed to parse version: {e}");
                 }
             }
         }
