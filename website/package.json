@@ -12,7 +12,7 @@
         "serve": "docusaurus serve",
         "write-translations": "docusaurus write-translations",
         "write-heading-ids": "docusaurus write-heading-ids",
-        "mdlint": "markdownlint '**/*.md' --config .markdownlint.yaml --ignore node_modules --ignore docs/keybindings.md",
+        "mdlint": "markdownlint '**/*.md' --config .markdownlint.yaml --ignore node_modules",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "fetch-assets": "npx tsx ./src/fetch-assets"
