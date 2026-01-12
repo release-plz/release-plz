@@ -1,4 +1,4 @@
-use crate::command::git::{CustomRepo, CustomWorkTree};
+use crate::command::git::{CustomWorkTree, GitRepo};
 use crate::registry_packages::{PackagesCollection, RegistryPackage};
 use crate::tera::{default_tag_name_template, render_template, tera_context};
 use crate::tmp_repo::TempRepo;
@@ -96,9 +96,9 @@ fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex
 /// typically want to drop the repo first jsut to avoid the possibility of someone using an invalid
 /// repo.
 fn get_temp_worktree_and_repo(
-    original_repo: &mut CustomRepo,
+    original_repo: &mut GitRepo,
     package_name: &str,
-) -> anyhow::Result<(CustomRepo, CustomWorkTree)> {
+) -> anyhow::Result<(GitRepo, CustomWorkTree)> {
     // Clean up any existing worktree with this name
     original_repo
         .cleanup_worktree_if_exists(package_name)
@@ -112,7 +112,7 @@ fn get_temp_worktree_and_repo(
     // create repo at new worktree
     // git2 worktrees don't really contain any functionality, so we have to create a repo
     // using that path
-    let repo = CustomRepo::open(worktree.path()).context("open repo for package")?;
+    let repo = GitRepo::open(worktree.path()).context("open repo for package")?;
 
     Ok((repo, worktree))
 }
@@ -238,7 +238,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         let is_multi_package = local_project.publishable_packages().len() > 1;
 
         // create the repo we'll be spinning worktrees from
-        let mut unreleased_project_repo = CustomRepo::open(
+        let mut unreleased_project_repo = GitRepo::open(
             input
                 .local_manifest_dir()
                 .context("get local manifest dir")?,

@@ -8,11 +8,11 @@ use tracing::{debug, error, instrument, warn};
 
 use crate::fs_utils::to_utf8_path;
 
-pub struct CustomRepo {
+pub struct GitRepo {
     repo: Repository,
 }
 
-impl CustomRepo {
+impl GitRepo {
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path_ref = path.as_ref();
         debug!("Opening git repo at {path_ref:?}");
@@ -234,7 +234,7 @@ impl Drop for CustomWorkTree {
 
         // open a repo so we can delete the branch, would be better to hold a reference back to the
         // original repo to do it for us (similar to RefCell), but this will suffice for now
-        let mut repo = match CustomRepo::open(self.path()) {
+        let mut repo = match GitRepo::open(self.path()) {
             Ok(r) => r,
             Err(e) => {
                 error!("Error creating repo to drop branch: {e:?}");
