@@ -66,7 +66,7 @@ impl CustomRepo {
         Ok(tags)
     }
 
-    /// Get the commit and version from within the tag message
+    /// Get the commit and version from within the tag message.
     /// NOTE: This version isn't actually used for anything, we extract the package version from
     /// the Cargo.toml for packages, so if tag "v0.1.5" points to a commit where the Cargo.toml
     /// within that tree that has version 0.1.4, we use 0.1.4 for the package version
@@ -109,9 +109,9 @@ impl CustomRepo {
             }
         }
 
-        // Sort by version (descending) and take the highest
-        // NOTE: I wasn't completely sure whether we wanted the latest tag, or the highest. I
-        // opted for the highest since it was less work and both of them seem reasonable.
+        // Sort by version (descending) and take the highest.
+        // Another possible criteria is getting the latest tag, but we mimic the sorting logic of a
+        // cargo registry.
         release_tags.sort_by(|a, b| b.1.cmp(&a.1));
 
         Ok(release_tags.first().cloned())
