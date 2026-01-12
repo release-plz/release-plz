@@ -126,12 +126,13 @@ impl CustomRepo {
         let mut commit: Option<Oid> = None;
         self.repo
             .tag_foreach(|oid, _| {
-                // Skip if we already found the tag
                 if commit.is_some() {
-                    return true;
+                    // Return false to stop iterating early.
+                    return false;
                 }
 
                 let Ok(tag) = self.repo.find_tag(oid) else {
+                    // Return true to continue iterating.
                     return true;
                 };
 
