@@ -1,4 +1,4 @@
-use anyhow::{Context, bail};
+use anyhow::Context;
 use cargo_metadata::semver::Version;
 use git2::{Oid, Repository, Worktree, WorktreePruneOptions};
 use regex::Regex;
@@ -17,7 +17,7 @@ impl CustomRepo {
         let path_ref = path.as_ref();
         debug!("Opening git repo at {path_ref:?}");
         let repo = Repository::open(path_ref)
-            .with_context(|| format!("failed to open repository at {path_ref:?}"))?;
+            .with_context(|| format!("failed to open repository at {}", path_ref.display()))?;
         Ok(Self { repo })
     }
 
@@ -61,7 +61,7 @@ impl CustomRepo {
             .tag_names(None)
             .context("get tags for repo")?
             .iter()
-            .filter_map(|x| x.map(|s| s.to_string()))
+            .filter_map(|x| x.map(ToString::to_string))
             .collect();
         Ok(tags)
     }
@@ -114,103 +114,29 @@ impl CustomRepo {
         // cargo registry.
         release_tags.sort_by(|a, b| b.1.cmp(&a.1));
 
-        Ok(release_tags.first().cloned())
+        Ok(release_tags.into_iter().next())
     }
 
     /// Get the commit associated with the tag (either an annotated tag, or a lightweight tag)
-    /// We purposefully dont return option here because a tag MUST be associated with a commit,
+    /// We purposefully don't return option here because a tag MUST be associated with a commit,
     /// either through reference in an annotated tag object or just pointing to a commit
     /// (lightweight)
     pub fn get_tag_commit(&self, tag_name: &str) -> anyhow::Result<String> {
-        // First, try to find as an annotated tag
-        let commit = self.get_annotated_tag_commit(tag_name)?;
-
-        if let Some(id) = commit {
-            debug!("Found annotated tag '{tag_name}'");
-            return Ok(id.to_string());
-        }
-
-        // If not found as annotated tag, try as lightweight tag
-        self.get_lightweight_tag_commit(tag_name)
-    }
-
-    fn get_annotated_tag_commit(&self, tag_name: &str) -> anyhow::Result<Option<Oid>> {
-        let mut commit: Option<Oid> = None;
-        self.repo
-            .tag_foreach(|oid, _| {
-                if commit.is_some() {
-                    // Return false to stop iterating early.
-                    return false;
-                }
-
-                let Ok(tag) = self.repo.find_tag(oid) else {
-                    // Return true to continue iterating.
-                    return true;
-                };
-
-                let Some(tag_name_from_repo) = tag.name() else {
-                    warn!("Annotated tag has no name, skipping");
-                    return true;
-                };
-
-                if tag_name_from_repo == tag_name {
-                    let target = match tag.target() {
-                        Ok(obj) => obj,
-                        Err(e) => {
-                            error!("Error getting target for annotated tag {tag_name}: {e:?}");
-                            return true;
-                        }
-                    };
-
-                    let commit_obj = match target.into_commit() {
-                        Ok(c) => c,
-                        Err(obj) => {
-                            error!(
-                                "Annotated tag {tag_name} does not point to a commit, points to {:?}",
-                                obj.kind()
-                            );
-                            return true;
-                        }
-                    };
-
-                    commit = Some(commit_obj.id());
-                }
-
-                true
-            })
-            .context("failed to iterate over tags")?;
-        Ok(commit)
-    }
-
-    /// Returns an error if the tag is not found or does not point to a commit
-    fn get_lightweight_tag_commit(&self, tag_name: &str) -> anyhow::Result<String> {
         let tag_ref_name = format!("refs/tags/{tag_name}");
-        match self.repo.find_reference(&tag_ref_name) {
-            Ok(reference) => {
-                // Resolve the reference to get the commit it points to
-                let target_id = reference
-                    .target()
-                    .with_context(|| format!("Lightweight tag '{tag_name}' has no target"))?;
 
-                // Verify it points to a commit
-                let object = self.repo.find_object(target_id, None).with_context(|| {
-                    format!("Failed to find object for lightweight tag '{tag_name}'")
-                })?;
+        let reference = self
+            .repo
+            .find_reference(&tag_ref_name)
+            .with_context(|| format!("tag '{tag_name}' not found"))?;
 
-                let commit = object.peel_to_commit().with_context(|| {
-                    format!("Lightweight tag '{tag_name}' does not point to a commit")
-                })?;
+        let object = reference
+            .peel(git2::ObjectType::Commit)
+            .with_context(|| format!("tag '{tag_name}' does not point to a commit"))?;
 
-                debug!("Found lightweight tag '{}'", tag_name);
-                Ok(commit.id().to_string())
-            }
-            Err(_) => {
-                bail!(
-                    "No tag found with name '{tag_name}'. \
-                    Please create a tag with 'git tag {tag_name}' (lightweight) or 'git tag -a {tag_name}' (annotated)."
-                )
-            }
-        }
+        let commit_id = object.id();
+        debug!("Found tag '{tag_name}' pointing to {commit_id}");
+
+        Ok(commit_id.to_string())
     }
 
     /// Checkout a particular commit
@@ -252,7 +178,7 @@ impl CustomRepo {
             .worktrees()
             .context("get worktrees for repo")?
             .iter()
-            .filter_map(|x| x.map(|s| s.to_string()))
+            .filter_map(|x| x.map(ToString::to_string))
             .collect();
 
         if trees.contains(&name.to_string()) {
@@ -314,16 +240,10 @@ impl Drop for CustomWorkTree {
         };
 
         // change to head so we can delete this branch
-        let head_target = match repo.repo.head() {
-            Ok(head) => match head.target() {
-                Some(target) => target,
-                None => {
-                    warn!("Head has no target, cannot detach head for worktree cleanup");
-                    return;
-                }
-            },
-            Err(e) => {
-                warn!("Error getting head for worktree cleanup: {e:?}");
+        let head_target = match repo.repo.head().ok().and_then(|head| head.target()) {
+            Some(target) => target,
+            None => {
+                warn!("Head has no target, cannot detach head for worktree cleanup");
                 return;
             }
         };
@@ -333,10 +253,9 @@ impl Drop for CustomWorkTree {
         }
 
         // go ahead and delete the branch now
-        match repo.delete_branch(self.worktree.name().unwrap_or_default()) {
-            Ok(_) => {}
-            Err(e) => error!("Error deleting branch: {e:?}"),
-        };
+        if let Err(e) = repo.delete_branch(self.worktree.name().unwrap_or_default()) {
+            error!("Error deleting branch: {e:?}");
+        }
 
         // death to the trees!
         if let Err(e) = self.worktree.prune(Some(
