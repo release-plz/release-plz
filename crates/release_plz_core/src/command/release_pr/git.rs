@@ -4,7 +4,7 @@ use git2::{Oid, Repository, Worktree, WorktreePruneOptions};
 use regex::Regex;
 use std::path::Path;
 use tempfile::TempDir;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, instrument, warn};
 
 use crate::fs_utils::to_utf8_path;
 
@@ -44,11 +44,11 @@ impl CustomRepo {
         // Clean up existing worktree if it exists
         self.cleanup_worktree_if_exists(name)?;
 
-        info!("Creating worktree called {name} at {path}");
+        debug!("Creating worktree called {name} at {path}");
         let wt = self
             .repo
             .worktree(name, path_std, None)
-            .context("create worktree")?;
+            .with_context(|| format!("create worktree at {path}"))?;
         Ok(CustomWorkTree {
             worktree: wt,
             _tmp_dir_handle: temp_dir,
@@ -173,7 +173,7 @@ impl CustomRepo {
             .context("failed to iterate over tags")?;
 
         if let Some(id) = commit {
-            info!("Found annotated tag '{}'", tag_name);
+            debug!("Found annotated tag '{}'", tag_name);
             return Ok(id.to_string());
         }
 
@@ -195,7 +195,7 @@ impl CustomRepo {
                     format!("Lightweight tag '{tag_name}' does not point to a commit")
                 })?;
 
-                info!("Found lightweight tag '{}'", tag_name);
+                debug!("Found lightweight tag '{}'", tag_name);
                 Ok(commit.id().to_string())
             }
             Err(_) => {
@@ -225,7 +225,7 @@ impl CustomRepo {
             .set_head_detached(id)
             .context("set head to detached commit")?;
 
-        info!("Checked out commit {commit_sha}");
+        debug!("Checked out commit {commit_sha}");
         Ok(())
     }
 
@@ -250,7 +250,7 @@ impl CustomRepo {
             .collect();
 
         if trees.contains(&name.to_string()) {
-            info!("Worktree {name} already exists, cleaning it up");
+            debug!("Worktree {name} already exists, cleaning it up");
 
             // Find the worktree
             let wt = match self.repo.find_worktree(name) {
@@ -292,7 +292,7 @@ pub struct CustomWorkTree {
 // time you run (but shouldn't because we use random temp dirs anyways)
 impl Drop for CustomWorkTree {
     fn drop(&mut self) {
-        info!(
+        debug!(
             "cleaning up worktree {:?}",
             self.path().to_str().unwrap_or_default()
         );
