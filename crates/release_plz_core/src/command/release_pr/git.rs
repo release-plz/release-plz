@@ -243,10 +243,16 @@ impl Drop for CustomWorkTree {
         };
 
         // change to head so we can delete this branch
-        let head_target = match repo.repo.head().ok().and_then(|head| head.target()) {
-            Some(target) => target,
-            None => {
-                warn!("Head has no target, cannot detach head for worktree cleanup");
+        let head_target = match repo.repo.head() {
+            Ok(head) => match head.target() {
+                Some(target) => target,
+                None => {
+                    warn!("Head has no target, cannot detach head for worktree cleanup");
+                    return;
+                }
+            },
+            Err(e) => {
+                warn!("Error getting head for worktree cleanup: {e:?}");
                 return;
             }
         };
