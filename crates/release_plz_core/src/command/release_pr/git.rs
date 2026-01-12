@@ -14,8 +14,10 @@ pub struct CustomRepo {
 
 impl CustomRepo {
     pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        info!("Opening git repo at {:?}", path.as_ref());
-        let repo = Repository::open(path).context("open repository")?;
+        let path_ref = path.as_ref();
+        debug!("Opening git repo at {path_ref:?}");
+        let repo = Repository::open(path_ref)
+            .with_context(|| format!("failed to open repository at {path_ref:?}"))?;
         Ok(Self { repo })
     }
 
@@ -26,11 +28,8 @@ impl CustomRepo {
         name: &str,
     ) -> anyhow::Result<CustomWorkTree> {
         // Use tempfile::Builder to generate a unique path (prevents timestamp collisions)
-        let prefix = if let Some(suffix) = path_suffix {
-            format!("release-plz-{suffix}-")
-        } else {
-            "release-plz-worktree-".to_string()
-        };
+        let suffix = path_suffix.unwrap_or("worktree");
+        let prefix = format!("release-plz-{suffix}-");
 
         let temp_dir = tempfile::Builder::new()
             .prefix(&prefix)
