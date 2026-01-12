@@ -1,4 +1,4 @@
-use crate::command::git::{CustomWorkTree, GitRepo};
+use crate::command::git::{GitRepo, GitWorkTree};
 use crate::registry_packages::{PackagesCollection, RegistryPackage};
 use crate::tera::{default_tag_name_template, render_template, tera_context};
 use crate::tmp_repo::TempRepo;
@@ -98,7 +98,7 @@ fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex
 fn get_temp_worktree_and_repo(
     original_repo: &mut GitRepo,
     package_name: &str,
-) -> anyhow::Result<(GitRepo, CustomWorkTree)> {
+) -> anyhow::Result<(GitRepo, GitWorkTree)> {
     // Clean up any existing worktree with this name
     original_repo
         .cleanup_worktree_if_exists(package_name)
@@ -118,7 +118,7 @@ fn get_temp_worktree_and_repo(
 }
 
 /// run cargo publish within a worktree
-fn run_cargo_publish(worktree: &CustomWorkTree) -> anyhow::Result<()> {
+fn run_cargo_publish(worktree: &GitWorkTree) -> anyhow::Result<()> {
     // run cargo package so we get the proper format
     let output = std::process::Command::new("cargo")
         .args(["package", "--allow-dirty"])
@@ -136,7 +136,7 @@ fn run_cargo_publish(worktree: &CustomWorkTree) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn get_cargo_package(worktree: &CustomWorkTree, package_name: &str) -> anyhow::Result<Package> {
+fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
     // create the package / registry package
     let rust_package = MetadataCommand::new()
         .manifest_path(format!(
@@ -222,7 +222,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     // implementation cleans up the worktrees.
     //
     // See the note on the custom worktree Drop impl for more details
-    let mut worktrees: Vec<CustomWorkTree> = Vec::new();
+    let mut worktrees: Vec<GitWorkTree> = Vec::new();
 
     // Initialize registry_packages - will be populated if we download from registry
     let mut registry_packages = PackagesCollection::default();

@@ -26,7 +26,7 @@ impl GitRepo {
         &mut self,
         path_suffix: Option<&str>,
         name: &str,
-    ) -> anyhow::Result<CustomWorkTree> {
+    ) -> anyhow::Result<GitWorkTree> {
         // Use tempfile::Builder to generate a unique path (prevents timestamp collisions)
         let suffix = path_suffix.unwrap_or("worktree");
         let prefix = format!("release-plz-{suffix}-");
@@ -49,7 +49,7 @@ impl GitRepo {
             .repo
             .worktree(name, path_std, None)
             .with_context(|| format!("create worktree at {path}"))?;
-        Ok(CustomWorkTree {
+        Ok(GitWorkTree {
             worktree: wt,
             _tmp_dir_handle: temp_dir,
         })
@@ -217,7 +217,7 @@ impl GitRepo {
 /// up
 /// NOTE: As stated in the destructor docs: "The fields of a struct are dropped in declaration order."
 /// <https://doc.rust-lang.org/reference/destructors.html>
-pub struct CustomWorkTree {
+pub struct GitWorkTree {
     worktree: Worktree,
     _tmp_dir_handle: TempDir,
 }
@@ -225,7 +225,7 @@ pub struct CustomWorkTree {
 // NOTE: We attempt to clean up resources on drop just so we don't forget to do so. Failing to
 // clean the resources just logs things, although if things fail it may cause problems the next
 // time you run (but shouldn't because we use random temp dirs anyways)
-impl Drop for CustomWorkTree {
+impl Drop for GitWorkTree {
     fn drop(&mut self) {
         debug!(
             "cleaning up worktree {:?}",
@@ -275,7 +275,7 @@ impl Drop for CustomWorkTree {
     }
 }
 
-impl CustomWorkTree {
+impl GitWorkTree {
     pub fn path(&self) -> &Path {
         self.worktree.path()
     }
