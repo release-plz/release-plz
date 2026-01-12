@@ -123,6 +123,18 @@ impl CustomRepo {
     /// (lightweight)
     pub fn get_tag_commit(&self, tag_name: &str) -> anyhow::Result<String> {
         // First, try to find as an annotated tag
+        let commit = self.get_annotated_tag_commit(tag_name)?;
+
+        if let Some(id) = commit {
+            debug!("Found annotated tag '{tag_name}'");
+            return Ok(id.to_string());
+        }
+
+        // If not found as annotated tag, try as lightweight tag
+        self.get_lightweight_tag_commit(tag_name)
+    }
+
+    fn get_annotated_tag_commit(&self, tag_name: &str) -> anyhow::Result<Option<Oid>> {
         let mut commit: Option<Oid> = None;
         self.repo
             .tag_foreach(|oid, _| {
@@ -167,20 +179,18 @@ impl CustomRepo {
                 true
             })
             .context("failed to iterate over tags")?;
+        Ok(commit)
+    }
 
-        if let Some(id) = commit {
-            debug!("Found annotated tag '{}'", tag_name);
-            return Ok(id.to_string());
-        }
-
-        // If not found as annotated tag, try as lightweight tag
+    /// Returns an error if the tag is not found or does not point to a commit
+    fn get_lightweight_tag_commit(&self, tag_name: &str) -> anyhow::Result<String> {
         let tag_ref_name = format!("refs/tags/{tag_name}");
         match self.repo.find_reference(&tag_ref_name) {
             Ok(reference) => {
                 // Resolve the reference to get the commit it points to
                 let target_id = reference
                     .target()
-                    .ok_or_else(|| anyhow::anyhow!("Lightweight tag '{tag_name}' has no target"))?;
+                    .with_context(|| format!("Lightweight tag '{tag_name}' has no target"))?;
 
                 // Verify it points to a commit
                 let object = self.repo.find_object(target_id, None).with_context(|| {
