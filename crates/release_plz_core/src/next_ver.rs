@@ -15,12 +15,12 @@ use crate::{
     semver_check::SemverCheck,
 };
 use anyhow::Context;
+use cargo_metadata::TargetKind;
 use cargo_metadata::{
-    Metadata, Package,
+    Metadata, MetadataCommand, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_metadata::TargetKind;
 use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
 use regex::Regex;
@@ -136,8 +136,13 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
     let worktree_path = to_utf8_path(worktree.path())?;
     let manifest_path = worktree_path.join("Cargo.toml");
 
-    let rust_package =
-        get_manifest_metadata(&manifest_path).context("get cargo metadata for worktree")?;
+    // Use current_dir so that CARGO_TARGET_DIR resolves correctly relative to worktree
+    let rust_package = MetadataCommand::new()
+        .current_dir(worktree_path.as_std_path())
+        .no_deps()
+        .manifest_path(&manifest_path)
+        .exec()
+        .context("get cargo metadata for worktree")?;
 
     let package_details = rust_package
         .packages
@@ -145,15 +150,15 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .find(|x| x.name == package_name)
         .ok_or(anyhow::anyhow!("Failed to find package {package_name:?}"))?;
 
-    let package_path = worktree_path.join(format!(
-        "target/package/{}-{}",
+    let package_path = rust_package.target_directory.join(format!(
+        "package/{}-{}",
         package_details.name, package_details.version
     ));
     info!("package for {} is at {}", package_name, package_path);
 
     let single_package_manifest = package_path.join("Cargo.toml");
-    let single_package_meta =
-        get_manifest_metadata(&single_package_manifest).context("get cargo metadata for package")?;
+    let single_package_meta = get_manifest_metadata(&single_package_manifest)
+        .context("get cargo metadata for package")?;
 
     let single_package = single_package_meta
         .workspace_packages()
