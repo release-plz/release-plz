@@ -1,3 +1,4 @@
+use crate::cargo::run_cargo;
 use crate::command::git::{GitRepo, GitWorkTree};
 use crate::registry_packages::{PackagesCollection, RegistryPackage};
 use crate::tera::{default_tag_name_template, render_template, tera_context};
@@ -8,7 +9,7 @@ use crate::{
     PackagesUpdate, Project,
     changelog_parser::{self, ChangelogRelease},
     copy_dir::copy_dir,
-    fs_utils::{Utf8TempDir, strip_prefix},
+    fs_utils::{Utf8TempDir, strip_prefix, to_utf8_path},
     package_path::manifest_dir,
     registry_packages::{self},
     semver_check::SemverCheck,
@@ -19,7 +20,8 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_metadata::{MetadataCommand, TargetKind};
+use cargo_metadata::TargetKind;
+use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -118,36 +120,24 @@ fn get_temp_worktree_and_repo(
 }
 
 /// run cargo publish within a worktree
-fn run_cargo_publish(worktree: &GitWorkTree) -> anyhow::Result<()> {
-    // run cargo package so we get the proper format
-    let output = std::process::Command::new("cargo")
-        .args(["package", "--allow-dirty"])
-        .current_dir(worktree.path())
-        .output()
+fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
+    let worktree_path = to_utf8_path(worktree.path())?;
+    let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
         .context("run cargo package in worktree")?;
 
     if !output.status.success() {
-        anyhow::bail!(
-            "cargo package failed: {:?}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        anyhow::bail!("cargo package failed: {:?}", output.stderr);
     }
 
     Ok(())
 }
 
 fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
-    // create the package / registry package
-    let rust_package = MetadataCommand::new()
-        .manifest_path(format!(
-            "{}/Cargo.toml",
-            worktree
-                .path()
-                .to_str()
-                .context("convert worktree path to str")?
-        ))
-        .exec()
-        .context("get cargo metadata")?;
+    let worktree_path = to_utf8_path(worktree.path())?;
+    let manifest_path = worktree_path.join("Cargo.toml");
+
+    let rust_package =
+        get_manifest_metadata(&manifest_path).context("get cargo metadata for worktree")?;
 
     let package_details = rust_package
         .packages
@@ -155,24 +145,16 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .find(|x| x.name == package_name)
         .ok_or(anyhow::anyhow!("Failed to find package {package_name:?}"))?;
 
-    let new_path = format!(
-        "{}/target/package/{}-{}",
-        worktree
-            .path()
-            .to_str()
-            .context("convert worktree path to str")?,
-        package_details.name,
-        package_details.version
-    );
-    info!("package for {} is at {}", package_name, new_path);
+    let package_path = worktree_path.join(format!(
+        "target/package/{}-{}",
+        package_details.name, package_details.version
+    ));
+    info!("package for {} is at {}", package_name, package_path);
 
-    // create the package
-    let single_package_meta = MetadataCommand::new()
-        .manifest_path(format!("{new_path}/Cargo.toml"))
-        .exec()
-        .context("get cargo metadata")?;
+    let single_package_manifest = package_path.join("Cargo.toml");
+    let single_package_meta =
+        get_manifest_metadata(&single_package_manifest).context("get cargo metadata for package")?;
 
-    // get the package details
     let single_package = single_package_meta
         .workspace_packages()
         .into_iter()
@@ -293,8 +275,8 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             repo.checkout_commit(&release_commit)
                 .context("checkout release commit for package")?;
 
-            // run cargo publish so we have our finalized package
-            run_cargo_publish(&worktree).context("run cargo publish")?;
+            // run cargo package so we have our finalized package
+            run_cargo_package(&worktree).context("run cargo package")?;
 
             // get the package
             let single_package = get_cargo_package(&worktree, &package.name)
