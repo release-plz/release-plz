@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/release-plz/release-plz/compare/next_version-v0.2.26...next_version-v0.3.0) - 2026-01-17
+
+### Changed
+
+- \[**breaking**\] ([#2574](https://github.com/release-plz/release-plz/pull/2574)) edits
+  how `with_custom_major_increment_regex` and `with_custom_major_increment_regex` behave:
+
+  - If the commit message is a conventional commit, the regex is matched against the commit type
+    (the part before the `:` in a commit message).
+  - If the commit message is not a conventional commit, the regex is matched against the entire commit message.
+
+
 ## [0.2.26](https://github.com/release-plz/release-plz/compare/next_version-v0.2.25...next_version-v0.2.26) - 2025-11-24
 
 ### Other

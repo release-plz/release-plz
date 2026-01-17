@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.151](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.150...release-plz-v0.3.151) - 2026-01-17
+
+### Added
+
+- add `git_only` config option to use git tags to determine the latest version ([#2512](https://github.com/release-plz/release-plz/pull/2512))
+
+### Other
+
+- Generate changelog even when version has already been bumped ([#2577](https://github.com/release-plz/release-plz/pull/2577))
+- Add `custom_minor_increment_regex` ([#2582](https://github.com/release-plz/release-plz/pull/2582))
+- Add `custom_minor_increment_regex` ([#2574](https://github.com/release-plz/release-plz/pull/2574))
+- update to reqwest 0.13 ([#2570](https://github.com/release-plz/release-plz/pull/2570))
+- disable gpg signing in tests ([#2552](https://github.com/release-plz/release-plz/pull/2552))
+- update git-cliff to version 2.11 ([#2537](https://github.com/release-plz/release-plz/pull/2537))
+
 ## [0.3.150](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.149...release-plz-v0.3.150) - 2025-12-05
 
 ### Other
