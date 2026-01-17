@@ -111,7 +111,7 @@ impl Updater<'_> {
             // Process package if:
             // - Version changes.
             // - Package is new.
-            // - Version was already bumped with pending unreleased commits so that we generate the changelog.
+            // - Version was already bumped with pending unreleased commits so that we update the changelog.
             let version_already_bumped = !diff.is_version_published && !diff.commits.is_empty();
             if next_version != current_version
                 || !diff.registry_package_exists
@@ -649,7 +649,7 @@ impl Updater<'_> {
                     // We can process the next package.
                     break;
                 } else {
-                    // When version is already bumped, we still collect commits for changelog
+                    // When version is already bumped, we still collect commits to update the changelog,
                     // but mark that version should not be bumped further.
                     if package.version > registry_package.package.version
                         && diff.is_version_published
