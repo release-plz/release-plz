@@ -70,6 +70,8 @@ the following sections:
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
+  - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
+    — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field)
     — Features increment minor in `0.x` versions.
   - [`git_release_enable`](#the-git_release_enable-field) — Enable git release.
@@ -105,6 +107,8 @@ the following sections:
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
   - [`changelog_path`](#the-changelog_path-field-package-section) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
+  - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field-package-section)
+    — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field-package-section)
     — Features increment minor in `0.x` versions.
   - [`git_release_enable`](#the-git_release_enable-field-package-section) — Enable git release.
@@ -203,6 +207,29 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 - If `true`, update all the dependencies in the `Cargo.lock` file by running `cargo update`.
 - If `false`, only update the workspace packages by running `cargo update --workspace`. *(Default)*.
+
+#### The `custom_minor_increment_regex` field
+
+A custom regex pattern to match commit types that should trigger a minor version increment.
+This is useful when you use non-conventional commit prefixes (like emoji prefixes) and want to
+control which commits bump the minor version.
+
+- If the commit message is a conventional commit, the regex is matched against the commit type
+  (the part before the `:` in a commit message).
+- If the commit message is not a conventional commit, the regex is matched against the entire commit
+  message.
+
+Example:
+
+```toml
+[workspace]
+custom_minor_increment_regex = "^minor|^enhancement|^🎉"
+```
+
+With this configuration, commits like `minor: add feature`, `enhancement: new capability`,
+or `🎉: exciting change` will trigger a minor version bump instead of a patch bump.
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `features_always_increment_minor` field
 
@@ -765,6 +792,11 @@ This field cannot be set in the `[workspace]` section.
 
 - If `true`, update the changelog of this package. *(Default)*.
 - If `false`, don't.
+
+#### The `custom_minor_increment_regex` field (`package` section)
+
+Overrides the [`workspace.custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
+field.
 
 #### The `features_always_increment_minor` field (`package` section)
 

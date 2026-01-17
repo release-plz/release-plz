@@ -12,8 +12,27 @@ pub enum VersionIncrement {
     Prerelease,
 }
 
-fn is_there_a_custom_match(regex: Option<&Regex>, commits: &[Commit]) -> bool {
-    regex.is_some_and(|r| commits.iter().any(|commit| r.is_match(&commit.type_())))
+/// Checks if any commit matches the custom regex.
+/// - For conventional commits: checks only the commit type
+/// - For non-conventional commits: checks the entire message
+fn is_there_a_custom_match(
+    regex: Option<&Regex>,
+    conventional_commits: &[Commit],
+    non_conventional_messages: &[&str],
+) -> bool {
+    regex.is_some_and(|r| {
+        // Check conventional commit types
+        let matches_type = || {
+            conventional_commits
+                .iter()
+                .any(|commit| r.is_match(commit.type_().as_str()))
+        };
+
+        // Check non-conventional commit messages
+        let matches_message = || non_conventional_messages.iter().any(|msg| r.is_match(msg));
+
+        matches_type() || matches_message()
+    })
 }
 
 impl VersionIncrement {
@@ -53,14 +72,10 @@ impl VersionIncrement {
             }
             // Parse commits and keep only the ones that follow conventional commits specification.
             let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
-            let commits: Vec<Commit> = commit_messages
-                .iter()
-                .filter_map(|c| Commit::parse(c).ok())
-                .collect();
 
             Some(Self::from_conventional_commits(
                 current_version,
-                &commits,
+                &commit_messages,
                 updater,
             ))
         } else {
@@ -97,20 +112,35 @@ impl VersionIncrement {
     /// If no conventional commits are present, the version is incremented as a Patch
     fn from_conventional_commits(
         current: &Version,
-        commits: &[Commit],
+        commit_messages: &[String],
         updater: &VersionUpdater,
     ) -> Self {
+        let mut conventional_commits = Vec::new();
+        let mut non_conventional_messages = Vec::new();
+
+        for msg in commit_messages {
+            match Commit::parse(msg) {
+                Ok(commit) => conventional_commits.push(commit),
+                Err(_) => non_conventional_messages.push(msg.as_str()),
+            }
+        }
+
         let is_there_a_feature = || {
-            commits
+            conventional_commits
                 .iter()
                 .any(|commit| commit.type_() == git_conventional::Type::FEAT)
         };
 
-        let is_there_a_breaking_change = commits.iter().any(|commit| commit.breaking());
+        let is_there_a_breaking_change =
+            conventional_commits.iter().any(|commit| commit.breaking());
 
         let is_major_bump = || {
             (is_there_a_breaking_change
-                || is_there_a_custom_match(updater.custom_major_increment_regex.as_ref(), commits))
+                || is_there_a_custom_match(
+                    updater.custom_major_increment_regex.as_ref(),
+                    &conventional_commits,
+                    &non_conventional_messages,
+                ))
                 && (current.major != 0 || updater.breaking_always_increment_major)
         };
 
@@ -123,7 +153,11 @@ impl VersionIncrement {
                 || current.major == 0 && current.minor != 0 && is_there_a_breaking_change;
             is_feat_bump()
                 || is_breaking_bump()
-                || is_there_a_custom_match(updater.custom_minor_increment_regex.as_ref(), commits)
+                || is_there_a_custom_match(
+                    updater.custom_minor_increment_regex.as_ref(),
+                    &conventional_commits,
+                    &non_conventional_messages,
+                )
         };
 
         if is_major_bump() {
@@ -151,27 +185,44 @@ impl VersionIncrement {
 mod tests {
     use super::*;
 
-    #[test]
-    fn returns_true_for_matching_custom_type() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![Commit::parse("custom: A custom commit").unwrap()];
-
-        assert!(is_there_a_custom_match(Some(&regex), &commits));
+    /// Helper to test `is_there_a_custom_match` with a list of commit messages.
+    /// Automatically separates conventional and non-conventional commits.
+    fn check_custom_match(pattern: &str, messages: &[&str]) -> bool {
+        let regex = Regex::new(pattern).unwrap();
+        let conventional: Vec<Commit> = messages
+            .iter()
+            .filter_map(|m| Commit::parse(m).ok())
+            .collect();
+        let non_conventional: Vec<&str> = messages
+            .iter()
+            .filter(|m| Commit::parse(m).is_err())
+            .copied()
+            .collect();
+        is_there_a_custom_match(Some(&regex), &conventional, &non_conventional)
     }
 
     #[test]
-    fn returns_false_for_non_custom_commit_types() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![Commit::parse("feat: A feature commit").unwrap()];
+    fn returns_true_for_matching_conventional_commit_type() {
+        assert!(check_custom_match(r"custom", &["custom: A custom commit"]));
+    }
 
-        assert!(!is_there_a_custom_match(Some(&regex), &commits));
+    #[test]
+    fn returns_false_for_conventional_commit_with_matching_description_but_not_type() {
+        // The regex matches something in the description, but not the type
+        // Should NOT match because for conventional commits we only check the type
+        assert!(!check_custom_match(r"custom", &["feat: A custom feature"]));
+    }
+
+    #[test]
+    fn returns_true_for_matching_non_conventional_commit() {
+        assert!(check_custom_match(
+            r"custom",
+            &["A non-conventional commit with custom keyword"]
+        ));
     }
 
     #[test]
     fn returns_false_for_empty_commits_list() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits: Vec<Commit> = Vec::new();
-
-        assert!(!is_there_a_custom_match(Some(&regex), &commits));
+        assert!(!check_custom_match(r"custom", &[]));
     }
 }

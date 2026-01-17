@@ -38,6 +38,7 @@
         "changelog_config": null,
         "changelog_path": null,
         "changelog_update": null,
+        "custom_minor_increment_regex": null,
         "dependencies_update": null,
         "features_always_increment_minor": null,
         "git_only": null,
@@ -284,6 +285,14 @@
           "description": "Whether to create/update changelog or not.\nIf unspecified, the changelog is updated.",
           "type": [
             "boolean",
+            "null"
+          ]
+        },
+        "custom_minor_increment_regex": {
+          "title": "Custom Minor Increment Regex",
+          "description": "Custom regex to match commit types that should trigger a minor version increment.\nUseful when using non-conventional commit prefixes.",
+          "type": [
+            "string",
             "null"
           ]
         },
@@ -535,6 +544,14 @@
           "description": "Whether to create/update changelog or not.\nIf unspecified, the changelog is updated.",
           "type": [
             "boolean",
+            "null"
+          ]
+        },
+        "custom_minor_increment_regex": {
+          "title": "Custom Minor Increment Regex",
+          "description": "Custom regex to match commit types that should trigger a minor version increment.\nUseful when using non-conventional commit prefixes.",
+          "type": [
+            "string",
             "null"
           ]
         },
