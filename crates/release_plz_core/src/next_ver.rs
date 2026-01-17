@@ -139,7 +139,7 @@ fn get_temp_worktree_and_repo(
     Ok((repo, worktree))
 }
 
-/// Process a single git_only package: find its release tag, checkout that commit,
+/// Process a single `git_only` package: find its release tag, checkout that commit,
 /// run `cargo package`, and return the package metadata.
 ///
 /// Returns `None` if no release tag is found (package will be treated as initial release).
