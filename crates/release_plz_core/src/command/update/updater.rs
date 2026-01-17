@@ -135,6 +135,7 @@ impl Updater<'_> {
                     next_version,
                     p,
                     diff.semver_check,
+                    diff.registry_version,
                     &mut old_changelogs,
                 )?;
                 packages_to_update
@@ -407,6 +408,7 @@ impl Updater<'_> {
             next_version,
             p,
             SemverCheck::Skipped,
+            None, // No registry_version for dependency updates
             old_changelogs,
         )?;
         Ok((p.clone(), update_result))
@@ -418,6 +420,7 @@ impl Updater<'_> {
         next_version: Version,
         p: &Package,
         semver_check: SemverCheck,
+        registry_version: Option<Version>,
         old_changelogs: &mut OldChangelogs,
     ) -> Result<UpdateResult, anyhow::Error> {
         let changelog_path = self.req.changelog_path(p);
@@ -427,6 +430,7 @@ impl Updater<'_> {
             next_version,
             p,
             semver_check,
+            registry_version,
             old_changelog.as_deref(),
         )?;
         if let Some(changelog) = &update_result.changelog {
@@ -443,13 +447,18 @@ impl Updater<'_> {
         version: Version,
         package: &Package,
         semver_check: SemverCheck,
+        registry_version: Option<Version>,
         old_changelog: Option<&str>,
     ) -> anyhow::Result<UpdateResult> {
         let repo_url = self.req.repo_url();
         let release_link = {
-            let prev_tag = self
-                .project
-                .git_tag(&package.name, &package.version.to_string())?;
+            // Use registry_version for prev_tag when available (version already bumped case),
+            // otherwise use package.version (normal case)
+            let prev_version = registry_version
+                .as_ref()
+                .unwrap_or(&package.version)
+                .to_string();
+            let prev_tag = self.project.git_tag(&package.name, &prev_version)?;
             let next_tag = self.project.git_tag(&package.name, &version.to_string())?;
             repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
         };
@@ -498,6 +507,7 @@ impl Updater<'_> {
             changelog,
             semver_check,
             new_changelog_entry,
+            registry_version,
         })
     }
 
@@ -658,7 +668,7 @@ impl Updater<'_> {
                             "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
                             package.name, package.version, registry_package.package.version
                         );
-                        diff.set_version_unpublished();
+                        diff.set_version_unpublished(registry_package.package.version.clone());
                     }
                     if are_changed_files_in_pkg()? {
                         debug!("packages contain different files");

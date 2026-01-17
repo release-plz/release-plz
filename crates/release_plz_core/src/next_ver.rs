@@ -419,6 +419,11 @@ pub struct UpdateResult {
     pub changelog: Option<String>,
     pub semver_check: SemverCheck,
     pub new_changelog_entry: Option<String>,
+    /// The last released/published version from the registry.
+    /// This is set when the local version was already bumped (higher than registry version).
+    /// Used to generate correct version transitions in PR body (e.g., "0.1.0 -> 0.2.0")
+    /// instead of just showing "0.2.0" when `previous_version == next_version`.
+    pub registry_version: Option<Version>,
 }
 
 impl UpdateResult {

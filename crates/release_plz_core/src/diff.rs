@@ -1,3 +1,4 @@
+use cargo_metadata::semver::Version;
 use git_cliff_core::{commit::Signature, contributor::RemoteContributor};
 use regex::Regex;
 
@@ -15,6 +16,11 @@ pub(crate) struct Diff {
     pub is_version_published: bool,
     /// Semver incompatible changes.
     pub semver_check: SemverCheck,
+    /// The last released/published version from the registry.
+    /// This is set when the local version is already bumped (higher than registry version).
+    /// Used to generate correct version transitions in PR body (e.g., "0.1.0 -> 0.2.0")
+    /// and correct compare URLs in changelogs.
+    pub registry_version: Option<Version>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -60,6 +66,7 @@ impl Diff {
             registry_package_exists,
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
+            registry_version: None,
         }
     }
 
@@ -73,8 +80,12 @@ impl Diff {
         self.registry_package_exists && !self.commits.is_empty() && self.is_version_published
     }
 
-    pub fn set_version_unpublished(&mut self) {
+    /// Mark that the local version is already bumped (not yet published to registry).
+    /// `registry_version` is the last published version, used to generate correct
+    /// version transitions and compare URLs.
+    pub fn set_version_unpublished(&mut self, registry_version: Version) {
         self.is_version_published = false;
+        self.registry_version = Some(registry_version);
     }
 
     pub fn set_semver_check(&mut self, semver_check: SemverCheck) {
