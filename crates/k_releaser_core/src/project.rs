@@ -102,11 +102,59 @@ impl Project {
         })
     }
 
+    /// Create a new Project for publishing packages.
+    /// This is a simplified version of `new()` that doesn't require release metadata.
+    /// All publishable packages in the workspace will be included and ordered by dependency order.
+    pub fn new_for_publish(
+        local_manifest: &Utf8Path,
+        single_package: Option<&str>,
+        overrides: &HashSet<&str>,
+        metadata: &Metadata,
+    ) -> anyhow::Result<Self> {
+        let manifest = local_manifest;
+        let manifest_dir = manifest_dir(manifest)?.to_path_buf();
+        debug!("manifest_dir: {manifest_dir:?}");
+        let root = root_repo_path_from_manifest_dir(&manifest_dir)?;
+        debug!("project_root: {root:?}");
+        let mut packages = workspace_packages(metadata)?;
+        check_overrides_typos(&packages, overrides)?;
+        override_packages_path(&mut packages, metadata, &manifest_dir)
+            .context("failed to override packages path")?;
+
+        let packages_names: Vec<String> = packages.iter().map(|p| p.name.to_string()).collect();
+        anyhow::ensure!(
+            !packages.is_empty(),
+            "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
+        );
+
+        let contains_multiple_pub_packages = packages.len() > 1;
+
+        if let Some(pac) = single_package {
+            packages.retain(|p| *p.name == pac);
+            anyhow::ensure!(
+                !packages.is_empty(),
+                "package `{pac}` not found. If it exists, is it public?"
+            );
+        }
+
+        // Order packages so that they are analyzed in the order that they are released.
+        let ordered_packages = ordered_packages(&packages)?;
+
+        Ok(Self {
+            packages: ordered_packages,
+            release_metadata: HashMap::new(),
+            root,
+            manifest_dir,
+            contains_multiple_pub_packages,
+        })
+    }
+
     pub fn root(&self) -> &Utf8Path {
         &self.root
     }
 
     /// Packages that can be published, ordered by release order.
+    /// The packages are already ordered at construction time by `ordered_packages()`.
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()

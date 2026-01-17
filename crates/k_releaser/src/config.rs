@@ -2,7 +2,7 @@ use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use k_releaser_core::{
-    GitReleaseConfig, ReleaseRequest,
+    GitReleaseConfig, PublishRequest, ReleaseRequest,
     fs_utils::to_utf8_path,
     set_version::SetVersionRequest,
     update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
@@ -108,6 +108,38 @@ impl Config {
                 release_request.with_package_config(package, release_config.common.into());
         }
         release_request
+    }
+
+    pub fn fill_publish_config(
+        &self,
+        allow_dirty: bool,
+        no_verify: bool,
+        publish_request: PublishRequest,
+    ) -> PublishRequest {
+        let mut default_config = self.workspace.packages_defaults.clone();
+        if no_verify {
+            default_config.publish_no_verify = Some(true);
+        }
+        if allow_dirty {
+            default_config.publish_allow_dirty = Some(true);
+        }
+        let mut publish_request =
+            publish_request.with_default_package_config(default_config.into());
+
+        for (package, config) in self.packages() {
+            let mut publish_config = config.clone();
+            publish_config = publish_config.merge(self.workspace.packages_defaults.clone());
+
+            if no_verify {
+                publish_config.common.publish_no_verify = Some(true);
+            }
+            if allow_dirty {
+                publish_config.common.publish_allow_dirty = Some(true);
+            }
+            publish_request =
+                publish_request.with_package_config(package, publish_config.common.into());
+        }
+        publish_request
     }
 }
 
@@ -304,6 +336,28 @@ impl From<PackageConfig> for k_releaser_core::ReleaseConfig {
         if let Some(changelog_path) = value.changelog_path {
             cfg = cfg.with_changelog_path(to_utf8_pathbuf(changelog_path).unwrap());
         }
+        if let Some(no_verify) = value.publish_no_verify {
+            cfg = cfg.with_no_verify(no_verify);
+        }
+        if let Some(features) = value.publish_features {
+            cfg = cfg.with_features(features);
+        }
+        if let Some(all_features) = value.publish_all_features {
+            cfg = cfg.with_all_features(all_features);
+        }
+        if let Some(allow_dirty) = value.publish_allow_dirty {
+            cfg = cfg.with_allow_dirty(allow_dirty);
+        }
+        cfg
+    }
+}
+
+impl From<PackageConfig> for k_releaser_core::PublishPackageConfig {
+    fn from(value: PackageConfig) -> Self {
+        let is_publish_enabled = value.publish != Some(false);
+        let mut cfg = Self::default()
+            .with_publish(k_releaser_core::PublishConfig::enabled(is_publish_enabled));
+
         if let Some(no_verify) = value.publish_no_verify {
             cfg = cfg.with_no_verify(no_verify);
         }

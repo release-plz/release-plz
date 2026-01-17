@@ -55,6 +55,18 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
                 print_output(output_type, prs_json);
             }
         }
+        Command::Publish(cmd_args) => {
+            let cargo_metadata = cmd_args.cargo_metadata()?;
+            let config = cmd_args.config.load()?;
+            let cmd_args_output = cmd_args.output;
+            let request = cmd_args.publish_request(&config, cargo_metadata)?;
+            let output = k_releaser_core::publish(&request)
+                .await?
+                .unwrap_or_default();
+            if let Some(output_type) = cmd_args_output {
+                print_output(output_type, output);
+            }
+        }
         Command::Release(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
             let config = cmd_args.config.load()?;

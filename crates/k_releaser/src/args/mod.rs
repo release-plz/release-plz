@@ -2,6 +2,7 @@ mod config_path;
 mod generate_completions;
 mod init;
 pub(crate) mod manifest_command;
+mod publish;
 mod release;
 mod release_pr;
 pub(crate) mod repo_command;
@@ -21,8 +22,8 @@ use set_version::SetVersion;
 use tracing::level_filters::LevelFilter;
 
 use self::{
-    generate_completions::GenerateCompletions, release::Release, release_pr::ReleasePr,
-    update::Update,
+    generate_completions::GenerateCompletions, publish::Publish, release::Release,
+    release_pr::ReleasePr, update::Update,
 };
 
 const MAIN_COLOR: AnsiColor = AnsiColor::Red;
@@ -82,10 +83,20 @@ pub enum Command {
     /// If there is a previously opened Release PR, release-plz will update it
     /// instead of opening a new one.
     ReleasePr(ReleasePr),
-    /// Release the package to the cargo registry and git forge.
+    /// Publish packages to cargo registry.
     ///
-    /// For each package not published to the cargo registry yet, create and push upstream a tag in the
-    /// format of `<package>-v<version>`, and then publish the package to the cargo registry.
+    /// For each package not yet published to the cargo registry, publish the package.
+    /// Packages are published in dependency order (dependencies first).
+    ///
+    /// This command only handles cargo registry publishing. Use the `release` command
+    /// to create git tags and forge releases.
+    Publish(Publish),
+    /// Create git tags and forge releases.
+    ///
+    /// For each package, create and push upstream a tag in the format of `<package>-v<version>`,
+    /// and create a release on the git forge (GitHub/GitLab/Gitea).
+    ///
+    /// This command does NOT publish to cargo registry. Use the `publish` command for that.
     ///
     /// You can run this command in the CI on every commit in the main branch.
     Release(Release),
