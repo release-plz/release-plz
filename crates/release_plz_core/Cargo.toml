@@ -55,6 +55,7 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 http.workspace = true
 urlencoding.workspace = true
+git2 = "0.20.2"
 
 [dev-dependencies]
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }

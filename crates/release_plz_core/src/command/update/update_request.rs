@@ -246,6 +246,19 @@ impl UpdateRequest {
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
     }
+
+    /// Determine if `git_only` mode should be used for a specific package.
+    pub fn should_use_git_only(&self, package_name: &str) -> bool {
+        let pkg_config = self.get_package_config(package_name);
+        pkg_config.git_only().unwrap_or(false)
+    }
+
+    /// Get the release tag name template for a specific package.
+    /// Package-level config overrides workspace-level config.
+    pub fn get_package_tag_name(&self, package_name: &str) -> Option<String> {
+        let pkg_config = self.get_package_config(package_name);
+        pkg_config.generic.tag_name_template.clone()
+    }
 }
 
 #[derive(Debug, Clone, Default)]

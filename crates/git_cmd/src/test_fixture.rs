@@ -14,6 +14,8 @@ impl Repo {
         // configure author
         git_in_dir(directory, &["config", "user.name", "author_name"]).unwrap();
         git_in_dir(directory, &["config", "user.email", "author@example.com"]).unwrap();
+        // disable GPG signing for tests
+        git_in_dir(directory, &["config", "commit.gpgsign", "false"]).unwrap();
 
         fs_err::write(directory.join("README.md"), "# my awesome project").unwrap();
         git_in_dir(directory, &["add", "."]).unwrap();
