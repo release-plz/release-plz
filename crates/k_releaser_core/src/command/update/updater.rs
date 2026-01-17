@@ -4,25 +4,24 @@ use std::{
 };
 
 use anyhow::Context as _;
-use cargo::util::VersionExt as _;
 use cargo_metadata::{
     Package, TargetKind,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use next_version::VersionUpdater;
+use cargo_utils::LocalManifest;
 use git_cliff_core::{
     config::{ChangelogConfig, Config},
     contributor::RemoteContributor,
 };
 use git_cmd::Repo;
-use next_version::NextVersion as _;
 use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
 use std::sync::Once;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
-    ChangelogBuilder, ChangelogRequest, NO_COMMIT_ID, PackagePath as _, Project, Remote, RepoUrl,
+    ChangelogBuilder, ChangelogRequest, PackagePath as _, Project, Remote, RepoUrl,
     UpdateResult,
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser,
@@ -30,11 +29,10 @@ use crate::{
     diff::{Commit, Diff},
     fs_utils,
     semver_check::{self, SemverCheck},
-    version::NextVersionFromDiff as _,
 };
 
 use super::{
-    PackagesToUpdate, PackagesUpdate, package_dependencies::PackageDependencies as _,
+    PackagesUpdate,
     update_request::UpdateRequest,
 };
 
@@ -53,67 +51,56 @@ impl Updater<'_> {
         repository: &Repo,
         local_manifest_path: &Utf8Path,
     ) -> anyhow::Result<PackagesUpdate> {
-        debug!("calculating local packages");
+        debug!("calculating unified workspace version");
 
         let packages_diffs = self
             .get_packages_diffs(repository)
             .await?;
-        let version_groups = self.get_version_groups(&packages_diffs);
-        debug!("version groups: {:?}", version_groups);
 
-        let mut packages_to_check_for_deps: Vec<&Package> = vec![];
-        let mut packages_to_update = PackagesUpdate::default();
-
-        let workspace_version_pkgs: HashSet<String> = packages_diffs
+        // For unified workspace versioning: collect ALL commits from ALL packages
+        let all_commits: Vec<Commit> = packages_diffs
             .iter()
-            .filter(|(p, _)| {
-                let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
-                let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
-                local_manifest.version_is_inherited()
-            })
-            .map(|(p, _)| p.name.to_string())
+            .flat_map(|(_, diff)| diff.commits.clone())
             .collect();
 
-        let new_workspace_version = self.new_workspace_version(
-            local_manifest_path,
-            &packages_diffs,
-            &workspace_version_pkgs,
-        )?;
-        if let Some(new_workspace_version) = &new_workspace_version {
-            packages_to_update.with_workspace_version(new_workspace_version.clone());
-        }
+        // Check if workspace tag exists (same for all packages in unified versioning)
+        let workspace_tag_exists = packages_diffs
+            .first()
+            .map(|(_, diff)| diff.tag_exists)
+            .unwrap_or(false);
 
-        let mut old_changelogs = OldChangelogs::new();
-        for (p, diff) in packages_diffs {
-            if let Some(release_commits_regex) = self.req.release_commits()
-                && !diff.any_commit_matches(release_commits_regex)
-            {
-                info!("{}: no commit matches the `release_commits` regex", p.name);
-                // We need to update this package only if one of its dependencies has changed.
-                packages_to_check_for_deps.push(p);
-                continue;
-            }
-            let next_version = self.get_next_version(
-                new_workspace_version.as_ref(),
-                p,
-                &workspace_version_pkgs,
-                &version_groups,
-                &diff,
+        debug!(
+            "collected {} commits from {} packages, tag_exists: {}",
+            all_commits.len(),
+            packages_diffs.len(),
+            workspace_tag_exists
+        );
+
+        let mut packages_to_update = PackagesUpdate::default();
+
+        // If there are commits or no tag exists, calculate new workspace version
+        if !all_commits.is_empty() || !workspace_tag_exists {
+            // Calculate ONE workspace version based on ALL commits
+            let workspace_version = self.calculate_unified_workspace_version(
+                local_manifest_path,
+                &all_commits,
             )?;
-            debug!(
-                "package: {}, diff: {diff:?}, next_version: {next_version}",
-                p.name,
-            );
-            let current_version = p.version.clone();
-            if next_version != current_version || !diff.tag_exists {
-                info!(
-                    "{}: next version is {next_version}{}",
+
+            info!("unified workspace version: {workspace_version}");
+            packages_to_update.with_workspace_version(workspace_version.clone());
+
+            // Apply the SAME version to ALL packages
+            let mut old_changelogs = OldChangelogs::new();
+            for (p, diff) in packages_diffs {
+                debug!(
+                    "package: {}, unified version: {workspace_version}",
                     p.name,
-                    diff.semver_check.outcome_str()
                 );
+
+                // For unified versioning, use ALL commits (not per-package commits)
                 let update_result = self.calculate_update_result(
-                    diff.commits,
-                    next_version,
+                    all_commits.clone(),
+                    workspace_version.clone(),
                     p,
                     diff.semver_check,
                     &mut old_changelogs,
@@ -121,79 +108,41 @@ impl Updater<'_> {
                 packages_to_update
                     .updates_mut()
                     .push((p.clone(), update_result));
-            } else {
-                // We need to update this package only if one of its dependencies has changed.
-                packages_to_check_for_deps.push(p);
             }
+        } else {
+            info!("no commits since last tag - no updates needed");
         }
 
-        let changed_packages: Vec<(&Package, Version)> = packages_to_update
-            .updates()
-            .iter()
-            .map(|(p, u)| (p, u.version.clone()))
-            .collect();
-        let dependent_packages =
-            self.dependent_packages_update(&packages_to_check_for_deps, &changed_packages)?;
-        packages_to_update.updates_mut().extend(dependent_packages);
         Ok(packages_to_update)
     }
 
-    /// Get the highest next version of all packages for each version group.
-    fn get_version_groups(&self, packages_diffs: &[(&Package, Diff)]) -> HashMap<String, Version> {
-        let mut version_groups: HashMap<String, Version> = HashMap::new();
 
-        for (pkg, diff) in packages_diffs {
-            let pkg_config = self.req.get_package_config(&pkg.name);
-            let version_updater = pkg_config.generic.version_updater();
-            if let Some(version_group) = pkg_config.version_group {
-                let next_pkg_ver = pkg.version.next_from_diff(diff, version_updater);
-                match version_groups.entry(version_group.clone()) {
-                    std::collections::hash_map::Entry::Occupied(v) => {
-                        // maximum version of the group until now
-                        let max = v.get();
-                        if max < &next_pkg_ver {
-                            version_groups.insert(version_group, next_pkg_ver);
-                        }
-                    }
-                    std::collections::hash_map::Entry::Vacant(_) => {
-                        version_groups.insert(version_group, next_pkg_ver);
-                    }
-                }
-            }
-        }
-
-        version_groups
-    }
-
-    fn new_workspace_version(
+    /// Calculate the unified workspace version based on ALL commits from ALL packages.
+    /// This is the core of unified workspace versioning - one version for entire monorepo.
+    fn calculate_unified_workspace_version(
         &self,
         local_manifest_path: &Utf8Path,
-        packages_diffs: &[(&Package, Diff)],
-        workspace_version_pkgs: &HashSet<String>,
-    ) -> anyhow::Result<Option<Version>> {
-        let workspace_version = {
-            let local_manifest = LocalManifest::try_new(local_manifest_path)?;
-            local_manifest.get_workspace_version()
+        all_commits: &[Commit],
+    ) -> anyhow::Result<Version> {
+        let local_manifest = LocalManifest::try_new(local_manifest_path)?;
+        let current_workspace_version = local_manifest
+            .get_workspace_version()
+            .context("workspace.package.version must be set in Cargo.toml for unified versioning")?;
+
+        // Use default version updater configuration
+        // TODO: Make this configurable via workspace config
+        let version_updater = VersionUpdater::default();
+
+        // Calculate next version based on ALL commits
+        let next_version = if all_commits.is_empty() {
+            // No commits, keep current version
+            current_workspace_version
+        } else {
+            // Analyze commits to determine version bump
+            version_updater.increment(&current_workspace_version, all_commits.iter().map(|c| &c.message))
         };
-        let new_workspace_version = workspace_version_pkgs
-            .iter()
-            .filter_map(|workspace_package| {
-                for (p, diff) in packages_diffs {
-                    if *workspace_package == *p.name {
-                        let pkg_config = self.req.get_package_config(&p.name);
-                        let version_updater = pkg_config.generic.version_updater();
-                        let next = p.version.next_from_diff(diff, version_updater);
-                        if let Some(workspace_version) = &workspace_version
-                            && &next >= workspace_version
-                        {
-                            return Some(next);
-                        }
-                    }
-                }
-                None
-            })
-            .max();
-        Ok(new_workspace_version)
+
+        Ok(next_version)
     }
 
     async fn get_packages_diffs(
@@ -270,108 +219,6 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// Return the update to apply to the packages that depend on the `initial_changed_packages`.
-    ///
-    /// ## Args
-    ///
-    /// - `packages_to_check_for_deps`: The packages that might need to be updated.
-    ///   We update them if they depend on any of the `changed_packages`.
-    ///   If they don't depend on any of the `changed_packages`, they are not updated
-    ///   because they don't contain any new commits.
-    /// - `initial_changed_packages`: The packages that have changed (i.e. contains commits).
-    fn dependent_packages_update(
-        &self,
-        packages_to_check_for_deps: &[&Package],
-        initial_changed_packages: &[(&Package, Version)],
-    ) -> anyhow::Result<PackagesToUpdate> {
-        let workspace_manifest = LocalManifest::try_new(self.req.local_manifest())?;
-        let workspace_dependencies = workspace_manifest.get_workspace_dependency_table();
-
-        let mut old_changelogs = OldChangelogs::new();
-        let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
-
-        // Track which packages have been processed
-        let mut processed: HashSet<String> = initial_changed_packages
-            .iter()
-            .map(|(p, _)| p.name.to_string())
-            .collect();
-
-        let mut result = Vec::new();
-
-        // Keep a copy of all packages that have changed so far
-        let mut all_changed_packages: Vec<(&Package, Version)> = initial_changed_packages.to_vec();
-
-        // Continue updating packages until no more dependencies to update are found
-        loop {
-            let mut any_package_updated = false;
-
-            for p in packages_to_check_for_deps {
-                // Skip packages we've already processed in previous iterations
-                if processed.contains(p.name.as_ref()) {
-                    continue;
-                }
-
-                // Check if this package depends on any changed package
-                if let Ok(deps) = p.dependencies_to_update(
-                    &all_changed_packages,
-                    workspace_dependencies,
-                    workspace_dir,
-                ) && !deps.is_empty()
-                {
-                    // This package depends on changed packages, so it needs to be updated
-                    let update =
-                        self.calculate_package_update_result(&deps, p, &mut old_changelogs)?;
-
-                    result.push(update.clone());
-
-                    // Mark as changed so packages depending on it will be updated in the next iteration
-                    all_changed_packages.push((p, update.1.version.clone()));
-                    processed.insert(p.name.to_string());
-                    any_package_updated = true;
-                }
-            }
-
-            // If no packages were updated in this iteration, we're done
-            if !any_package_updated {
-                break;
-            }
-        }
-
-        Ok(result)
-    }
-
-    fn calculate_package_update_result(
-        &self,
-        deps: &[&Package],
-        p: &Package,
-        old_changelogs: &mut OldChangelogs,
-    ) -> anyhow::Result<(Package, UpdateResult)> {
-        let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
-        let commits = {
-            let change = format!(
-                "chore: updated the following local packages: {}",
-                deps.join(", ")
-            );
-            vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
-        };
-        let next_version = if p.version.is_prerelease() {
-            p.version.increment_prerelease()
-        } else {
-            p.version.increment_patch()
-        };
-        info!(
-            "{}: dependencies changed. Next version is {next_version}",
-            p.name
-        );
-        let update_result = self.calculate_update_result(
-            commits,
-            next_version,
-            p,
-            SemverCheck::Skipped,
-            old_changelogs,
-        )?;
-        Ok((p.clone(), update_result))
-    }
 
     fn calculate_update_result(
         &self,
@@ -592,39 +439,6 @@ impl Updater<'_> {
         }
     }
 
-    fn get_next_version(
-        &self,
-        new_workspace_version: Option<&Version>,
-        p: &Package,
-        workspace_version_pkgs: &HashSet<String>,
-        version_groups: &HashMap<String, Version>,
-        diff: &Diff,
-    ) -> anyhow::Result<Version> {
-        let pkg_config = self.req.get_package_config(&p.name);
-        let next_version = match new_workspace_version {
-            Some(max_workspace_version) if workspace_version_pkgs.contains(p.name.as_str()) => {
-                debug!(
-                    "next version of {} is workspace version: {max_workspace_version}",
-                    p.name
-                );
-                max_workspace_version.clone()
-            }
-            _ => {
-                if let Some(version_group) = pkg_config.version_group {
-                    version_groups
-                        .get(&version_group)
-                        .with_context(|| {
-                            format!("failed to retrieve version for version group {version_group}")
-                        })?
-                        .clone()
-                } else {
-                    let version_updater = pkg_config.generic.version_updater();
-                    p.version.next_from_diff(diff, version_updater)
-                }
-            }
-        };
-        Ok(next_version)
-    }
 
     /// `hash` is only used for logging purposes.
     fn are_changed_files_in_package(
