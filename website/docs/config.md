@@ -214,26 +214,7 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `custom_major_increment_regex` field
 
-A custom regex pattern to match commit types that should trigger a major version increment.
-This is useful when you use non-conventional commit prefixes (like emoji prefixes) and want to
-control which commits bump the major version.
-
-- If the commit message is a conventional commit, the regex is matched against the commit type
-  (the part before the `:` in a commit message).
-- If the commit message is not a conventional commit, the regex is matched against the entire commit
-  message.
-
-Example:
-
-```toml
-[workspace]
-custom_major_increment_regex = "^major|^BREAKING|^💥"
-```
-
-With this configuration, commits like `major: breaking API change`, `BREAKING: remove deprecated method`,
-or `💥: incompatible change` will trigger a major version bump.
-
-This field can be overridden in the [`[package]`](#the-package-section) section.
+Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field), but for major version increments.
 
 #### The `custom_minor_increment_regex` field
 
