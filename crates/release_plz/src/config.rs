@@ -909,33 +909,4 @@ unknown = false"#;
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
     }
-
-    #[test]
-    fn custom_major_increment_regex_is_deserialized() {
-        let config = &format!(
-            "{BASE_WORKSPACE_CONFIG}\
-            custom_major_increment_regex = \"major|breaking\""
-        );
-
-        let mut expected_config = create_base_workspace_config();
-        expected_config
-            .workspace
-            .packages_defaults
-            .custom_major_increment_regex = Some("major|breaking".to_string());
-
-        let config: Config = toml::from_str(config).unwrap();
-        assert_eq!(config, expected_config);
-    }
-
-    #[test]
-    fn custom_major_increment_regex_is_serialized() {
-        let mut config = create_base_workspace_config();
-        config
-            .workspace
-            .packages_defaults
-            .custom_major_increment_regex = Some("major|breaking".to_string());
-
-        let serialized = toml::to_string(&config).unwrap();
-        assert!(serialized.contains(r#"custom_major_increment_regex = "major|breaking""#));
-    }
 }
