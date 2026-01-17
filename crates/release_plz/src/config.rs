@@ -460,6 +460,10 @@ pub struct PackageConfig {
     /// Custom regex to match commit types that should trigger a minor version increment.
     /// Useful when using non-conventional commit prefixes.
     pub custom_minor_increment_regex: Option<String>,
+    /// # Custom Major Increment Regex
+    /// Custom regex to match commit types that should trigger a major version increment.
+    /// Useful when using non-conventional commit prefixes.
+    pub custom_major_increment_regex: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -473,6 +477,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
             custom_minor_increment_regex: config.custom_minor_increment_regex,
+            custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
         }
     }
@@ -516,6 +521,9 @@ impl PackageConfig {
             custom_minor_increment_regex: self
                 .custom_minor_increment_regex
                 .or(default.custom_minor_increment_regex),
+            custom_major_increment_regex: self
+                .custom_major_increment_regex
+                .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
         }
     }
@@ -900,5 +908,34 @@ unknown = false"#;
 
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
+    }
+
+    #[test]
+    fn custom_major_increment_regex_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            custom_major_increment_regex = \"major|breaking\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config
+            .workspace
+            .packages_defaults
+            .custom_major_increment_regex = Some("major|breaking".to_string());
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn custom_major_increment_regex_is_serialized() {
+        let mut config = create_base_workspace_config();
+        config
+            .workspace
+            .packages_defaults
+            .custom_major_increment_regex = Some("major|breaking".to_string());
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"custom_major_increment_regex = "major|breaking""#));
     }
 }

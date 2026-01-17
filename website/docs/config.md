@@ -70,6 +70,8 @@ the following sections:
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
+  - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field)
+    — Custom regex for major version increments.
   - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
     — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field)
@@ -107,6 +109,8 @@ the following sections:
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
   - [`changelog_path`](#the-changelog_path-field-package-section) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
+  - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field-package-section)
+    — Custom regex for major version increments.
   - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field-package-section)
     — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field-package-section)
@@ -207,6 +211,29 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 - If `true`, update all the dependencies in the `Cargo.lock` file by running `cargo update`.
 - If `false`, only update the workspace packages by running `cargo update --workspace`. *(Default)*.
+
+#### The `custom_major_increment_regex` field
+
+A custom regex pattern to match commit types that should trigger a major version increment.
+This is useful when you use non-conventional commit prefixes (like emoji prefixes) and want to
+control which commits bump the major version.
+
+- If the commit message is a conventional commit, the regex is matched against the commit type
+  (the part before the `:` in a commit message).
+- If the commit message is not a conventional commit, the regex is matched against the entire commit
+  message.
+
+Example:
+
+```toml
+[workspace]
+custom_major_increment_regex = "^major|^BREAKING|^💥"
+```
+
+With this configuration, commits like `major: breaking API change`, `BREAKING: remove deprecated method`,
+or `💥: incompatible change` will trigger a major version bump.
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `custom_minor_increment_regex` field
 
@@ -792,6 +819,11 @@ This field cannot be set in the `[workspace]` section.
 
 - If `true`, update the changelog of this package. *(Default)*.
 - If `false`, don't.
+
+#### The `custom_major_increment_regex` field (`package` section)
+
+Overrides the [`workspace.custom_major_increment_regex`](#the-custom_major_increment_regex-field)
+field.
 
 #### The `custom_minor_increment_regex` field (`package` section)
 
