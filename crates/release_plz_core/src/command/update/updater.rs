@@ -108,12 +108,28 @@ impl Updater<'_> {
                 p.name,
             );
             let current_version = p.version.clone();
-            if next_version != current_version || !diff.registry_package_exists {
-                info!(
-                    "{}: next version is {next_version}{}",
-                    p.name,
-                    diff.semver_check.outcome_str()
-                );
+            // Process package if:
+            // - Version changes.
+            // - Package is new.
+            // - Version was already bumped with pending unreleased commits so that we update the changelog.
+            let version_already_bumped = !diff.is_version_published && !diff.commits.is_empty();
+            if next_version != current_version
+                || !diff.registry_package_exists
+                || version_already_bumped
+            {
+                if version_already_bumped {
+                    info!(
+                        "{}: updating changelog for version {current_version}{}",
+                        p.name,
+                        diff.semver_check.outcome_str()
+                    );
+                } else {
+                    info!(
+                        "{}: next version is {next_version}{}",
+                        p.name,
+                        diff.semver_check.outcome_str()
+                    );
+                }
                 let update_result = self.calculate_update_result(
                     diff.commits,
                     next_version,
@@ -632,21 +648,27 @@ impl Updater<'_> {
                     // as part of the release.
                     // We can process the next package.
                     break;
-                } else if package.version > registry_package.package.version {
-                    info!(
-                        "{}: the local package has already a greater version ({}) with respect to the registry package ({}), so release-plz will not update it",
-                        package.name, package.version, registry_package.package.version
-                    );
-                    diff.set_version_unpublished();
-                    break;
-                } else if are_changed_files_in_pkg()? {
-                    debug!("packages contain different files");
-                    // At this point of the git history, the two packages are different,
-                    // which means that this commit is not present in the published package.
-                    diff.commits.push(Commit::new(
-                        current_commit_hash,
-                        current_commit_message.clone(),
-                    ));
+                } else {
+                    // When version is already bumped, we still collect commits to update the changelog,
+                    // but mark that version should not be bumped further.
+                    if package.version > registry_package.package.version
+                        && diff.is_version_published
+                    {
+                        info!(
+                            "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
+                            package.name, package.version, registry_package.package.version
+                        );
+                        diff.set_version_unpublished();
+                    }
+                    if are_changed_files_in_pkg()? {
+                        debug!("packages contain different files");
+                        // At this point of the git history, the two packages are different,
+                        // which means that this commit is not present in the published package.
+                        diff.commits.push(Commit::new(
+                            current_commit_hash,
+                            current_commit_message.clone(),
+                        ));
+                    }
                 }
             } else if are_changed_files_in_pkg()? {
                 diff.commits.push(Commit::new(
