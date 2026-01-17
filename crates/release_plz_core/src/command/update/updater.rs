@@ -527,8 +527,13 @@ impl Updater<'_> {
             .project
             .git_tag(&package.name, &package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
-        if tag_commit.is_some() {
+
+        // Check if git_only is enabled for this package
+        let using_git_only = || self.req.should_use_git_only(&package.name);
+
+        if tag_commit.is_some() && !using_git_only() {
             // Only check registry for packages that should be published
+            // Skip this check if git_only is enabled (we don't use registry in that mode)
             let config = self.req.get_package_config(&package.name);
             if config.should_publish() {
                 let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
@@ -549,6 +554,7 @@ impl Updater<'_> {
             tag_commit.as_deref(),
             &mut diff,
         )?;
+
         repository
             .checkout_head()
             .context("can't checkout to head after calculating diff")?;
@@ -598,14 +604,15 @@ impl Updater<'_> {
                     package_path,
                     registry_package_path,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                if are_packages_equal
-                    || is_commit_too_old(
+                let commit_too_old = || {
+                    is_commit_too_old(
                         repository,
                         tag_commit,
                         registry_package.published_at_sha1(),
                         &current_commit_hash,
                     )
-                {
+                };
+                if are_packages_equal || commit_too_old() {
                     debug!(
                         "next version calculated starting from commits after `{current_commit_hash}`"
                     );

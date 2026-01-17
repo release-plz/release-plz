@@ -203,7 +203,7 @@ impl Update {
                     format!("cannot find project manifest {registry_manifest_path:?}")
                 })?;
         }
-        update = config.fill_update_config(self.no_changelog, update);
+        update = config.fill_update_config(self.no_changelog, update)?;
         {
             let release_date = self
                 .release_date

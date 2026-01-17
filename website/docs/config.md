@@ -82,6 +82,7 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
+  - [`git_only`](#the-git_only-field) — Use git tags instead of cargo registry.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
   - [`pr_name`](#the-pr_name-field) — Customize the name of the release Pull Request.
@@ -118,6 +119,7 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field-package-section) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field-package-section) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field-package-section) — Customize git tag pattern.
+  - [`git_only`](#the-git_only-field-package-section) — Use git tags instead of cargo registry.
   - [`publish`](#the-publish-field-package-section) — Publish to cargo registry.
   - [`publish_allow_dirty`](#the-publish_allow_dirty-field-package-section) — Package dirty directories.
   - [`publish_no_verify`](#the-publish_no_verify-field-package-section) — Don't verify package build.
@@ -250,7 +252,7 @@ The supported git releases are:
 
 - [GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
 - [Gitea](https://docs.gitea.io/en-us/)
-- [GitLab](https://docs.gitlab.com/ee/user/project/releases/#releases)
+- [GitLab](https://docs.gitlab.com/ee/user/project/releases/)
 
 #### The `git_release_name` field
 
@@ -358,6 +360,35 @@ Where:
 
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
+
+#### The `git_only` field
+
+Enable git-only mode, which determines package versions from git tags instead of the cargo registry.
+
+- If `true`, release-plz will look for existing git tags to determine the current
+  version, rather than checking the cargo registry. This is useful for packages that are not
+  published to crates.io but still need version management.
+- If `false`, release-plz uses the cargo registry to determine the current version. *(Default)*.
+
+When `git_only` is enabled:
+
+- The package will not be published to any cargo registry (`cargo publish` is skipped).
+- Version detection is based on git tags matching the
+  [`git_tag_name`](#the-git_tag_name-field) pattern.
+- If no matching tag is found, the package is treated as an initial release.
+
+:::warning
+`git_only` and `publish` cannot both be `true` for the same package.
+:::
+
+Example:
+
+```toml
+[workspace]
+git_only = true
+```
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `pr_name` field
 
@@ -803,6 +834,10 @@ Overrides the [`workspace.git_tag_enable`](#the-git_tag_enable-field) field.
 #### The `git_tag_name` field (`package` section)
 
 Overrides the [`workspace.git_tag_name`](#the-git_tag_name-field) field.
+
+#### The `git_only` field (`package` section)
+
+Overrides the [`workspace.git_only`](#the-git_only-field) field.
 
 #### The `publish` field (`package` section)
 
