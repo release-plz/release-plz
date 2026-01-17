@@ -55,10 +55,7 @@ impl PackagesUpdate {
             .map(|(package, update)| {
                 // Use registry_version as previous_version when available
                 // (version already bumped case), otherwise use package.version
-                let previous_version = update
-                    .registry_version
-                    .as_ref()
-                    .unwrap_or(&package.version);
+                let previous_version = update.registry_version.as_ref().unwrap_or(&package.version);
                 if previous_version == &update.version {
                     format!("\n* `{}`: {}", package.name, update.version)
                 } else {
