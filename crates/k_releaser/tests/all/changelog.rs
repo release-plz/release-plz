@@ -82,6 +82,9 @@ async fn release_plz_releases_a_new_project() {
     // Run release to create git tag and forge release (but not publish to registry)
     context.run_release().success();
 
+    // Fetch tags from remote (release command pushes tags to remote)
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+
     // Verify a git tag was created
     let tags = context.repo.git(&["tag", "--list"]).unwrap();
     assert!(tags.contains("v0.1.1"));
