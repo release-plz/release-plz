@@ -546,11 +546,12 @@ async fn release_plz_should_fail_for_multi_package_pr() {
     "#;
 
     context.write_release_plz_toml(config);
-    // This should fail because the workspace contains multiple packages
-    // so the `package` variable is not available
-    let outcome = context.run_release_pr().failure();
-    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
-    assert!(stderr.contains("failed to render pr_name"));
+    // With unified workspace versioning, multi-package workspaces use "workspace" as the package name
+    let outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "release: workspace 0.1.1");
 }
 
 #[tokio::test]
