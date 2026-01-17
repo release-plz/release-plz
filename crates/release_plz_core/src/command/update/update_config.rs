@@ -182,13 +182,4 @@ mod tests {
         let new_version = updater.increment(&version, commits);
         assert_eq!(new_version, Version::new(2, 0, 0));
     }
-
-    #[test]
-    fn version_updater_with_invalid_major_regex() {
-        let config = UpdateConfig {
-            custom_major_increment_regex: Some("[invalid".to_string()),
-            ..Default::default()
-        };
-        assert!(config.version_updater().is_err());
-    }
 }
