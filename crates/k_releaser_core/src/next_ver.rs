@@ -6,7 +6,6 @@ use crate::{
     copy_dir::copy_dir,
     fs_utils::{Utf8TempDir, strip_prefix},
     package_path::manifest_dir,
-    registry_packages::{self},
     semver_check::SemverCheck,
     tmp_repo::TempRepo,
 };
@@ -71,14 +70,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         project: &local_project,
         req: input,
     };
-    // Retrieve the latest published version of the packages.
-    // Release-plz will compare the registry packages with the local packages,
-    // to determine the new commits.
-    let registry_packages = registry_packages::get_registry_packages(
-        input.registry_manifest(),
-        &local_project.publishable_packages(),
-        input.registry(),
-    )?;
 
     let repository = local_project
         .get_repo()
@@ -100,7 +91,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         ])?;
     }
     let packages_to_update = updater
-        .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
+        .packages_to_update(&repository.repo, input.local_manifest())
         .await?;
     Ok((packages_to_update, repository))
 }

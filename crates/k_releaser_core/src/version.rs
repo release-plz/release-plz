@@ -32,8 +32,8 @@ mod tests {
 
     #[test]
     fn next_version_of_new_package_is_unchanged() {
-        let registry_package_exists = false;
-        let diff = Diff::new(registry_package_exists);
+        let tag_exists = false;
+        let diff = Diff::new(tag_exists);
         let version = Version::new(1, 2, 3);
         assert_eq!(
             version
@@ -46,12 +46,11 @@ mod tests {
     #[test]
     fn next_version_of_existing_package_is_updated() {
         let diff = Diff {
-            registry_package_exists: true,
+            tag_exists: true,
             commits: vec![Commit::new(
                 NO_COMMIT_ID.to_string(),
                 "my change".to_string(),
             )],
-            is_version_published: true,
             semver_check: SemverCheck::Skipped,
         };
         let version = Version::new(1, 2, 3);
@@ -64,12 +63,11 @@ mod tests {
     #[test]
     fn next_version_doesnt_bump_0_x_minor_version_for_features() {
         let diff = Diff {
-            registry_package_exists: true,
+            tag_exists: true,
             commits: vec![Commit::new(
                 NO_COMMIT_ID.to_string(),
                 "feat: my change".to_string(),
             )],
-            is_version_published: true,
             semver_check: SemverCheck::Skipped,
         };
         let version = Version::new(0, 2, 3);
@@ -82,12 +80,11 @@ mod tests {
     #[test]
     fn next_version_bumps_0_x_minor_version_for_features() {
         let diff = Diff {
-            registry_package_exists: true,
+            tag_exists: true,
             commits: vec![Commit::new(
                 NO_COMMIT_ID.to_string(),
                 "feat: my change".to_string(),
             )],
-            is_version_published: true,
             semver_check: SemverCheck::Skipped,
         };
         let version = Version::new(0, 2, 3);

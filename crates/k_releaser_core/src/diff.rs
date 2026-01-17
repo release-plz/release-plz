@@ -3,16 +3,13 @@ use regex::Regex;
 
 use crate::semver_check::SemverCheck;
 
-/// Difference between local and registry package (i.e. the last released version)
+/// Difference between local package and last git-tagged version
 #[derive(Debug, Clone)]
 pub(crate) struct Diff {
-    /// List of commits from last released version to last local changes.
+    /// List of commits from last tagged version to last local changes.
     pub commits: Vec<Commit>,
-    /// Whether the package name exists in the registry or not.
-    pub registry_package_exists: bool,
-    /// Whether the current local version is published to the registry.
-    /// If the current version is still unpublished, the package will not be processed.
-    pub is_version_published: bool,
+    /// Whether a git tag exists for this package or not.
+    pub tag_exists: bool,
     /// Semver incompatible changes.
     pub semver_check: SemverCheck,
 }
@@ -54,21 +51,16 @@ impl Commit {
 }
 
 impl Diff {
-    pub fn new(registry_package_exists: bool) -> Self {
+    pub fn new(tag_exists: bool) -> Self {
         Self {
             commits: vec![],
-            registry_package_exists,
-            is_version_published: true,
+            tag_exists,
             semver_check: SemverCheck::Skipped,
         }
     }
 
     pub fn should_update_version(&self) -> bool {
-        self.registry_package_exists && !self.commits.is_empty()
-    }
-
-    pub fn set_version_unpublished(&mut self) {
-        self.is_version_published = false;
+        !self.commits.is_empty()
     }
 
     pub fn set_semver_check(&mut self, semver_check: SemverCheck) {

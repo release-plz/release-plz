@@ -28,10 +28,8 @@ use crate::{
     changelog_parser,
     command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
-    fs_utils, lock_compare,
-    registry_packages::{PackagesCollection, RegistryPackage},
+    fs_utils,
     semver_check::{self, SemverCheck},
-    toml_compare,
     version::NextVersionFromDiff as _,
 };
 
@@ -52,14 +50,13 @@ impl Updater<'_> {
     #[instrument(skip_all)]
     pub async fn packages_to_update(
         &self,
-        registry_packages: &PackagesCollection,
         repository: &Repo,
         local_manifest_path: &Utf8Path,
     ) -> anyhow::Result<PackagesUpdate> {
         debug!("calculating local packages");
 
         let packages_diffs = self
-            .get_packages_diffs(registry_packages, repository)
+            .get_packages_diffs(repository)
             .await?;
         let version_groups = self.get_version_groups(&packages_diffs);
         debug!("version groups: {:?}", version_groups);
@@ -108,7 +105,7 @@ impl Updater<'_> {
                 p.name,
             );
             let current_version = p.version.clone();
-            if next_version != current_version || !diff.registry_package_exists {
+            if next_version != current_version || !diff.tag_exists {
                 info!(
                     "{}: next version is {next_version}{}",
                     p.name,
@@ -124,7 +121,7 @@ impl Updater<'_> {
                 packages_to_update
                     .updates_mut()
                     .push((p.clone(), update_result));
-            } else if diff.is_version_published {
+            } else {
                 // We need to update this package only if one of its dependencies has changed.
                 packages_to_check_for_deps.push(p);
             }
@@ -201,7 +198,6 @@ impl Updater<'_> {
 
     async fn get_packages_diffs(
         &self,
-        registry_packages: &PackagesCollection,
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&Package, Diff)>> {
         // Store diff for each package. This operation is not thread safe, so we do it in one
@@ -212,7 +208,7 @@ impl Updater<'_> {
             .iter()
             .map(|&p| {
                 let diff = self
-                    .get_diff(p, registry_packages, repository)
+                    .get_diff(p, repository)
                     .with_context(|| {
                         format!("failed to retrieve difference of package {}", p.name)
                     })?;
@@ -228,34 +224,15 @@ impl Updater<'_> {
 
         let semver_check_result: anyhow::Result<()> =
             packages_diffs.par_iter_mut().try_for_each(|(p, diff)| {
-                let registry_package = registry_packages.get_package(&p.name);
-                if let Some(registry_package) = registry_package {
-                    let package_path = get_package_path(p, repository, self.project.root())
-                        .context("can't retrieve package path")?;
-                    let package_config = self.req.get_package_config(&p.name);
-                    for pkg_to_include in &package_config.changelog_include {
-                        if let Some(commits) = packages_commits.get(pkg_to_include) {
-                            diff.add_commits(commits);
-                        }
-                    }
-                    if should_check_semver(p, package_config.semver_check())
-                        && diff.should_update_version()
-                    {
-                        let registry_package_path = registry_package
-                            .package_path()
-                            .context("can't retrieve registry package path")?;
-                        // Log that we are checking semver only the first time.
-                        SEMVER_CHECK_LOG_ONCE.call_once(|| {
-                            tracing::info!(
-                                "Checking API compatibility with cargo-semver-checks..."
-                            );
-                        });
-                        let semver_check =
-                            semver_check::run_semver_check(&package_path, registry_package_path)
-                                .context("error while running cargo-semver-checks")?;
-                        diff.set_semver_check(semver_check);
+                let package_config = self.req.get_package_config(&p.name);
+                for pkg_to_include in &package_config.changelog_include {
+                    if let Some(commits) = packages_commits.get(pkg_to_include) {
+                        diff.add_commits(commits);
                     }
                 }
+                // TODO: Implement git-tag-based semver checking
+                // For now, semver checking is skipped when using git tags only.
+                // It can be implemented by checking out the tag commit and comparing packages.
                 Ok(())
             });
         semver_check_result?;
@@ -493,7 +470,6 @@ impl Updater<'_> {
     fn get_diff(
         &self,
         package: &Package,
-        registry_packages: &PackagesCollection,
         repository: &Repo,
     ) -> anyhow::Result<Diff> {
         info!(
@@ -506,8 +482,14 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
-        let registry_package = registry_packages.get_registry_package(&package.name);
-        let mut diff = Diff::new(registry_package.is_some());
+
+        let git_tag = self
+            .project
+            .git_tag(&package.name, &package.version.to_string())?;
+        let tag_commit = repository.get_tag_commit(&git_tag);
+        let tag_exists = tag_commit.is_some();
+
+        let mut diff = Diff::new(tag_exists);
         let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         repository
@@ -523,28 +505,9 @@ impl Updater<'_> {
                 }
             })?;
 
-        let git_tag = self
-            .project
-            .git_tag(&package.name, &package.version.to_string())?;
-        let tag_commit = repository.get_tag_commit(&git_tag);
-        if tag_commit.is_some() {
-            // Only check registry for packages that should be published
-            let config = self.req.get_package_config(&package.name);
-            if config.should_publish() {
-                let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
-                anyhow::ensure!(
-                    package.version <= registry_package.package.version,
-                    "local package `{}` has a greater version ({}) with respect to the registry package ({}), but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish the new version of this package.",
-                    package.name,
-                    package.version,
-                    registry_package.package.version
-                );
-            }
-        }
         self.get_package_diff(
             &package_path,
             package,
-            registry_package,
             repository,
             tag_commit.as_deref(),
             &mut diff,
@@ -559,14 +522,15 @@ impl Updater<'_> {
         &self,
         package_path: &Utf8Path,
         package: &Package,
-        registry_package: Option<&RegistryPackage>,
         repository: &Repo,
         tag_commit: Option<&str>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
         let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        let max_analyze_commits = if registry_package.is_none() {
+
+        // If no tag exists (first release), limit the commits we analyze
+        let max_analyze_commits = if tag_commit.is_none() {
             match self.req.max_analyze_commits() {
                 0 => u32::MAX,
                 n => n,
@@ -585,68 +549,27 @@ impl Updater<'_> {
                 self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
             };
 
-            if let Some(registry_package) = registry_package {
+            // If we reached the tag commit, stop here
+            if is_commit_too_old(
+                repository,
+                tag_commit,
+                None, // No longer using published_at_commit from registry
+                &current_commit_hash,
+            ) {
                 debug!(
-                    "package {} found in cargo registry",
-                    registry_package.package.name
+                    "next version calculated starting from commits after `{current_commit_hash}`"
                 );
-                let registry_package_path = registry_package.package.package_path()?;
+                break;
+            }
 
-                let are_packages_equal = self.check_package_equality(
-                    repository,
-                    package,
-                    package_path,
-                    registry_package_path,
-                ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                if are_packages_equal
-                    || is_commit_too_old(
-                        repository,
-                        tag_commit,
-                        registry_package.published_at_sha1(),
-                        &current_commit_hash,
-                    )
-                {
-                    debug!(
-                        "next version calculated starting from commits after `{current_commit_hash}`"
-                    );
-                    if diff.commits.is_empty() {
-                        // Even if the packages are equal, the Cargo.lock or Cargo.toml of the
-                        // workspace might have changed.
-                        // If the dependencies changed, we add a commit to the diff.
-                        self.add_dependencies_update_if_any(
-                            diff,
-                            &registry_package.package,
-                            package,
-                            registry_package_path,
-                        )?;
-                    }
-                    // The local package is identical to the registry one, which means that
-                    // the package was published at this commit, so we will not count this commit
-                    // as part of the release.
-                    // We can process the next package.
-                    break;
-                } else if package.version > registry_package.package.version {
-                    info!(
-                        "{}: the local package has already a greater version ({}) with respect to the registry package ({}), so release-plz will not update it",
-                        package.name, package.version, registry_package.package.version
-                    );
-                    diff.set_version_unpublished();
-                    break;
-                } else if are_changed_files_in_pkg()? {
-                    debug!("packages contain different files");
-                    // At this point of the git history, the two packages are different,
-                    // which means that this commit is not present in the published package.
-                    diff.commits.push(Commit::new(
-                        current_commit_hash,
-                        current_commit_message.clone(),
-                    ));
-                }
-            } else if are_changed_files_in_pkg()? {
+            // Add commit if files in this package changed
+            if are_changed_files_in_pkg()? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
                     current_commit_message.clone(),
                 ));
             }
+
             // Go back to the previous commit.
             // Keep in mind that the info contained in `package` might be outdated,
             // because commits could contain changes to Cargo.toml.
@@ -654,70 +577,6 @@ impl Updater<'_> {
                 debug!("there are no other commits");
                 break;
             }
-        }
-        Ok(())
-    }
-
-    fn check_package_equality(
-        &self,
-        repository: &Repo,
-        package: &Package,
-        package_path: &Utf8Path,
-        registry_package_path: &Utf8Path,
-    ) -> anyhow::Result<bool> {
-        if crate::is_readme_updated(&package.name, package_path, registry_package_path)? {
-            debug!("{}: README updated", package.name);
-            return Ok(false);
-        }
-        // We run `cargo package` when comparing packages, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = crate::are_packages_equal(package_path, registry_package_path)
-            .context("cannot compare packages")?;
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
-        Ok(are_packages_equal)
-    }
-
-    /// If the dependencies changed, add a commit to the diff.
-    fn add_dependencies_update_if_any(
-        &self,
-        diff: &mut Diff,
-        registry_package: &Package,
-        package: &Package,
-        registry_package_path: &Utf8Path,
-    ) -> anyhow::Result<()> {
-        let are_toml_dependencies_updated = || {
-            toml_compare::are_toml_dependencies_updated(
-                &registry_package.dependencies,
-                &package.dependencies,
-            )
-        };
-        let are_lock_dependencies_updated = || {
-            lock_compare::are_lock_dependencies_updated(
-                &self.project.cargo_lock_path(),
-                registry_package_path,
-            )
-            .context("Can't check if Cargo.lock dependencies are up to date")
-        };
-        if are_toml_dependencies_updated() {
-            diff.commits.push(Commit::new(
-                NO_COMMIT_ID.to_string(),
-                "chore: update Cargo.toml dependencies".to_string(),
-            ));
-        } else if contains_executable(package) && are_lock_dependencies_updated()? {
-            diff.commits.push(Commit::new(
-                NO_COMMIT_ID.to_string(),
-                "chore: update Cargo.lock dependencies".to_string(),
-            ));
-        } else {
-            info!("{}: already up to date", package.name);
         }
         Ok(())
     }
