@@ -108,7 +108,8 @@ fn process_git_only_package(
         .get_package_tag_name(&package.name)
         .unwrap_or_else(|| default_tag_name_template(is_multi_package));
 
-    let release_regex = release_regex::get_release_regex(&template, &package.name).context("get release regex")?;
+    let release_regex =
+        release_regex::get_release_regex(&template, &package.name).context("get release regex")?;
     debug!(
         "looking for tags matching pattern: {}",
         release_regex.to_string()
