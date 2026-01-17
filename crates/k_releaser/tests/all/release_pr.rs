@@ -561,7 +561,7 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
     context.run_release_pr().success();
     context.merge_release_pr().await;
 
-    let expected_tag = "v0.1.0";
+    let expected_tag = "v0.1.1";
 
     context.run_release().success();
 
@@ -573,7 +573,7 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
     context.run_release_pr().success();
     context.merge_release_pr().await;
 
-    let expected_tag = "v0.1.1";
+    let expected_tag = "v0.1.2";
 
     context.run_release().success();
 
@@ -600,7 +600,7 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
     context.run_release_pr().success();
     context.merge_release_pr().await;
 
-    let expected_tag = "v0.1.0";
+    let expected_tag = "v0.1.1";
 
     context.run_release().success();
 

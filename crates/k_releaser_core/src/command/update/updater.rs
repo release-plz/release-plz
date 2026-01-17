@@ -52,6 +52,12 @@ impl Updater<'_> {
     ) -> anyhow::Result<PackagesUpdate> {
         debug!("calculating unified workspace version");
 
+        // Fetch tags from remote to ensure we have the latest tag information
+        // This is critical for determining commits since last release
+        if let Err(e) = repository.git(&["fetch", "--tags"]) {
+            debug!("Failed to fetch tags (this is ok if there's no remote): {e}");
+        }
+
         let packages_diffs = self
             .get_packages_diffs(repository)
             .await?;
