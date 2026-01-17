@@ -502,7 +502,7 @@ Changes:
     context.run_release_pr().success();
     let today = today();
 
-    let expected_title = format!("release: {} 0.1.0", context.gitea.repo);
+    let expected_title = format!("release: {} 0.1.1", context.gitea.repo);
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, expected_title);
@@ -512,9 +512,9 @@ Changes:
         opened_prs[0].body.as_ref().unwrap().trim(),
         format!(
             r"
-### [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
+### [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
 
-Package: {package} 0.1.0 -> 0.1.0
+Package: {package} 0.1.0 -> 0.1.1
 
 Changes:
 ### Other

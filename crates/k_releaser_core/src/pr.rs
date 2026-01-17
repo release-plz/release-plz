@@ -104,6 +104,14 @@ fn pr_title(
         let mut context = tera::Context::new();
         // Always include version since all packages share it
         context.insert(VERSION_VAR, workspace_version.to_string().as_str());
+        // For single-package projects or backward compatibility, include package name
+        // Use first package name (for single-package) or "workspace" for multi-package
+        let package_name = if updates.len() == 1 {
+            updates[0].0.name.as_str()
+        } else {
+            "workspace"
+        };
+        context.insert("package", package_name);
         render_template(&title_template, &context, "pr_name")?
     } else {
         // For unified workspace versioning, always use simple format
