@@ -258,7 +258,8 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
     Ok(single_package)
 }
 
-/// Determine next version of packages
+/// Determine next version of packages.
+///
 /// Returns:
 /// - Any packages that need to be updated
 /// - A temporary repository, i.e. an isolated copy of the repository used for git operations
@@ -279,107 +280,28 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
 
     // Separate packages based on per-package git_only configuration
     let workspace_packages = input.cargo_metadata().workspace_packages();
-    let mut git_only_packages = Vec::new();
-    let mut registry_packages_list = Vec::new();
+    let (git_only_packages, registry_packages_list): (Vec<_>, Vec<_>) = workspace_packages
+        .iter()
+        .partition(|p| input.should_use_git_only(&p.name));
 
-    for package in &workspace_packages {
-        if input.should_use_git_only(&package.name) {
-            git_only_packages.push(*package);
-        } else {
-            registry_packages_list.push(*package);
-        }
-    }
+    let is_multi_package = local_project.publishable_packages().len() > 1;
 
-    // We'll collect all packages we'll be updating in a single map
-    let mut all_packages: BTreeMap<String, RegistryPackage> = BTreeMap::new();
+    // Process git_only packages (version determined from git tags).
+    // Worktrees must be kept alive until we're done with the packages.
+    let (mut all_packages, _worktrees) =
+        collect_git_only_packages(git_only_packages, input, is_multi_package)?;
 
-    // NOTE: We need to prevent the worktrees from being dropped because their Drop
-    // implementation cleans up the worktrees.
-    // See the note on the custom worktree Drop impl for more details.
-    let mut worktrees: Vec<GitWorkTree> = Vec::new();
+    // Process registry packages (version determined from registry)
+    let (registry_pkgs, registry_collection) = collect_registry_packages(
+        registry_packages_list,
+        &local_project.publishable_packages(),
+        input,
+    )?;
+    all_packages.extend(registry_pkgs);
 
-    // Initialize registry_packages - will be populated if we download from registry
-    let mut registry_packages = PackagesCollection::default();
-
-    // Process git_only packages
-    if !git_only_packages.is_empty() {
-        debug!(
-            "Processing {} packages in git_only mode",
-            git_only_packages.len()
-        );
-
-        // Determine if this is a multi-package workspace for default template
-        let is_multi_package = local_project.publishable_packages().len() > 1;
-
-        // create the repo we'll be spinning worktrees from
-        let mut unreleased_project_repo = GitRepo::open(
-            input
-                .local_manifest_dir()
-                .context("get local manifest dir")?,
-        )
-        .context("create unreleased repo for spinning worktrees")?;
-
-        for package in git_only_packages {
-            if let Some((registry_package, worktree)) = process_git_only_package(
-                package,
-                &mut unreleased_project_repo,
-                input,
-                is_multi_package,
-            )? {
-                all_packages.insert(registry_package.package.name.to_string(), registry_package);
-                // See NOTE above about worktree lifetimes
-                worktrees.push(worktree);
-            }
-        }
-    }
-
-    // Process non-git_only packages (download from registry)
-    if !registry_packages_list.is_empty() {
-        debug!(
-            "Processing {} packages from registry",
-            registry_packages_list.len()
-        );
-
-        // Filter to only publishable packages for registry download
-        let publishable_registry_packages: Vec<&Package> = registry_packages_list
-            .into_iter()
-            .filter(|p| {
-                local_project
-                    .publishable_packages()
-                    .iter()
-                    .any(|pub_pkg| pub_pkg.name == p.name)
-            })
-            .collect();
-
-        if !publishable_registry_packages.is_empty() {
-            // Retrieve the latest published version of the packages.
-            // Release-plz will compare the registry packages with the local packages,
-            // to determine the new commits.
-            registry_packages = registry_packages::get_registry_packages(
-                input.registry_manifest(),
-                &publishable_registry_packages,
-                input.registry(),
-            )?;
-
-            // Merge registry packages into all_packages
-            // We need to extract the packages from PackagesCollection
-            for package_name in publishable_registry_packages.iter().map(|p| &p.name) {
-                if let Some(reg_pkg) = registry_packages.get_registry_package(package_name) {
-                    all_packages.insert(
-                        package_name.to_string(),
-                        RegistryPackage::new(
-                            reg_pkg.package.clone(),
-                            reg_pkg.published_at_sha1().map(|s| s.to_string()),
-                        ),
-                    );
-                }
-            }
-        }
-    }
-
-    // NOTE: We reuse registry_packages here instead of instantiating a new object
+    // NOTE: We reuse registry_collection here instead of instantiating a new object
     // because otherwise the temp dir contained within it gets dropped and cleaned up.
-    let release_packages = registry_packages.with_packages(all_packages);
+    let release_packages = registry_collection.with_packages(all_packages);
 
     // Create a temporary isolated repository for git operations.
     // This ensures that git checkouts and other operations don't affect the user's working directory.
@@ -392,7 +314,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         repo_is_clean_result?;
     } else if repo_is_clean_result.is_err() {
         // Stash uncommitted changes so we can freely check out other commits.
-        // This function is ran inside a temporary repository, so this has no
+        // This function runs inside a temporary repository, so this has no
         // effects on the original repository of the user.
         repository.repo.git(&[
             "stash",
@@ -402,11 +324,114 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             "uncommitted changes stashed by release-plz",
         ])?;
     }
+
     let packages_to_update = updater
         .packages_to_update(&release_packages, &repository.repo, input.local_manifest())
         .await?;
     Ok((packages_to_update, repository))
 }
+
+/// Process all git_only packages and return their metadata.
+///
+/// Returns:
+/// - A map of package name to `RegistryPackage`
+/// - A list of worktrees that must be kept alive until we're done with the packages
+fn collect_git_only_packages(
+    git_only_packages: Vec<&Package>,
+    input: &UpdateRequest,
+    is_multi_package: bool,
+) -> anyhow::Result<(BTreeMap<String, RegistryPackage>, Vec<GitWorkTree>)> {
+    if git_only_packages.is_empty() {
+        return Ok((BTreeMap::new(), Vec::new()));
+    }
+
+    debug!(
+        "Processing {} packages in git_only mode",
+        git_only_packages.len()
+    );
+
+    let mut all_packages = BTreeMap::new();
+    // NOTE: We need to prevent the worktrees from being dropped because their Drop
+    // implementation cleans up the worktrees.
+    // See the note on the custom worktree Drop impl for more details.
+    let mut worktrees = Vec::new();
+
+    let mut unreleased_project_repo = GitRepo::open(
+        input
+            .local_manifest_dir()
+            .context("get local manifest dir")?,
+    )
+    .context("create unreleased repo for spinning worktrees")?;
+
+    for package in git_only_packages {
+        if let Some((registry_package, worktree)) = process_git_only_package(
+            package,
+            &mut unreleased_project_repo,
+            input,
+            is_multi_package,
+        )? {
+            all_packages.insert(registry_package.package.name.to_string(), registry_package);
+            worktrees.push(worktree);
+        }
+    }
+
+    Ok((all_packages, worktrees))
+}
+
+/// Fetch packages from the registry and return their metadata.
+///
+/// Returns:
+/// - A map of package name to `RegistryPackage`
+/// - The `PackagesCollection` (must be kept alive because it owns the temp dir)
+fn collect_registry_packages(
+    registry_packages_list: Vec<&Package>,
+    publishable_packages: &[&Package],
+    input: &UpdateRequest,
+) -> anyhow::Result<(BTreeMap<String, RegistryPackage>, PackagesCollection)> {
+    if registry_packages_list.is_empty() {
+        return Ok((BTreeMap::new(), PackagesCollection::default()));
+    }
+
+    debug!(
+        "Processing {} packages from registry",
+        registry_packages_list.len()
+    );
+
+    // Filter to only publishable packages
+    let publishable_registry_packages: Vec<&Package> = registry_packages_list
+        .into_iter()
+        .filter(|p| publishable_packages.iter().any(|pub_pkg| pub_pkg.name == p.name))
+        .collect();
+
+    if publishable_registry_packages.is_empty() {
+        return Ok((BTreeMap::new(), PackagesCollection::default()));
+    }
+
+    // Retrieve the latest published version of the packages.
+    // Release-plz will compare the registry packages with the local packages
+    // to determine the new commits.
+    let registry_packages = registry_packages::get_registry_packages(
+        input.registry_manifest(),
+        &publishable_registry_packages,
+        input.registry(),
+    )?;
+
+    let mut all_packages = BTreeMap::new();
+    for package_name in publishable_registry_packages.iter().map(|p| &p.name) {
+        if let Some(reg_pkg) = registry_packages.get_registry_package(package_name) {
+            all_packages.insert(
+                package_name.to_string(),
+                RegistryPackage::new(
+                    reg_pkg.package.clone(),
+                    reg_pkg.published_at_sha1().map(|s| s.to_string()),
+                ),
+            );
+        }
+    }
+
+    Ok((all_packages, registry_packages))
+}
+
 
 pub fn root_repo_path(local_manifest: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
     let manifest_dir = manifest_dir(local_manifest)?;
