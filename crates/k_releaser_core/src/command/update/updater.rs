@@ -25,10 +25,9 @@ use crate::{
     UpdateResult,
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser,
-    command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
     fs_utils,
-    semver_check::{self, SemverCheck},
+    semver_check,
 };
 
 use super::{
@@ -89,22 +88,28 @@ impl Updater<'_> {
             info!("unified workspace version: {workspace_version}");
             packages_to_update.with_workspace_version(workspace_version.clone());
 
-            // Apply the SAME version to ALL packages
-            let mut old_changelogs = OldChangelogs::new();
+            // Generate ONE workspace changelog for ALL packages
+            let workspace_changelog = self.generate_workspace_changelog(
+                &all_commits,
+                &workspace_version,
+                local_manifest_path,
+            )?;
+
+            // Apply the SAME version and SAME changelog to ALL packages
             for (p, diff) in packages_diffs {
                 debug!(
                     "package: {}, unified version: {workspace_version}",
                     p.name,
                 );
 
-                // For unified versioning, use ALL commits (not per-package commits)
-                let update_result = self.calculate_update_result(
-                    all_commits.clone(),
-                    workspace_version.clone(),
-                    p,
-                    diff.semver_check,
-                    &mut old_changelogs,
-                )?;
+                // For unified versioning, all packages get the same changelog
+                let update_result = UpdateResult {
+                    version: workspace_version.clone(),
+                    changelog: workspace_changelog.0.clone(),
+                    semver_check: diff.semver_check,
+                    new_changelog_entry: workspace_changelog.1.clone(),
+                };
+
                 packages_to_update
                     .updates_mut()
                     .push((p.clone(), update_result));
@@ -143,6 +148,57 @@ impl Updater<'_> {
         };
 
         Ok(next_version)
+    }
+
+    /// Generate a single workspace changelog for the entire monorepo.
+    /// Returns (full_changelog, new_entry_only)
+    fn generate_workspace_changelog(
+        &self,
+        all_commits: &[Commit],
+        workspace_version: &Version,
+        local_manifest_path: &Utf8Path,
+    ) -> anyhow::Result<(Option<String>, Option<String>)> {
+        // Get workspace-level changelog path (defaults to ./CHANGELOG.md at workspace root)
+        let workspace_changelog_path = local_manifest_path
+            .parent()
+            .unwrap()
+            .join("CHANGELOG.md");
+
+        // Read existing changelog if it exists
+        let old_changelog = if workspace_changelog_path.exists() {
+            Some(std::fs::read_to_string(&workspace_changelog_path)?)
+        } else {
+            None
+        };
+
+        // Get current workspace version for comparison
+        let local_manifest = LocalManifest::try_new(local_manifest_path)?;
+        let current_version = local_manifest
+            .get_workspace_version()
+            .context("workspace version required")?;
+
+        // Generate changelog using workspace context
+        let repo_url = self.req.repo_url();
+        let release_link = {
+            let prev_tag = self.project.git_tag(&current_version.to_string())?;
+            let next_tag = self.project.git_tag(&workspace_version.to_string())?;
+            repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
+        };
+
+        let changelog_req = self.req.changelog_req().clone();
+
+        // Use "workspace" as the package name for unified changelog
+        let (full_changelog, new_entry) = get_workspace_changelog(
+            all_commits,
+            workspace_version,
+            Some(changelog_req),
+            old_changelog.as_deref(),
+            repo_url,
+            release_link.as_deref(),
+            &current_version,
+        )?;
+
+        Ok((Some(full_changelog), Some(new_entry)))
     }
 
     async fn get_packages_diffs(
@@ -220,94 +276,6 @@ impl Updater<'_> {
     }
 
 
-    fn calculate_update_result(
-        &self,
-        commits: Vec<Commit>,
-        next_version: Version,
-        p: &Package,
-        semver_check: SemverCheck,
-        old_changelogs: &mut OldChangelogs,
-    ) -> Result<UpdateResult, anyhow::Error> {
-        let changelog_path = self.req.changelog_path(p);
-        let old_changelog: Option<String> = old_changelogs.get_or_read(&changelog_path);
-        let update_result = self.update_result(
-            commits,
-            next_version,
-            p,
-            semver_check,
-            old_changelog.as_deref(),
-        )?;
-        if let Some(changelog) = &update_result.changelog {
-            old_changelogs.insert(changelog_path, changelog.clone());
-        }
-        Ok(update_result)
-    }
-
-    /// This function needs `old_changelog` so that you can have changes of different
-    /// packages in the same changelog.
-    fn update_result(
-        &self,
-        commits: Vec<Commit>,
-        version: Version,
-        package: &Package,
-        semver_check: SemverCheck,
-        old_changelog: Option<&str>,
-    ) -> anyhow::Result<UpdateResult> {
-        let repo_url = self.req.repo_url();
-        let release_link = {
-            let prev_tag = self
-                .project
-                .git_tag(&package.version.to_string())?;
-            let next_tag = self.project.git_tag(&version.to_string())?;
-            repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
-        };
-
-        let changelog_outcome = {
-            let cfg = self.req.get_package_config(package.name.as_str());
-            let changelog_req = cfg
-                .should_update_changelog()
-                .then_some(self.req.changelog_req().clone());
-            let commits: Vec<Commit> = commits
-                .into_iter()
-                // If not conventional commit, only consider the first line of the commit message.
-                .filter_map(|c| {
-                    if c.is_conventional() {
-                        Some(c)
-                    } else {
-                        c.message.lines().next().map(|line| Commit {
-                            message: line.to_string(),
-                            ..c
-                        })
-                    }
-                })
-                .collect();
-            changelog_req
-                .map(|r| {
-                    get_changelog(
-                        &commits,
-                        &version,
-                        Some(r),
-                        old_changelog,
-                        repo_url,
-                        release_link.as_deref(),
-                        package,
-                    )
-                })
-                .transpose()
-        }?;
-
-        let (changelog, new_changelog_entry) = match changelog_outcome {
-            Some((changelog, new_changelog_entry)) => (Some(changelog), Some(new_changelog_entry)),
-            None => (None, None),
-        };
-
-        Ok(UpdateResult {
-            version,
-            changelog,
-            semver_check,
-            new_changelog_entry,
-        })
-    }
 
     /// This operation is not thread-safe, because we do `git checkout` on the repository.
     #[instrument(
@@ -569,6 +537,80 @@ fn pathbufs_to_check(
         paths.push(readme_path);
     }
     Ok(paths)
+}
+
+/// Generate a workspace-level changelog (for unified monorepo versioning).
+/// Returns (full_changelog, new_entry_only)
+fn get_workspace_changelog(
+    commits: &[Commit],
+    next_version: &Version,
+    changelog_req: Option<ChangelogRequest>,
+    old_changelog: Option<&str>,
+    repo_url: Option<&RepoUrl>,
+    release_link: Option<&str>,
+    current_version: &Version,
+) -> anyhow::Result<(String, String)> {
+    let commits: Vec<git_cliff_core::commit::Commit> =
+        commits.iter().map(|c| c.to_cliff_commit()).collect();
+
+    // Use "workspace" as the package name for unified changelog
+    let mut changelog_builder = ChangelogBuilder::new(
+        commits.clone(),
+        next_version.to_string(),
+        "workspace".to_string(),
+    );
+
+    if let Some(changelog_req) = changelog_req {
+        if let Some(release_date) = changelog_req.release_date {
+            changelog_builder = changelog_builder.with_release_date(release_date);
+        }
+        if let Some(config) = changelog_req.changelog_config {
+            changelog_builder = changelog_builder.with_config(config);
+        }
+        if let Some(link) = release_link {
+            changelog_builder = changelog_builder.with_release_link(link);
+        }
+        if let Some(repo_url) = repo_url {
+            let remote = Remote {
+                owner: repo_url.owner.clone(),
+                repo: repo_url.name.clone(),
+                link: repo_url.full_host(),
+                contributors: get_contributors(&commits),
+            };
+            changelog_builder = changelog_builder.with_remote(remote);
+
+            let pr_link = repo_url.git_pr_link();
+            changelog_builder = changelog_builder.with_pr_link(pr_link);
+        }
+
+        let is_new_version = next_version != current_version;
+        let last_version = old_changelog.and_then(|old_changelog| {
+            changelog_parser::last_version_from_str(old_changelog)
+                .ok()
+                .flatten()
+        });
+
+        if is_new_version {
+            let last_version = last_version.unwrap_or(current_version.to_string());
+            changelog_builder = changelog_builder.with_previous_version(last_version);
+        } else if let Some(last_version) = last_version
+            && let Some(old_changelog) = old_changelog
+            && last_version == next_version.to_string()
+        {
+            // If the next version is the same as the last version of the changelog,
+            // don't update the changelog (returning the old one).
+            return Ok((old_changelog.to_string(), String::new()));
+        }
+    }
+
+    let new_changelog = changelog_builder.build();
+    let changelog = match old_changelog {
+        Some(old_changelog) => new_changelog.prepend(old_changelog)?,
+        None => new_changelog.generate()?,
+    };
+    let body_only =
+        new_changelog_entry(changelog_builder).context("can't determine changelog body")?;
+    Ok((changelog, body_only.unwrap_or_default()))
 }
 
 /// Return the following tuple:
