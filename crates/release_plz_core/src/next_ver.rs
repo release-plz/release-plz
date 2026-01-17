@@ -177,7 +177,10 @@ fn process_git_only_package(
         return Ok(None);
     };
 
-    info!("Latest release of package {}: tag `{release_tag}` (version {version})", package.name);
+    info!(
+        "Latest release of package {}: tag `{release_tag}` (version {version})",
+        package.name
+    );
 
     // Get the commit associated with the release tag
     let release_commit = repo
@@ -256,11 +259,11 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
 }
 
 /// Determine next version of packages
-/// Any packages that will be updated will be returned, alongside whether we update the workspace
-/// The temp repository is an isolated copy used for git operations
+/// Returns:
+/// - Any packages that need to be updated
+/// - A temporary repository, i.e. an isolated copy of the repository used for git operations
 #[instrument(skip_all)]
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
-    info!("determining next version");
     let overrides = input.packages_config().overridden_packages();
     let local_project = Project::new(
         input.local_manifest(),
