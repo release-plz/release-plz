@@ -1430,6 +1430,91 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_changelog_when_version_already_bumped() {
+    let context = TestContext::new().await;
+
+    // Release v0.1.0
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Manually bump version to 0.2.0,
+    // simulating a user who bumps version because their PR introduced a breaking change
+    let crate_name = &context.gitea.repo;
+    context.set_package_version(crate_name, &Version::new(0, 2, 0));
+    // Need to update Cargo.lock to reflect the new version
+    context.run_cargo_check();
+    context.push_all_changes("introduce breaking change");
+
+    // Make additional changes after the version bump
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+    fs_err::write(&lib_file, "pub fn new_feature() {}").unwrap();
+    context.push_all_changes("feat: add new feature");
+
+    // Run release-pr - should update changelog without bumping version further
+    context.run_release_pr().success();
+    let today = today();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    // The PR title should mention v0.2.0 (the already-bumped version, not v0.2.1)
+    assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
+
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
+
+    // Verify the PR body contains the changelog with both commits.
+    // Note: when version is already bumped, it shows just the version (not a transition like 0.1.0 -> 0.2.0)
+    // and uses releases/tag URL instead of compare URL.
+    pretty_assertions::assert_eq!(
+        pr_body,
+        format!(
+            r"
+## 🤖 New release
+
+* `{package}`: 0.2.0
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.2.0](https://localhost/{username}/{package}/releases/tag/v0.2.0) - {today}
+
+### Added
+
+- add new feature
+
+### Other
+
+- introduce breaking change
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
+        )
+        .trim()
+    );
+
+    // Merge and verify the changelog was written correctly
+    context.merge_release_pr().await;
+
+    let changelog = context.read_changelog();
+    assert!(
+        changelog.contains("## [0.2.0]"),
+        "Changelog should contain 0.2.0 entry"
+    );
+    assert!(
+        changelog.contains("add new feature"),
+        "Changelog should contain 'add new feature'"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn changelog_is_updated_correctly_if_no_new_line_after_h1() {
     let context = TestContext::new().await;
     let changelog = "# Changelog
