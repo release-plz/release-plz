@@ -115,7 +115,7 @@ fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex
 /// If using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
 /// considered different objects with different methods so we return both. The drop order for these
 /// doesn't actually matter, because the repo will become invalid when the worktree drops. But we
-/// typically want to drop the repo first jsut to avoid the possibility of someone using an invalid
+/// typically want to drop the repo first just to avoid the possibility of someone using an invalid
 /// repo.
 fn get_temp_worktree_and_repo(
     original_repo: &mut GitRepo,
@@ -139,7 +139,67 @@ fn get_temp_worktree_and_repo(
     Ok((repo, worktree))
 }
 
-/// run cargo publish within a worktree
+/// Process a single git_only package: find its release tag, checkout that commit,
+/// run `cargo package`, and return the package metadata.
+///
+/// Returns `None` if no release tag is found (package will be treated as initial release).
+#[instrument(skip_all, fields(package_name = %package.name))]
+fn process_git_only_package(
+    package: &Package,
+    unreleased_project_repo: &mut GitRepo,
+    input: &UpdateRequest,
+    is_multi_package: bool,
+) -> anyhow::Result<Option<(RegistryPackage, GitWorkTree)>> {
+    // Get the release tag template, falling back to default based on project structure
+    let template = input
+        .get_package_tag_name(&package.name)
+        .unwrap_or_else(|| default_tag_name_template(is_multi_package));
+
+    let release_regex = get_release_regex(&template, &package.name).context("get release regex")?;
+    info!(
+        "looking for tags matching pattern: {}",
+        release_regex.to_string()
+    );
+
+    // Get the temporary worktree and repo that we run cargo package in
+    let (mut repo, worktree) = get_temp_worktree_and_repo(unreleased_project_repo, &package.name)
+        .context("get worktree and repo for package")?;
+
+    let Some((release_tag, version)) = repo
+        .get_release_tag(&release_regex, &package.name)
+        .context("get release tag")?
+    else {
+        info!(
+            "No release tag found matching pattern `{}`. \
+             Package will be treated as initial release.",
+            release_regex
+        );
+        return Ok(None);
+    };
+
+    info!("using tag `{}` (version {})", release_tag, version);
+
+    // Get the commit associated with the release tag
+    let release_commit = repo
+        .get_tag_commit(&release_tag)
+        .context("get release tag commit")?;
+
+    // Checkout that commit in the worktree
+    repo.checkout_commit(&release_commit)
+        .context("checkout release commit for package")?;
+
+    // Run cargo package so we have our finalized package
+    run_cargo_package(&worktree).context("run cargo package")?;
+
+    // Get the package metadata
+    let single_package =
+        get_cargo_package(&worktree, &package.name).context("get cargo package from worktree")?;
+
+    let registry_package = RegistryPackage::new(single_package, Some(release_commit));
+    Ok(Some((registry_package, worktree)))
+}
+
+/// Run cargo package within a worktree
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
     let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
@@ -222,13 +282,12 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         }
     }
 
-    // We'll collect all packages packages we'll be updating in a single map
+    // We'll collect all packages we'll be updating in a single map
     let mut all_packages: BTreeMap<String, RegistryPackage> = BTreeMap::new();
 
-    // SAFETY: We need to prevent the worktrees from being dropped because their Drop
+    // NOTE: We need to prevent the worktrees from being dropped because their Drop
     // implementation cleans up the worktrees.
-    //
-    // See the note on the custom worktree Drop impl for more details
+    // See the note on the custom worktree Drop impl for more details.
     let mut worktrees: Vec<GitWorkTree> = Vec::new();
 
     // Initialize registry_packages - will be populated if we download from registry
@@ -253,68 +312,16 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         .context("create unreleased repo for spinning worktrees")?;
 
         for package in git_only_packages {
-            // enter a new span for each package, just for clarity and avoiding needing to pollute
-            // all of our logs with the package name
-            let ispan = tracing::info_span!("git_only_package");
-            let _enter = ispan.enter();
-            ispan.record("package_name", package.name.to_string());
-
-            // Get the release tag template, falling back to default based on project structure
-            let template = input
-                .get_package_tag_name(&package.name)
-                .unwrap_or_else(|| default_tag_name_template(is_multi_package));
-
-            // get the release regex for this package
-            let release_regex =
-                get_release_regex(&template, &package.name).context("get release regex")?;
-            info!(
-                "looking for tags matching pattern: {}",
-                release_regex.to_string()
-            );
-
-            // get the temporary worktree and repo that we run cargo package in
-            let (mut repo, worktree) =
-                get_temp_worktree_and_repo(&mut unreleased_project_repo, &package.name)
-                    .context("get worktree and repo for package")?;
-
-            let Some((release_tag, version)) = repo
-                .get_release_tag(&release_regex, &package.name)
-                .context("get release tag")?
-            else {
-                info!(
-                    "No release tag found for package `{}` matching pattern `{}`. \
-                     Package will be treated as initial release.",
-                    package.name, release_regex
-                );
-                continue;
-            };
-
-            info!("using tag `{}` (version {})", release_tag, version);
-
-            // get the commit associated with the release tag
-            let release_commit = repo
-                .get_tag_commit(&release_tag)
-                .context("get release tag commit")?;
-
-            // checkout that commit in the worktree
-            repo.checkout_commit(&release_commit)
-                .context("checkout release commit for package")?;
-
-            // run cargo package so we have our finalized package
-            run_cargo_package(&worktree).context("run cargo package")?;
-
-            // get the package
-            let single_package = get_cargo_package(&worktree, &package.name)
-                .context("get cargo package from worktree")?;
-
-            // add it to the B Tree map
-            all_packages.insert(
-                single_package.name.to_string(),
-                RegistryPackage::new(single_package, Some(release_commit)),
-            );
-
-            // SEE SAFETY NOTE ABOVE
-            worktrees.push(worktree);
+            if let Some((registry_package, worktree)) = process_git_only_package(
+                package,
+                &mut unreleased_project_repo,
+                input,
+                is_multi_package,
+            )? {
+                all_packages.insert(registry_package.package.name.to_string(), registry_package);
+                // See NOTE above about worktree lifetimes
+                worktrees.push(worktree);
+            }
         }
     }
 
@@ -362,7 +369,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         }
     }
 
-    // SAFETY: We have to reuse registry_packages here instead of instantiating a new object
+    // NOTE: We reuse registry_packages here instead of instantiating a new object
     // because otherwise the temp dir contained within it gets dropped and cleaned up.
     let release_packages = registry_packages.with_packages(all_packages);
 
@@ -562,6 +569,17 @@ mod tests {
         assert_eq!(captures.get(1).unwrap().as_str(), "0.1.0");
     }
 
+    #[test]
+    fn release_regex_escapes_special_chars_in_template() {
+        // Template contains `.` which is a regex metacharacter
+        let regex = get_release_regex("release.{{ version }}", "ignored").unwrap();
+
+        // Dot is literal, not "any char"
+        assert!(regex.is_match("release.1.2.3"));
+        assert!(!regex.is_match("releaseX1.2.3"));
+    }
+
+    // Registries different from crates.io may allow package names with special characters.
     #[test]
     fn release_regex_escapes_special_chars_in_package_name() {
         let regex = get_release_regex("{{ package }}-v{{ version }}", "my.package").unwrap();
