@@ -655,12 +655,8 @@ impl Updater<'_> {
                         && diff.is_version_published
                     {
                         info!(
-                            "{}: local version ({}) > registry version ({})",
+                            "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
                             package.name, package.version, registry_package.package.version
-                        );
-                        info!(
-                            "{}: version already bumped, only changelog will be updated",
-                            package.name
                         );
                         diff.set_version_unpublished();
                     }
