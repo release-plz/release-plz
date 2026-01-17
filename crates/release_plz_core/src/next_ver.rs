@@ -192,8 +192,13 @@ fn process_git_only_package(
     run_cargo_package(&worktree).context("run cargo package")?;
 
     // Get the package metadata
-    let single_package =
-        get_cargo_package(&worktree, &package.name).context("get cargo package from worktree")?;
+    let single_package = get_cargo_package(&worktree, &package.name).with_context(|| {
+        format!(
+            "get cargo package {} from worktree at {:?}",
+            package.name,
+            worktree.path()
+        )
+    })?;
 
     let registry_package = RegistryPackage::new(single_package, Some(release_commit));
     Ok(Some((registry_package, worktree)))
