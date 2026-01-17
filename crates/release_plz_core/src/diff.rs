@@ -64,6 +64,12 @@ impl Diff {
     }
 
     pub fn should_update_version(&self) -> bool {
+        // `is_version_published = true`` means the current local version equals the registry version
+        // (e.g., local is 0.1.0, registry is 0.1.0).
+        // In this case, if there are new commits, we should bump the version to create a new release.
+        //
+        // If `is_version_published = false`, it means the local version is already bumped,
+        // so we only need to update the changelog, if necessary.
         self.registry_package_exists && !self.commits.is_empty() && self.is_version_published
     }
 
