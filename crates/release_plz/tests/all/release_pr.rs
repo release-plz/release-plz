@@ -1465,21 +1465,19 @@ async fn release_plz_updates_changelog_when_version_already_bumped() {
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
 
     // Verify the PR body contains the changelog with both commits.
-    // Note: when version is already bumped, it shows just the version (not a transition like 0.1.0 -> 0.2.0)
-    // and uses releases/tag URL instead of compare URL.
     pretty_assertions::assert_eq!(
         pr_body,
         format!(
             r"
 ## 🤖 New release
 
-* `{package}`: 0.2.0
+* `{package}`: 0.1.0 -> 0.2.0
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
 <blockquote>
 
-## [0.2.0](https://localhost/{username}/{package}/releases/tag/v0.2.0) - {today}
+## [0.2.0](https://localhost/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
 
 ### Added
 

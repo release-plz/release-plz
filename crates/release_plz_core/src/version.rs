@@ -53,6 +53,7 @@ mod tests {
             )],
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
+            registry_version: None,
         };
         let version = Version::new(1, 2, 3);
         assert_eq!(
@@ -71,6 +72,7 @@ mod tests {
             )],
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
+            registry_version: None,
         };
         let version = Version::new(0, 2, 3);
         assert_eq!(
@@ -89,6 +91,7 @@ mod tests {
             )],
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
+            registry_version: None,
         };
         let version = Version::new(0, 2, 3);
         let updater = VersionUpdater::default().with_features_always_increment_minor(true);
