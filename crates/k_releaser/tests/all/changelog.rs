@@ -1,5 +1,3 @@
-use k_releaser_core::fs_utils::Utf8TempDir;
-
 use crate::helpers::{
     package::{PackageType, TestPackage},
     test_context::TestContext,
@@ -66,8 +64,15 @@ async fn release_plz_adds_changelog_on_new_project() {
     outcome.stdout(format!("{expected_stdout}\n"));
 
     let changed_files = context.gitea.changed_files_in_pr(opened_pr.number).await;
-    assert_eq!(changed_files.len(), 1);
-    assert_eq!(changed_files[0].filename, "CHANGELOG.md");
+    // With unified workspace versioning, we expect 3 files to change:
+    // 1. CHANGELOG.md - workspace changelog
+    // 2. Cargo.toml - workspace version update
+    // 3. Cargo.lock - lockfile update from version change
+    assert_eq!(changed_files.len(), 3);
+    let filenames: Vec<&str> = changed_files.iter().map(|f| f.filename.as_str()).collect();
+    assert!(filenames.contains(&"CHANGELOG.md"));
+    assert!(filenames.contains(&"Cargo.toml"));
+    assert!(filenames.contains(&"Cargo.lock"));
 }
 
 #[tokio::test]
@@ -142,7 +147,7 @@ async fn release_plz_adds_custom_changelog() {
 
 owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
 
-== {package} - [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0)
+== {package} - [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1)
 
 
 === Other
@@ -174,7 +179,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
             "number": open_pr.number,
             "releases": [{
                 "package_name": context.gitea.repo,
-                "version": "0.1.0"
+                "version": "0.1.1"
             }]
         }]
     });
@@ -411,7 +416,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
+## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
 
 ### Added
 

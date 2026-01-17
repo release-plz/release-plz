@@ -132,8 +132,8 @@ async fn release_plz_can_do_backport_prs() {
             {
                 "package_name": crate_name,
                 "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
+                "tag": "v0.1.1",
+                "version": "0.1.1",
             }
         ]
     })
@@ -1232,7 +1232,7 @@ async fn release_plz_handles_invalid_readme_path_gracefully() {
             "number": open_pr.number,
             "releases": [{
                 "package_name": context.gitea.repo,
-                "version": "0.1.0"
+                "version": "0.1.1"
             }]
         }]
     });
