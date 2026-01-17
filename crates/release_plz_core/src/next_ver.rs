@@ -71,21 +71,41 @@ impl ReleaseMetadataBuilder for UpdateRequest {
 /// For example, template `{{ package }}-v{{ version }}` with package "mylib"
 /// becomes regex `^mylib-v(\d+\.\d+\.\d+)$`
 ///
-/// NOTE: We use the existing Tera infrastructure here even though it's slightly more complex
-/// than direct string replacement. This keeps the template handling consolidated in one place.
+/// ## Why not use `LazyLock`?
+///
+/// The regex crate docs recommend using `LazyLock` to avoid recompiling the same regex
+/// in a loop. However, that only applies to **static** patterns. Here, the pattern is
+/// **dynamic** (depends on `template` and `package_name`), so caching in a static isn't
+/// applicable. Also, This function is called once per package, not in a hot loop.
+///
+/// ## Why use Tera instead of simple string replacement?
+///
+/// We reuse the existing Tera infrastructure to keep template handling consolidated.
+/// This ensures the same template syntax works everywhere in release-plz.
 fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex> {
-    // Use a placeholder version that we can find and replace with the regex capture group
+    // Define a unique placeholder so it survives Tera rendering
+    // and can be reliably located afterward to find and replace with the regex capture group.
     const VERSION_PLACEHOLDER: &str = "0.0.0-VERSION-PLACEHOLDER";
 
-    // Render the template using the existing Tera infrastructure
+    // Render the Tera template with the actual package name and our placeholder.
+    // For example, template "{{ package }}-v{{ version }}" with package "mylib"
+    // renders to "mylib-v0.0.0-VERSION-PLACEHOLDER".
     let context = tera_context(package_name, VERSION_PLACEHOLDER);
     let rendered = render_template(template, &context, "release_tag_name")
         .context("failed to render release tag name template")?;
 
-    // Escape for regex, then replace the placeholder with the version capture group
+    // Escape the rendered string for use in a regex.
+    // We do this because the template might contain regex metacharacters
+    // like `.` (e.g., template "release.{{ version }}").
     let escaped = regex::escape(&rendered);
+
+    // Replace the escaped placeholder with a capture group that matches semver.
+    // The placeholder "0.0.0-VERSION-PLACEHOLDER" becomes "(\d+\.\d+\.\d+)".
+    // We must escape the placeholder too since `regex::escape` was applied to the whole string.
     let pattern = escaped.replace(&regex::escape(VERSION_PLACEHOLDER), r"(\d+\.\d+\.\d+)");
 
+    // Anchor the pattern with ^ and $ to ensure we match the entire tag string,
+    // not just a substring. This prevents false matches like "prefix-mylib-v1.2.3-suffix".
     let full_regex = format!(r"^{pattern}$");
     Regex::new(&full_regex).context("build release tag regex")
 }
