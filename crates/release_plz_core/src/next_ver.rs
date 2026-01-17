@@ -331,7 +331,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
     Ok((packages_to_update, repository))
 }
 
-/// Process all git_only packages and return their metadata.
+/// Process all `git_only` packages and return their metadata.
 ///
 /// Returns:
 /// - A map of package name to `RegistryPackage`
@@ -400,7 +400,11 @@ fn collect_registry_packages(
     // Filter to only publishable packages
     let publishable_registry_packages: Vec<&Package> = registry_packages_list
         .into_iter()
-        .filter(|p| publishable_packages.iter().any(|pub_pkg| pub_pkg.name == p.name))
+        .filter(|p| {
+            publishable_packages
+                .iter()
+                .any(|pub_pkg| pub_pkg.name == p.name)
+        })
         .collect();
 
     if publishable_registry_packages.is_empty() {
@@ -431,7 +435,6 @@ fn collect_registry_packages(
 
     Ok((all_packages, registry_packages))
 }
-
 
 pub fn root_repo_path(local_manifest: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
     let manifest_dir = manifest_dir(local_manifest)?;
