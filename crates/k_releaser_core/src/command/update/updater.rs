@@ -130,9 +130,15 @@ impl Updater<'_> {
         all_commits: &[Commit],
     ) -> anyhow::Result<Version> {
         let local_manifest = LocalManifest::try_new(local_manifest_path)?;
-        let current_workspace_version = local_manifest
-            .get_workspace_version()
-            .context("workspace.package.version must be set in Cargo.toml for unified versioning")?;
+
+        // Try to get workspace version first, fallback to package version for single-package projects
+        let current_workspace_version = if let Some(version) = local_manifest.get_workspace_version() {
+            version
+        } else if let Some(version) = local_manifest.get_package_version() {
+            version
+        } else {
+            anyhow::bail!("Could not find version in Cargo.toml. For workspaces, set workspace.package.version. For single packages, set package.version.");
+        };
 
         // Use default version updater configuration
         // TODO: Make this configurable via workspace config
@@ -173,9 +179,13 @@ impl Updater<'_> {
 
         // Get current workspace version for comparison
         let local_manifest = LocalManifest::try_new(local_manifest_path)?;
-        let current_version = local_manifest
-            .get_workspace_version()
-            .context("workspace version required")?;
+        let current_version = if let Some(version) = local_manifest.get_workspace_version() {
+            version
+        } else if let Some(version) = local_manifest.get_package_version() {
+            version
+        } else {
+            anyhow::bail!("Could not find version in Cargo.toml");
+        };
 
         // Generate changelog using workspace context
         let repo_url = self.req.repo_url();

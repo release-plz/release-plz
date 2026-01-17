@@ -176,6 +176,21 @@ impl LocalManifest {
             .as_table_like()
     }
 
+    /// Get the package's version, if defined and not inherited from workspace
+    pub fn get_package_version(&self) -> Option<Version> {
+        // Skip if version is inherited from workspace
+        if self.version_is_inherited() {
+            return None;
+        }
+
+        let version = self
+            .data
+            .get("package")?
+            .get("version")?
+            .as_str()?;
+        Version::parse(version).ok()
+    }
+
     /// Override the manifest's version
     pub fn set_package_version(&mut self, version: &Version) {
         self.data["package"]["version"] = toml_edit::value(version.to_string());

@@ -313,11 +313,15 @@ async fn release_plz_updates_binary_when_library_changes() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library2}")]),
+            .with_path_dependencies(vec![format!("../{library2}")])
+            .as_workspace_member(),
         TestPackage::new(library2)
             .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library1}")]),
-        TestPackage::new(library1).with_type(PackageType::Lib),
+            .with_path_dependencies(vec![format!("../{library1}")])
+            .as_workspace_member(),
+        TestPackage::new(library1)
+            .with_type(PackageType::Lib)
+            .as_workspace_member(),
     ])
     .await;
 
@@ -844,15 +848,22 @@ async fn release_plz_updates_binary_when_library_has_breaking_changes() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library3}")]),
+            .with_path_dependencies(vec![format!("../{library3}")])
+            .as_workspace_member(),
         TestPackage::new(library3)
             .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library2}")]),
+            .with_path_dependencies(vec![format!("../{library2}")])
+            .as_workspace_member(),
         TestPackage::new(library2)
             .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library1}")]),
-        TestPackage::new(library1).with_type(PackageType::Lib),
-        TestPackage::new(library4).with_type(PackageType::Lib),
+            .with_path_dependencies(vec![format!("../{library1}")])
+            .as_workspace_member(),
+        TestPackage::new(library1)
+            .with_type(PackageType::Lib)
+            .as_workspace_member(),
+        TestPackage::new(library4)
+            .with_type(PackageType::Lib)
+            .as_workspace_member(),
     ])
     .await;
 
@@ -1049,8 +1060,11 @@ async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library}")]),
-        TestPackage::new(library).with_type(PackageType::Lib),
+            .with_path_dependencies(vec![format!("../{library}")])
+            .as_workspace_member(),
+        TestPackage::new(library)
+            .with_type(PackageType::Lib)
+            .as_workspace_member(),
     ])
     .await;
 
@@ -1323,11 +1337,15 @@ async fn release_plz_updates_binary_when_library_changes_commit_regex() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(binary)
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library2}")]),
+            .with_path_dependencies(vec![format!("../{library2}")])
+            .as_workspace_member(),
         TestPackage::new(library2)
             .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library1}")]),
-        TestPackage::new(library1).with_type(PackageType::Lib),
+            .with_path_dependencies(vec![format!("../{library1}")])
+            .as_workspace_member(),
+        TestPackage::new(library1)
+            .with_type(PackageType::Lib)
+            .as_workspace_member(),
     ])
     .await;
     context.run_release_pr().success();

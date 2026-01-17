@@ -107,7 +107,10 @@ impl TestContext {
     }
 
     pub async fn new_workspace(crates: &[&str]) -> Self {
-        let packages: Vec<TestPackage> = crates.iter().map(TestPackage::new).collect();
+        let packages: Vec<TestPackage> = crates
+            .iter()
+            .map(|name| TestPackage::new(name).as_workspace_member())
+            .collect();
         Self::new_workspace_with_packages(&packages).await
     }
 
@@ -119,7 +122,7 @@ impl TestContext {
                 .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
-            format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n")
+            format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n\n[workspace.package]\nversion = \"0.1.0\"\n")
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
