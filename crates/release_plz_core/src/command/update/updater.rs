@@ -108,8 +108,10 @@ impl Updater<'_> {
                 p.name,
             );
             let current_version = p.version.clone();
-            // Process package if version changes, package is new, or version was already bumped
-            // with pending commits for changelog.
+            // Process package if:
+            // - Version changes.
+            // - Package is new.
+            // - Version was already bumped with pending unreleased commits so that we generate the changelog.
             let version_already_bumped = !diff.is_version_published && !diff.commits.is_empty();
             if next_version != current_version
                 || !diff.registry_package_exists
