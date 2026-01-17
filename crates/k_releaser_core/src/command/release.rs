@@ -430,6 +430,13 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         input,
     )?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
+
+    // Fetch tags from remote to ensure we have the latest tag information
+    // This prevents attempting to create duplicate tags
+    if let Err(e) = repo.git(&["fetch", "--tags"]) {
+        debug!("Failed to fetch tags (this is ok if there's no remote): {e}");
+    }
+
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
     debug!("should release: {should_release:?}");
