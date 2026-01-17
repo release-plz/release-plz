@@ -23,7 +23,7 @@ async fn release_plz_opens_pr_with_default_config() {
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.0");
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     assert_eq!(
@@ -431,7 +431,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     assert_eq!(opened_prs.len(), 1);
 
     let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release v0.1.0");
+    assert_eq!(open_pr.title, "chore: release v0.1.1");
 
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
@@ -1221,7 +1221,7 @@ async fn release_plz_handles_invalid_readme_path_gracefully() {
     );
 
     let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release v0.1.0");
+    assert_eq!(open_pr.title, "chore: release v0.1.1");
 
     // Verify the PR was created successfully
     let expected_stdout = serde_json::json!({
