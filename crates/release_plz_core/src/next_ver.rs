@@ -156,7 +156,7 @@ fn process_git_only_package(
         .unwrap_or_else(|| default_tag_name_template(is_multi_package));
 
     let release_regex = get_release_regex(&template, &package.name).context("get release regex")?;
-    info!(
+    debug!(
         "looking for tags matching pattern: {}",
         release_regex.to_string()
     );
@@ -170,14 +170,14 @@ fn process_git_only_package(
         .context("get release tag")?
     else {
         info!(
-            "No release tag found matching pattern `{}`. \
-             Package will be treated as initial release.",
-            release_regex
+            "No release tag found matching pattern `{release_regex}`. \
+             Package {} will be treated as initial release.",
+            package.name
         );
         return Ok(None);
     };
 
-    info!("using tag `{release_tag}` (version {version})");
+    info!("Latest release of package {}: tag `{release_tag}` (version {version})", package.name);
 
     // Get the commit associated with the release tag
     let release_commit = repo
