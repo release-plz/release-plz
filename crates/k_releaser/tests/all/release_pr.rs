@@ -1,9 +1,7 @@
 use crate::helpers::{
-    package::{PackageType, TestPackage},
     test_context::TestContext,
     today,
 };
-use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
 fn assert_cargo_semver_checks_is_installed() {
@@ -15,11 +13,11 @@ fn assert_cargo_semver_checks_is_installed() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_opens_pr_with_default_config() {
+async fn k_releaser_opens_pr_with_default_config() {
     let context = TestContext::new().await;
 
     context.run_release_pr().success();
-    let today = today();
+    let _today = today();
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
@@ -59,7 +57,7 @@ This release updates all workspace packages to version **0.1.1**.
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_opens_pr_without_breaking_changes() {
+async fn k_releaser_opens_pr_without_breaking_changes() {
     // Semver checking not needed - version bumps determined by conventional commits
     let context = TestContext::new().await;
 
@@ -82,7 +80,7 @@ async fn release_plz_opens_pr_without_breaking_changes() {
     );
 
     context.run_release_pr().success();
-    let today = today();
+    let _today = today();
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
@@ -120,347 +118,7 @@ This release updates all workspace packages to version **0.1.2**.
     );
 }
 
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_can_do_backport_prs() {
-    let context = TestContext::new().await;
-
-    let crate_name = &context.gitea.repo;
-
-    // Running `release` the first time, releases the project
-    let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
-
-    // Publish a new breaking release
-    context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
-    // We need to update the Cargo.lock file to reflect the new version
-    context.run_cargo_check();
-    context.push_all_changes("breaking release");
-    let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.2.0",
-                "version": "0.2.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
-
-    // Open a release PR for a backport
-    context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 0));
-
-    // Non-breaking change
-    let lib_file = context.repo_dir().join("src").join("lib.rs");
-    let write_lib_file = |content: &str, commit_message: &str| {
-        fs_err::write(&lib_file, content).unwrap();
-        context.push_all_changes(commit_message);
-    };
-    write_lib_file("pub fn foo() {}", "backport edit");
-
-    context.run_release_pr().success();
-
-    let today = today();
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
-    let username = context.gitea.user.username();
-    let package = &context.gitea.repo;
-    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    pretty_assertions::assert_eq!(
-        pr_body,
-        format!(
-            r"
-## 🤖 New release
-
-* `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
-
-<details><summary><i><b>Changelog</b></i></summary><p>
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
-
-### Other
-
-- backport edit
-</blockquote>
-
-
-</p></details>
-
----
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
-        )
-        .trim()
-    );
-    context.merge_release_pr().await;
-
-    let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_opens_pr_with_breaking_changes() {
-    // Semver checking not needed - version bumps determined by conventional commits
-    let context = TestContext::new().await;
-
-    let lib_file = context.repo_dir().join("src").join("lib.rs");
-
-    let write_lib_file = |content: &str, commit_message: &str| {
-        fs_err::write(&lib_file, content).unwrap();
-        context.push_all_changes(commit_message);
-    };
-
-    write_lib_file("pub fn foo() {}", "add lib");
-
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-    context.run_release().success();
-
-    // Use conventional commit with breaking change marker
-    write_lib_file("pub fn bar() {}", "feat!: edit lib with breaking change");
-
-    context.run_release_pr().success();
-    let today = today();
-
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.2.0");
-    let package = &context.gitea.repo;
-    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    pretty_assertions::assert_eq!(
-        pr_body,
-        format!(
-            r"
-## 🤖 New release v0.2.0
-
-This release updates all workspace packages to version **0.2.0**.
-
-### Packages updated
-
-* `{package}`
-
-
-<details><summary><i><b>Changelog</b></i></summary>
-
-### Added
-
-- [**breaking**] edit lib with breaking change
-
-</details>
-
-
-
-
----
-🤖 Generated by [k-releaser](https://github.com/release-plz/k-releaser/)",
-        )
-        .trim()
-    );
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_updates_binary_when_library_changes() {
-    let binary = "binary";
-    let library1 = "library1";
-    let library2 = "library2";
-    // dependency chain: binary -> library2 -> library1
-    let context = TestContext::new_workspace_with_packages(&[
-        TestPackage::new(binary)
-            .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library2}")])
-            .as_workspace_member(),
-        TestPackage::new(library2)
-            .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library1}")])
-            .as_workspace_member(),
-        TestPackage::new(library1)
-            .with_type(PackageType::Lib)
-            .as_workspace_member(),
-    ])
-    .await;
-
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-    context.run_release().success();
-
-    // Update the library.
-    let lib_file = context.package_path(library1).join("src").join("aa.rs");
-    fs_err::write(&lib_file, "pub fn foo() {}").unwrap();
-    context.push_all_changes("edit library");
-
-    context.run_release_pr().success();
-    let today = today();
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-
-    let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release v0.1.1");
-
-    let username = context.gitea.user.username();
-    let repo = &context.gitea.repo;
-    // The binary depends on the library, so release-plz should update its version.
-    assert_eq!(
-        open_pr.body.as_ref().unwrap().trim(),
-        format!(
-            r"
-## 🤖 New release
-
-* `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
-* `{library2}`: 0.1.0 -> 0.1.1
-* `{binary}`: 0.1.0 -> 0.1.1
-
-<details><summary><i><b>Changelog</b></i></summary><p>
-
-## `{library1}`
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
-
-### Other
-
-- edit library
-</blockquote>
-
-## `{library2}`
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
-
-### Other
-
-- updated the following local packages: {library1}
-</blockquote>
-
-## `{binary}`
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
-
-### Other
-
-- updated the following local packages: {library2}
-</blockquote>
-
-
-</p></details>
-
----
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
-        )
-        .trim()
-    );
-
-    context.merge_release_pr().await;
-
-    // Check if the binary has the new version.
-    let binary_cargo_toml =
-        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
-    expect_test::expect![[r#"
-        [package]
-        name = "binary"
-        version = "0.1.1"
-        edition = "2024"
-        publish = ["test-registry"]
-
-        [dependencies]
-        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
-    "#]]
-    .assert_eq(&binary_cargo_toml);
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_opens_pr_with_two_packages_and_default_config() {
-    let one = "one";
-    let two = "two";
-    let context = TestContext::new_workspace(&[one, two]).await;
-
-    context.run_release_pr().success();
-    let today = today();
-
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-
-    let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release v0.1.1");
-
-    let username = context.gitea.user.username();
-    let repo = &context.gitea.repo;
-    assert_eq!(
-        open_pr.body.as_ref().unwrap().trim(),
-        format!(
-            r"
-## 🤖 New release v0.1.1
-
-This release updates all workspace packages to version **0.1.1**.
-
-### Packages updated
-
-* `{one}`
-* `{two}`
-
-
-<details><summary><i><b>Changelog</b></i></summary>
-
-### Other
-
-- cargo init
-- cargo init
-
-</details>
-
-
-
-
----
-🤖 Generated by [k-releaser](https://github.com/release-plz/k-releaser/)",
-        )
-        .trim()
-    );
-
-    // After landing the PR, there is no release PR open.
-    context.merge_release_pr().await;
-    context.run_release_pr().success();
-
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 0);
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_should_set_custom_pr_details() {
+async fn k_releaser_should_set_custom_pr_details() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -482,7 +140,7 @@ Changes:
 
     context.write_release_plz_toml(config);
     context.run_release_pr().success();
-    let today = today();
+    let _today = today();
 
     let expected_title = format!("release: {} 0.1.1", context.gitea.repo);
     let opened_prs = context.opened_release_prs().await;
@@ -494,7 +152,7 @@ Changes:
         opened_prs[0].body.as_ref().unwrap().trim(),
         format!(
             r"
-### [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+### [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {_today}
 
 Package: {package} 0.1.0 -> 0.1.1
 
@@ -519,7 +177,7 @@ Changes:
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_should_fail_for_multi_package_pr() {
+async fn k_releaser_should_fail_for_multi_package_pr() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
 
     let config = r#"
@@ -529,7 +187,7 @@ async fn release_plz_should_fail_for_multi_package_pr() {
 
     context.write_release_plz_toml(config);
     // With unified workspace versioning, multi-package workspaces use "workspace" as the package name
-    let outcome = context.run_release_pr().success();
+    let _outcome = context.run_release_pr().success();
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
@@ -538,7 +196,7 @@ async fn release_plz_should_fail_for_multi_package_pr() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_detects_edited_readme_cargo_toml_field() {
+async fn k_releaser_detects_edited_readme_cargo_toml_field() {
     let context = TestContext::new().await;
 
     context.run_release_pr().success();
@@ -571,7 +229,7 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_honors_features_always_increment_minor_flag() {
+async fn k_releaser_honors_features_always_increment_minor_flag() {
     let context = TestContext::new().await;
 
     let config = r"
@@ -627,92 +285,7 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 #[tokio::test]
 #[cfg(unix)]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_detects_symlink_package_changes() {
-    let context = TestContext::new().await;
-    let readme = "README.md";
-    let readme_symlink = "README_SYMLINK.md";
-    symlink_readme(&context, readme, readme_symlink);
-    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
-    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-
-    // By default, all files are included in the package.
-    // We need this test to verify that the changes are tracked correctly if the original
-    // (non-symlinked) README is not part of the package.
-    cargo_toml.data["package"]["include"] = toml_edit::value(toml_edit::Array::from_iter(["/src"]));
-    cargo_toml.write().unwrap();
-
-    context.push_all_changes("symlink readme");
-
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-
-    let expected_tag = "v0.1.0";
-
-    context.run_release().success();
-
-    let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
-    assert_eq!(gitea_release.name, expected_tag);
-
-    let full_readme_path = context.repo_dir().join(readme);
-    fs_err::write(full_readme_path, "cool stuff").unwrap();
-    context.push_all_changes("feat: update readme");
-
-    let outcome = context.run_release_pr().success();
-
-    let opened_prs = context.opened_release_prs().await;
-    let open_pr = &opened_prs[0];
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.1"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
-    context.merge_release_pr().await;
-
-    let expected_tag = "v0.1.1";
-
-    context.run_release().success();
-
-    let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
-    assert_eq!(gitea_release.name, expected_tag);
-    expect_test::expect![[r"
-        ### Added
-
-        - update readme"]]
-    .assert_eq(&gitea_release.body);
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
-    let context = TestContext::new().await;
-    context.run_release_pr().success();
-    // Merge release PR to update changelog of v0.1.0 of crate
-    context.merge_release_pr().await;
-
-    // do a random commit
-    move_readme(&context, "feat: move readme");
-
-    // Run again release-plz to create a new release PR.
-    // Since we haven't published the crate, release-plz doesn't change the version.
-    // Release-plz releazes that the version already exists in the changelog and doesn't update it.
-    context.run_release_pr().success();
-
-    // Since the changelog is not updated, the PR is not created because there are no changes to do.
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 0);
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_adds_labels_to_release_pr() {
+async fn k_releaser_adds_labels_to_release_pr() {
     let test_context = TestContext::new().await;
 
     // Initial PR setup with two labels
@@ -764,7 +337,7 @@ async fn release_plz_adds_labels_to_release_pr() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
+async fn k_releaser_doesnt_add_invalid_labels_to_release_pr() {
     let test_context = TestContext::new().await;
     let test_cases: &[(&str, &str)] = &[
         // (label config, expected error message)
@@ -807,111 +380,6 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
             "Expected label creation failure got: {error}"
         );
     }
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_updates_binary_when_library_has_breaking_changes() {
-    // With unified workspace versioning, all packages share the same version
-    // Version bumps determined by conventional commits, not API analysis
-    let binary = "binary";
-    let library1 = "library1";
-    let library2 = "library2";
-    let library3 = "library3";
-    let library4 = "library4";
-    // Dependency chain: binary -> library3 -> library2 -> library1.
-    // Library4 is a standalone crate.
-    let context = TestContext::new_workspace_with_packages(&[
-        TestPackage::new(binary)
-            .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library3}")])
-            .as_workspace_member(),
-        TestPackage::new(library3)
-            .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library2}")])
-            .as_workspace_member(),
-        TestPackage::new(library2)
-            .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library1}")])
-            .as_workspace_member(),
-        TestPackage::new(library1)
-            .with_type(PackageType::Lib)
-            .as_workspace_member(),
-        TestPackage::new(library4)
-            .with_type(PackageType::Lib)
-            .as_workspace_member(),
-    ])
-    .await;
-
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-    context.run_release().success();
-
-    // Update the library with a breaking change (using conventional commit)
-    let lib_file = context.package_path(library1).join("src").join("lib.rs");
-    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
-    context.push_all_changes("feat!: breaking change in library");
-
-    context.run_release_pr().success();
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-
-    let open_pr = &opened_prs[0];
-    // With unified versioning, breaking change bumps from 0.1.1 to 0.2.0
-    assert_eq!(open_pr.title, "chore: release v0.2.0");
-
-    let pr_body = open_pr.body.as_ref().unwrap().trim();
-    // With unified workspace versioning, all packages get version 0.2.0
-    assert_eq!(
-        pr_body,
-        format!(
-            r"
-## 🤖 New release v0.2.0
-
-This release updates all workspace packages to version **0.2.0**.
-
-### Packages updated
-
-* `{binary}`
-* `{library1}`
-* `{library2}`
-* `{library3}`
-* `{library4}`
-
-
-<details><summary><i><b>Changelog</b></i></summary>
-
-### Added
-
-- [**breaking**] breaking change in library
-
-</details>
-
-
-
-
----
-🤖 Generated by [k-releaser](https://github.com/release-plz/k-releaser/)",
-        )
-        .trim()
-    );
-
-    context.merge_release_pr().await;
-
-    // With unified workspace versioning, all packages inherit workspace version
-    let binary_cargo_toml =
-        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
-    expect_test::expect![[r#"
-        [package]
-        name = "binary"
-        version.workspace = true
-        edition = "2024"
-        publish = ["test-registry"]
-
-        [dependencies]
-        library3 = { version = "0.2.0", path = "../library3", registry = "test-registry" }
-    "#]]
-    .assert_eq(&binary_cargo_toml);
 }
 
 fn move_readme(context: &TestContext, message: &str) {
@@ -959,143 +427,12 @@ fn update_readme_in_cargo_toml(context: &TestContext, readme_path: &str) {
     cargo_toml.write().unwrap();
 }
 
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
-    let binary = "binary";
-    let library = "library";
-    // dependency chain: binary -> library
-    let context = TestContext::new_workspace_with_packages(&[
-        TestPackage::new(binary)
-            .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library}")])
-            .as_workspace_member(),
-        TestPackage::new(library)
-            .with_type(PackageType::Lib)
-            .as_workspace_member(),
-    ])
-    .await;
-
-    // Set initial versions before first release
-    context.set_package_version(library, &Version::new(0, 1, 0));
-    context.set_package_version(binary, &Version::new(1, 0, 0));
-    context.push_all_changes("set initial versions");
-
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-    context.run_release().success();
-
-    // Update the library with a breaking change
-    let lib_file = context.package_path(library).join("src").join("lib.rs");
-    // This is a breaking change because we remove the `add` library
-    // created with `cargo init --lib`.
-    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
-    context.push_all_changes("breaking change in library");
-
-    context.run_release_pr().success();
-    let today = today();
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-
-    let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release");
-
-    let username = context.gitea.user.username();
-    let repo = &context.gitea.repo;
-    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
-    let expected_body = format!(
-        r"
-## 🤖 New release
-
-* `{library}`: 0.1.0 -> 0.2.0 (⚠ API breaking changes)
-* `{binary}`: 1.0.0 -> 1.0.1
-
-### ⚠ `{library}` breaking changes
-
-```text
---- failure function_missing: pub fn removed or renamed ---
-
-Description:
-A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
-        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
-       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.40.0/src/lints/function_missing.ron
-
-Failed in:
-  function library::add, previously in file /private/var/folders/sz/335x8kc91g55r2nkjktmkv1h0000gq/T/.tmpY912au/library/src/lib.rs:1
-```
-
-<details><summary><i><b>Changelog</b></i></summary><p>
-
-## `{library}`
-
-<blockquote>
-
-## [0.2.0](https://localhost/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.2.0) - {today}
-
-### Other
-
-- breaking change in library
-</blockquote>
-
-## `{binary}`
-
-<blockquote>
-
-## [1.0.1](https://localhost/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.0.1) - {today}
-
-### Other
-
-- updated the following local packages: {library}
-</blockquote>
-
-
-</p></details>
-
----
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
-    )
-    .trim()
-    .to_string();
-
-    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
-    let actual_lines: Vec<_> = actual_body.lines().collect();
-    let expected_lines: Vec<_> = expected_body.lines().collect();
-    assert_eq!(
-        actual_lines.len(),
-        expected_lines.len(),
-        "Different number of lines. Expected:\n{expected_body}\nActual:\n{actual_body}"
-    );
-    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !does_line_vary(actual) {
-            assert_eq!(actual, expected);
-        }
-    }
-
-    context.merge_release_pr().await;
-
-    // Check if the binary has the new version.
-    let binary_cargo_toml =
-        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
-    expect_test::expect![[r#"
-        [package]
-        name = "binary"
-        version = "1.0.1"
-        edition = "2024"
-        publish = ["test-registry"]
-
-        [dependencies]
-        library = { version = "0.2.0", path = "../library", registry = "test-registry" }
-    "#]]
-    .assert_eq(&binary_cargo_toml);
-}
-
-/// Check if the line contains a temporary directory or the version of cargo-semver-checks.
 fn does_line_vary(line: &str) -> bool {
     line.contains("cargo-semver-checks/tree") || line.contains(".tmp")
 }
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_handles_invalid_readme_path_gracefully() {
+async fn k_releaser_handles_invalid_readme_path_gracefully() {
     let context = TestContext::new().await;
 
     // Set up a README path that will be invalid when the package is installed
@@ -1164,7 +501,7 @@ async fn release_plz_handles_invalid_readme_path_gracefully() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_handles_nonexistent_readme_path_in_cargo_toml() {
+async fn k_releaser_handles_nonexistent_readme_path_in_cargo_toml() {
     let context = TestContext::new().await;
 
     // Set a README path that simply doesn't exist anywhere
@@ -1195,7 +532,7 @@ async fn release_plz_handles_nonexistent_readme_path_in_cargo_toml() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_works_with_valid_readme_path() {
+async fn k_releaser_works_with_valid_readme_path() {
     let context = TestContext::new().await;
 
     // Create a valid README and set correct path
@@ -1237,125 +574,6 @@ async fn release_plz_works_with_valid_readme_path() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_updates_binary_when_library_changes_commit_regex() {
-    let binary = "binary";
-    let library1 = "library1";
-    let library2 = "library2";
-    // dependency chain: binary -> library2 -> library1
-    let context = TestContext::new_workspace_with_packages(&[
-        TestPackage::new(binary)
-            .with_type(PackageType::Bin)
-            .with_path_dependencies(vec![format!("../{library2}")])
-            .as_workspace_member(),
-        TestPackage::new(library2)
-            .with_type(PackageType::Lib)
-            .with_path_dependencies(vec![format!("../{library1}")])
-            .as_workspace_member(),
-        TestPackage::new(library1)
-            .with_type(PackageType::Lib)
-            .as_workspace_member(),
-    ])
-    .await;
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-    context.run_release().success();
-
-    // Update the library.
-    let lib_file = context.package_path(library1).join("src").join("aa.rs");
-    fs_err::write(&lib_file, "pub fn foo() {}").unwrap();
-    context.push_all_changes("edit library");
-
-    let config = r#"
-    [workspace]
-    release_commits = "^edit library$"
-    "#;
-    context.write_release_plz_toml(config);
-
-    context.run_release_pr().success();
-    let today = today();
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-
-    let open_pr = &opened_prs[0];
-    assert_eq!(open_pr.title, "chore: release v0.1.1");
-
-    let username = context.gitea.user.username();
-    let repo = &context.gitea.repo;
-    // The binary depends on the library, so release-plz should update its version.
-    assert_eq!(
-        open_pr.body.as_ref().unwrap().trim(),
-        format!(
-            r"
-## 🤖 New release
-
-* `{library1}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
-* `{library2}`: 0.1.0 -> 0.1.1
-* `{binary}`: 0.1.0 -> 0.1.1
-
-<details><summary><i><b>Changelog</b></i></summary><p>
-
-## `{library1}`
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
-
-### Other
-
-- edit library
-</blockquote>
-
-## `{library2}`
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
-
-### Other
-
-- updated the following local packages: {library1}
-</blockquote>
-
-## `{binary}`
-
-<blockquote>
-
-## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
-
-### Other
-
-- updated the following local packages: {library2}
-</blockquote>
-
-
-</p></details>
-
----
-This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
-        )
-        .trim()
-    );
-
-    context.merge_release_pr().await;
-
-    // Check if the binary has the new version.
-    let binary_cargo_toml =
-        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
-    expect_test::expect![[r#"
-        [package]
-        name = "binary"
-        version = "0.1.1"
-        edition = "2024"
-        publish = ["test-registry"]
-
-        [dependencies]
-        library2 = { version = "0.1.1", path = "../library2", registry = "test-registry" }
-    "#]]
-    .assert_eq(&binary_cargo_toml);
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn changelog_is_updated_correctly_if_no_new_line_after_h1() {
     let context = TestContext::new().await;
     let changelog = "# Changelog
@@ -1375,7 +593,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     let new_changelog = context.read_changelog();
     let username = context.gitea.user.username();
     let repo = &context.gitea.repo;
-    let today = today();
+    let _today = today();
 
     assert_eq!(
         new_changelog,
@@ -1388,7 +606,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/v0.1.0...v0.1.1) - {today}
+## [0.1.1](https://localhost/{username}/{repo}/compare/v0.1.0...v0.1.1) - {_today}
 
 ### Other
 

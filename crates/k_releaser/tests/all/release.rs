@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_releases_a_new_project_with_custom_tag_name() {
+async fn k_releaser_releases_a_new_project_with_custom_tag_name() {
     let context = TestContext::new().await;
 
     // Note: With unified workspace versioning, custom tag names are no longer supported.
@@ -92,7 +92,7 @@ async fn release_plz_releases_a_new_project_with_custom_tag_name() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_does_not_release_a_new_project_if_release_always_is_false() {
+async fn k_releaser_does_not_release_a_new_project_if_release_always_is_false() {
     let context = TestContext::new().await;
 
     let config = r"
@@ -123,7 +123,7 @@ async fn release_plz_does_not_release_a_new_project_if_release_always_is_false()
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_releases_a_new_project_with_custom_release() {
+async fn k_releaser_releases_a_new_project_with_custom_release() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -148,7 +148,7 @@ async fn release_plz_releases_a_new_project_with_custom_release() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_releases_after_release_pr_merged() {
+async fn k_releaser_releases_after_release_pr_merged() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -183,7 +183,7 @@ async fn release_plz_releases_after_release_pr_merged() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_does_not_releases_twice() {
+async fn k_releaser_does_not_releases_twice() {
     let context = TestContext::new().await;
 
     let crate_name = &context.gitea.repo;
@@ -210,7 +210,7 @@ async fn release_plz_does_not_releases_twice() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_can_do_backports() {
+async fn k_releaser_can_do_backports() {
     let context = TestContext::new().await;
 
     let crate_name = &context.gitea.repo;

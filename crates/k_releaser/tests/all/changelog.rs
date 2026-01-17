@@ -6,7 +6,7 @@ use crate::helpers::{
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_does_not_open_release_pr_if_there_are_no_release_commits() {
+async fn k_releaser_does_not_open_release_pr_if_there_are_no_release_commits() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -34,7 +34,7 @@ async fn release_plz_does_not_open_release_pr_if_there_are_no_release_commits() 
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_adds_changelog_on_new_project() {
+async fn k_releaser_adds_changelog_on_new_project() {
     let context = TestContext::new().await;
 
     let outcome = context.run_release_pr().success();
@@ -77,7 +77,7 @@ async fn release_plz_adds_changelog_on_new_project() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_releases_a_new_project() {
+async fn k_releaser_releases_a_new_project() {
     let context = TestContext::new().await;
 
     // Run release-pr to create a release PR
@@ -98,7 +98,7 @@ async fn release_plz_releases_a_new_project() {
 // TODO: switch `### Contributors` to `=== Contributors` and make test pass
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_adds_custom_changelog() {
+async fn k_releaser_adds_custom_changelog() {
     let context = TestContext::new().await;
     let config = r#"
     [changelog]
