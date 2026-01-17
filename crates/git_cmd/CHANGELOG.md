@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.27](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.26...git_cmd-v0.6.27) - 2026-01-17
+
+### Added
+
+- add `git_only` config option to use git tags to determine the latest version ([#2512](https://github.com/release-plz/release-plz/pull/2512))
+
+### Other
+
+- disable tag gpgsign in tests ([#2561](https://github.com/release-plz/release-plz/pull/2561))
+- disable gpg signing in tests ([#2552](https://github.com/release-plz/release-plz/pull/2552))
+
 ## [0.6.26](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.25...git_cmd-v0.6.26) - 2025-09-13
 
 ### Other
