@@ -234,7 +234,7 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         "package/{}-{}",
         package_details.name, package_details.version
     ));
-    info!("package for {} is at {}", package_name, package_path);
+    info!("package for {package_name} is at {package_path}");
 
     let single_package_manifest = package_path.join("Cargo.toml");
     let single_package_meta = get_manifest_metadata(&single_package_manifest)
