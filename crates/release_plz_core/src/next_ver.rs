@@ -177,7 +177,7 @@ fn process_git_only_package(
         return Ok(None);
     };
 
-    info!("using tag `{}` (version {})", release_tag, version);
+    info!("using tag `{release_tag}` (version {version})");
 
     // Get the commit associated with the release tag
     let release_commit = repo
