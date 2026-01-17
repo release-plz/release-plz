@@ -198,7 +198,11 @@ impl VersionUpdater {
     }
 
     /// Configures a custom regex pattern for minor version increments.
-    /// This will check only the type of the commit against the given pattern.
+    ///
+    /// - For conventional commits, this will check only the type of the commit against the given pattern.
+    /// - For non-conventional commits, this will check the entire commit message against the given pattern.
+    ///
+    /// If you want to match only the beginning of the commit message, use `^` at the start of your regex.
     ///
     /// Default: `None`.
     ///
@@ -215,7 +219,7 @@ impl VersionUpdater {
     /// let version = Version::new(0, 2, 3);
     /// assert_eq!(
     ///     VersionUpdater::new()
-    ///         .with_custom_minor_increment_regex("abc|bbb")
+    ///         .with_custom_minor_increment_regex("^abc|^bbb")
     ///         .expect("invalid regex")
     ///         .increment(&version, &commits),
     ///     Version::new(0, 3, 0)

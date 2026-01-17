@@ -47,7 +47,14 @@ impl Config {
         &self,
         is_changelog_update_disabled: bool,
         update_request: UpdateRequest,
-    ) -> UpdateRequest {
+    ) -> anyhow::Result<UpdateRequest> {
+        // Validate workspace defaults (applies to all packages without specific config)
+        validate_git_only_settings(
+            self.workspace.packages_defaults.git_only,
+            self.workspace.packages_defaults.publish,
+        )
+        .context("Wrong workspace context")?;
+
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
             default_update_config.changelog_update = false.into();
@@ -57,12 +64,22 @@ impl Config {
         for (package, config) in self.packages() {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
+
+            // Effective git_only includes workspace-level setting
+            let effective_git_only = update_config
+                .common
+                .git_only
+                .or(self.workspace.packages_defaults.git_only);
+
+            validate_git_only_settings(effective_git_only, update_config.common.publish)
+                .with_context(|| format!("Wrong configuration of package {package}"))?;
+
             if is_changelog_update_disabled {
                 update_config.common.changelog_update = false.into();
             }
             update_request = update_request.with_package_config(package, update_config.into());
         }
-        update_request
+        Ok(update_request)
     }
 
     pub fn fill_set_version_config(
@@ -83,7 +100,14 @@ impl Config {
         allow_dirty: bool,
         no_verify: bool,
         release_request: ReleaseRequest,
-    ) -> ReleaseRequest {
+    ) -> anyhow::Result<ReleaseRequest> {
+        // Validate workspace defaults (applies to all packages without specific config)
+        validate_git_only_settings(
+            self.workspace.packages_defaults.git_only,
+            self.workspace.packages_defaults.publish,
+        )
+        .context("Wrong workspace context")?;
+
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
             default_config.publish_no_verify = Some(true);
@@ -98,6 +122,15 @@ impl Config {
             let mut release_config = config.clone();
             release_config = release_config.merge(self.workspace.packages_defaults.clone());
 
+            // Effective git_only includes workspace-level setting
+            let effective_git_only = release_config
+                .common
+                .git_only
+                .or(self.workspace.packages_defaults.git_only);
+
+            validate_git_only_settings(effective_git_only, release_config.common.publish)
+                .with_context(|| format!("Wrong configuration of package {package}"))?;
+
             if no_verify {
                 release_config.common.publish_no_verify = Some(true);
             }
@@ -107,8 +140,18 @@ impl Config {
             release_request =
                 release_request.with_package_config(package, release_config.common.into());
         }
-        release_request
+        Ok(release_request)
     }
+}
+
+fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
+    if git_only == Some(true) && publish == Some(true) {
+        anyhow::bail!(
+            "Config options 'git_only' and 'publish' are mutually exclusive. \
+            When git_only is enabled, publish must be explicitly set to false."
+        );
+    }
+    Ok(())
 }
 
 /// Config at the `[workspace]` level.
@@ -359,6 +402,12 @@ pub struct PackageConfig {
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
+    /// # Git Only
+    /// Use git tags for release information.
+    /// If true, release-plz will use git tags to determine what the latest version of the package
+    /// is (i.e newest version is v0.1.3 and is associated with commit ac83762).
+    /// If false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.
+    pub git_only: Option<bool>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
@@ -407,6 +456,10 @@ pub struct PackageConfig {
     /// # Release
     /// Used to toggle off the update/release process for a workspace or package.
     pub release: Option<bool>,
+    /// # Custom Minor Increment Regex
+    /// Custom regex to match commit types that should trigger a minor version increment.
+    /// Useful when using non-conventional commit prefixes.
+    pub custom_minor_increment_regex: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -419,6 +472,8 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
+            custom_minor_increment_regex: config.custom_minor_increment_regex,
+            git_only: config.git_only,
         }
     }
 }
@@ -458,6 +513,10 @@ impl PackageConfig {
             git_tag_enable: self.git_tag_enable.or(default.git_tag_enable),
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
             release: self.release.or(default.release),
+            custom_minor_increment_regex: self
+                .custom_minor_increment_regex
+                .or(default.custom_minor_increment_regex),
+            git_only: self.git_only.or(default.git_only),
         }
     }
 
@@ -812,5 +871,34 @@ unknown = false"#;
             parse_duration("-30s").unwrap_err().to_string(),
             "invalid duration number"
         );
+    }
+
+    #[test]
+    fn custom_minor_increment_regex_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            custom_minor_increment_regex = \"minor|enhancement\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config
+            .workspace
+            .packages_defaults
+            .custom_minor_increment_regex = Some("minor|enhancement".to_string());
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn custom_minor_increment_regex_is_serialized() {
+        let mut config = create_base_workspace_config();
+        config
+            .workspace
+            .packages_defaults
+            .custom_minor_increment_regex = Some("minor|enhancement".to_string());
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
     }
 }

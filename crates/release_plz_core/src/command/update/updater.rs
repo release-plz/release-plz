@@ -61,7 +61,7 @@ impl Updater<'_> {
         let packages_diffs = self
             .get_packages_diffs(registry_packages, repository)
             .await?;
-        let version_groups = self.get_version_groups(&packages_diffs);
+        let version_groups = self.get_version_groups(&packages_diffs)?;
         debug!("version groups: {:?}", version_groups);
 
         let mut packages_to_check_for_deps: Vec<&Package> = vec![];
@@ -156,12 +156,15 @@ impl Updater<'_> {
     }
 
     /// Get the highest next version of all packages for each version group.
-    fn get_version_groups(&self, packages_diffs: &[(&Package, Diff)]) -> HashMap<String, Version> {
+    fn get_version_groups(
+        &self,
+        packages_diffs: &[(&Package, Diff)],
+    ) -> anyhow::Result<HashMap<String, Version>> {
         let mut version_groups: HashMap<String, Version> = HashMap::new();
 
         for (pkg, diff) in packages_diffs {
             let pkg_config = self.req.get_package_config(&pkg.name);
-            let version_updater = pkg_config.generic.version_updater();
+            let version_updater = pkg_config.generic.version_updater()?;
             if let Some(version_group) = pkg_config.version_group {
                 let next_pkg_ver = pkg.version.next_from_diff(diff, version_updater);
                 match version_groups.entry(version_group.clone()) {
@@ -179,7 +182,7 @@ impl Updater<'_> {
             }
         }
 
-        version_groups
+        Ok(version_groups)
     }
 
     fn new_workspace_version(
@@ -192,25 +195,22 @@ impl Updater<'_> {
             let local_manifest = LocalManifest::try_new(local_manifest_path)?;
             local_manifest.get_workspace_version()
         };
-        let new_workspace_version = workspace_version_pkgs
-            .iter()
-            .filter_map(|workspace_package| {
-                for (p, diff) in packages_diffs {
-                    if *workspace_package == *p.name {
-                        let pkg_config = self.req.get_package_config(&p.name);
-                        let version_updater = pkg_config.generic.version_updater();
-                        let next = p.version.next_from_diff(diff, version_updater);
-                        if let Some(workspace_version) = &workspace_version
-                            && &next >= workspace_version
-                        {
-                            return Some(next);
-                        }
+        let mut new_versions = Vec::new();
+        for workspace_package in workspace_version_pkgs {
+            for (p, diff) in packages_diffs {
+                if *workspace_package == *p.name {
+                    let pkg_config = self.req.get_package_config(&p.name);
+                    let version_updater = pkg_config.generic.version_updater()?;
+                    let next = p.version.next_from_diff(diff, version_updater);
+                    if let Some(workspace_version) = &workspace_version
+                        && &next >= workspace_version
+                    {
+                        new_versions.push(next);
                     }
                 }
-                None
-            })
-            .max();
-        Ok(new_workspace_version)
+            }
+        }
+        Ok(new_versions.into_iter().max())
     }
 
     async fn get_packages_diffs(
@@ -541,8 +541,13 @@ impl Updater<'_> {
             .project
             .git_tag(&package.name, &package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
-        if tag_commit.is_some() {
+
+        // Check if git_only is enabled for this package
+        let using_git_only = || self.req.should_use_git_only(&package.name);
+
+        if tag_commit.is_some() && !using_git_only() {
             // Only check registry for packages that should be published
+            // Skip this check if git_only is enabled (we don't use registry in that mode)
             let config = self.req.get_package_config(&package.name);
             if config.should_publish() {
                 let registry_package = registry_package.with_context(|| format!("package `{}` not found in the registry, but the git tag {git_tag} exists. Consider running `cargo publish` manually to publish this package.", package.name))?;
@@ -563,6 +568,7 @@ impl Updater<'_> {
             tag_commit.as_deref(),
             &mut diff,
         )?;
+
         repository
             .checkout_head()
             .context("can't checkout to head after calculating diff")?;
@@ -612,14 +618,15 @@ impl Updater<'_> {
                     package_path,
                     registry_package_path,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                if are_packages_equal
-                    || is_commit_too_old(
+                let commit_too_old = || {
+                    is_commit_too_old(
                         repository,
                         tag_commit,
                         registry_package.published_at_sha1(),
                         &current_commit_hash,
                     )
-                {
+                };
+                if are_packages_equal || commit_too_old() {
                     debug!(
                         "next version calculated starting from commits after `{current_commit_hash}`"
                     );
@@ -783,7 +790,7 @@ impl Updater<'_> {
                         })?
                         .clone()
                 } else {
-                    let version_updater = pkg_config.generic.version_updater();
+                    let version_updater = pkg_config.generic.version_updater()?;
                     p.version.next_from_diff(diff, version_updater)
                 }
             }

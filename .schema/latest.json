@@ -38,8 +38,10 @@
         "changelog_config": null,
         "changelog_path": null,
         "changelog_update": null,
+        "custom_minor_increment_regex": null,
         "dependencies_update": null,
         "features_always_increment_minor": null,
+        "git_only": null,
         "git_release_body": null,
         "git_release_draft": null,
         "git_release_enable": null,
@@ -286,9 +288,25 @@
             "null"
           ]
         },
+        "custom_minor_increment_regex": {
+          "title": "Custom Minor Increment Regex",
+          "description": "Custom regex to match commit types that should trigger a minor version increment.\nUseful when using non-conventional commit prefixes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
           "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_only": {
+          "title": "Git Only",
+          "description": "Use git tags for release information.\nIf true, release-plz will use git tags to determine what the latest version of the package\nis (i.e newest version is v0.1.3 and is associated with commit ac83762).\nIf false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.",
           "type": [
             "boolean",
             "null"
@@ -529,6 +547,14 @@
             "null"
           ]
         },
+        "custom_minor_increment_regex": {
+          "title": "Custom Minor Increment Regex",
+          "description": "Custom regex to match commit types that should trigger a minor version increment.\nUseful when using non-conventional commit prefixes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "dependencies_update": {
           "title": "Dependencies Update",
           "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.\n- If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
@@ -540,6 +566,14 @@
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
           "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_only": {
+          "title": "Git Only",
+          "description": "Use git tags for release information.\nIf true, release-plz will use git tags to determine what the latest version of the package\nis (i.e newest version is v0.1.3 and is associated with commit ac83762).\nIf false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.",
           "type": [
             "boolean",
             "null"

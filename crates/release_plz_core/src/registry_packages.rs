@@ -8,7 +8,7 @@ use tempfile::{TempDir, tempdir};
 
 use crate::{PackagePath, cargo_vcs_info, download, next_ver};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PackagesCollection {
     packages: BTreeMap<String, RegistryPackage>,
     /// Packages might be downloaded and stored in a temporary directory.
@@ -24,6 +24,10 @@ pub struct RegistryPackage {
 }
 
 impl RegistryPackage {
+    pub fn new(package: Package, sha1: Option<String>) -> Self {
+        Self { package, sha1 }
+    }
+
     pub fn published_at_sha1(&self) -> Option<&str> {
         self.sha1.as_deref()
     }
@@ -36,6 +40,11 @@ impl PackagesCollection {
 
     pub fn get_registry_package(&self, package_name: &str) -> Option<&RegistryPackage> {
         self.packages.get(package_name)
+    }
+
+    pub fn with_packages(mut self, packages: BTreeMap<String, RegistryPackage>) -> Self {
+        self.packages = packages;
+        self
     }
 }
 

@@ -19,10 +19,15 @@ pub struct UpdateConfig {
     /// Default: `true`.
     pub publish: bool,
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
-    /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
+    /// - If `false` (default), feature commits will only bump the minor version starting with
+    ///   1.x releases.
     pub features_always_increment_minor: bool,
     /// Template for the git tag created by release-plz.
     pub tag_name_template: Option<String>,
+    /// Custom regex to match commit types that should trigger a minor version increment.
+    pub custom_minor_increment_regex: Option<String>,
+    /// Whether to use git tags instead of registry for determining package versions.
+    pub git_only: Option<bool>,
 }
 
 /// Package-specific config
@@ -58,6 +63,10 @@ impl PackageUpdateConfig {
     pub fn should_publish(&self) -> bool {
         self.generic.publish
     }
+
+    pub fn git_only(&self) -> Option<bool> {
+        self.generic.git_only
+    }
 }
 
 impl Default for UpdateConfig {
@@ -68,8 +77,10 @@ impl Default for UpdateConfig {
             release: true,
             publish: true,
             features_always_increment_minor: false,
+            git_only: None,
             tag_name_template: None,
             changelog_path: None,
+            custom_minor_increment_regex: None,
         }
     }
 }
@@ -103,8 +114,52 @@ impl UpdateConfig {
         Self { publish, ..self }
     }
 
-    pub fn version_updater(&self) -> VersionUpdater {
-        VersionUpdater::default()
-            .with_features_always_increment_minor(self.features_always_increment_minor)
+    pub fn version_updater(&self) -> Result<VersionUpdater, regex::Error> {
+        let updater = VersionUpdater::default()
+            .with_features_always_increment_minor(self.features_always_increment_minor);
+        match &self.custom_minor_increment_regex {
+            Some(regex) => updater.with_custom_minor_increment_regex(regex),
+            None => Ok(updater),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cargo_metadata::semver::Version;
+
+    #[test]
+    fn version_updater_with_custom_minor_regex() {
+        let config = UpdateConfig {
+            custom_minor_increment_regex: Some("minor|enhancement".to_string()),
+            ..Default::default()
+        };
+        let updater = config.version_updater().unwrap();
+        // Test that the updater correctly uses the custom regex.
+        let commits = ["enhancement: add new feature"];
+        let version = Version::new(1, 2, 3);
+        let new_version = updater.increment(&version, commits);
+        assert_eq!(new_version, Version::new(1, 3, 0));
+    }
+
+    #[test]
+    fn version_updater_with_invalid_regex() {
+        let config = UpdateConfig {
+            custom_minor_increment_regex: Some("[invalid".to_string()),
+            ..Default::default()
+        };
+        assert!(config.version_updater().is_err());
+    }
+
+    #[test]
+    fn version_updater_without_custom_regex() {
+        let config = UpdateConfig::default();
+        let updater = config.version_updater().unwrap();
+        // Test that the updater works normally without custom regex.
+        let commits = ["some change"];
+        let version = Version::new(1, 2, 3);
+        let new_version = updater.increment(&version, commits);
+        assert_eq!(new_version, Version::new(1, 2, 4));
     }
 }
