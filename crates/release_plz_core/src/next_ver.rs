@@ -168,7 +168,7 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .packages
         .iter()
         .find(|x| x.name == package_name)
-        .ok_or(anyhow::anyhow!("Failed to find package {package_name:?}"))?;
+        .with_context(|| format!("Failed to find package {package_name:?}"))?;
 
     let package_path = rust_package.target_directory.join(format!(
         "package/{}-{}",
