@@ -1,6 +1,6 @@
 # Contribution guidelines
 
-First off, thank you for considering contributing to release-plz.
+First off, thank you for considering contributing to k-releaser.
 
 If your contribution is not straightforward, please first discuss the change you
 wish to make by creating a new issue before making the change.
@@ -8,7 +8,7 @@ wish to make by creating a new issue before making the change.
 ## Reporting issues
 
 Before reporting an issue on the
-[issue tracker](https://github.com/release-plz/release-plz/issues),
+[issue tracker](https://github.com/k-releaser/k-releaser/issues),
 please check that it has not already been reported by searching for some related
 keywords.
 
@@ -23,8 +23,8 @@ Try to do one pull request per change.
 This is no different than other Rust projects.
 
 ```shell
-git clone https://github.com/release-plz/release-plz
-cd release-plz
+git clone https://github.com/k-releaser/k-releaser
+cd k-releaser
 cargo test
 ```
 
@@ -64,7 +64,7 @@ cargo test
 
 - publish: A crate can be published to crates.io or to a private cargo registry.
 - release: The release is the process that goes from updating the version through
-  release-plz to publishing the single crate(s).
+  k-releaser to publishing the single crate(s).
 - package: For our purposes, crate and package are synonyms.
   In the codebase, we prefer to use the word `package` instead of `crate`.
 
