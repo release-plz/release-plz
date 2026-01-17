@@ -167,9 +167,10 @@ impl Updater<'_> {
             anyhow::bail!("Could not find version in Cargo.toml. For workspaces, set workspace.package.version. For single packages, set package.version.");
         };
 
-        // Use default version updater configuration
-        // TODO: Make this configurable via workspace config
-        let version_updater = VersionUpdater::default();
+        // Configure version updater with workspace settings
+        let package_config = self.req.get_package_config(&self.project.publishable_packages()[0].name);
+        let version_updater = VersionUpdater::new()
+            .with_features_always_increment_minor(package_config.generic.features_always_increment_minor);
 
         // Calculate next version based on ALL commits
         let next_version = if all_commits.is_empty() {
