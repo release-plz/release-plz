@@ -4,21 +4,21 @@
 [![CI](https://github.com/k-releaser/k-releaser/workflows/CI/badge.svg)](https://github.com/k-releaser/k-releaser/actions)
 [![Docker](https://badgen.net/badge/icon/docker?icon=docker&label)](https://hub.docker.com/r/marcoieni/k-releaser)
 
-Release-plz helps you release your Rust packages by automating:
+k-releaser helps you release your Rust monorepo packages by automating:
 
 - CHANGELOG generation (with [git-cliff](https://git-cliff.org)).
 - Creation of GitHub/Gitea/GitLab releases.
-- Publishing to a cargo registry (`crates.io` by default).
+- Unified workspace versioning (all packages share the same version).
 - Version bumps in `Cargo.toml`.
 
-Release-plz updates your packages with a release Pull Request based on:
+k-releaser updates your packages with a release Pull Request based on:
 
 - Your git history, following [Conventional commits](https://www.conventionalcommits.org/).
-- API breaking changes (detected by [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)).
+- Git tags for version detection (no crates.io registry dependency).
 
 ## 🤔 What's a Release PR?
 
-Release-plz maintains Release PRs, keeping them up-to-date as you merge additional commits. When you're
+k-releaser maintains Release PRs, keeping them up-to-date as you merge additional commits. When you're
 ready to create a release, simply merge the release PR.
 
 ![pr](website/docs/assets/pr.png)
@@ -26,9 +26,9 @@ ready to create a release, simply merge the release PR.
 When you merge the Release PR (or when you edit the `Cargo.toml` versions by yourself),
 k-releaser:
 
-- Creates a git tag named `<package_name>-v<version>` (e.g. `tokio-v1.8.1`).
-- Publishes the package to the cargo registry by running `cargo publish`.
+- Creates a git tag named `v<version>` (e.g. `v1.8.1`).
 - Publishes a GitHub/Gitea/GitLab release based on the git tag.
+- Updates all workspace packages to the same version (unified versioning).
 
 ## 📚 Docs
 
@@ -38,7 +38,7 @@ Learn how to use k-releaser in the [docs](https://k-releaser.dev/).
 
 There are two ways to run k-releaser:
 
-- [GitHub Action](https://k-releaser.dev/docs/github): Run Release-plz from CI. The action both updates and releases your packages.
+- [GitHub Action](https://k-releaser.dev/docs/github): Run k-releaser from CI. The action both updates and releases your packages.
 - [CLI](https://k-releaser.dev/docs/usage): Run k-releaser from your terminal or other CI systems (Gitea and GitLab supported).
 
 ## 💖 Users
@@ -58,10 +58,9 @@ In RustLab 23, I showed how k-releaser simplifies releasing Rust packages, why I
 
 ## 🌓 Similar projects
 
-- [release-please](https://github.com/googleapis/release-please): k-releaser is inspired by release-please,
-  but instead of determining the next versions based on git tags, k-releaser compares local packages with
-  the ones published in the cargo registry.
-  Plus, k-releaser doesn't need any configuration and is optimized for Rust projects.
+- [release-please](https://github.com/googleapis/release-please): k-releaser is inspired by release-please
+  and uses git tags for version detection. k-releaser is specifically optimized for Rust monorepos with
+  unified workspace versioning and minimal configuration.
 - [cargo-smart-release](https://github.com/Byron/cargo-smart-release):
   Fearlessly release workspace crates and with beautiful semi-handcrafted changelogs.
 

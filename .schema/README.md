@@ -1,4 +1,4 @@
 # Configuration schema
 
-JSON schema of the `release-plz.toml`
-[configuration](https://release-plz.dev/docs/config).
+JSON schema of the `k-releaser.toml`
+[configuration](https://github.com/secana/k-releaser).
