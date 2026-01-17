@@ -499,7 +499,7 @@ async fn release_package_if_needed(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<PackageRelease>> {
-    let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
+    let git_tag = project.git_tag(&package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
     if repo.tag_exists(&git_tag)? {
         info!(

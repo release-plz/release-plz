@@ -316,7 +316,7 @@ async fn publish_package_if_needed(
     hash_kind: &crates_index::HashKind,
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<Option<PackagePublish>> {
-    let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
+    let git_tag = project.git_tag(&package.version.to_string())?;
 
     let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
         .context("can't determine registry indexes")?;

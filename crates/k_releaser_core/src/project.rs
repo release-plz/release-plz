@@ -183,8 +183,11 @@ impl Project {
         Ok(repository)
     }
 
-    pub fn git_tag(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
-        self.render_template(package_name, version, TemplateField::GitTagName)
+    /// Generate git tag for the workspace version.
+    /// Always uses format: v{version} (unified workspace tag, not per-package)
+    pub fn git_tag(&self, version: &str) -> anyhow::Result<String> {
+        // For unified workspace versioning, always use v{version} format
+        Ok(format!("v{version}"))
     }
 
     pub fn release_name(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
@@ -487,7 +490,7 @@ mod tests {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
         let project = get_project(local_manifest, None, &HashSet::default(), true, None, None)
             .expect("Should ok");
-        let git_tag = project.git_tag("typo_test", "0.1.0").unwrap();
+        let git_tag = project.git_tag("0.1.0").unwrap();
         assert_eq!(git_tag, "v0.1.0");
     }
 
@@ -503,9 +506,11 @@ mod tests {
             Some("release-prefix-{{ package }}-middle-{{ version }}-postfix".to_string()),
         )
         .expect("Should ok");
+        // With unified workspace versioning, git tags always use v{version} format
+        // Custom tag templates are no longer supported (monorepo uses single version)
         assert_eq!(
-            project.git_tag("typo_test", "0.1.0").unwrap(),
-            "prefix-typo_test-middle-0.1.0-postfix"
+            project.git_tag("0.1.0").unwrap(),
+            "v0.1.0"
         );
         assert_eq!(
             project.release_name("typo_test", "0.1.0").unwrap(),

@@ -410,8 +410,8 @@ impl Updater<'_> {
         let release_link = {
             let prev_tag = self
                 .project
-                .git_tag(&package.name, &package.version.to_string())?;
-            let next_tag = self.project.git_tag(&package.name, &version.to_string())?;
+                .git_tag(&package.version.to_string())?;
+            let next_tag = self.project.git_tag(&version.to_string())?;
             repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
         };
 
@@ -485,7 +485,7 @@ impl Updater<'_> {
 
         let git_tag = self
             .project
-            .git_tag(&package.name, &package.version.to_string())?;
+            .git_tag(&package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
         let tag_exists = tag_commit.is_some();
 
