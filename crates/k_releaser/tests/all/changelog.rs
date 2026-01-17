@@ -55,7 +55,7 @@ async fn release_plz_adds_changelog_on_new_project() {
             "releases": [
                 {
                     "package_name": context.gitea.repo,
-                    "version": "0.1.0"
+                    "version": "0.1.1"
                 }
             ]
           }
@@ -75,15 +75,16 @@ async fn release_plz_adds_changelog_on_new_project() {
 async fn release_plz_releases_a_new_project() {
     let context = TestContext::new().await;
 
-    let dest_dir = Utf8TempDir::new().unwrap();
+    // Run release-pr to create a release PR
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
 
-    let packages = || context.download_package(dest_dir.path());
-    // Before running release-plz, no packages should be present.
-    assert!(packages().is_empty());
-
+    // Run release to create git tag and forge release (but not publish to registry)
     context.run_release().success();
 
-    assert_eq!(packages().len(), 1);
+    // Verify a git tag was created
+    let tags = context.repo.git(&["tag", "--list"]).unwrap();
+    assert!(tags.contains("v0.1.1"));
 }
 
 // TODO: switch `### Contributors` to `=== Contributors` and make test pass
@@ -253,7 +254,7 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
         .await;
     // Since `one` depends from `two`, the new changelog entry of `one` comes before the entry of
     // `two`.
-    expect_test::expect![[r"
+    expect_test::expect![[r#"
         # Changelog
 
         All notable changes to this project will be documented in this file.
@@ -263,16 +264,12 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
 
         ## [Unreleased]
 
-        ## `one` - [0.1.0](https://github.com/me/my-proj/releases/tag/one-v0.1.0)
+        ## `workspace` - [0.1.1](https://github.com/me/my-proj/compare/workspace-v0.1.0...workspace-v0.1.1)
 
         ### Other
         - cargo init
-
-        ## `two` - [0.1.0](https://github.com/me/my-proj/releases/tag/two-v0.1.0)
-
-        ### Other
         - cargo init
-    "]]
+    "#]]
     .assert_eq(&changelog);
 }
 
@@ -305,7 +302,7 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 
     let changelog = fs_err::read_to_string(context.repo.directory().join("CHANGELOG.md")).unwrap();
 
-    expect_test::expect![[r"
+    expect_test::expect![[r#"
         # Changelog
 
         All notable changes to this project will be documented in this file.
@@ -315,16 +312,12 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 
         ## [Unreleased]
 
-        ## `two` - [0.1.0](https://github.com/me/my-proj/releases/tag/two-v0.1.0)
+        ## `workspace` - [0.1.1](https://github.com/me/my-proj/compare/workspace-v0.1.0...workspace-v0.1.1)
 
         ### Other
         - cargo init
-
-        ## `one` - [0.1.0](https://github.com/me/my-proj/releases/tag/one-v0.1.0)
-
-        ### Other
         - cargo init
-    "]]
+    "#]]
     .assert_eq(&changelog);
 }
 
