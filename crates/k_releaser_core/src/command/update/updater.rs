@@ -57,10 +57,21 @@ impl Updater<'_> {
             .await?;
 
         // For unified workspace versioning: collect ALL commits from ALL packages
-        let all_commits: Vec<Commit> = packages_diffs
+        let mut all_commits: Vec<Commit> = packages_diffs
             .iter()
             .flat_map(|(_, diff)| diff.commits.clone())
             .collect();
+
+        // Filter commits based on release_commits regex if configured
+        if let Some(release_commits_regex) = self.req.release_commits() {
+            let original_count = all_commits.len();
+            all_commits.retain(|commit| release_commits_regex.is_match(&commit.message));
+            debug!(
+                "filtered commits from {} to {} based on release_commits regex",
+                original_count,
+                all_commits.len()
+            );
+        }
 
         // Check if workspace tag exists (same for all packages in unified versioning)
         let workspace_tag_exists = packages_diffs
@@ -78,7 +89,17 @@ impl Updater<'_> {
         let mut packages_to_update = PackagesUpdate::default();
 
         // If there are commits or no tag exists, calculate new workspace version
-        if !all_commits.is_empty() || !workspace_tag_exists {
+        // Note: When release_commits filter is configured and filters out all commits,
+        // we should NOT create a release even if there's no tag (respects user's intent)
+        let should_update = if self.req.release_commits().is_some() {
+            // When release_commits is configured, only update if there are matching commits
+            !all_commits.is_empty()
+        } else {
+            // Normal behavior: update if there are commits OR it's first release
+            !all_commits.is_empty() || !workspace_tag_exists
+        };
+
+        if should_update {
             // Calculate ONE workspace version based on ALL commits
             let workspace_version = self.calculate_unified_workspace_version(
                 local_manifest_path,

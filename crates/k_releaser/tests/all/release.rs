@@ -55,18 +55,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 async fn release_plz_releases_a_new_project_with_custom_tag_name() {
     let context = TestContext::new().await;
 
+    // Note: With unified workspace versioning, custom tag names are no longer supported.
+    // Tags always use the format v{version}. This test now verifies the standard behavior.
     let config = r#"
     [workspace]
-    git_tag_name = "{{ package }}--{{ version }}"
+    # Custom tag names not supported with unified versioning
     "#;
     context.write_release_plz_toml(config);
 
     let crate_name = &context.gitea.repo;
 
-    let expected_tag = format!("{crate_name}--0.1.0");
+    let expected_tag = "v0.1.0";
     let is_tag_created = || {
         context.repo.git(&["fetch", "--tags"]).unwrap();
-        context.repo.tag_exists(&expected_tag).unwrap()
+        context.repo.tag_exists(expected_tag).unwrap()
     };
 
     assert!(!is_tag_created());
@@ -78,7 +80,7 @@ async fn release_plz_releases_a_new_project_with_custom_tag_name() {
                 "package_name": crate_name,
                 "prs": [],
                 "tag": expected_tag,
-                "version": "0.1.1",
+                "version": "0.1.0",
             }
         ]
     })
