@@ -110,9 +110,9 @@ fn get_release_regex(template: &str, package_name: &str) -> anyhow::Result<Regex
     Regex::new(&full_regex).context("build release tag regex")
 }
 
-/// create a temporary worktree and its associated repo
+/// Create a temporary worktree and its associated repo.
 ///
-/// if using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
+/// If using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
 /// considered different objects with different methods so we return both. The drop order for these
 /// doesn't actually matter, because the repo will become invalid when the worktree drops. But we
 /// typically want to drop the repo first jsut to avoid the possibility of someone using an invalid
