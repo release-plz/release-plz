@@ -31,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         "releases": [
             {
                 "package_name": crate_name,
-                "tag": "v0.1.1",
-                "version": "0.1.1",
+                "tag": "v0.1.0",
+                "version": "0.1.0",
                 "prs": [
                     {
                         "html_url":"https://github.com/release-plz/release-plz/pull/1439",
@@ -163,8 +163,8 @@ async fn release_plz_releases_after_release_pr_merged() {
 
     let crate_name = &context.gitea.repo;
 
-    let expected_tag = "v0.1.0";
-    let expected_release = format!("{crate_name}--0.1.0");
+    let expected_tag = "v0.1.1";
+    let expected_release = format!("{crate_name}--0.1.1");
 
     context.run_release().success();
 
@@ -195,8 +195,8 @@ async fn release_plz_does_not_releases_twice() {
             {
                 "package_name": crate_name,
                 "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
+                "tag": "v0.1.0",
+                "version": "0.1.0",
             }
         ]
     })
@@ -222,8 +222,8 @@ async fn release_plz_can_do_backports() {
             {
                 "package_name": crate_name,
                 "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
+                "tag": "v0.1.0",
+                "version": "0.1.0",
             }
         ]
     })
