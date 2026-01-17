@@ -62,11 +62,10 @@ cargo test
 
 ## Glossary
 
-- publish: A crate can be published to crates.io or to a private cargo registry.
-- release: The release is the process that goes from updating the version through
-  k-releaser to publishing the single crate(s).
+- release: The release is the process that creates git tags and forge releases for workspace packages with unified versioning.
 - package: For our purposes, crate and package are synonyms.
   In the codebase, we prefer to use the word `package` instead of `crate`.
+- unified versioning: All workspace packages share the same version number.
 
 ## Integration tests
 
