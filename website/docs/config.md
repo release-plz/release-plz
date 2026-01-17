@@ -214,7 +214,8 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `custom_major_increment_regex` field
 
-Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field), but for major version increments.
+Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field), but for major
+version increments.
 
 #### The `custom_minor_increment_regex` field
 
