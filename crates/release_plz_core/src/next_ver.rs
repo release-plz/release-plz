@@ -244,7 +244,7 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .workspace_packages()
         .into_iter()
         .find(|p| p.name == package_name)
-        .ok_or(anyhow::Error::msg("Couldn't find the package"))?
+        .context("Couldn't find the package")?
         .clone();
 
     Ok(single_package)
