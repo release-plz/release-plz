@@ -223,7 +223,7 @@ Example:
 
 ```toml
 [workspace]
-custom_minor_increment_regex = "minor|enhancement|🎉"
+custom_minor_increment_regex = "^minor|^enhancement|^🎉"
 ```
 
 With this configuration, commits like `minor: add feature`, `enhancement: new capability`,
