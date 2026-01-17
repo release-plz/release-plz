@@ -94,23 +94,34 @@ impl Updater<'_> {
 
         let mut packages_to_update = PackagesUpdate::default();
 
-        // If there are commits or no tag exists, calculate new workspace version
-        // Note: When release_commits filter is configured and filters out all commits,
-        // we should NOT create a release even if there's no tag (respects user's intent)
+        // Calculate the next version to determine if an update is needed
+        let workspace_version = self.calculate_unified_workspace_version(
+            local_manifest_path,
+            &all_commits,
+        )?;
+
+        // Get current version to compare
+        let local_manifest = LocalManifest::try_new(local_manifest_path)?;
+        let current_version = if let Some(version) = local_manifest.get_workspace_version() {
+            version
+        } else if let Some(version) = local_manifest.get_package_version() {
+            version
+        } else {
+            anyhow::bail!("Could not find version in Cargo.toml");
+        };
+
+        // Only create a PR if the version needs to be bumped
+        // This prevents creating empty PRs when there are no commits and version is already correct
         let should_update = if self.req.release_commits().is_some() {
             // When release_commits is configured, only update if there are matching commits
-            !all_commits.is_empty()
+            // and the version would change
+            !all_commits.is_empty() && workspace_version > current_version
         } else {
-            // Normal behavior: update if there are commits OR it's first release
-            !all_commits.is_empty() || !workspace_tag_exists
+            // Normal behavior: update if the calculated version is greater than current
+            workspace_version > current_version
         };
 
         if should_update {
-            // Calculate ONE workspace version based on ALL commits
-            let workspace_version = self.calculate_unified_workspace_version(
-                local_manifest_path,
-                &all_commits,
-            )?;
 
             info!("unified workspace version: {workspace_version}");
             packages_to_update.with_workspace_version(workspace_version.clone());
