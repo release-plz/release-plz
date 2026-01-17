@@ -26,6 +26,8 @@ pub struct UpdateConfig {
     pub tag_name_template: Option<String>,
     /// Custom regex to match commit types that should trigger a minor version increment.
     pub custom_minor_increment_regex: Option<String>,
+    /// Custom regex to match commit types that should trigger a major version increment.
+    pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
 }
@@ -81,6 +83,7 @@ impl Default for UpdateConfig {
             tag_name_template: None,
             changelog_path: None,
             custom_minor_increment_regex: None,
+            custom_major_increment_regex: None,
         }
     }
 }
@@ -115,12 +118,15 @@ impl UpdateConfig {
     }
 
     pub fn version_updater(&self) -> Result<VersionUpdater, regex::Error> {
-        let updater = VersionUpdater::default()
+        let mut updater = VersionUpdater::default()
             .with_features_always_increment_minor(self.features_always_increment_minor);
-        match &self.custom_minor_increment_regex {
-            Some(regex) => updater.with_custom_minor_increment_regex(regex),
-            None => Ok(updater),
+        if let Some(regex) = &self.custom_minor_increment_regex {
+            updater = updater.with_custom_minor_increment_regex(regex)?;
         }
+        if let Some(regex) = &self.custom_major_increment_regex {
+            updater = updater.with_custom_major_increment_regex(regex)?;
+        }
+        Ok(updater)
     }
 }
 
@@ -161,5 +167,19 @@ mod tests {
         let version = Version::new(1, 2, 3);
         let new_version = updater.increment(&version, commits);
         assert_eq!(new_version, Version::new(1, 2, 4));
+    }
+
+    #[test]
+    fn version_updater_with_custom_major_regex() {
+        let config = UpdateConfig {
+            custom_major_increment_regex: Some("major|breaking".to_string()),
+            ..Default::default()
+        };
+        let updater = config.version_updater().unwrap();
+        // Test that the updater correctly uses the custom regex.
+        let commits = ["breaking: remove old API"];
+        let version = Version::new(1, 2, 3);
+        let new_version = updater.increment(&version, commits);
+        assert_eq!(new_version, Version::new(2, 0, 0));
     }
 }
