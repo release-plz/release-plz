@@ -34,6 +34,19 @@ k-releaser:
 
 Learn how to use k-releaser in the [docs](https://k-releaser.dev/).
 
+## ⚙️ Configuration
+
+k-releaser is configured in your root `Cargo.toml` file. Add configuration to the `[package.metadata.k-releaser]` section for single-package projects, or `[workspace.metadata.k-releaser]` for workspaces:
+
+```toml
+[workspace.metadata.k-releaser]
+# Configuration options go here
+release_commits = "^feat:"
+git_release_name = "{{ package }}--{{ version }}"
+```
+
+See the [configuration docs](https://k-releaser.dev/docs/config) for all available options.
+
 ## 🤖 Running k-releaser
 
 There are two ways to run k-releaser:
