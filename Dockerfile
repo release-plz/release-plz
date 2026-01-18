@@ -11,7 +11,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY . .
-RUN cargo build --release --locked --bin release-plz
+RUN cargo build --release --locked --bin k-releaser
 
 FROM debian:bookworm-slim as runner
 
@@ -28,7 +28,7 @@ RUN set -eux; \
         ca-certificates \
         wget \
         gcc \
-        # release-plz doesn't need installing openssl, but the user might need it
+        # k-releaser doesn't need installing openssl, but the user might need it
         pkg-config \
         libssl-dev \
         libc6-dev \
@@ -64,5 +64,5 @@ RUN set -eux; \
     rm /usr/local/cargo/bin/*; \
     mv ~/cargo /usr/local/cargo/bin/; \
     mv ~/rustc /usr/local/cargo/bin/;
-COPY --from=builder /app/target/release/release-plz /usr/local/bin
-ENTRYPOINT ["release-plz"]
+COPY --from=builder /app/target/release/k-releaser /usr/local/bin
+ENTRYPOINT ["k-releaser"]

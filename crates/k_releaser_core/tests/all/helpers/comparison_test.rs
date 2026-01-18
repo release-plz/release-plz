@@ -59,10 +59,9 @@ impl ComparisonTest {
     }
 
     fn update_request_with_changelog(&self) -> UpdateRequest {
-        self.update_request()
-            .with_default_package_config(
-                k_releaser_core::UpdateConfig::default().with_changelog_update(true)
-            )
+        self.update_request().with_default_package_config(
+            k_releaser_core::UpdateConfig::default().with_changelog_update(true),
+        )
     }
 
     pub async fn run_update(&self) {

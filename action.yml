@@ -1,0 +1,46 @@
+name: 'k-releaser'
+description: 'Automate releases for Rust monorepos with unified versioning'
+author: 'Stefan Hausotte'
+
+branding:
+  icon: 'package'
+  color: 'orange'
+
+inputs:
+  command:
+    description: 'The k-releaser command to run: release-pr, release, publish, or update'
+    required: true
+  manifest-path:
+    description: 'Path to the Cargo.toml file'
+    required: false
+    default: 'Cargo.toml'
+  config-path:
+    description: 'Path to the k-releaser configuration file (if not in Cargo.toml)'
+    required: false
+  registry:
+    description: 'The cargo registry to use'
+    required: false
+  git-token:
+    description: 'The GitHub token to use for creating PRs and releases'
+    required: false
+  backend:
+    description: 'The git backend to use (github, gitlab, gitea)'
+    required: false
+    default: 'github'
+  output:
+    description: 'Output format (json or text)'
+    required: false
+    default: 'text'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.command }}
+    - --manifest-path=${{ inputs.manifest-path }}
+    - ${{ inputs.config-path && format('--config={0}', inputs.config-path) || '' }}
+    - ${{ inputs.registry && format('--registry={0}', inputs.registry) || '' }}
+    - ${{ inputs.git-token && format('--git-token={0}', inputs.git-token) || '' }}
+    - ${{ inputs.backend && format('--forge={0}', inputs.backend) || '' }}
+    - ${{ inputs.output && format('--output={0}', inputs.output) || '' }}
+    - --verbose

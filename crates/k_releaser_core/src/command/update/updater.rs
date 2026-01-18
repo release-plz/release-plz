@@ -9,29 +9,25 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use next_version::VersionUpdater;
 use cargo_utils::LocalManifest;
 use git_cliff_core::{
     config::{ChangelogConfig, Config},
     contributor::RemoteContributor,
 };
 use git_cmd::Repo;
+use next_version::VersionUpdater;
 use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
-    ChangelogBuilder, ChangelogRequest, PackagePath as _, Project, Remote, RepoUrl,
-    UpdateResult,
+    ChangelogBuilder, ChangelogRequest, PackagePath as _, Project, Remote, RepoUrl, UpdateResult,
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser,
     diff::{Commit, Diff},
     fs_utils,
 };
 
-use super::{
-    PackagesUpdate,
-    update_request::UpdateRequest,
-};
+use super::{PackagesUpdate, update_request::UpdateRequest};
 
 #[derive(Debug)]
 pub struct Updater<'a> {
@@ -54,9 +50,7 @@ impl Updater<'_> {
             debug!("Failed to fetch tags (this is ok if there's no remote): {e}");
         }
 
-        let packages_diffs = self
-            .get_packages_diffs(repository)
-            .await?;
+        let packages_diffs = self.get_packages_diffs(repository).await?;
 
         // For unified workspace versioning: collect ALL commits from ALL packages
         let mut all_commits: Vec<Commit> = packages_diffs
@@ -91,10 +85,8 @@ impl Updater<'_> {
         let mut packages_to_update = PackagesUpdate::default();
 
         // Calculate the next version to determine if an update is needed
-        let workspace_version = self.calculate_unified_workspace_version(
-            local_manifest_path,
-            &all_commits,
-        )?;
+        let workspace_version =
+            self.calculate_unified_workspace_version(local_manifest_path, &all_commits)?;
 
         // Get current version to compare
         let local_manifest = LocalManifest::try_new(local_manifest_path)?;
@@ -118,7 +110,6 @@ impl Updater<'_> {
         };
 
         if should_update {
-
             info!("unified workspace version: {workspace_version}");
             packages_to_update.with_workspace_version(workspace_version.clone());
 
@@ -131,10 +122,7 @@ impl Updater<'_> {
 
             // Apply the SAME version and SAME changelog to ALL packages
             for (p, diff) in packages_diffs {
-                debug!(
-                    "package: {}, unified version: {workspace_version}",
-                    p.name,
-                );
+                debug!("package: {}, unified version: {workspace_version}", p.name,);
 
                 let package_config = self.req.get_package_config(&p.name);
 
@@ -162,7 +150,6 @@ impl Updater<'_> {
         Ok(packages_to_update)
     }
 
-
     /// Calculate the unified workspace version based on ALL commits from ALL packages.
     /// This is the core of unified workspace versioning - one version for entire monorepo.
     fn calculate_unified_workspace_version(
@@ -173,18 +160,25 @@ impl Updater<'_> {
         let local_manifest = LocalManifest::try_new(local_manifest_path)?;
 
         // Try to get workspace version first, fallback to package version for single-package projects
-        let current_workspace_version = if let Some(version) = local_manifest.get_workspace_version() {
+        let current_workspace_version = if let Some(version) =
+            local_manifest.get_workspace_version()
+        {
             version
         } else if let Some(version) = local_manifest.get_package_version() {
             version
         } else {
-            anyhow::bail!("Could not find version in Cargo.toml. For workspaces, set workspace.package.version. For single packages, set package.version.");
+            anyhow::bail!(
+                "Could not find version in Cargo.toml. For workspaces, set workspace.package.version. For single packages, set package.version."
+            );
         };
 
         // Configure version updater with workspace settings
-        let package_config = self.req.get_package_config(&self.project.publishable_packages()[0].name);
-        let version_updater = VersionUpdater::new()
-            .with_features_always_increment_minor(package_config.generic.features_always_increment_minor);
+        let package_config = self
+            .req
+            .get_package_config(&self.project.publishable_packages()[0].name);
+        let version_updater = VersionUpdater::new().with_features_always_increment_minor(
+            package_config.generic.features_always_increment_minor,
+        );
 
         // Calculate next version based on ALL commits
         let next_version = if all_commits.is_empty() {
@@ -192,7 +186,10 @@ impl Updater<'_> {
             current_workspace_version
         } else {
             // Analyze commits to determine version bump
-            version_updater.increment(&current_workspace_version, all_commits.iter().map(|c| &c.message))
+            version_updater.increment(
+                &current_workspace_version,
+                all_commits.iter().map(|c| &c.message),
+            )
         };
 
         Ok(next_version)
@@ -207,10 +204,7 @@ impl Updater<'_> {
         local_manifest_path: &Utf8Path,
     ) -> anyhow::Result<(Option<String>, Option<String>)> {
         // Get workspace-level changelog path (defaults to ./CHANGELOG.md at workspace root)
-        let workspace_changelog_path = local_manifest_path
-            .parent()
-            .unwrap()
-            .join("CHANGELOG.md");
+        let workspace_changelog_path = local_manifest_path.parent().unwrap().join("CHANGELOG.md");
 
         // Read existing changelog if it exists
         let old_changelog = if workspace_changelog_path.exists() {
@@ -253,10 +247,7 @@ impl Updater<'_> {
         Ok((Some(full_changelog), Some(new_entry)))
     }
 
-    async fn get_packages_diffs(
-        &self,
-        repository: &Repo,
-    ) -> anyhow::Result<Vec<(&Package, Diff)>> {
+    async fn get_packages_diffs(&self, repository: &Repo) -> anyhow::Result<Vec<(&Package, Diff)>> {
         // Store diff for each package. This operation is not thread safe, so we do it in one
         // package at a time.
         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = self
@@ -264,11 +255,9 @@ impl Updater<'_> {
             .publishable_packages()
             .iter()
             .map(|&p| {
-                let diff = self
-                    .get_diff(p, repository)
-                    .with_context(|| {
-                        format!("failed to retrieve difference of package {}", p.name)
-                    })?;
+                let diff = self.get_diff(p, repository).with_context(|| {
+                    format!("failed to retrieve difference of package {}", p.name)
+                })?;
                 Ok((p, diff))
             })
             .collect();
@@ -327,18 +316,12 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-
-
     /// This operation is not thread-safe, because we do `git checkout` on the repository.
     #[instrument(
         skip_all,
         fields(package = %package.name)
     )]
-    fn get_diff(
-        &self,
-        package: &Package,
-        repository: &Repo,
-    ) -> anyhow::Result<Diff> {
+    fn get_diff(&self, package: &Package, repository: &Repo) -> anyhow::Result<Diff> {
         info!(
             "determining next version for {} {}",
             package.name, package.version
@@ -350,9 +333,7 @@ impl Updater<'_> {
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
 
-        let git_tag = self
-            .project
-            .git_tag(&package.version.to_string())?;
+        let git_tag = self.project.git_tag(&package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
         let tag_exists = tag_commit.is_some();
 
@@ -458,7 +439,6 @@ impl Updater<'_> {
             Ok(None)
         }
     }
-
 
     /// `hash` is only used for logging purposes.
     fn are_changed_files_in_package(

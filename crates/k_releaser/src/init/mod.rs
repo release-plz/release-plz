@@ -55,7 +55,7 @@ fn actions_file_parent() -> Utf8PathBuf {
 }
 
 fn actions_file() -> Utf8PathBuf {
-    actions_file_parent().join("release-plz.yml")
+    actions_file_parent().join("k-releaser.yml")
 }
 
 fn should_use_trusted_publishing() -> anyhow::Result<bool> {
@@ -73,7 +73,7 @@ fn should_use_persist_credentials() -> anyhow::Result<bool> {
 fn print_settings_urls(project: &Project) -> anyhow::Result<()> {
     println!(
         "Enable trusted publishing for your crates. Note:
-- The default workflow name is `release-plz.yml`.
+- The default workflow name is `k-releaser.yml`.
 - If you use an environment, edit the final workflow file.
 
 Settings URLs:"
@@ -97,7 +97,7 @@ Settings URLs:"
 
 fn greet() {
     println!(
-        "👋 This process will guide you in setting up release-plz in your GitHub repository, using `gh` (the GitHub CLI) to store the necessary tokens in your repository secrets."
+        "👋 This process will guide you in setting up k-releaser in your GitHub repository, using `gh` (the GitHub CLI) to store the necessary tokens in your repository secrets."
     );
 }
 
@@ -117,7 +117,7 @@ fn enable_pr_permissions(repo_url: &str) -> anyhow::Result<()> {
 
 fn store_github_token() -> anyhow::Result<&'static str> {
     let should_create_token = ask_confirmation(
-        "👉 Do you want release-plz to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.",
+        "👉 Do you want k-releaser to use a GitHub Personal Access Token (PAT)? It's required to run CI on release PRs and to run workflows on tags.",
     )?;
 
     let github_token = if should_create_token {
@@ -126,15 +126,15 @@ fn store_github_token() -> anyhow::Result<&'static str> {
 💡 Create a GitHub PAT following these instructions:
 
    1. Go to https://github.com/settings/personal-access-tokens/new.
-   2. Under \"Only selected repositories\", select the repositories where you want to use the PAT, to give release-plz write access.
+   2. Under \"Only selected repositories\", select the repositories where you want to use the PAT, to give k-releaser write access.
    3. Under \"Repository permissions\", assign \"Contents\" and \"Pull requests\" read and write permissions.
 
-   If you have doubts, check the documentation: https://release-plz.dev/docs/github/token#use-a-personal-access-token.");
+   If you have doubts, check the documentation: https://k-releaser.dev/docs/github/token#use-a-personal-access-token.");
 
         // GitHub custom token
-        let release_plz_token: &str = CUSTOM_GITHUB_TOKEN;
-        gh::store_secret(release_plz_token)?;
-        release_plz_token
+        let k_releaser_token: &str = CUSTOM_GITHUB_TOKEN;
+        gh::store_secret(k_releaser_token)?;
+        k_releaser_token
     } else {
         // default github token
         GITHUB_TOKEN
@@ -253,7 +253,7 @@ fn action_yaml(
     };
 
     format!(
-        "name: Release-plz
+        "name: k-releaser
 
 on:
   push:
@@ -261,8 +261,8 @@ on:
       - {branch}
 
 jobs:
-  release-plz-release:
-    name: Release-plz release
+  k-releaser-release:
+    name: k-releaser release
     runs-on: ubuntu-latest
     if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
@@ -277,28 +277,28 @@ jobs:
       - &install-rust
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Run release-plz
-        uses: release-plz/action@v0.5
+      - name: Run k-releaser
+        uses: secana/k-releaser@v1
         with:
           command: release
         env:
           GITHUB_TOKEN: {github_token_secret}{release_cargo_registry_token_env}
 
-  release-plz-pr:
-    name: Release-plz PR
+  k-releaser-pr:
+    name: k-releaser PR
     runs-on: ubuntu-latest
     if: ${{{{ github.repository_owner == '{owner}' }}}}
     permissions:
       pull-requests: write
       contents: write
     concurrency:
-      group: release-plz-${{{{ github.ref }}}}
+      group: k-releaser-${{{{ github.ref }}}}
       cancel-in-progress: false
     steps:
       - *checkout
       - *install-rust
-      - name: Run release-plz
-        uses: release-plz/action@v0.5
+      - name: Run k-releaser
+        uses: secana/k-releaser@v1
         with:
           command: release-pr
         env:
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn actions_yaml_string_is_correct() {
         expect_test::expect![[r"
-            name: Release-plz
+            name: k-releaser
 
             on:
               push:
@@ -354,8 +354,8 @@ mod tests {
                   - main
 
             jobs:
-              release-plz-release:
-                name: Release-plz release
+              k-releaser-release:
+                name: k-releaser release
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
@@ -370,29 +370,29 @@ mod tests {
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release
                     env:
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-              release-plz-pr:
-                name: Release-plz PR
+              k-releaser-pr:
+                name: k-releaser PR
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
                 concurrency:
-                  group: release-plz-${{ github.ref }}
+                  group: k-releaser-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
                   - *checkout
                   - *install-rust
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release-pr
                     env:
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn actions_yaml_string_with_custom_token_is_correct() {
         expect_test::expect![[r"
-            name: Release-plz
+            name: k-releaser
 
             on:
               push:
@@ -413,8 +413,8 @@ mod tests {
                   - main
 
             jobs:
-              release-plz-release:
-                name: Release-plz release
+              k-releaser-release:
+                name: k-releaser release
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
@@ -429,29 +429,29 @@ mod tests {
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-              release-plz-pr:
-                name: Release-plz PR
+              k-releaser-pr:
+                name: k-releaser PR
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
                 concurrency:
-                  group: release-plz-${{ github.ref }}
+                  group: k-releaser-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
                   - *checkout
                   - *install-rust
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release-pr
                     env:
@@ -471,7 +471,7 @@ mod tests {
 #[test]
 fn actions_yaml_string_with_trusted_publishing_is_correct() {
     expect_test::expect![[r"
-            name: Release-plz
+            name: k-releaser
 
             on:
               push:
@@ -479,8 +479,8 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   - main
 
             jobs:
-              release-plz-release:
-                name: Release-plz release
+              k-releaser-release:
+                name: k-releaser release
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
@@ -496,28 +496,28 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
 
-              release-plz-pr:
-                name: Release-plz PR
+              k-releaser-pr:
+                name: k-releaser PR
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
                 concurrency:
-                  group: release-plz-${{ github.ref }}
+                  group: k-releaser-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
                   - *checkout
                   - *install-rust
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release-pr
                     env:
@@ -535,7 +535,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
 #[test]
 fn actions_yaml_string_with_persist_credentials_is_correct() {
     expect_test::expect![[r"
-            name: Release-plz
+            name: k-releaser
 
             on:
               push:
@@ -543,8 +543,8 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                   - main
 
             jobs:
-              release-plz-release:
-                name: Release-plz release
+              k-releaser-release:
+                name: k-releaser release
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
@@ -560,29 +560,29 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-              release-plz-pr:
-                name: Release-plz PR
+              k-releaser-pr:
+                name: k-releaser PR
                 runs-on: ubuntu-latest
                 if: ${{ github.repository_owner == 'owner' }}
                 permissions:
                   pull-requests: write
                   contents: write
                 concurrency:
-                  group: release-plz-${{ github.ref }}
+                  group: k-releaser-${{ github.ref }}
                   cancel-in-progress: false
                 steps:
                   - *checkout
                   - *install-rust
-                  - name: Run release-plz
-                    uses: release-plz/action@v0.5
+                  - name: Run k-releaser
+                    uses: secana/k-releaser@v1
                     with:
                       command: release-pr
                     env:

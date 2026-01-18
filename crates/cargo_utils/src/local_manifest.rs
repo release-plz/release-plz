@@ -183,11 +183,7 @@ impl LocalManifest {
             return None;
         }
 
-        let version = self
-            .data
-            .get("package")?
-            .get("version")?
-            .as_str()?;
+        let version = self.data.get("package")?.get("version")?.as_str()?;
         Version::parse(version).ok()
     }
 

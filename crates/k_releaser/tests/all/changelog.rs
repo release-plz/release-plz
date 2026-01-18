@@ -207,8 +207,9 @@ owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
     let repo = context.gitea.repo;
     let remote_string =
         format!("owner: {username}, repo: {repo}, link: https://localhost/{username}/{repo}\n\n",);
-    let package_string =
-        format!("== workspace - [0.1.1](https://localhost/{username}/{repo}/compare/v0.1.0...v0.1.1)\n\n");
+    let package_string = format!(
+        "== workspace - [0.1.1](https://localhost/{username}/{repo}/compare/v0.1.0...v0.1.1)\n\n"
+    );
     let commits = ["add config file", "cargo init", "Initial commit"];
     #[expect(clippy::format_collect)]
     let commits_str = commits

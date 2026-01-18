@@ -190,8 +190,7 @@ impl PackagesConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PublishPackageConfig {
     publish: PublishConfig,
     /// Don't verify the contents by building them.
@@ -234,7 +233,6 @@ impl PublishPackageConfig {
         self
     }
 }
-
 
 #[derive(Serialize, Default, Debug)]
 pub struct PublishOutput {
@@ -452,16 +450,15 @@ async fn publish_package_to_registry(
             );
             return Ok(false);
         } else {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                package.name,
-                output.stderr
-            );
+            anyhow::bail!("failed to publish {}: {}", package.name, output.stderr);
         }
     }
 
     if input.dry_run {
-        info!("{} {}: dry run - skipping cargo registry upload", package.name, package.version);
+        info!(
+            "{} {}: dry run - skipping cargo registry upload",
+            package.name, package.version
+        );
         Ok(false)
     } else {
         wait_until_published(index, package, input.publish_timeout, token).await?;

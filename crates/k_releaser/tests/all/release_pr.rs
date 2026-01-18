@@ -1,7 +1,4 @@
-use crate::helpers::{
-    test_context::TestContext,
-    today,
-};
+use crate::helpers::{test_context::TestContext, today};
 use cargo_utils::{CARGO_TOML, LocalManifest};
 
 #[tokio::test]

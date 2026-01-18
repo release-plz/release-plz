@@ -2,19 +2,14 @@ use std::collections::{BTreeMap, HashSet};
 
 use anyhow::Context;
 use cargo::util::VersionExt;
-use cargo_metadata::{
-    Metadata, Package,
-    camino::Utf8PathBuf,
-    semver::Version,
-};
+use cargo_metadata::{Metadata, Package, camino::Utf8PathBuf, semver::Version};
 use git_cmd::Repo;
 use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project,
-    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    changelog_parser,
+    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote, changelog_parser,
     git::forge::GitClient,
     pr_parser::{Pr, prs_from_text},
 };
@@ -518,10 +513,9 @@ async fn release_package_if_needed(
         prs: &prs,
     };
 
-    let package_was_released =
-        release_package(input, repo, git_client, &release_info)
-            .await
-            .context("failed to release package")?;
+    let package_was_released = release_package(input, repo, git_client, &release_info)
+        .await
+        .context("failed to release package")?;
 
     let package_release = package_was_released.then_some(PackageRelease {
         package_name: package.name.to_string(),
@@ -609,7 +603,11 @@ async fn release_package(
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
     if input.dry_run {
-        log_dry_run_info(release_info, should_create_git_tag, should_create_git_release);
+        log_dry_run_info(
+            release_info,
+            should_create_git_tag,
+            should_create_git_release,
+        );
         Ok(false)
     } else {
         if should_create_git_tag {
@@ -833,5 +831,4 @@ mod tests {
         assert!(config.is_pre_release(&version));
         assert!(config.is_pre_release(&rc_version));
     }
-
 }

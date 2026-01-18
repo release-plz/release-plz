@@ -122,7 +122,9 @@ impl TestContext {
                 .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
-            format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n\n[workspace.package]\nversion = \"0.1.0\"\n")
+            format!(
+                "[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n\n[workspace.package]\nversion = \"0.1.0\"\n"
+            )
         };
         fs_err::write(context.repo.directory().join("Cargo.toml"), root_cargo_toml).unwrap();
 
@@ -251,7 +253,11 @@ impl TestContext {
         }
 
         // Add k-releaser configuration to metadata
-        let metadata = section.get_mut("metadata").unwrap().as_table_like_mut().unwrap();
+        let metadata = section
+            .get_mut("metadata")
+            .unwrap()
+            .as_table_like_mut()
+            .unwrap();
         metadata.insert("k-releaser", toml_edit::Item::Table(config_table));
 
         manifest.write().unwrap();

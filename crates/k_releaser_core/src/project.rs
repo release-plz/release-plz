@@ -503,10 +503,7 @@ mod tests {
         .expect("Should ok");
         // With unified workspace versioning, git tags always use v{version} format
         // Custom tag templates are no longer supported (monorepo uses single version)
-        assert_eq!(
-            project.git_tag("0.1.0").unwrap(),
-            "v0.1.0"
-        );
+        assert_eq!(project.git_tag("0.1.0").unwrap(), "v0.1.0");
         assert_eq!(
             project.release_name("typo_test", "0.1.0").unwrap(),
             "release-prefix-typo_test-middle-0.1.0-postfix"

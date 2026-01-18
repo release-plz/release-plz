@@ -51,12 +51,10 @@ impl ConfigPath {
                 );
                 Ok(Config::default())
             }
-            Err(err) if self.path.is_some() => {
-                Err(err.context(format!(
-                    "failed to read config from {}",
-                    cargo_toml_path.display()
-                )))
-            }
+            Err(err) if self.path.is_some() => Err(err.context(format!(
+                "failed to read config from {}",
+                cargo_toml_path.display()
+            ))),
             Err(_) => {
                 info!(
                     "Cargo.toml not found at {}, using default configuration",
@@ -92,15 +90,12 @@ fn load_config_from_cargo_toml(path: &Path) -> anyhow::Result<Option<Config>> {
                 });
 
             if let Some(metadata) = metadata {
-                let config = metadata
-                    .clone()
-                    .try_into()
-                    .with_context(|| {
-                        format!(
-                            "invalid k-releaser configuration in metadata at {}",
-                            path.display()
-                        )
-                    })?;
+                let config = metadata.clone().try_into().with_context(|| {
+                    format!(
+                        "invalid k-releaser configuration in metadata at {}",
+                        path.display()
+                    )
+                })?;
                 info!(
                     "using k-releaser config from Cargo.toml metadata in {}",
                     path.display()
