@@ -20,6 +20,13 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Update version in Cargo.toml
+        run: |
+          echo "Updating version to ${{ steps.get_version.outputs.VERSION }}"
+          sed -i '/\[workspace\.package\]/,/^\[/ s/^version = "0\.0\.0"$/version = "${{ steps.get_version.outputs.VERSION }}"/' Cargo.toml
+          echo "Updated Cargo.toml workspace.package section:"
+          sed -n '/\[workspace\.package\]/,/^\[/p' Cargo.toml | grep "version ="
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
