@@ -10,8 +10,8 @@ pub struct UpdateConfig {
     /// Note: You can only run cargo-semver-checks if the package contains a library.
     ///       For example, if it has a `lib.rs` file.
     pub semver_check: bool,
-    /// Whether to create/update changelog or not.
-    /// Default: `true`.
+    /// Whether to create/update a CHANGELOG.md file.
+    /// Default: `false`. Changelog only appears in release notes unless explicitly enabled.
     pub changelog_update: bool,
     /// High-level toggle to process this package or ignore it.
     pub release: bool,
@@ -64,7 +64,7 @@ impl Default for UpdateConfig {
     fn default() -> Self {
         Self {
             semver_check: true,
-            changelog_update: true,
+            changelog_update: false, // Default: no CHANGELOG.md file, changelog only in release notes
             release: true,
             publish: true,
             features_always_increment_minor: false,

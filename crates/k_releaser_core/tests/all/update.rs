@@ -19,14 +19,14 @@ async fn version_is_updated_when_project_changed() {
     let feature_message = "do awesome stuff";
     user_mock::add_feature(&comparison_test.local_project(), feature_message);
 
-    comparison_test.run_update().await;
+    comparison_test.run_update_with_changelog().await;
 
     let local_package = read_package(comparison_test.local_project()).unwrap();
     assert_eq!(local_package.version, Version::new(0, 1, 1));
     // Assert: changelog is generated.
     expect_test::expect![[r"
         # Changelog
-        
+
         All notable changes to this project will be documented in this file.
 
         The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -39,6 +39,10 @@ async fn version_is_updated_when_project_changed() {
         ### Added
 
         - do awesome stuff
+
+        ### Other
+
+        - add README
     "]]
     .assert_eq(&comparison_test.local_project_changelog());
 }
@@ -58,7 +62,7 @@ async fn changelog_is_updated_if_changelog_already_exists() {
     let feature_message = "do awesome stuff";
     user_mock::add_feature(&comparison_test.local_project(), feature_message);
 
-    comparison_test.run_update().await;
+    comparison_test.run_update_with_changelog().await;
 
     let local_package = read_package(comparison_test.local_project()).unwrap();
     assert_eq!(local_package.version, Version::new(0, 1, 1));
@@ -77,6 +81,10 @@ async fn changelog_is_updated_if_changelog_already_exists() {
         ### Added
 
         - do awesome stuff
+
+        ### Other
+
+        - add README
 
         ## [0.1.0] - 1970-01-01
 

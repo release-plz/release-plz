@@ -406,8 +406,9 @@ pub struct PackageConfig {
     /// `update`, `release-pr` and `release`.
     pub changelog_path: Option<PathBuf>,
     /// # Changelog Update
-    /// Whether to create/update changelog or not.
-    /// If unspecified, the changelog is updated.
+    /// Whether to create/update a CHANGELOG.md file.
+    /// If unspecified (default: false), no file is created and the changelog only appears in release notes.
+    /// Set to `true` to explicitly enable CHANGELOG.md file creation.
     pub changelog_update: Option<bool>,
     /// # Features Always Increment Minor Version
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
@@ -467,7 +468,7 @@ impl From<PackageConfig> for k_releaser_core::UpdateConfig {
     fn from(config: PackageConfig) -> Self {
         Self {
             semver_check: config.semver_check != Some(false),
-            changelog_update: config.changelog_update != Some(false),
+            changelog_update: config.changelog_update == Some(true), // Only create file if explicitly enabled
             release: config.release != Some(false),
             publish: config.publish != Some(false),
             tag_name_template: config.git_tag_name,

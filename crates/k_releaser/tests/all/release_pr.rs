@@ -16,6 +16,13 @@ fn assert_cargo_semver_checks_is_installed() {
 async fn k_releaser_opens_pr_with_default_config() {
     let context = TestContext::new().await;
 
+    // Enable CHANGELOG.md file creation for this test
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
+
     context.run_release_pr().success();
     let _today = today();
 
@@ -40,6 +47,7 @@ This release updates all workspace packages to version **0.1.1**.
 
 ### Other
 
+- add config file
 - cargo init
 - Initial commit
 
@@ -60,6 +68,13 @@ This release updates all workspace packages to version **0.1.1**.
 async fn k_releaser_opens_pr_without_breaking_changes() {
     // Semver checking not needed - version bumps determined by conventional commits
     let context = TestContext::new().await;
+
+    // Enable CHANGELOG.md file creation for this test
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
 
@@ -199,6 +214,13 @@ async fn k_releaser_should_fail_for_multi_package_pr() {
 async fn k_releaser_detects_edited_readme_cargo_toml_field() {
     let context = TestContext::new().await;
 
+    // Enable CHANGELOG.md file creation for this test
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
+
     context.run_release_pr().success();
     context.merge_release_pr().await;
 
@@ -234,6 +256,7 @@ async fn k_releaser_honors_features_always_increment_minor_flag() {
 
     let config = r"
     [workspace]
+    changelog_update = true
     features_always_increment_minor = true
     ";
     context.write_release_plz_toml(config);
@@ -435,6 +458,13 @@ fn does_line_vary(line: &str) -> bool {
 async fn k_releaser_handles_invalid_readme_path_gracefully() {
     let context = TestContext::new().await;
 
+    // Enable CHANGELOG.md file creation for this test
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
+
     // Set up a README path that will be invalid when the package is installed
     // This simulates the real-world scenario where someone sets a relative path
     // like "../../README.md" in their Cargo.toml, which works locally but fails
@@ -576,6 +606,14 @@ async fn k_releaser_works_with_valid_readme_path() {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn changelog_is_updated_correctly_if_no_new_line_after_h1() {
     let context = TestContext::new().await;
+
+    // Enable CHANGELOG.md file creation for this test
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
+
     let changelog = "# Changelog
 All notable changes to this project will be documented in this file.
 
@@ -611,6 +649,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - edit changelog
+- add config file
 - cargo init
 - Initial commit
 "

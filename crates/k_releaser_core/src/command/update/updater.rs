@@ -140,10 +140,17 @@ impl Updater<'_> {
                     p.name,
                 );
 
+                let package_config = self.req.get_package_config(&p.name);
+
                 // For unified versioning, all packages get the same changelog
+                // But only write it to a file if explicitly enabled in config
                 let update_result = UpdateResult {
                     version: workspace_version.clone(),
-                    changelog: workspace_changelog.0.clone(),
+                    changelog: if package_config.should_update_changelog() {
+                        workspace_changelog.0.clone()
+                    } else {
+                        None
+                    },
                     semver_check: diff.semver_check,
                     new_changelog_entry: workspace_changelog.1.clone(),
                 };

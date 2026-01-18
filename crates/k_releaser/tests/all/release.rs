@@ -153,6 +153,7 @@ async fn k_releaser_releases_after_release_pr_merged() {
 
     let config = r#"
     [workspace]
+    changelog_update = true
     git_release_name = "{{ package }}--{{ version }}"
     git_release_body = "Welcome to this new release! Changes:\n\n{{ changelog }}"
     "#;

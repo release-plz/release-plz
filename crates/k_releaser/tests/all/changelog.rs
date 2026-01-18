@@ -37,6 +37,13 @@ async fn k_releaser_does_not_open_release_pr_if_there_are_no_release_commits() {
 async fn k_releaser_adds_changelog_on_new_project() {
     let context = TestContext::new().await;
 
+    // Enable CHANGELOG.md file creation
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
+
     let outcome = context.run_release_pr().success();
 
     let opened_prs = context.opened_release_prs().await;
@@ -101,6 +108,9 @@ async fn k_releaser_releases_a_new_project() {
 async fn k_releaser_adds_custom_changelog() {
     let context = TestContext::new().await;
     let config = r#"
+    [workspace]
+    changelog_update = true
+
     [changelog]
     header = "Changelog\n\n"
     body = """
@@ -234,6 +244,7 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
     .await;
     let config = r#"
     [workspace]
+    changelog_update = true
     changelog_path = "./CHANGELOG.md"
 
     [changelog]
@@ -290,6 +301,7 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
     let config = r#"
     [workspace]
+    changelog_update = true
     changelog_path = "./CHANGELOG.md"
 
     [changelog]
@@ -337,6 +349,9 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 async fn raw_message_contains_entire_commit_message() {
     let context = TestContext::new().await;
     let config = r#"
+    [workspace]
+    changelog_update = true
+
     [changelog]
     body = """
     {% for commit in commits %}
@@ -387,6 +402,13 @@ async fn raw_message_contains_entire_commit_message() {
 async fn pr_link_is_expanded() {
     let context = TestContext::new().await;
 
+    // Enable CHANGELOG.md file creation
+    let config = r#"
+    [workspace]
+    changelog_update = true
+    "#;
+    context.write_release_plz_toml(config);
+
     let open_and_merge_pr = async |file, commit, branch| {
         let new_file = context.repo_dir().join(file);
         fs_err::write(&new_file, "// hi").unwrap();
@@ -428,6 +450,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - non-conventional commit ([#2](https://localhost/{username}/{package}/pulls/2))
+- add config file
 - cargo init
 - Initial commit",
         )
