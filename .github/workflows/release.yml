@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get version from tag
+      - name: Get version from release tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
