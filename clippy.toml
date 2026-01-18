@@ -1,4 +1,0 @@
-disallowed-methods = [
-    { path = "cargo_metadata::camino::Utf8Path::canonicalize_utf8", reason = "use `fs_utils::canonicalize_utf8` instead" },
-    { path = "camino::Utf8Path::canonicalize_utf8", reason = "use `fs_utils::canonicalize_utf8` instead" },
-]
