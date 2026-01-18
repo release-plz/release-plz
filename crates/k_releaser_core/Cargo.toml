@@ -8,9 +8,6 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[lints]
-workspace = true
-
 [features]
 default = ["all-static"]
 all-static = ["cargo/vendored-libgit2", "cargo/all-static"]

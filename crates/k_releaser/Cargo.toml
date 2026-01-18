@@ -6,12 +6,8 @@ description = "Update version and changelog based on semantic versioning and con
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
-readme = "../../README.md"
 keywords.workspace = true
 categories.workspace = true
-
-[lints]
-workspace = true
 
 [features]
 default = ["docker-tests", "all-static"]

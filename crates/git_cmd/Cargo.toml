@@ -8,9 +8,6 @@ license.workspace = true
 keywords = ["git", "command", "cli", "wrapper", "shell"]
 categories = ["development-tools", "filesystem"]
 
-[lints]
-workspace = true
-
 [features]
 test_fixture = []
 
@@ -23,5 +20,4 @@ fs-err.workspace = true
 [dev-dependencies]
 git_cmd = { workspace = true, features = ["test_fixture"] }
 test_logs.workspace = true
-
 tempfile.workspace = true

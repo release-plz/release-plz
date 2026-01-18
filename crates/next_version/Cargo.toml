@@ -8,9 +8,6 @@ repository.workspace = true
 keywords = ["semver", "semantic", "versioning", "conventional", "commits"]
 categories = ["development-tools", "parsing"]
 
-[lints]
-workspace = true
-
 [dependencies]
 regex.workspace = true
 semver.workspace = true
