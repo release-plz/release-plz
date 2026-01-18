@@ -174,10 +174,13 @@ async fn k_releaser_releases_after_release_pr_merged() {
     expect_test::expect![[r"
         Welcome to this new release! Changes:
 
-        ### Other
+        ### Fixed
 
         - add config file
         - cargo init
+
+        ### Other
+
         - Initial commit"]]
     .assert_eq(&gitea_release.body);
 }

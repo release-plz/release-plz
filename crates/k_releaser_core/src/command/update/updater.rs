@@ -50,13 +50,23 @@ impl Updater<'_> {
             debug!("Failed to fetch tags (this is ok if there's no remote): {e}");
         }
 
-        let packages_diffs = self.get_packages_diffs(repository).await?;
+        // For unified workspace versioning: get ALL commits from the entire repository
+        // Not filtered by package paths - we treat the whole workspace as one unit
+        let local_manifest = LocalManifest::try_new(local_manifest_path)?;
+        let current_version = if let Some(version) = local_manifest.get_workspace_version() {
+            version
+        } else if let Some(version) = local_manifest.get_package_version() {
+            version
+        } else {
+            anyhow::bail!("Could not find version in Cargo.toml");
+        };
 
-        // For unified workspace versioning: collect ALL commits from ALL packages
-        let mut all_commits: Vec<Commit> = packages_diffs
-            .iter()
-            .flat_map(|(_, diff)| diff.commits.clone())
-            .collect();
+        let git_tag = self.project.git_tag(&current_version.to_string())?;
+        let mut all_commits = self.get_all_commits_since_tag(repository, &git_tag)?;
+        let tag_exists = repository.get_tag_commit(&git_tag).is_some();
+
+        // Get package diffs for semver checking purposes only
+        let packages_diffs = self.get_packages_diffs(repository).await?;
 
         // Filter commits based on release_commits regex if configured
         if let Some(release_commits_regex) = self.req.release_commits() {
@@ -69,17 +79,10 @@ impl Updater<'_> {
             );
         }
 
-        // Check if workspace tag exists (same for all packages in unified versioning)
-        let workspace_tag_exists = packages_diffs
-            .first()
-            .map(|(_, diff)| diff.tag_exists)
-            .unwrap_or(false);
-
         debug!(
-            "collected {} commits from {} packages, tag_exists: {}",
+            "collected {} commits from repository, tag_exists: {}",
             all_commits.len(),
-            packages_diffs.len(),
-            workspace_tag_exists
+            tag_exists
         );
 
         let mut packages_to_update = PackagesUpdate::default();
@@ -87,16 +90,6 @@ impl Updater<'_> {
         // Calculate the next version to determine if an update is needed
         let workspace_version =
             self.calculate_unified_workspace_version(local_manifest_path, &all_commits)?;
-
-        // Get current version to compare
-        let local_manifest = LocalManifest::try_new(local_manifest_path)?;
-        let current_version = if let Some(version) = local_manifest.get_workspace_version() {
-            version
-        } else if let Some(version) = local_manifest.get_package_version() {
-            version
-        } else {
-            anyhow::bail!("Could not find version in Cargo.toml");
-        };
 
         // Only create a PR if the version needs to be bumped
         // This prevents creating empty PRs when there are no commits and version is already correct
@@ -113,9 +106,12 @@ impl Updater<'_> {
             info!("unified workspace version: {workspace_version}");
             packages_to_update.with_workspace_version(workspace_version.clone());
 
+            // Fill commit metadata (e.g., remote contributor info) if needed by changelog template
+            let filled_commits = self.fill_workspace_commits(all_commits, repository).await?;
+
             // Generate ONE workspace changelog for ALL packages
             let workspace_changelog = self.generate_workspace_changelog(
-                &all_commits,
+                &filled_commits,
                 &workspace_version,
                 local_manifest_path,
             )?;
@@ -286,6 +282,37 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
+    /// Fill workspace commits with metadata (e.g., remote contributor info) if needed by changelog template
+    async fn fill_workspace_commits(
+        &self,
+        commits: Vec<Commit>,
+        repository: &Repo,
+    ) -> anyhow::Result<Vec<Commit>> {
+        let git_client = self.req.git_client()?;
+        let changelog_request: &ChangelogRequest = self.req.changelog_req();
+        let mut all_commits_cache: HashMap<String, &Commit> = HashMap::new();
+        let mut filled_commits = commits;
+
+        if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
+            let required_info = get_required_info(&changelog_config.changelog);
+            for commit in &mut filled_commits {
+                fill_commit(
+                    commit,
+                    &required_info,
+                    repository,
+                    &mut all_commits_cache,
+                    git_client.as_ref(),
+                )
+                .await
+                .context(
+                    "Failed to fetch the commit information required by the changelog template",
+                )?;
+            }
+        }
+
+        Ok(filled_commits)
+    }
+
     async fn fill_commits<'a>(
         &self,
         packages_diffs: &[(&'a Package, Diff)],
@@ -335,9 +362,8 @@ impl Updater<'_> {
 
         let git_tag = self.project.git_tag(&package.version.to_string())?;
         let tag_commit = repository.get_tag_commit(&git_tag);
-        let tag_exists = tag_commit.is_some();
 
-        let mut diff = Diff::new(tag_exists);
+        let mut diff = Diff::new();
         let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         repository
@@ -499,6 +525,58 @@ fn get_package_files(
             Ok(relative_path.to_path_buf())
         })
         .collect()
+}
+
+impl Updater<'_> {
+    /// Get ALL commits from the entire repository since the given tag.
+    /// This is used for unified workspace versioning where we don't filter by package paths.
+    fn get_all_commits_since_tag(
+        &self,
+        repository: &Repo,
+        git_tag: &str,
+    ) -> anyhow::Result<Vec<Commit>> {
+        let tag_commit = repository.get_tag_commit(git_tag);
+
+        // Determine the range to query
+        let commit_range = if let Some(tag_commit) = &tag_commit {
+            // Get commits since the tag
+            format!("{}..HEAD", tag_commit)
+        } else {
+            // No tag exists (first release), use max_analyze_commits limit
+            let max_commits = match self.req.max_analyze_commits() {
+                0 => 1000, // Default reasonable limit
+                n => n,
+            };
+            format!("-{}", max_commits)
+        };
+
+        // Use git log to get all commits
+        let output = repository.git(&[
+            "log",
+            &commit_range,
+            "--format=%H%n%s%n%b%n--END-COMMIT--",
+        ])?;
+
+        let mut commits = Vec::new();
+        let commit_strings: Vec<&str> = output.split("--END-COMMIT--").collect();
+
+        for commit_str in commit_strings {
+            let commit_str = commit_str.trim();
+            if commit_str.is_empty() {
+                continue;
+            }
+
+            let mut lines = commit_str.lines();
+            if let Some(hash) = lines.next() {
+                // Collect subject and body
+                let message: String = lines.collect::<Vec<_>>().join("\n");
+                commits.push(Commit::new(hash.to_string(), message));
+            }
+        }
+
+        debug!("collected {} commits from entire repository since {}", commits.len(), git_tag);
+        Ok(commits)
+    }
 }
 
 /// Check if commit belongs to a previous version of the package.

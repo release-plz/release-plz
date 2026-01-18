@@ -35,10 +35,13 @@ This release updates all workspace packages to version **0.1.1**.
 
 <details><summary><i><b>Changelog</b></i></summary>
 
-### Other
+### Fixed
 
 - add config file
 - cargo init
+
+### Other
+
 - Initial commit
 
 </details>
@@ -73,7 +76,7 @@ async fn k_releaser_opens_pr_without_breaking_changes() {
         context.push_all_changes(commit_message);
     };
 
-    write_lib_file("pub fn foo() {}", "add lib");
+    write_lib_file("pub fn foo() {}", "feat: add lib");
 
     context.run_release_pr().success();
     context.merge_release_pr().await;
@@ -81,7 +84,7 @@ async fn k_releaser_opens_pr_without_breaking_changes() {
 
     write_lib_file(
         "pub fn foo() {println!(\"hello\");}",
-        "edit lib with compatible change",
+        "fix: edit lib with compatible change",
     );
 
     context.run_release_pr().success();
@@ -107,7 +110,7 @@ This release updates all workspace packages to version **0.1.2**.
 
 <details><summary><i><b>Changelog</b></i></summary>
 
-### Other
+### Fixed
 
 - edit lib with compatible change
 
@@ -164,7 +167,7 @@ async fn k_releaser_detects_edited_readme_cargo_toml_field() {
     let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
     assert_eq!(gitea_release.name, expected_tag);
 
-    move_readme(&context, "move readme");
+    move_readme(&context, "fix: move readme");
 
     context.run_release_pr().success();
     context.merge_release_pr().await;
@@ -176,7 +179,7 @@ async fn k_releaser_detects_edited_readme_cargo_toml_field() {
     let gitea_release = context.gitea.get_gitea_release(expected_tag).await;
     assert_eq!(gitea_release.name, expected_tag);
     expect_test::expect![[r"
-        ### Other
+        ### Fixed
 
         - move readme"]]
     .assert_eq(&gitea_release.body);
@@ -550,11 +553,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1](https://localhost/{username}/{repo}/compare/v0.1.0...v0.1.1) - {_today}
 
+### Fixed
+
+- add config file
+- cargo init
+
 ### Other
 
 - edit changelog
-- add config file
-- cargo init
 - Initial commit
 "
         )

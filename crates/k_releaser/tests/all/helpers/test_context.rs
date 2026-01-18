@@ -102,7 +102,7 @@ impl TestContext {
         let package = TestPackage::new(&context.gitea.repo);
         package.cargo_init(context.repo.directory());
         context.run_cargo_check();
-        context.push_all_changes("cargo init");
+        context.push_all_changes("fix: cargo init");
         context
     }
 
@@ -141,7 +141,7 @@ impl TestContext {
         }
 
         context.run_cargo_check();
-        context.push_all_changes("cargo init");
+        context.push_all_changes("fix: cargo init");
         context
     }
 
@@ -261,7 +261,7 @@ impl TestContext {
         metadata.insert("k-releaser", toml_edit::Item::Table(config_table));
 
         manifest.write().unwrap();
-        self.push_all_changes("add config file");
+        self.push_all_changes("fix: add config file");
     }
 
     pub fn write_changelog(&self, content: &str) {

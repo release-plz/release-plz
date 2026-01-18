@@ -58,9 +58,37 @@ impl VersionIncrement {
                 .filter_map(|c| Commit::parse(c).ok())
                 .collect();
 
+            // Filter out commit types that should not trigger version bumps.
+            // Excluded types: ci, docs, test, chore, style, refactor, perf.
+            // Included types: fix, feat, breaking changes, and any custom types (including custom regex patterns).
+            let relevant_commits: Vec<Commit> = commits
+                .into_iter()
+                .filter(|c| {
+                    // Always include breaking changes
+                    if c.breaking() {
+                        return true;
+                    }
+
+                    // Exclude non-versioning commit types
+                    let commit_type = c.type_();
+                    commit_type != git_conventional::Type::DOCS
+                        && commit_type != git_conventional::Type::STYLE
+                        && commit_type != git_conventional::Type::REFACTOR
+                        && commit_type != git_conventional::Type::PERF
+                        && commit_type != git_conventional::Type::TEST
+                        && commit_type != git_conventional::Type::CHORE
+                        && commit_type.as_str() != "ci"
+                })
+                .collect();
+
+            // If no relevant commits remain after filtering, don't bump the version
+            if relevant_commits.is_empty() {
+                return None;
+            }
+
             Some(Self::from_conventional_commits(
                 current_version,
-                &commits,
+                &relevant_commits,
                 updater,
             ))
         } else {
@@ -94,7 +122,8 @@ impl VersionIncrement {
         }
     }
 
-    /// If no conventional commits are present, the version is incremented as a Patch
+    /// Determines version increment from conventional commits (fix, feat, or breaking changes).
+    /// This method assumes that only relevant commits (fix/feat/breaking) are passed in.
     fn from_conventional_commits(
         current: &Version,
         commits: &[Commit],

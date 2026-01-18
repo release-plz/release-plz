@@ -7,8 +7,6 @@ use crate::semver_check::SemverCheck;
 pub(crate) struct Diff {
     /// List of commits from last tagged version to last local changes.
     pub commits: Vec<Commit>,
-    /// Whether a git tag exists for this package or not.
-    pub tag_exists: bool,
     /// Semver incompatible changes.
     pub semver_check: SemverCheck,
 }
@@ -45,10 +43,9 @@ impl Commit {
 }
 
 impl Diff {
-    pub fn new(tag_exists: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             commits: vec![],
-            tag_exists,
             semver_check: SemverCheck::Skipped,
         }
     }

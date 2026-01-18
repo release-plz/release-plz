@@ -162,9 +162,11 @@ owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
 == workspace - [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1)
 
 
-=== Other
+=== Fixed
 - add config file by {username} (gitea: {username})
 - cargo init by {username} (gitea: {username})
+
+=== Other
 - Initial commit by {username} (gitea: {username})
 
 ### Contributors
@@ -210,16 +212,24 @@ owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
     let package_string = format!(
         "== workspace - [0.1.1](https://localhost/{username}/{repo}/compare/v0.1.0...v0.1.1)\n\n"
     );
-    let commits = ["add config file", "cargo init", "Initial commit"];
+    let fixed_commits = ["add config file", "cargo init"];
     #[expect(clippy::format_collect)]
-    let commits_str = commits
+    let fixed_commits_str = fixed_commits
+        .iter()
+        .map(|commit| format!("- {commit} by {username} (gitea: {username})\n"))
+        .collect::<String>();
+    let other_commits = ["Initial commit"];
+    #[expect(clippy::format_collect)]
+    let other_commits_str = other_commits
         .iter()
         .map(|commit| format!("- {commit} by {username} (gitea: {username})\n"))
         .collect::<String>();
     let changes = format!(
         "
+=== Fixed
+{fixed_commits_str}
 === Other
-{commits_str}
+{other_commits_str}
 "
     );
 
@@ -289,9 +299,12 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
 
         ## `workspace` - [0.1.1](https://github.com/me/my-proj/compare/workspace-v0.1.0...workspace-v0.1.1)
 
+        ### Fixed
+        - add config file
+        - cargo init
+
         ### Other
-        - cargo init
-        - cargo init
+        - Initial commit
     "#]]
     .assert_eq(&changelog);
 }
@@ -338,9 +351,12 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 
         ## `workspace` - [0.1.1](https://github.com/me/my-proj/compare/workspace-v0.1.0...workspace-v0.1.1)
 
+        ### Fixed
+        - add config file
+        - cargo init
+
         ### Other
-        - cargo init
-        - cargo init
+        - Initial commit
     "#]]
     .assert_eq(&changelog);
 }
@@ -382,14 +398,14 @@ async fn raw_message_contains_entire_commit_message() {
         ## [Unreleased]
 
         raw_message: feat: new file
-
         commit body
-        message: new file
+        message: feat: new file
+        commit body
 
-        raw_message: add config file
+        raw_message: fix: add config file
         message: add config file
 
-        raw_message: cargo init
+        raw_message: fix: cargo init
         message: cargo init
 
         raw_message: Initial commit
@@ -448,11 +464,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - new file ([#1](https://localhost/{username}/{package}/pulls/1))
 
+### Fixed
+
+- add config file
+- cargo init
+
 ### Other
 
 - non-conventional commit ([#2](https://localhost/{username}/{package}/pulls/2))
-- add config file
-- cargo init
 - Initial commit",
         )
         .trim()

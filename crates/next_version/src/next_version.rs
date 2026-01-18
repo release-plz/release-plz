@@ -23,9 +23,9 @@ impl NextVersion for Version {
     /// [conventional commits](https://www.conventionalcommits.org/) and
     /// [semantic versioning](https://semver.org/):
     /// - If no commits are passed, the version is unchanged.
-    /// - If some commits are present, but none of them match conventional commits specification,
-    ///   the version is incremented as a Patch.
-    /// - If some commits match conventional commits, then the next version is calculated by using
+    /// - If commits are present but none are versioning-relevant (fix, feat, or breaking changes),
+    ///   the version is unchanged.
+    /// - If versioning-relevant commits are present, the next version is calculated by using
     ///   [these](https://www.conventionalcommits.org/en/v1.0.0/#how-does-this-relate-to-semverare) rules.
     ///
     /// ```rust

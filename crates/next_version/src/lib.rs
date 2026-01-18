@@ -5,27 +5,40 @@
 //!
 //! # Version changes
 //!
-//! ## Non conventional commits
+//! ## Fix commits
 //!
-//! If conventional commits are not used, the patch is incremented.
+//! Fix commits increment the patch version.
 //!
 //! ```rust
 //! use semver::Version;
 //! use next_version::NextVersion;
 //!
-//! let commits = ["my change"];
+//! let commits = ["fix: correct validation"];
 //! assert_eq!(Version::new(1, 2, 3).next(commits), Version::new(1, 2, 4));
+//! ```
+//!
+//! ## Non-versioning commits
+//!
+//! Commits of types `ci`, `docs`, `test`, `chore`, `style`, `refactor`, and `perf`
+//! do not trigger version bumps.
+//!
+//! ```rust
+//! use semver::Version;
+//! use next_version::NextVersion;
+//!
+//! let commits = ["ci: update workflow", "docs: fix typo"];
+//! assert_eq!(Version::new(1, 2, 3).next(commits), Version::new(1, 2, 3));
 //! ```
 //!
 //! ## `0.0.x` versions
 //!
-//! In `0.0.x` versions the patch is always incremented:
+//! In `0.0.x` versions the patch is always incremented for fixes and breaking changes:
 //!
 //! ```rust
 //! use semver::Version;
 //! use next_version::NextVersion;
 //!
-//! let commits = ["my change"];
+//! let commits = ["fix: correct bug"];
 //! assert_eq!(Version::new(0, 0, 4).next(&commits), Version::new(0, 0, 5));
 //!
 //! let commits = ["feat!: break user"];
@@ -120,7 +133,7 @@
 //! use semver::Version;
 //! use next_version::NextVersion;
 //!
-//! let commits = ["my change"];
+//! let commits = ["fix: correct bug"];
 //! let version = Version::parse("1.0.0-beta.1+1.1.0").unwrap();
 //! let expected = Version::parse("1.0.0-beta.2+1.1.0").unwrap();
 //! assert_eq!(version.next(commits.clone()), expected);
