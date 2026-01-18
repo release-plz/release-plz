@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository.workspace = true
-homepage.workspace = true
 license.workspace = true
 keywords.workspace = true
 categories.workspace = true
