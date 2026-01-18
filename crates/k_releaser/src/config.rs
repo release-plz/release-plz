@@ -317,18 +317,14 @@ pub struct PackageSpecificConfigWithName {
 
 impl From<PackageConfig> for k_releaser_core::ReleaseConfig {
     fn from(value: PackageConfig) -> Self {
-        let is_publish_enabled = value.publish != Some(false);
         let is_git_tag_enabled = value.git_tag_enable != Some(false);
         let git_tag_name = value.git_tag_name.clone();
-        let release = value.release != Some(false);
         let mut cfg = Self::default()
-            .with_publish(k_releaser_core::PublishConfig::enabled(is_publish_enabled))
             .with_git_release(git_release(&value))
             .with_git_tag(
                 k_releaser_core::GitTagConfig::enabled(is_git_tag_enabled)
                     .set_name_template(git_tag_name),
-            )
-            .with_release(release);
+            );
 
         if let Some(changelog_update) = value.changelog_update {
             cfg = cfg.with_changelog_update(changelog_update);
@@ -440,9 +436,6 @@ pub struct PackageConfig {
     /// # Git Tag Name
     /// Tera template of the git tag name created by release-plz.
     pub git_tag_name: Option<String>,
-    /// # Publish
-    /// If `false`, don't run `cargo publish`.
-    pub publish: Option<bool>,
     /// # Publish Allow Dirty
     /// If `true`, add the `--allow-dirty` flag to the `cargo publish` command.
     pub publish_allow_dirty: Option<bool>,
@@ -459,9 +452,6 @@ pub struct PackageConfig {
     /// Controls when to run cargo-semver-checks.
     /// If unspecified, run cargo-semver-checks if the package is a library.
     pub semver_check: Option<bool>,
-    /// # Release
-    /// Used to toggle off the update/release process for a workspace or package.
-    pub release: Option<bool>,
 }
 
 impl From<PackageConfig> for k_releaser_core::UpdateConfig {
