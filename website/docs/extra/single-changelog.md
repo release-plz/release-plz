@@ -7,13 +7,9 @@ track of the changes of just one package, you can customize your
 `release-plz.toml` file like this:
 
 ```toml
-[workspace]
-# disable the changelog for all packages
-changelog_update = false
-
 [[package]]
 name = "my-important-package"
-# enable the changelog for this package
+# enable the changelog for this package (disabled by default)
 changelog_update = true
 # set the path of the changelog to the root of the repository
 changelog_path = "./CHANGELOG.md"
@@ -92,13 +88,11 @@ You can enable the changelog for a subset of packages only:
 
 ```toml
 [workspace]
-# Disable the changelog for all packages.
-changelog_update = false
 changelog_path = "./CHANGELOG.md"
 
 [[package]]
 name = "package_a"
-# Enable the changelog for this package (override default).
+# Enable the changelog for this package (disabled by default).
 changelog_update = true
 ```
 

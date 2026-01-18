@@ -192,8 +192,8 @@ to customize their changelog.
 
 #### The `changelog_update` field
 
-- If `true`, update the changelog of the crates. *(Default)*.
-- If `false`, don't update changelogs.
+- If `true`, create and update a CHANGELOG.md file for the crates.
+- If `false`, don't create a CHANGELOG.md file. *(Default)*. The changelog content will still be generated and included in release notes and PR bodies.
 
 This field can be overridden in the [`[package]`](#the-package-section) section.
 
@@ -732,8 +732,8 @@ This field cannot be set in the `[workspace]` section.
 
 #### The `changelog_update` field (`package` section)
 
-- If `true`, update the changelog of this package. *(Default)*.
-- If `false`, don't.
+- If `true`, create and update a CHANGELOG.md file for this package.
+- If `false`, don't create a CHANGELOG.md file. *(Default)*. The changelog content will still be generated and included in release notes and PR bodies.
 
 #### The `features_always_increment_minor` field (`package` section)
 
