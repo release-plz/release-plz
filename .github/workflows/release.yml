@@ -46,8 +46,10 @@ jobs:
           path: target
           key: ${{ runner.os }}-musl-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run tests
-        run: cargo test --workspace --all-features
+      # Tests are not run here because:
+      # 1. Releases are only created from the main branch
+      # 2. All code must pass tests (test.yml) before merging to main
+      # 3. Running tests here would require Gitea setup (docker-tests feature)
 
       - name: Build static binary
         run: |
