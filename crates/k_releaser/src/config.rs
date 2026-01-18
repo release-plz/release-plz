@@ -4,7 +4,6 @@ use cargo_utils::to_utf8_pathbuf;
 use k_releaser_core::{
     GitReleaseConfig, PublishRequest, ReleaseRequest,
     fs_utils::to_utf8_path,
-    set_version::SetVersionRequest,
     update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
 use schemars::JsonSchema;
@@ -63,19 +62,6 @@ impl Config {
             update_request = update_request.with_package_config(package, update_config.into());
         }
         update_request
-    }
-
-    pub fn fill_set_version_config(
-        &self,
-        set_version_request: &mut SetVersionRequest,
-    ) -> anyhow::Result<()> {
-        for (package, config) in self.packages() {
-            if let Some(changelog_path) = config.common.changelog_path.clone() {
-                let changelog_path = to_utf8_pathbuf(changelog_path)?;
-                set_version_request.set_changelog_path(package, changelog_path);
-            }
-        }
-        Ok(())
     }
 
     pub fn fill_release_config(

@@ -1,12 +1,10 @@
 mod config_path;
-mod generate_completions;
 mod init;
 pub(crate) mod manifest_command;
 mod publish;
 mod release;
 mod release_pr;
 pub(crate) mod repo_command;
-mod set_version;
 mod update;
 
 use anyhow::bail;
@@ -18,12 +16,10 @@ use clap::{
 };
 use init::Init;
 use k_releaser_core::fs_utils::current_directory;
-use set_version::SetVersion;
 use tracing::level_filters::LevelFilter;
 
 use self::{
-    generate_completions::GenerateCompletions, publish::Publish, release::Release,
-    release_pr::ReleasePr, update::Update,
+    publish::Publish, release::Release, release_pr::ReleasePr, update::Update,
 };
 
 const MAIN_COLOR: AnsiColor = AnsiColor::Red;
@@ -48,8 +44,8 @@ pub struct CliArgs {
     /// `-v` adds verbosity to logs.
     /// `-vv` adds verbosity and sets the log level to DEBUG.
     /// `-vvv` adds verbosity and sets the log level to TRACE.
-    /// To change the log level without setting verbosity, use the `RELEASE_PLZ_LOG`
-    /// environment variable. E.g. `RELEASE_PLZ_LOG=DEBUG`.
+    /// To change the log level without setting verbosity, use the `K_RELEASER_LOG`
+    /// environment variable. E.g. `K_RELEASER_LOG=DEBUG`.
     #[arg(
         short,
         long,
@@ -100,32 +96,11 @@ pub enum Command {
     ///
     /// You can run this command in the CI on every commit in the main branch.
     Release(Release),
-    /// Generate command autocompletions for various shells.
-    GenerateCompletions(GenerateCompletions),
-    /// Check if a newer version of release-plz is available.
-    CheckUpdates,
-    /// Write the JSON schema of the release-plz.toml configuration
-    /// to .schema/latest.json
-    GenerateSchema,
-    /// Initialize release-plz for the current GitHub repository.
+    /// Initialize k-releaser for the current GitHub repository.
     ///
     /// Stores the necessary tokens in the GitHub repository secrets and generates the
-    /// release-plz.yml GitHub Actions workflow file.
+    /// k-releaser.yml GitHub Actions workflow file.
     Init(Init),
-    /// Edit the version of a package in Cargo.toml and changelog.
-    ///
-    /// Specify a version with the syntax `<package_name>@<version>`.
-    /// E.g. `release-plz set-version my-crate@1.2.3`.
-    ///
-    /// Seperate versions with a space to set multiple versions.
-    /// E.g. `release-plz set-version my-crate1@0.1.2 my-crate2@0.2.0`.
-    ///
-    /// For single package projects, you can omit `<package_name>@`.
-    /// E.g. `release-plz set-version 1.2.3`.
-    ///
-    /// Note that this command is meant to edit the versions of the packages of your workspace, not the
-    /// version of your dependencies.
-    SetVersion(SetVersion),
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]

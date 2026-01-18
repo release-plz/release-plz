@@ -5,8 +5,8 @@ use tracing_subscriber::{
 
 /// Intialize the logging using the tracing crate.
 ///
-/// You can customize the log level with the `RELEASE_PLZ_LOG` environment
-/// variable. If the `RELEASE_PLZ_LOG` environment variable is not set, falls back to the `RUST_LOG`
+/// You can customize the log level with the `K_RELEASER_LOG` environment
+/// variable. If the `K_RELEASER_LOG` environment variable is not set, falls back to the `RUST_LOG`
 /// environment variable.
 ///
 /// If verbosity is set, the logs will show more information.
@@ -14,7 +14,7 @@ use tracing_subscriber::{
 /// To maximize logs readability in CI, logs are written in one line
 /// (we don't split them in multiple lines).
 pub fn init(verbosity: Option<LevelFilter>) {
-    let env_filter = EnvFilter::try_from_env("RELEASE_PLZ_LOG").unwrap_or_else(|_| {
+    let env_filter = EnvFilter::try_from_env("K_RELEASER_LOG").unwrap_or_else(|_| {
         EnvFilter::builder()
             .with_default_directive(verbosity.unwrap_or(LevelFilter::INFO).into())
             .from_env_lossy()

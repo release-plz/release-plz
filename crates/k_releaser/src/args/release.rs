@@ -33,7 +33,7 @@ pub struct Release {
     pub repo_url: Option<String>,
 
     /// Git token used to publish the GitHub/Gitea/GitLab release.
-    #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
+    #[arg(long, value_parser = NonEmptyStringValueParser::new(), env = "GITHUB_TOKEN", hide_env_values=true)]
     pub git_token: Option<String>,
 
     /// Kind of git forge

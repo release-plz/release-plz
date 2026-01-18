@@ -1,7 +1,6 @@
 mod publish;
 mod release;
 mod release_pr;
-pub mod set_version;
 mod trusted_publishing;
 mod update;
 

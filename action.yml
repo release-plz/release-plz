@@ -21,16 +21,15 @@ inputs:
     description: 'The cargo registry to use'
     required: false
   git-token:
-    description: 'The GitHub token to use for creating PRs and releases'
+    description: 'The GitHub token to use for creating PRs and releases. If not provided, uses the GITHUB_TOKEN from the environment.'
     required: false
   backend:
     description: 'The git backend to use (github, gitlab, gitea)'
     required: false
     default: 'github'
   output:
-    description: 'Output format (json or text)'
+    description: 'Output format. When set to "json", prints structured output. Leave empty for normal output.'
     required: false
-    default: 'text'
 
 runs:
   using: 'composite'
@@ -75,12 +74,30 @@ runs:
 
     - name: Run k-releaser
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.git-token }}
       run: |
-        k-releaser ${{ inputs.command }} \
-          --manifest-path=${{ inputs.manifest-path }} \
-          ${{ inputs.config-path && format('--config={0}', inputs.config-path) || '' }} \
-          ${{ inputs.registry && format('--registry={0}', inputs.registry) || '' }} \
-          ${{ inputs.git-token && format('--git-token={0}', inputs.git-token) || '' }} \
-          ${{ inputs.backend && format('--forge={0}', inputs.backend) || '' }} \
-          ${{ inputs.output && format('--output={0}', inputs.output) || '' }} \
-          --verbose
+        ARGS=(
+          "${{ inputs.command }}"
+          "--manifest-path=${{ inputs.manifest-path }}"
+        )
+
+        if [ -n "${{ inputs.config-path }}" ]; then
+          ARGS+=("--config=${{ inputs.config-path }}")
+        fi
+
+        if [ -n "${{ inputs.registry }}" ]; then
+          ARGS+=("--registry=${{ inputs.registry }}")
+        fi
+
+        if [ -n "${{ inputs.backend }}" ]; then
+          ARGS+=("--forge=${{ inputs.backend }}")
+        fi
+
+        if [ -n "${{ inputs.output }}" ]; then
+          ARGS+=("--output=${{ inputs.output }}")
+        fi
+
+        ARGS+=("--verbose")
+
+        k-releaser "${ARGS[@]}"

@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 const CARGO_REGISTRY_TOKEN: &str = "CARGO_REGISTRY_TOKEN";
 const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
-const CUSTOM_GITHUB_TOKEN: &str = "RELEASE_PLZ_TOKEN";
+const CUSTOM_GITHUB_TOKEN: &str = "K_RELEASER_TOKEN";
 
 pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     ensure_gh_is_installed()?;
@@ -434,7 +434,7 @@ mod tests {
                     with:
                       command: release
                     env:
-                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
               k-releaser-pr:
@@ -455,7 +455,7 @@ mod tests {
                     with:
                       command: release-pr
                     env:
-                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "]]
         .assert_eq(&action_yaml(
@@ -501,7 +501,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     with:
                       command: release
                     env:
-                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
 
               k-releaser-pr:
                 name: k-releaser PR
@@ -521,7 +521,7 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     with:
                       command: release-pr
                     env:
-                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
         "]]
     .assert_eq(&action_yaml(
         "main",
@@ -556,7 +556,7 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                     with:
                       fetch-depth: 0
                       persist-credentials: true
-                      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      token: ${{ secrets.K_RELEASER_TOKEN }}
                   - &install-rust
                     name: Install Rust toolchain
                     uses: dtolnay/rust-toolchain@stable
@@ -565,7 +565,7 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                     with:
                       command: release
                     env:
-                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
               k-releaser-pr:
@@ -586,7 +586,7 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                     with:
                       command: release-pr
                     env:
-                      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+                      GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "]]
     .assert_eq(&action_yaml(

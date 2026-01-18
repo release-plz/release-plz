@@ -1,10 +1,8 @@
 mod args;
 mod changelog_config;
 mod config;
-mod generate_schema;
 pub mod init;
 mod log;
-mod update_checker;
 
 use args::OutputType;
 use clap::Parser;
@@ -79,15 +77,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
                 print_output(output_type, output);
             }
         }
-        Command::GenerateCompletions(cmd_args) => cmd_args.print(),
-        Command::CheckUpdates => update_checker::check_update().await?,
-        Command::GenerateSchema => generate_schema::generate_schema_to_disk()?,
         Command::Init(cmd_args) => init::init(&cmd_args.manifest_path(), !cmd_args.no_toml_check)?,
-        Command::SetVersion(cmd_args) => {
-            let config = cmd_args.config.load()?;
-            let request = cmd_args.set_version_request(&config)?;
-            k_releaser_core::set_version::set_version(&request)?;
-        }
     }
     Ok(())
 }

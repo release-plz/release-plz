@@ -24,7 +24,7 @@ use super::{
 };
 
 const CRATES_DIR: &str = "crates";
-const RELEASE_PLZ_LOG: &str = "RELEASE_PLZ_LOG";
+const K_RELEASER_LOG: &str = "K_RELEASER_LOG";
 
 /// It contains the universe in which release-plz runs.
 pub struct TestContext {
@@ -172,7 +172,7 @@ impl TestContext {
     pub fn run_update(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env(RELEASE_PLZ_LOG, log_level())
+            .env(K_RELEASER_LOG, log_level())
             .arg("update")
             .arg("--verbose")
             .arg("--registry")
@@ -183,7 +183,7 @@ impl TestContext {
     pub fn run_release_pr(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env(RELEASE_PLZ_LOG, log_level())
+            .env(K_RELEASER_LOG, log_level())
             .arg("release-pr")
             .arg("--verbose")
             .arg("--git-token")
@@ -201,7 +201,7 @@ impl TestContext {
     pub fn run_release(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())
-            .env(RELEASE_PLZ_LOG, log_level())
+            .env(K_RELEASER_LOG, log_level())
             .arg("release")
             .arg("--verbose")
             .arg("--git-token")
@@ -285,19 +285,9 @@ impl TestContext {
     }
 }
 
-pub fn run_set_version(directory: &Utf8Path, change: &str) {
-    let change: Vec<_> = change.split(' ').collect();
-    super::cmd::release_plz_cmd()
-        .current_dir(directory)
-        .env(RELEASE_PLZ_LOG, log_level())
-        .arg("set-version")
-        .args(&change)
-        .assert();
-}
-
 fn log_level() -> String {
     if std::env::var("ENABLE_LOGS").is_ok() {
-        std::env::var(RELEASE_PLZ_LOG).unwrap_or("DEBUG,hyper=INFO".to_string())
+        std::env::var(K_RELEASER_LOG).unwrap_or("DEBUG,hyper=INFO".to_string())
     } else {
         "ERROR".to_string()
     }
