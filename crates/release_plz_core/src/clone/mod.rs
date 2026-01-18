@@ -71,14 +71,6 @@ impl Cloner {
         ClonerBuilder::new()
     }
 
-    #[allow(dead_code)]
-    /// Queries info of the specified crate without downloading it.
-    pub fn query_latest_package(&self, name: &str) -> CargoResult<Option<IndexSummary>> {
-        let _lock = self.acquire_cargo_package_cache_lock()?;
-        let mut src = self.get_source()?;
-        query_latest_package_summary(&mut src, name, None)
-    }
-
     fn clone_from_summary_into(
         &self,
         summary: &IndexSummary,
@@ -293,35 +285,4 @@ fn clone_git_repo(repo: &str, to: &Utf8Path) -> CargoResult<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use fake::Fake;
-    use tempfile::tempdir;
-
-    use super::*;
-
-    #[test]
-    #[ignore = "requires network"]
-    fn query_latest_package_works_for_existing() {
-        let package_name = "rand";
-        let temp_dir = tempdir().unwrap();
-        let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
-        let cloner = ClonerBuilder::new()
-            .with_directory(directory)
-            .build()
-            .unwrap();
-
-        let rand = cloner
-            .query_latest_package(package_name)
-            .unwrap()
-            .unwrap()
-            .into_summary();
-        assert_eq!(rand.name(), package_name);
-
-        // Generate random string 15 characters long.
-        let package: String = 15.fake();
-        assert!(cloner.query_latest_package(&package).unwrap().is_none());
-    }
 }
