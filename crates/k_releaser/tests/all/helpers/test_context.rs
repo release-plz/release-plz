@@ -225,8 +225,36 @@ impl TestContext {
     }
 
     pub fn write_release_plz_toml(&self, content: &str) {
-        let release_plz_toml_path = self.repo_dir().join("release-plz.toml");
-        fs_err::write(release_plz_toml_path, content).unwrap();
+        // Parse the config content as TOML document and extract the root table
+        let config_doc = content.parse::<toml_edit::DocumentMut>().unwrap();
+        let config_table = config_doc.as_table().clone();
+
+        // Read the existing Cargo.toml
+        let cargo_toml_path = self.repo_dir().join("Cargo.toml");
+        let mut manifest = LocalManifest::try_new(&cargo_toml_path).unwrap();
+
+        // Determine if this is a workspace or a package Cargo.toml
+        let target_section = if manifest.data.contains_key("workspace") {
+            "workspace"
+        } else if manifest.data.contains_key("package") {
+            "package"
+        } else {
+            // If neither exists, create a package section
+            manifest.data["package"] = toml_edit::table();
+            "package"
+        };
+
+        // Ensure metadata subsection exists
+        let section = manifest.data[target_section].as_table_like_mut().unwrap();
+        if !section.contains_key("metadata") {
+            section.insert("metadata", toml_edit::table());
+        }
+
+        // Add k-releaser configuration to metadata
+        let metadata = section.get_mut("metadata").unwrap().as_table_like_mut().unwrap();
+        metadata.insert("k-releaser", toml_edit::Item::Table(config_table));
+
+        manifest.write().unwrap();
         self.push_all_changes("add config file");
     }
 

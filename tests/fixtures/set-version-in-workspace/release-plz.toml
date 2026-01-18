@@ -1,3 +1,0 @@
-[[package]] # the double square brackets define a TOML table array
-name = "one" # name of the package to configure
-changelog_path = "./CHANGELOG.md"
