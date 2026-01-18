@@ -38,6 +38,13 @@ impl ConfigPath {
         match load_config_from_cargo_toml(&cargo_toml_path) {
             Ok(Some(config)) => Ok(config),
             Ok(None) => {
+                // If path was explicitly specified but the file doesn't exist, return error
+                if self.path.is_some() && !cargo_toml_path.exists() {
+                    return Err(anyhow::anyhow!(
+                        "failed to read config from {}: file not found",
+                        cargo_toml_path.display()
+                    ));
+                }
                 info!(
                     "No k-releaser configuration found in {}, using default configuration",
                     cargo_toml_path.display()
