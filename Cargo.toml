@@ -4,26 +4,13 @@ members = ["crates/*"]
 default-members = ["crates/k_releaser"]
 
 [workspace.package]
-version = "0.3.150"
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/release-plz/k-releaser"
-homepage = "https://k-releaser.dev/"
-authors = ["Marco Ieni <marco.ieni@pm.me>"]
+authors = ["Stefan Hausotte"]
 keywords = ["release", "semver", "conventional", "commits"]
 categories = ["development-tools"]
-
-[workspace.lints.rust]
-rust_2018_idioms = { level = "warn", priority = -1 }
-unreachable_pub = "warn"
-unused_lifetimes = "warn"
-unused_qualifications = "warn"
-
-[workspace.lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-enum_glob_use = "warn"
-nursery = { level = "warn", priority = -1 }
-unwrap_used = "warn"
 
 [workspace.dependencies]
 # Internal dependencies
