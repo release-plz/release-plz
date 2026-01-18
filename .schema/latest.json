@@ -54,13 +54,11 @@
         "pr_draft": false,
         "pr_labels": [],
         "pr_name": null,
-        "publish": null,
         "publish_all_features": null,
         "publish_allow_dirty": null,
         "publish_features": null,
         "publish_no_verify": null,
         "publish_timeout": null,
-        "release": null,
         "release_always": null,
         "release_commits": null,
         "repo_url": null,
@@ -365,14 +363,6 @@
         "name": {
           "type": "string"
         },
-        "publish": {
-          "title": "Publish",
-          "description": "If `false`, don't run `cargo publish`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "publish_all_features": {
           "title": "Publish All Features",
           "description": "If `true`, add the `--all-features` flag to the `cargo publish` command.",
@@ -403,14 +393,6 @@
         "publish_no_verify": {
           "title": "Publish No Verify",
           "description": "If `true`, add the `--no-verify` flag to the `cargo publish` command.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "release": {
-          "title": "Release",
-          "description": "Used to toggle off the update/release process for a workspace or package.",
           "type": [
             "boolean",
             "null"
@@ -662,14 +644,6 @@
             "null"
           ]
         },
-        "publish": {
-          "title": "Publish",
-          "description": "If `false`, don't run `cargo publish`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "publish_all_features": {
           "title": "Publish All Features",
           "description": "If `true`, add the `--all-features` flag to the `cargo publish` command.",
@@ -710,14 +684,6 @@
           "description": "Timeout for the publishing process",
           "type": [
             "string",
-            "null"
-          ]
-        },
-        "release": {
-          "title": "Release",
-          "description": "Used to toggle off the update/release process for a workspace or package.",
-          "type": [
-            "boolean",
             "null"
           ]
         },

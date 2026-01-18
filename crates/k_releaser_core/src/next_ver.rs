@@ -48,7 +48,7 @@ pub struct ChangelogRequest {
 impl ReleaseMetadataBuilder for UpdateRequest {
     fn get_release_metadata(&self, package_name: &str) -> Option<ReleaseMetadata> {
         let config = self.get_package_config(package_name);
-        config.generic.release.then(|| ReleaseMetadata {
+        Some(ReleaseMetadata {
             tag_name_template: config.generic.tag_name_template.clone(),
             release_name_template: None,
         })

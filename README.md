@@ -73,6 +73,8 @@ k-releaser:
 
 k-releaser is configured in your root `Cargo.toml` file under `[workspace.metadata.k-releaser]` for workspaces or `[package.metadata.k-releaser]` for single packages.
 
+> **Note**: k-releaser is **command-driven, not config-driven**. Configuration controls *how* commands work (templates, labels, etc.), not *whether* they run. To create a release, run the `release` command. To skip a release, don't run it. Simple!
+
 ### Basic Configuration
 
 ```toml
@@ -240,9 +242,28 @@ dependencies_update = false
 
 ## 🤖 Running k-releaser
 
-There are two ways to run k-releaser:
+k-releaser provides several commands, each with a specific purpose:
 
-- [CLI](https://k-releaser.dev/docs/usage): Run k-releaser from your terminal or other CI systems (Gitea and GitLab supported).
+### Commands
+
+- **`k-releaser release-pr`** - Create or update a release PR with version bumps and changelog
+- **`k-releaser release`** - Create git tags and GitHub/Gitea/GitLab releases (run after merging release PR)
+- **`k-releaser publish`** - Publish packages to a cargo registry (if needed)
+- **`k-releaser update`** - Update versions and changelogs locally without creating a PR
+
+### Usage
+
+Run k-releaser from your terminal or CI:
+
+```bash
+# Create a release PR
+k-releaser release-pr
+
+# After merging the PR, create the release
+k-releaser release
+```
+
+See the [CLI documentation](https://k-releaser.dev/docs/usage) for more details on running k-releaser in different CI systems (GitHub Actions, Gitea, GitLab).
 
 
 ## 🌓 Related projects

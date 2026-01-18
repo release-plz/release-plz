@@ -350,9 +350,7 @@ impl From<PackageConfig> for k_releaser_core::ReleaseConfig {
 
 impl From<PackageConfig> for k_releaser_core::PublishPackageConfig {
     fn from(value: PackageConfig) -> Self {
-        let is_publish_enabled = value.publish != Some(false);
-        let mut cfg = Self::default()
-            .with_publish(k_releaser_core::PublishConfig::enabled(is_publish_enabled));
+        let mut cfg = Self::default();
 
         if let Some(no_verify) = value.publish_no_verify {
             cfg = cfg.with_no_verify(no_verify);
@@ -459,8 +457,6 @@ impl From<PackageConfig> for k_releaser_core::UpdateConfig {
         Self {
             semver_check: config.semver_check != Some(false),
             changelog_update: config.changelog_update == Some(true), // Only create file if explicitly enabled
-            release: config.release != Some(false),
-            publish: config.publish != Some(false),
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
@@ -494,15 +490,12 @@ impl PackageConfig {
             git_release_latest: self.git_release_latest.or(default.git_release_latest),
             git_release_name: self.git_release_name.or(default.git_release_name),
             git_release_body: self.git_release_body.or(default.git_release_body),
-
-            publish: self.publish.or(default.publish),
             publish_allow_dirty: self.publish_allow_dirty.or(default.publish_allow_dirty),
             publish_no_verify: self.publish_no_verify.or(default.publish_no_verify),
             publish_features: self.publish_features.or(default.publish_features),
             publish_all_features: self.publish_all_features.or(default.publish_all_features),
             git_tag_enable: self.git_tag_enable.or(default.git_tag_enable),
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
-            release: self.release.or(default.release),
         }
     }
 
@@ -559,11 +552,6 @@ mod tests {
         release_commits = "^feat:"
     "#;
 
-    const BASE_PACKAGE_CONFIG: &str = r#"
-        [[package]]
-        name = "crate1"
-    "#;
-
     fn create_base_workspace_config() -> Config {
         Config {
             changelog: ChangelogCfg::default(),
@@ -598,24 +586,6 @@ mod tests {
         }
     }
 
-    fn create_base_package_config() -> PackageSpecificConfigWithName {
-        PackageSpecificConfigWithName {
-            name: "crate1".to_string(),
-            config: PackageSpecificConfig {
-                common: PackageConfig {
-                    semver_check: None,
-                    changelog_update: None,
-                    git_release_enable: None,
-                    git_release_type: None,
-                    git_release_draft: None,
-                    ..Default::default()
-                },
-                changelog_include: None,
-                version_group: None,
-            },
-        }
-    }
-
     #[test]
     fn config_without_update_config_is_deserialized() {
         let expected_config = create_base_workspace_config();
@@ -636,54 +606,6 @@ mod tests {
 
         let config: Config = toml::from_str(config).unwrap();
         assert_eq!(config, expected_config);
-    }
-
-    fn config_package_release_is_deserialized(config_flag: &str, expected_value: bool) {
-        let config = &format!(
-            "{BASE_WORKSPACE_CONFIG}\n{BASE_PACKAGE_CONFIG}\
-            release = {config_flag}"
-        );
-
-        let mut expected_config = create_base_workspace_config();
-        let mut package_config = create_base_package_config();
-        package_config.config.common.release = expected_value.into();
-        expected_config.package = [package_config].into();
-
-        let config: Config = toml::from_str(config).unwrap();
-        assert_eq!(config, expected_config);
-    }
-
-    #[test]
-    fn config_package_release_is_deserialized_true() {
-        config_package_release_is_deserialized("true", true);
-    }
-
-    #[test]
-    fn config_package_release_is_deserialized_false() {
-        config_package_release_is_deserialized("false", false);
-    }
-
-    fn config_workspace_release_is_deserialized(config_flag: &str, expected_value: bool) {
-        let config = &format!(
-            "{BASE_WORKSPACE_CONFIG}\
-            release = {config_flag}"
-        );
-
-        let mut expected_config = create_base_workspace_config();
-        expected_config.workspace.packages_defaults.release = expected_value.into();
-
-        let config: Config = toml::from_str(config).unwrap();
-        assert_eq!(config, expected_config);
-    }
-
-    #[test]
-    fn config_workspace_release_is_deserialized_true() {
-        config_workspace_release_is_deserialized("true", true);
-    }
-
-    #[test]
-    fn config_workspace_release_is_deserialized_false() {
-        config_workspace_release_is_deserialized("false", false);
     }
 
     #[test]
@@ -710,7 +632,6 @@ mod tests {
                     git_release_enable: true.into(),
                     git_release_type: Some(ReleaseType::Prod),
                     git_release_draft: Some(false),
-                    release: Some(true),
                     changelog_path: Some("./CHANGELOG.md".into()),
                     ..Default::default()
                 },
@@ -728,7 +649,6 @@ mod tests {
                         git_release_enable: true.into(),
                         git_release_type: Some(ReleaseType::Prod),
                         git_release_draft: Some(false),
-                        release: Some(false),
                         ..Default::default()
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
@@ -745,7 +665,6 @@ mod tests {
             git_release_enable = true
             git_release_type = "prod"
             git_release_draft = false
-            release = true
             changelog_config = "../git-cliff.toml"
             pr_draft = false
             pr_labels = ["label1"]
@@ -764,7 +683,6 @@ mod tests {
             git_release_type = "prod"
             git_release_draft = false
             semver_check = false
-            release = false
             changelog_include = ["pkg1"]
         "#]]
         .assert_eq(&toml::to_string(&config).unwrap());

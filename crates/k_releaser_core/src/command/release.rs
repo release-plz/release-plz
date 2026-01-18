@@ -131,7 +131,7 @@ impl ReleaseRequest {
 impl ReleaseMetadataBuilder for ReleaseRequest {
     fn get_release_metadata(&self, package_name: &str) -> Option<ReleaseMetadata> {
         let config = self.get_package_config(package_name);
-        config.release.then(|| ReleaseMetadata {
+        Some(ReleaseMetadata {
             tag_name_template: config.git_tag.name_template.clone(),
             release_name_template: config.git_release.name_template.clone(),
         })
@@ -185,8 +185,6 @@ pub struct ReleaseConfig {
     /// Enable all features when packaging the crate.
     /// If true, pass the `--all-features` flag to `cargo publish`.
     all_features: bool,
-    /// High-level toggle to process this package or ignore it
-    release: bool,
     changelog_path: Option<Utf8PathBuf>,
     /// Whether this package has a changelog that release-plz updates or not.
     /// Default: `true`.
@@ -229,11 +227,6 @@ impl ReleaseConfig {
         self
     }
 
-    pub fn with_release(mut self, release: bool) -> Self {
-        self.release = release;
-        self
-    }
-
     pub fn with_changelog_path(mut self, changelog_path: Utf8PathBuf) -> Self {
         self.changelog_path = Some(changelog_path);
         self
@@ -263,7 +256,6 @@ impl Default for ReleaseConfig {
             allow_dirty: false,
             features: vec![],
             all_features: false,
-            release: true,
             changelog_path: None,
             changelog_update: true,
         }
