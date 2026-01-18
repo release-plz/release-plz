@@ -1,10 +1,10 @@
 [package]
 name = "test_logs"
-version = "0.1.33"
+version.workspace = true
 edition.workspace = true
 description = "Library to see logs in tests"
 license.workspace = true
-repository = "https://github.com/release-plz/release-plz/tree/main/crates/test_logs"
+repository.workspace = true
 keywords = ["test", "logs", "tracing"]
 categories = ["development-tools", "development-tools::testing"]
 

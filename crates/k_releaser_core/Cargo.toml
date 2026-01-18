@@ -1,12 +1,12 @@
 [package]
 name = "k_releaser_core"
-version = "0.36.7"
+version.workspace = true
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
-repository = "https://github.com/release-plz/k-releaser/tree/main/crates/k_releaser_core"
+repository.workspace = true
 license.workspace = true
-keywords = ["release", "please", "semver", "conventional", "commits"]
-categories = ["development-tools"]
+keywords.workspace = true
+categories.workspace = true
 
 [lints]
 workspace = true
@@ -17,13 +17,13 @@ all-static = ["cargo/vendored-libgit2", "cargo/all-static"]
 
 [dependencies]
 base64.workspace = true
-cargo_utils = { path = "../cargo_utils", version = "0.1.75" }
-git_cmd = { path = "../git_cmd", version = "0.6.26" }
-next_version = { path = "../next_version", version = "0.2" }
+cargo_utils.workspace = true
+git_cmd.workspace = true
+next_version.workspace = true
 
 anyhow.workspace = true
 cargo_metadata.workspace = true
-cargo = { workspace = true }
+cargo.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 crates-index.workspace = true
 dunce.workspace = true
@@ -57,9 +57,9 @@ http.workspace = true
 urlencoding.workspace = true
 
 [dev-dependencies]
-git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
-test_logs = { path = "../test_logs" }
-fake_package = { path = "../fake_package" }
+git_cmd = { workspace = true, features = ["test_fixture"] }
+test_logs.workspace = true
+fake_package.workspace = true
 
 expect-test.workspace = true
 fake.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "fake_package"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 publish = false
 license.workspace = true
@@ -9,6 +9,6 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-cargo_utils = { path = "../cargo_utils", version = "0.1"}
+cargo_utils.workspace = true
 cargo_metadata.workspace = true
 serde_json.workspace = true
