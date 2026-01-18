@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    name: Build and release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-musl-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-musl-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-musl-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        run: cargo test --workspace --all-features
+
+      - name: Build static binary
+        run: |
+          cargo build --release --target x86_64-unknown-linux-musl -p k-releaser
+          strip target/x86_64-unknown-linux-musl/release/k-releaser
+
+      - name: Create release archive
+        run: |
+          cd target/x86_64-unknown-linux-musl/release
+          tar -czf k-releaser-${{ steps.get_version.outputs.VERSION }}-x86_64-linux-musl.tar.gz k-releaser
+          sha256sum k-releaser-${{ steps.get_version.outputs.VERSION }}-x86_64-linux-musl.tar.gz > k-releaser-${{ steps.get_version.outputs.VERSION }}-x86_64-linux-musl.tar.gz.sha256
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/x86_64-unknown-linux-musl/release/k-releaser-${{ steps.get_version.outputs.VERSION }}-x86_64-linux-musl.tar.gz
+            target/x86_64-unknown-linux-musl/release/k-releaser-${{ steps.get_version.outputs.VERSION }}-x86_64-linux-musl.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
