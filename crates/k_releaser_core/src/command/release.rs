@@ -470,20 +470,142 @@ async fn release_packages(
     let packages = project.publishable_packages();
     if packages.is_empty() {
         info!("nothing to release");
+        return Ok(None);
     }
 
-    let mut package_releases: Vec<PackageRelease> = vec![];
-    for package in packages {
-        if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, git_client).await?
-        {
-            package_releases.push(pkg_release);
+    // Check if all packages have the same version (unified workspace versioning)
+    let first_version = &packages[0].version;
+    let is_unified_workspace = packages.iter().all(|p| &p.version == first_version);
+
+    if is_unified_workspace && packages.len() > 1 {
+        // Unified workspace versioning: create ONE release for the workspace
+        info!("Detected unified workspace versioning - creating single workspace release");
+        release_unified_workspace(input, project, &packages, repo, git_client).await
+    } else {
+        // Multi-package versioning: release each package individually
+        let mut package_releases: Vec<PackageRelease> = vec![];
+        for package in packages {
+            if let Some(pkg_release) =
+                release_package_if_needed(input, project, package, repo, git_client).await?
+            {
+                package_releases.push(pkg_release);
+            }
+        }
+        let release = (!package_releases.is_empty()).then_some(Release {
+            releases: package_releases,
+        });
+        Ok(release)
+    }
+}
+
+/// Get changelog entry for unified workspace release from the release PR body.
+/// The PR body is generated from git history (the source of truth) and can be reviewed/modified by users.
+async fn get_workspace_changelog_entry(
+    input: &ReleaseRequest,
+    repo: &Repo,
+    git_client: &GitClient,
+) -> anyhow::Result<String> {
+    // Get the release PR associated with the current commit
+    let last_commit = repo.current_commit_hash()?;
+    let prs = git_client.associated_prs(&last_commit).await?;
+    let release_pr = prs
+        .iter()
+        .find(|pr| pr.branch().starts_with(&input.branch_prefix));
+
+    if let Some(pr) = release_pr {
+        if let Some(body) = &pr.body {
+            // Extract changelog from PR body
+            // The PR body contains the changelog generated from git history
+            let changelog = extract_changelog_from_pr_body(body);
+            debug!("Using changelog from release PR #{}", pr.number);
+            return Ok(changelog);
         }
     }
-    let release = (!package_releases.is_empty()).then_some(Release {
-        releases: package_releases,
-    });
-    Ok(release)
+
+    warn!("No release PR found or PR has no body. Release will have empty body.");
+    Ok(String::new())
+}
+
+/// Extract changelog content from release PR body.
+/// The PR body has changelog in <details><summary>Changelog</summary>...</details>
+fn extract_changelog_from_pr_body(pr_body: &str) -> String {
+    // Look for content between <details> tags
+    if let Some(start) = pr_body.find("<details>") {
+        if let Some(end) = pr_body[start..].find("</details>") {
+            let details_content = &pr_body[start..start + end];
+            // Skip the <details> and <summary> tags to get just the changelog content
+            if let Some(summary_end) = details_content.find("</summary>") {
+                let changelog = &details_content[summary_end + "</summary>".len()..];
+                return changelog.trim().to_string();
+            }
+        }
+    }
+
+    // If we can't find the details tag, return the whole body
+    // (useful if the format changes or for custom PR bodies)
+    pr_body.to_string()
+}
+
+/// Release a unified workspace with a single version for all packages
+async fn release_unified_workspace(
+    input: &ReleaseRequest,
+    project: &Project,
+    packages: &[&Package],
+    repo: &Repo,
+    git_client: &GitClient,
+) -> anyhow::Result<Option<Release>> {
+    let version = &packages[0].version;
+    let git_tag = project.git_tag(&version.to_string())?;
+
+    // Check if tag already exists
+    if repo.tag_exists(&git_tag)? {
+        info!("Tag {} already exists - skipping release", git_tag);
+        return Ok(None);
+    }
+
+    // Try to get changelog from CHANGELOG.md first, then fall back to release PR body
+    let changelog_entry = get_workspace_changelog_entry(input, repo, git_client).await?;
+
+    // Extract PRs from changelog if present
+    let prs = prs_from_text(&changelog_entry);
+
+    // For unified workspace, check if there's a custom release name template
+    // If yes, use "workspace" as the package name; if no, use "Version {version}" format
+    let release_config = input.get_package_config(&packages[0].name);
+    let release_name = if release_config.git_release.name_template.is_some() {
+        // Use custom template with "workspace" as package name
+        project.release_name("workspace", &version.to_string())?
+    } else {
+        // Use default "Version X.Y.Z" format for unified workspace
+        format!("Version {}", version)
+    };
+
+    let release_info = ReleaseInfo {
+        package: packages[0], // Use first package for metadata
+        git_tag: &git_tag,
+        release_name: &release_name,
+        changelog: &changelog_entry,
+        prs: &prs,
+    };
+
+    let was_released = release_package(input, repo, git_client, &release_info).await?;
+
+    if was_released {
+        let package_names: Vec<String> = packages.iter().map(|p| p.name.to_string()).collect();
+        info!("Released workspace version {} for packages: {}", version, package_names.join(", "));
+
+        // Return a single PackageRelease representing the unified workspace
+        Ok(Some(Release {
+            releases: vec![PackageRelease {
+                package_name: "workspace".to_string(),
+                prs,
+                tag: git_tag,
+                version: version.clone(),
+            }],
+        }))
+    } else {
+        Ok(None)
+    }
 }
 
 async fn release_package_if_needed(
@@ -799,6 +921,54 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_changelog_from_pr_body() {
+        let pr_body = r#"
+## 🤖 New release v0.1.1
+
+This release updates all workspace packages to version **0.1.1**.
+
+### Packages updated
+
+* `my-package`
+
+
+<details><summary><i><b>Changelog</b></i></summary>
+
+### Fixed
+
+- add config file
+- cargo init
+
+### Other
+
+- Initial commit
+
+</details>
+
+
+
+---
+🤖 Generated by k-releaser"#;
+
+        let changelog = extract_changelog_from_pr_body(pr_body);
+        assert!(changelog.contains("### Fixed"));
+        assert!(changelog.contains("- add config file"));
+        assert!(changelog.contains("- cargo init"));
+        assert!(changelog.contains("### Other"));
+        assert!(changelog.contains("- Initial commit"));
+        assert!(!changelog.contains("<details>"));
+        assert!(!changelog.contains("</details>"));
+        assert!(!changelog.contains("Generated by k-releaser"));
+    }
+
+    #[test]
+    fn test_extract_changelog_from_pr_body_without_details_tag() {
+        let pr_body = "Some custom PR body without details tag";
+        let changelog = extract_changelog_from_pr_body(pr_body);
+        assert_eq!(changelog, pr_body);
+    }
 
     #[test]
     fn git_release_config_pre_release_default_works() {
