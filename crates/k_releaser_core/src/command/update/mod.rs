@@ -1,5 +1,3 @@
-mod changelog_update;
-mod package_dependencies;
 mod packages_update;
 mod update_config;
 pub mod update_request;

@@ -191,6 +191,7 @@ impl PackagesConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct PublishPackageConfig {
     publish: PublishConfig,
     /// Don't verify the contents by building them.
@@ -234,17 +235,6 @@ impl PublishPackageConfig {
     }
 }
 
-impl Default for PublishPackageConfig {
-    fn default() -> Self {
-        Self {
-            publish: PublishConfig::default(),
-            no_verify: false,
-            allow_dirty: false,
-            features: vec![],
-            all_features: false,
-        }
-    }
-}
 
 #[derive(Serialize, Default, Debug)]
 pub struct PublishOutput {

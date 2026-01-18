@@ -40,7 +40,6 @@ pub struct Project {
 #[derive(Clone, Copy, Debug)]
 enum TemplateField {
     ReleaseName,
-    GitTagName,
 }
 
 impl Project {
@@ -203,10 +202,6 @@ impl Project {
         let release_metadata = self.release_metadata.get(package_name);
 
         let (template_name, template) = match field {
-            TemplateField::GitTagName => (
-                "tag_name",
-                release_metadata.and_then(|m| m.tag_name_template.clone()),
-            ),
             TemplateField::ReleaseName => (
                 "release_name",
                 release_metadata.and_then(|m| m.release_name_template.clone()),

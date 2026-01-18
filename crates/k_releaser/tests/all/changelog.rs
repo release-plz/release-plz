@@ -236,10 +236,10 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
         TestPackage::new("one")
             .with_type(PackageType::Bin)
             .with_path_dependencies(vec![format!("../two")])
-            .as_workspace_member(),
+            .with_workspace_member(),
         TestPackage::new("two")
             .with_type(PackageType::Lib)
-            .as_workspace_member(),
+            .with_workspace_member(),
     ])
     .await;
     let config = r#"

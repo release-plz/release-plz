@@ -109,7 +109,7 @@ impl TestContext {
     pub async fn new_workspace(crates: &[&str]) -> Self {
         let packages: Vec<TestPackage> = crates
             .iter()
-            .map(|name| TestPackage::new(name).as_workspace_member())
+            .map(|name| TestPackage::new(name).with_workspace_member())
             .collect();
         Self::new_workspace_with_packages(&packages).await
     }

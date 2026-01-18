@@ -25,7 +25,7 @@ impl TestPackage {
         }
     }
 
-    pub fn as_workspace_member(self) -> Self {
+    pub fn with_workspace_member(self) -> Self {
         Self {
             is_workspace_member: true,
             ..self

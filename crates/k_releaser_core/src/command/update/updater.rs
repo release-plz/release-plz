@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Context as _;
 use cargo_metadata::{
-    Package, TargetKind,
+    Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
@@ -17,7 +17,6 @@ use git_cliff_core::{
 };
 use git_cmd::Repo;
 use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
-use std::sync::Once;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
@@ -27,15 +26,12 @@ use crate::{
     changelog_parser,
     diff::{Commit, Diff},
     fs_utils,
-    semver_check,
 };
 
 use super::{
     PackagesUpdate,
     update_request::UpdateRequest,
 };
-
-static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
 
 #[derive(Debug)]
 pub struct Updater<'a> {
@@ -499,34 +495,6 @@ impl Updater<'_> {
     }
 }
 
-/// Check if release-plz should check the semver compatibility of the package.
-/// - `run_semver_check` is true if the user wants to run the semver check.
-fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
-    if run_semver_check && contains_library(package) {
-        let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
-        if !is_cargo_semver_checks_installed {
-            warn!(
-                "cargo-semver-checks not installed, skipping semver check. For more information, see https://release-plz.dev/docs/semver-check"
-            );
-        }
-        return is_cargo_semver_checks_installed;
-    }
-    false
-}
-
-fn contains_executable(package: &Package) -> bool {
-    contains_target_kind(package, &TargetKind::Bin)
-}
-
-fn contains_library(package: &Package) -> bool {
-    contains_target_kind(package, &TargetKind::Lib)
-}
-
-fn contains_target_kind(package: &Package, target_kind: &TargetKind) -> bool {
-    // We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
-    package.targets.iter().any(|t| t.kind.contains(target_kind))
-}
-
 /// Get files that belong to the package.
 /// The paths are relative to the git repo root.
 fn get_package_files(
@@ -673,6 +641,7 @@ fn get_workspace_changelog(
 /// - the entire changelog (with the new entries);
 /// - the new changelog entry alone
 ///   (i.e. changelog body update without header and footer).
+#[cfg(test)]
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,

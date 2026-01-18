@@ -808,43 +808,7 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::ffi::OsStr;
-    use std::sync::{LazyLock, Mutex};
-
-    use fake_package::metadata::fake_metadata;
-
     use super::*;
-
-    // Trick to avoid the tests to run concurrently.
-    // It's used to not affect environment variables used in other tests
-    // since tests run concurrently by default and share the same environment context.
-    static NO_PARALLEL: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
-
-    fn with_env_var<K, V, F>(key: K, value: V, f: F)
-    where
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-        F: FnOnce(),
-    {
-        // Prevents concurrent runs where environment changes are made.
-        // Caller assumes all environment changes are reset to their state
-        // prior to calling this function when this guard is dropped.
-        let _guard = NO_PARALLEL.lock().unwrap();
-
-        // Store the previous value of the var, if defined.
-        let previous_val = env::var(key.as_ref()).ok();
-
-        unsafe { env::set_var(key.as_ref(), value.as_ref()) };
-        (f)();
-
-        // Reset or clear the var after the test.
-        if let Some(previous_val) = previous_val {
-            unsafe { env::set_var(key.as_ref(), previous_val) };
-        } else {
-            unsafe { env::remove_var(key.as_ref()) };
-        }
-    }
 
     #[test]
     fn git_release_config_pre_release_default_works() {
