@@ -71,14 +71,6 @@ impl Cloner {
         ClonerBuilder::new()
     }
 
-    #[allow(dead_code)]
-    /// Queries info of the specified crate without downloading it.
-    pub fn query_latest_package(&self, name: &str) -> CargoResult<Option<IndexSummary>> {
-        let _lock = self.acquire_cargo_package_cache_lock()?;
-        let mut src = self.get_source()?;
-        query_latest_package_summary(&mut src, name, None)
-    }
-
     fn clone_from_summary_into(
         &self,
         summary: &IndexSummary,
