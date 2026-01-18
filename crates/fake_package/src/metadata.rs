@@ -12,10 +12,10 @@ pub fn fake_metadata() -> cargo_metadata::Metadata {
     let mut current = manifest_dir.clone();
     for _ in 0..5 {
         let workspace_toml = current.join("Cargo.toml");
-        if workspace_toml.exists() {
-            if let Ok(metadata) = cargo_utils::get_manifest_metadata(&workspace_toml) {
-                return metadata;
-            }
+        if workspace_toml.exists()
+            && let Ok(metadata) = cargo_utils::get_manifest_metadata(&workspace_toml)
+        {
+            return metadata;
         }
         if !current.pop() {
             break;
