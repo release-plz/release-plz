@@ -74,9 +74,12 @@ runs:
 
     - name: Run k-releaser
       shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.git-token }}
       run: |
+        # Set GITHUB_TOKEN if git-token input is provided
+        if [ -n "${{ inputs.git-token }}" ]; then
+          export GITHUB_TOKEN="${{ inputs.git-token }}"
+        fi
+
         ARGS=(
           "${{ inputs.command }}"
           "--manifest-path=${{ inputs.manifest-path }}"
