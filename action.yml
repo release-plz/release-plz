@@ -33,14 +33,54 @@ inputs:
     default: 'text'
 
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  args:
-    - ${{ inputs.command }}
-    - --manifest-path=${{ inputs.manifest-path }}
-    - ${{ inputs.config-path && format('--config={0}', inputs.config-path) || '' }}
-    - ${{ inputs.registry && format('--registry={0}', inputs.registry) || '' }}
-    - ${{ inputs.git-token && format('--git-token={0}', inputs.git-token) || '' }}
-    - ${{ inputs.backend && format('--forge={0}', inputs.backend) || '' }}
-    - ${{ inputs.output && format('--output={0}', inputs.output) || '' }}
-    - --verbose
+  using: 'composite'
+  steps:
+    - name: Get latest k-releaser version
+      id: version
+      shell: bash
+      run: |
+        LATEST_RELEASE=$(curl -s https://api.github.com/repos/secana/k-releaser/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+        echo "version=${LATEST_RELEASE}" >> $GITHUB_OUTPUT
+        echo "Latest k-releaser version: ${LATEST_RELEASE}"
+
+    - name: Cache k-releaser binary
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.k-releaser/bin
+        key: k-releaser-${{ steps.version.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Download k-releaser
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        echo "Downloading k-releaser version ${VERSION}"
+
+        # Create directory for cached binary
+        mkdir -p ~/.k-releaser/bin
+
+        # Download and extract binary
+        curl -fsSL "https://github.com/secana/k-releaser/releases/download/v${VERSION}/k-releaser-${VERSION}-x86_64-linux-musl.tar.gz" -o k-releaser.tar.gz
+        tar -xzf k-releaser.tar.gz
+        chmod +x k-releaser
+        mv k-releaser ~/.k-releaser/bin/k-releaser
+        rm k-releaser.tar.gz
+
+    - name: Install k-releaser
+      shell: bash
+      run: |
+        sudo cp ~/.k-releaser/bin/k-releaser /usr/local/bin/k-releaser
+        k-releaser --version
+
+    - name: Run k-releaser
+      shell: bash
+      run: |
+        k-releaser ${{ inputs.command }} \
+          --manifest-path=${{ inputs.manifest-path }} \
+          ${{ inputs.config-path && format('--config={0}', inputs.config-path) || '' }} \
+          ${{ inputs.registry && format('--registry={0}', inputs.registry) || '' }} \
+          ${{ inputs.git-token && format('--git-token={0}', inputs.git-token) || '' }} \
+          ${{ inputs.backend && format('--forge={0}', inputs.backend) || '' }} \
+          ${{ inputs.output && format('--output={0}', inputs.output) || '' }} \
+          --verbose
