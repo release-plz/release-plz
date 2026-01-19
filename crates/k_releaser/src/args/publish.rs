@@ -43,6 +43,11 @@ pub struct Publish {
     #[arg(long)]
     pub allow_dirty: bool,
 
+    /// Print the order packages would be published in and exit.
+    /// Does not actually publish anything.
+    #[arg(long)]
+    pub print_order: bool,
+
     /// Path to the k-releaser config file.
     #[command(flatten)]
     pub config: ConfigPath,

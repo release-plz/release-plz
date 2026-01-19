@@ -56,13 +56,24 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
         Command::Publish(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
             let config = cmd_args.config.load()?;
+            let print_order = cmd_args.print_order;
             let cmd_args_output = cmd_args.output;
             let request = cmd_args.publish_request(&config, cargo_metadata)?;
-            let output = k_releaser_core::publish(&request)
-                .await?
-                .unwrap_or_default();
-            if let Some(output_type) = cmd_args_output {
-                print_output(output_type, output);
+
+            if print_order {
+                let order_output = k_releaser_core::print_publish_order(&request)?;
+                if let Some(output_type) = cmd_args_output {
+                    print_output(output_type, order_output);
+                } else {
+                    println!("{}", order_output.display());
+                }
+            } else {
+                let output = k_releaser_core::publish(&request)
+                    .await?
+                    .unwrap_or_default();
+                if let Some(output_type) = cmd_args_output {
+                    print_output(output_type, output);
+                }
             }
         }
         Command::Release(cmd_args) => {

@@ -247,6 +247,67 @@ pub struct PackagePublish {
     tag: String,
 }
 
+#[derive(Serialize, Debug)]
+pub struct PublishOrderOutput {
+    publish_order: Vec<PackageOrderInfo>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct PackageOrderInfo {
+    name: String,
+    path: String,
+}
+
+impl PublishOrderOutput {
+    pub fn display(&self) -> String {
+        let mut output = String::from("Packages will be published in this order:\n");
+        for (idx, pkg) in self.publish_order.iter().enumerate() {
+            output.push_str(&format!("{}. {} ({})\n", idx + 1, pkg.name, pkg.path));
+        }
+        output.push_str(&format!("\nTotal: {} packages", self.publish_order.len()));
+        output
+    }
+}
+
+/// Print the order packages would be published in.
+#[instrument(skip(input))]
+pub fn print_publish_order(input: &PublishRequest) -> anyhow::Result<PublishOrderOutput> {
+    let overrides = input.packages_config.overridden_packages();
+    let project = Project::new_for_publish(
+        &cargo_utils::workspace_manifest(&input.metadata),
+        None,
+        &overrides,
+        &input.metadata,
+    )?;
+
+    let packages = project.publishable_packages();
+
+    if packages.is_empty() {
+        anyhow::bail!("No publishable packages found in workspace");
+    }
+
+    let workspace_root = &input.metadata.workspace_root;
+    let mut order_info = Vec::new();
+
+    for package in packages {
+        let relative_path = package
+            .manifest_path
+            .parent()
+            .and_then(|p| p.strip_prefix(workspace_root).ok())
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| ".".to_string());
+
+        order_info.push(PackageOrderInfo {
+            name: package.name.to_string(),
+            path: relative_path,
+        });
+    }
+
+    Ok(PublishOrderOutput {
+        publish_order: order_info,
+    })
+}
+
 /// Publish packages to cargo registry in dependency order.
 #[instrument(skip(input))]
 pub async fn publish(input: &PublishRequest) -> anyhow::Result<Option<PublishOutput>> {
