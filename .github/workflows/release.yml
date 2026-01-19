@@ -77,3 +77,29 @@ jobs:
             target/x86_64-unknown-linux-musl/release/k-releaser-${{ steps.get_version.outputs.VERSION }}-x86_64-linux-musl.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update major version tag
+        run: |
+          # Extract major version from tag (e.g., v1.1.8 -> v1)
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          echo "Full tag: $TAG_NAME"
+
+          # Extract major version (handles both vX.Y.Z and X.Y.Z formats)
+          if [[ $TAG_NAME =~ ^v?([0-9]+)\. ]]; then
+            MAJOR_VERSION="${BASH_REMATCH[1]}"
+            MAJOR_TAG="v${MAJOR_VERSION}"
+            echo "Major version tag: $MAJOR_TAG"
+
+            # Configure git
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            # Create or update the major version tag
+            git tag -fa "$MAJOR_TAG" -m "Update $MAJOR_TAG to $TAG_NAME"
+            git push origin "$MAJOR_TAG" --force
+
+            echo "✓ Updated $MAJOR_TAG to point to $TAG_NAME"
+          else
+            echo "⚠ Could not extract major version from $TAG_NAME"
+            exit 1
+          fi

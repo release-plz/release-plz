@@ -175,7 +175,7 @@ jobs:
         name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run k-releaser
-        uses: secana/k-releaser@v0.1.7 # Check marketplace for latest version
+        uses: secana/k-releaser@v1
         with:
           command: release
         env:
@@ -196,7 +196,7 @@ jobs:
       - *checkout
       - *install-rust
       - name: Run k-releaser
-        uses: secana/k-releaser@v0.1.7 # Check marketplace for latest version
+        uses: secana/k-releaser@v1
         with:
           command: release-pr
         env:
