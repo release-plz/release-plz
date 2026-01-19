@@ -1,12 +1,8 @@
-[![k-releaser-logo](website/static/img/k-releaser-social-card.png)](https://k-releaser.dev)
-
-[![Crates.io](https://img.shields.io/crates/v/k-releaser.svg)](https://crates.io/crates/k-releaser)
-[![CI](https://github.com/k-releaser/k-releaser/workflows/CI/badge.svg)](https://github.com/k-releaser/k-releaser/actions)
-[![Docker](https://badgen.net/badge/icon/docker?icon=docker&label)](https://hub.docker.com/r/marcoieni/k-releaser)
+# k-releaser
 
 k-releaser helps you release your Rust monorepo packages by automating:
 
-- CHANGELOG generation (with [git-cliff](https://git-cliff.org)).
+- Changelog generation (with [git-cliff](https://git-cliff.org)).
 - Creation of GitHub/Gitea/GitLab releases.
 - Unified workspace versioning (all packages share the same version).
 - Version bumps in `Cargo.toml`.
@@ -16,7 +12,7 @@ k-releaser updates your packages with a release Pull Request based on:
 - Your git history, following [Conventional commits](https://www.conventionalcommits.org/).
 - Git tags for version detection (no crates.io registry dependency).
 
-## ⚠️ About This Fork
+## About This Fork
 
 > **Important**: k-releaser is a specialized fork of the brilliant [release-plz](https://github.com/release-plz/release-plz) and is **not suitable for most Rust projects**. If you're working on a standard Rust project or publishing to crates.io, you should use [release-plz](https://github.com/release-plz/release-plz) instead.
 
@@ -33,214 +29,97 @@ k-releaser was created to address specific needs of **large mixed language monor
 | **Changelog** | Separate changelog per package | Single workspace-level changelog |
 | **Publishing** | Publishes to crates.io | No crates.io publishing (git releases only) |
 | **PR format** | Lists each package separately | Treats entire workspace as single unit |
-| **Use case** | Standard Rust projects | Large private monorepos |
+| **Use case** | Standard Rust projects | Large mixed language monorepos |
 
 ### When to Use k-releaser
 
 Use k-releaser **only** if:
-- ✅ You have a large Rust workspace/monorepo
-- ✅ You want all workspace packages to share the same version
-- ✅ You prefer a single changelog for the entire repository
-- ✅ You only use git tags for version tracking
+- You have a large Rust workspace/monorepo
+- You want all workspace packages to share the same version
+- You prefer a single changelog for the entire repository
+- You only use git tags for version tracking
 
 ### When to Use release-plz Instead
 
 Use [release-plz](https://github.com/release-plz/release-plz) if:
-- ✅ You want independent versioning for workspace packages
-- ✅ You prefer separate changelogs per package
-- ✅ You're working on a standard Rust project
-- ✅ You want the recommended, well-supported tool
+- You want independent versioning for workspace packages
+- You prefer separate changelogs per package
+- You're working on a standard Rust project
+- You want the recommended, well-supported tool
 
-### Credits
-
-k-releaser is a heavily modified fork of [release-plz](https://github.com/release-plz/release-plz), created by Marco Ieni. The original release-plz is an excellent tool that serves the Rust ecosystem well. This fork exists solely to address specific edge cases in large private monorepos and should not be seen as a replacement for the original project.
-
-## 🤔 What's a Release PR?
+## What's a Release PR?
 
 k-releaser maintains Release PRs, keeping them up-to-date as you merge additional commits. When you're
 ready to create a release, simply merge the release PR.
-
-![pr](website/docs/assets/pr.png)
 
 When you merge the Release PR (or when you edit the `Cargo.toml` versions by yourself),
 k-releaser:
 
 - Creates a git tag named `v<version>` (e.g. `v1.8.1`).
-- Publishes a GitHub/Gitea/GitLab release based on the git tag.
 - Updates all workspace packages to the same version (unified versioning).
+- Publishes a GitHub/Gitea/GitLab release based on the git tag (optional second step).
 
-## ⚙️ Configuration
+## How k-releaser Works
 
-k-releaser is configured in your root `Cargo.toml` file under `[workspace.metadata.k-releaser]` for workspaces or `[package.metadata.k-releaser]` for single packages.
+### Git History is the Source of Truth
 
-> **Note**: k-releaser is **command-driven, not config-driven**. Configuration controls *how* commands work (templates, labels, etc.), not *whether* they run. To create a release, run the `release` command. To skip a release, don't run it. Simple!
+k-releaser follows a fundamental principle: **your git commit history is the single source of truth**.
 
-### Basic Configuration
+- **Git commits** → analyzed by git-cliff → **generate PR body**
+- **PR body** → reviewed/modified by you → **becomes release body**
+- **CHANGELOG.md files** (optional) → write-only outputs (never read for releases)
 
-```toml
-[workspace.metadata.k-releaser]
-# Only create releases when commits match this pattern (optional)
-# Useful to skip releases for chore/docs commits
-release_commits = "^(feat|fix):"
+This means:
+- Git history determines what goes in releases
+- You can review and modify the PR body before merging
+- Optional CHANGELOG.md files can be generated for documentation but are not used as input
 
-# Create and update CHANGELOG.md file (default: false)
-# Set to true to maintain a changelog file in your repository
-changelog_update = true
+### Selective Version Bumping
 
-# Path to custom git-cliff changelog config (optional)
-# Defaults to "keep a changelog" format
-changelog_config = ".github/cliff.toml"
+k-releaser follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). It helps to keep the number of new releases as low as possible. Every release is a burden for the user and should only be done, if the product improved from a users perspective. k-releaser distinguishes between:
+
+**Commits that trigger version bumps:**
+- `fix:` - Patch version bump (0.1.0 → 0.1.1)
+- `feat:` - Minor version bump (0.1.0 → 0.2.0)
+- Breaking changes (`!` or `BREAKING CHANGE:`) - Major version bump (0.1.0 → 1.0.0)
+- Custom commit types from your config
+
+**Commits that do NOT trigger version bumps:**
+- `ci:` - CI/CD changes
+- `docs:` - Documentation updates
+- `test:` - Test additions or changes
+- `chore:` - Maintenance tasks
+- `style:` - Code formatting
+- `refactor:` - Code restructuring without behavior changes
+- `perf:` - Performance improvements
+
+**All commits appear in the changelog**, but only the commits above trigger a new release PR or version bump.
+
+Example:
+```bash
+# These create a release PR:
+git commit -m "feat: add user authentication"
+git commit -m "fix: resolve login bug"
+
+# These don't create a release PR (but appear in changelog):
+git commit -m "ci: update GitHub Actions workflow"
+git commit -m "docs: update README"
+git commit -m "test: add unit tests for auth"
 ```
 
-### Version Control
+### Unified Workspace Releases
 
-```toml
-[workspace.metadata.k-releaser]
-# Git tag name template (default: "v{{ version }}")
-# Available variables: {{ version }}, {{ package }}
-git_tag_name = "v{{ version }}"
+When all packages in your workspace share the same version, k-releaser creates a **single unified release**:
 
-# Maximum commits to analyze for first release (default: 1000)
-max_analyze_commits = 2000
-```
+- **One git tag** for the entire workspace (e.g., `v1.7.0`)
+- **One GitHub/Gitea/GitLab release** with title "Version 1.7.0"
+- **One release body** containing the PR changelog (not individual package changelogs)
+- **All workspace packages** updated to the same version
 
-### Git Release Configuration
+This ensures your monorepo is released as a cohesive unit, not as separate packages.
 
-```toml
-[workspace.metadata.k-releaser]
-# Enable/disable GitHub/Gitea/GitLab releases (default: true)
-git_release_enable = true
 
-# Git release name template (optional)
-# Available variables: {{ version }}, {{ package }}
-git_release_name = "Release {{ version }}"
-
-# Git release body template (optional)
-# Uses changelog by default
-git_release_body = "{{ changelog }}"
-
-# Release type: "prod", "pre", or "auto" (default: "prod")
-# "auto" marks as pre-release if version contains -rc, -beta, etc.
-git_release_type = "auto"
-
-# Create release as draft (default: false)
-git_release_draft = false
-
-# Mark release as latest (default: true)
-git_release_latest = true
-```
-
-### Pull Request Configuration
-
-```toml
-[workspace.metadata.k-releaser]
-# PR title template (optional)
-pr_name = "chore: release {{ version }}"
-
-# PR body template (optional)
-# Available variables: {{ changelog }}, {{ version }}, {{ package }}
-pr_body = """
-## Release {{ version }}
-
-{{ changelog }}
-"""
-
-# Create PR as draft (default: false)
-pr_draft = false
-
-# Labels to add to PR (optional)
-pr_labels = ["release", "automated"]
-
-# PR branch prefix (default: "release-plz-")
-pr_branch_prefix = "release-"
-```
-
-### Changelog Customization
-
-Advanced changelog customization using git-cliff templates:
-
-```toml
-[workspace.metadata.k-releaser.changelog]
-# Changelog header
-header = """
-# Changelog
-
-All notable changes to this project will be documented in this file.
-"""
-
-# Changelog entry template (Tera template)
-body = """
-## [{{ version }}]({{ release_link }}) - {{ timestamp | date(format="%Y-%m-%d") }}
-
-{% for group, commits in commits | group_by(attribute="group") %}
-### {{ group | upper_first }}
-{% for commit in commits %}
-  - {{ commit.message }}{% if commit.breaking %} **BREAKING**{% endif %}
-{% endfor %}
-{% endfor %}
-"""
-
-# Remove leading/trailing whitespace (default: true)
-trim = true
-
-# Sort commits: "oldest" or "newest" (default: "newest")
-sort_commits = "newest"
-
-# Protect breaking changes from being skipped (default: false)
-protect_breaking_commits = true
-```
-
-### Repository Settings
-
-```toml
-[workspace.metadata.k-releaser]
-# Repository URL (defaults to git remote)
-# Used for generating changelog links
-repo_url = "https://github.com/your-org/your-repo"
-
-# Allow dirty working directory (default: false)
-allow_dirty = false
-
-# Update all dependencies in Cargo.lock (default: false)
-# If false, only updates workspace packages
-dependencies_update = false
-```
-
-### Per-Package Overrides
-
-Override settings for specific packages (rarely needed with unified versioning):
-
-```toml
-[[workspace.metadata.k-releaser.package]]
-name = "my-package"
-# Custom changelog path for this package
-changelog_path = "packages/my-package/CHANGELOG.md"
-```
-
-### Complete Example
-
-```toml
-[workspace.metadata.k-releaser]
-# Core settings
-changelog_update = true
-release_commits = "^(feat|fix|perf):"
-
-# Git configuration
-git_tag_name = "v{{ version }}"
-git_release_name = "{{ version }}"
-git_release_type = "auto"
-
-# PR configuration
-pr_draft = false
-pr_labels = ["release"]
-pr_branch_prefix = "release-"
-
-# Repository
-repo_url = "https://github.com/your-org/your-repo"
-dependencies_update = false
-```
-
-## 🤖 Running k-releaser
+## Running k-releaser
 
 k-releaser provides several commands, each with a specific purpose:
 
@@ -263,10 +142,70 @@ k-releaser release-pr
 k-releaser release
 ```
 
-See the [CLI documentation](https://k-releaser.dev/docs/usage) for more details on running k-releaser in different CI systems (GitHub Actions, Gitea, GitLab).
+It's recommended to use the corresponding Github Action to run k-releaser.
 
+You find the Action here: [Github Marketspace - k-releaser](https://github.com/marketplace/actions/k-releaser)
 
-## 🌓 Related projects
+Simple Github CI example:
+
+```yaml
+name: k-releaser
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # Release unpublished packages.
+  k-releaser-release:
+    name: k-releaser release
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'secana' }} # Do not run on forks
+    permissions:
+      contents: write
+    steps:
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - &install-rust
+        name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run k-releaser
+        uses: secana/k-releaser@v0.1.7 # Check marketplace for latest version
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
+
+  # Create a PR with the new versions and changelog, preparing the next release.
+  k-releaser-pr:
+    name: k-releaser PR
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'secana' }} # Do not run on forks
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: k-releaser-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - *checkout
+      - *install-rust
+      - name: Run k-releaser
+        uses: secana/k-releaser@v0.1.7 # Check marketplace for latest version
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.K_RELEASER_TOKEN }}
+```
+
+The `K_RELEASER_TOKEN` must be a `GITHUB_TOKEN` with the rights to edit `content` and `pull-requests`. The default token from Github usually lacks this permission.
+
+## Related projects
 
 - **[release-plz](https://github.com/release-plz/release-plz)**: The parent project that k-releaser is forked from.
   An excellent tool for automating releases of Rust projects with crates.io publishing, per-package versioning,
@@ -276,14 +215,6 @@ See the [CLI documentation](https://k-releaser.dev/docs/usage) for more details 
 - [cargo-smart-release](https://github.com/Byron/cargo-smart-release):
   Fearlessly release workspace crates with beautiful semi-handcrafted changelogs.
 
-## 🙏 Credits
+## Credits
 
 k-releaser is a fork of [release-plz](https://github.com/release-plz/release-plz) by Marco Ieni. The majority of the codebase, architecture, and design comes from release-plz.
-
-Additional inspiration and code from:
-
-- [cargo-clone](https://github.com/JanLikar/cargo-clone)
-- [cargo-edit](https://github.com/killercup/cargo-edit)
-- [cargo-release](https://github.com/crate-ci/cargo-release)
-- [cargo-workspaces](https://github.com/pksunkara/cargo-workspaces)
-- [git-cliff](https://github.com/orhun/git-cliff)
