@@ -821,3 +821,81 @@ publish = false
     let packages = context.download_package(dest_dir.path());
     assert!(packages.is_empty());
 }
+
+/// Test for <https://github.com/release-plz/release-plz/issues/2594>
+/// In `git_only` mode, release-plz should NOT check crates.io for existing packages.
+/// This test verifies that a package with a name that exists on crates.io ("log")
+/// still gets tagged in `git_only` mode, because the registry check is skipped.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_release_does_not_check_crates_io() {
+    use cargo_metadata::semver::Version;
+
+    // Create workspace with two packages
+    let context = TestContext::new_workspace(&["mylib", "mybin"]).await;
+
+    // Rename "mylib" to "log" - a name that definitely exists on crates.io.
+    // Without the fix, release-plz would check crates.io and find "log" already published,
+    // causing it to skip creating the tag for this package.
+    context.set_package_name("mylib", "log");
+    context.run_cargo_check();
+    context.push_all_changes("rename mylib to log");
+
+    // Configure with git_only = true and publish = false
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tags
+    context.repo.tag("log-v0.1.0", "Release log v0.1.0").unwrap();
+    context.repo.tag("mybin-v0.1.0", "Release mybin v0.1.0").unwrap();
+
+    // Update versions and make a new commit
+    context.set_package_version("mylib", &Version::parse("0.1.1").unwrap());
+    context.set_package_version("mybin", &Version::parse("0.1.1").unwrap());
+    context.run_cargo_check();
+    context.push_all_changes("fix: bug fix in both packages");
+
+    let expected_log_tag = "log-v0.1.1";
+    let expected_mybin_tag = "mybin-v0.1.1";
+
+    // Verify tags don't exist yet
+    let tag_exists = |tag: &str| {
+        context.repo.git(&["fetch", "--tags"]).unwrap();
+        context.repo.tag_exists(tag).unwrap()
+    };
+    assert!(!tag_exists(expected_log_tag), "log tag should not exist before release");
+    assert!(!tag_exists(expected_mybin_tag), "mybin tag should not exist before release");
+
+    // Run release command - this should succeed and create both tags
+    // Without the fix, it would only create mybin tag because "log" exists on crates.io
+    let outcome = context.run_release().success();
+
+    // Verify JSON output shows both releases
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": "log",
+                "prs": [],
+                "tag": expected_log_tag,
+                "version": "0.1.1",
+            },
+            {
+                "package_name": "mybin",
+                "prs": [],
+                "tag": expected_mybin_tag,
+                "version": "0.1.1",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Verify BOTH tags were created - this is the key assertion.
+    // Before the fix, only mybin-v0.1.1 would be created because "log" exists on crates.io.
+    assert!(tag_exists(expected_log_tag), "log tag should exist after release (git_only should not check crates.io)");
+    assert!(tag_exists(expected_mybin_tag), "mybin tag should exist after release");
+}
