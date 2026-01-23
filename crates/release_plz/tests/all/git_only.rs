@@ -848,7 +848,7 @@ publish = false
     // Create initial release tags
     context
         .repo
-        .tag("log-v0.1.0", "Release log v0.1.0")
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
         .unwrap();
     context
         .repo
@@ -864,7 +864,7 @@ publish = false
     // Publish the new version of "mylib" to the cargo registry as well.
     context.run_cargo_publish("mylib");
 
-    let expected_log_tag = "log-v0.1.1";
+    let expected_mylib_tag = "mylib-v0.1.1";
     let expected_mybin_tag = "mybin-v0.1.1";
 
     // Verify tags don't exist yet
@@ -873,8 +873,8 @@ publish = false
         context.repo.tag_exists(tag).unwrap()
     };
     assert!(
-        !tag_exists(expected_log_tag),
-        "log tag should not exist before release"
+        !tag_exists(expected_mylib_tag),
+        "mylib tag should not exist before release"
     );
     assert!(
         !tag_exists(expected_mybin_tag),
@@ -882,16 +882,16 @@ publish = false
     );
 
     // Run release command - this should succeed and create both tags
-    // Without the fix, it would only create mybin tag because "log" exists on crates.io
+    // Without the fix, it would only create mybin tag because "mylib" exists on the cargo registry
     let outcome = context.run_release().success();
 
     // Verify JSON output shows both releases
     let expected_stdout = serde_json::json!({
         "releases": [
             {
-                "package_name": "log",
+                "package_name": "mylib",
                 "prs": [],
-                "tag": expected_log_tag,
+                "tag": expected_mylib_tag,
                 "version": "0.1.1",
             },
             {
@@ -906,10 +906,10 @@ publish = false
     outcome.stdout(format!("{expected_stdout}\n"));
 
     // Verify BOTH tags were created - this is the key assertion.
-    // Before the fix, only mybin-v0.1.1 would be created because "log" exists on crates.io.
+    // Before the fix, only mybin-v0.1.1 would be created because "mylib" exists on the cargo registry.
     assert!(
-        tag_exists(expected_log_tag),
-        "log tag should exist after release (git_only should not check crates.io)"
+        tag_exists(expected_mylib_tag),
+        "mylib tag should exist after release (git_only should not check the cargo registry)"
     );
     assert!(
         tag_exists(expected_mybin_tag),
