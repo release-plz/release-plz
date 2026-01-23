@@ -1,6 +1,6 @@
 [workspace]
 git_release_enable = false
-dependencies_update = true # run `cargo update` in the release PR
+dependencies_update = false # TODO: re-enable when `cargo update` works in this project
 
 git_release_body = """
 {{ changelog }}
