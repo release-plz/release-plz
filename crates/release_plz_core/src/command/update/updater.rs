@@ -224,7 +224,7 @@ impl Updater<'_> {
         // Store diff for each package. This operation is not thread safe, so we do it in one
         // package at a time.
 
-        // Collect packages that are either publishable or git-only, with de-duplication.
+        // Collect packages that are either publishable or git-only, with de-duplication, order is important.
         let mut packages_to_process: Vec<&Package> = Vec::new();
         let mut package_names: HashSet<String> = HashSet::new();
 
