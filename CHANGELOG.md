@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.152](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.151...release-plz-v0.3.152) - 2026-01-23
+
+### Fixed
+
+- consider private `git_only` packages ([#2603](https://github.com/release-plz/release-plz/pull/2603))
+
+### Other
+
+- don't check crates-io on git-only mode ([#2596](https://github.com/release-plz/release-plz/pull/2596))
+- Improve changelog generation if version already bumped ([#2585](https://github.com/release-plz/release-plz/pull/2585))
+- remove unused function ([#2592](https://github.com/release-plz/release-plz/pull/2592))
+
 ## [0.3.151](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.150...release-plz-v0.3.151) - 2026-01-17
 
 ### Added
