@@ -695,14 +695,10 @@ async fn release_package_if_needed(
     } else {
         // When publishing is disabled (e.g., git_only mode), skip registry checks entirely
         // and only perform git tag/release operations.
-        let package_was_released_result = release_package_git_only(
-            input,
-            repo,
-            git_client,
-            &release_info,
-        )
-        .await
-        .context("failed to release package (git-only)")?;
+        let package_was_released_result =
+            release_package_git_only(input, repo, git_client, &release_info)
+                .await
+                .context("failed to release package (git-only)")?;
 
         if package_was_released_result {
             package_was_released = true;

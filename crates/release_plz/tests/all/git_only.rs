@@ -850,8 +850,14 @@ publish = false
     context.write_release_plz_toml(config);
 
     // Create initial release tags
-    context.repo.tag("log-v0.1.0", "Release log v0.1.0").unwrap();
-    context.repo.tag("mybin-v0.1.0", "Release mybin v0.1.0").unwrap();
+    context
+        .repo
+        .tag("log-v0.1.0", "Release log v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
 
     // Update versions and make a new commit
     context.set_package_version("mylib", &Version::parse("0.1.1").unwrap());
@@ -867,8 +873,14 @@ publish = false
         context.repo.git(&["fetch", "--tags"]).unwrap();
         context.repo.tag_exists(tag).unwrap()
     };
-    assert!(!tag_exists(expected_log_tag), "log tag should not exist before release");
-    assert!(!tag_exists(expected_mybin_tag), "mybin tag should not exist before release");
+    assert!(
+        !tag_exists(expected_log_tag),
+        "log tag should not exist before release"
+    );
+    assert!(
+        !tag_exists(expected_mybin_tag),
+        "mybin tag should not exist before release"
+    );
 
     // Run release command - this should succeed and create both tags
     // Without the fix, it would only create mybin tag because "log" exists on crates.io
@@ -896,8 +908,14 @@ publish = false
 
     // Verify BOTH tags were created - this is the key assertion.
     // Before the fix, only mybin-v0.1.1 would be created because "log" exists on crates.io.
-    assert!(tag_exists(expected_log_tag), "log tag should exist after release (git_only should not check crates.io)");
-    assert!(tag_exists(expected_mybin_tag), "mybin tag should exist after release");
+    assert!(
+        tag_exists(expected_log_tag),
+        "log tag should exist after release (git_only should not check crates.io)"
+    );
+    assert!(
+        tag_exists(expected_mybin_tag),
+        "mybin tag should exist after release"
+    );
 }
 
 #[tokio::test]
