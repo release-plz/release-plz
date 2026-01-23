@@ -172,6 +172,8 @@ impl TestContext {
             .arg(package_name)
             .arg("--registry")
             .arg(TEST_REGISTRY)
+            .arg("--token")
+            .arg(format!("Bearer {}", &self.gitea.token))
             .assert()
             .success();
     }
@@ -184,8 +186,6 @@ impl TestContext {
             .arg("--verbose")
             .arg("--registry")
             .arg(TEST_REGISTRY)
-            .arg("--token")
-            .arg(format!("Bearer {}", &self.gitea.token))
             .assert()
     }
 
