@@ -225,26 +225,23 @@ impl Updater<'_> {
         // package at a time.
 
         // Collect packages that are either publishable or git-only, with de-duplication.
-        let mut packages_to_process: Vec<&Package> = Vec::new();
-        let mut package_names: HashSet<String> = HashSet::new();
+        let mut packages_to_process: HashMap<String, &Package> = HashMap::new();
 
         // Add publishable packages
         for p in self.project.publishable_packages() {
-            if package_names.insert(p.name.to_string()) {
-                packages_to_process.push(p);
-            }
+            packages_to_process.insert(p.name.to_string(), p);
         }
 
         // Add git-only packages, not already added
         for p in self.project.workspace_packages() {
-            if self.req.should_use_git_only(&p.name) && package_names.insert(p.name.to_string()) {
-                packages_to_process.push(p);
+            if self.req.should_use_git_only(&p.name) {
+                packages_to_process.insert(p.name.to_string(), p);
             }
         }
 
         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = packages_to_process
-            .iter()
-            .map(|&p| {
+            .into_values()
+            .map(|p| {
                 let diff = self
                     .get_diff(p, registry_packages, repository)
                     .with_context(|| {
