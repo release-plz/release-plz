@@ -823,9 +823,9 @@ publish = false
 }
 
 /// Test for <https://github.com/release-plz/release-plz/issues/2594>
-/// In `git_only` mode, release-plz should NOT check crates.io for existing packages.
-/// This test verifies that a package with a name that exists on crates.io ("log")
-/// still gets tagged in `git_only` mode, because the registry check is skipped.
+/// In `git_only` mode, release-plz should NOT check the cargo registry for existing packages.
+/// This test verifies that a package with a name that exists on the cargo registry
+/// still gets tagged in `git_only` mode, because the registry is not checked.
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_release_does_not_check_crates_io() {
@@ -834,12 +834,8 @@ async fn git_only_release_does_not_check_crates_io() {
     // Create workspace with two packages
     let context = TestContext::new_workspace(&["mylib", "mybin"]).await;
 
-    // Rename "mylib" to "log" - a name that definitely exists on crates.io.
-    // Without the fix, release-plz would check crates.io and find "log" already published,
-    // causing it to skip creating the tag for this package.
-    context.set_package_name("mylib", "log");
-    context.run_cargo_check();
-    context.push_all_changes("rename mylib to log");
+    // Publish "mylib" to the cargo registry.
+    context.run_cargo_publish("mylib");
 
     // Configure with git_only = true and publish = false
     let config = r#"
@@ -864,6 +860,9 @@ publish = false
     context.set_package_version("mybin", &Version::parse("0.1.1").unwrap());
     context.run_cargo_check();
     context.push_all_changes("fix: bug fix in both packages");
+
+    // Publish the new version of "mylib" to the cargo registry as well.
+    context.run_cargo_publish("mylib");
 
     let expected_log_tag = "log-v0.1.1";
     let expected_mybin_tag = "mybin-v0.1.1";

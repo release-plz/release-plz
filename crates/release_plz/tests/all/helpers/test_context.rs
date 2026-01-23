@@ -75,15 +75,6 @@ impl TestContext {
         manifest.write().unwrap();
     }
 
-    /// Rename a package by changing its name in Cargo.toml.
-    /// Note: This only changes the package name in manifest, not the directory name.
-    pub fn set_package_name(&self, old_name: &str, new_name: &str) {
-        let cargo_toml_path = self.package_path(old_name).join(CARGO_TOML);
-        let mut manifest = LocalManifest::try_new(&cargo_toml_path).unwrap();
-        manifest.data["package"]["name"] = toml_edit::value(new_name);
-        manifest.write().unwrap();
-    }
-
     pub fn push_all_changes(&self, commit_message: &str) {
         self.repo.add_all_and_commit(commit_message).unwrap();
         self.repo.git(&["push"]).unwrap();
@@ -169,6 +160,16 @@ impl TestContext {
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
             .arg("check")
+            .assert()
+            .success();
+    }
+
+    pub fn run_cargo_publish(&self, package_name: &str) {
+        assert_cmd::Command::new("cargo")
+            .current_dir(self.repo.directory())
+            .arg("publish")
+            .arg("-p")
+            .arg(package_name)
             .assert()
             .success();
     }
