@@ -164,6 +164,20 @@ impl TestContext {
             .success();
     }
 
+    pub fn run_cargo_publish(&self, package_name: &str) {
+        assert_cmd::Command::new("cargo")
+            .current_dir(self.repo.directory())
+            .arg("publish")
+            .arg("-p")
+            .arg(package_name)
+            .arg("--registry")
+            .arg(TEST_REGISTRY)
+            .arg("--token")
+            .arg(format!("Bearer {}", &self.gitea.token))
+            .assert()
+            .success();
+    }
+
     pub fn run_update(&self) -> Assert {
         super::cmd::release_plz_cmd()
             .current_dir(self.repo_dir())

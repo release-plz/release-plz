@@ -822,6 +822,100 @@ publish = false
     assert!(packages.is_empty());
 }
 
+/// Test for <https://github.com/release-plz/release-plz/issues/2594>
+/// In `git_only` mode, release-plz should NOT check the cargo registry for existing packages.
+/// This test verifies that a package with a name that exists on the cargo registry
+/// still gets tagged in `git_only` mode, because the registry is not checked.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_release_does_not_check_crates_io() {
+    use cargo_metadata::semver::Version;
+
+    // Create workspace with two packages
+    let context = TestContext::new_workspace(&["mylib", "mybin"]).await;
+
+    // Publish "mylib" to the cargo registry.
+    context.run_cargo_publish("mylib");
+
+    // Configure with git_only = true and publish = false
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tags
+    context
+        .repo
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
+
+    // Update versions and make a new commit
+    context.set_package_version("mylib", &Version::parse("0.1.1").unwrap());
+    context.set_package_version("mybin", &Version::parse("0.1.1").unwrap());
+    context.run_cargo_check();
+    context.push_all_changes("fix: bug fix in both packages");
+
+    // Publish the new version of "mylib" to the cargo registry as well.
+    context.run_cargo_publish("mylib");
+
+    let expected_mylib_tag = "mylib-v0.1.1";
+    let expected_mybin_tag = "mybin-v0.1.1";
+
+    // Verify tags don't exist yet
+    let tag_exists = |tag: &str| {
+        context.repo.git(&["fetch", "--tags"]).unwrap();
+        context.repo.tag_exists(tag).unwrap()
+    };
+    assert!(
+        !tag_exists(expected_mylib_tag),
+        "mylib tag should not exist before release"
+    );
+    assert!(
+        !tag_exists(expected_mybin_tag),
+        "mybin tag should not exist before release"
+    );
+
+    // Run release command - this should succeed and create both tags
+    // Without the fix, it would only create mybin tag because "mylib" exists on the cargo registry
+    let outcome = context.run_release().success();
+
+    // Verify JSON output shows both releases
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": "mylib",
+                "prs": [],
+                "tag": expected_mylib_tag,
+                "version": "0.1.1",
+            },
+            {
+                "package_name": "mybin",
+                "prs": [],
+                "tag": expected_mybin_tag,
+                "version": "0.1.1",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    // Verify BOTH tags were created.
+    assert!(
+        tag_exists(expected_mylib_tag),
+        "mylib tag should exist after release (git_only should not check the cargo registry)"
+    );
+    assert!(
+        tag_exists(expected_mybin_tag),
+        "mybin tag should exist after release"
+    );
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_processes_packages_with_publish_false_in_manifest() {
