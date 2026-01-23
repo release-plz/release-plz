@@ -223,9 +223,9 @@ impl Updater<'_> {
     ) -> anyhow::Result<Vec<(&Package, Diff)>> {
         // Store diff for each package. This operation is not thread safe, so we do it in one
         // package at a time.
+
         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = self
-            .project
-            .publishable_packages()
+            .packages_to_process()
             .iter()
             .map(|&p| {
                 let diff = self
@@ -278,6 +278,27 @@ impl Updater<'_> {
         semver_check_result?;
 
         Ok(packages_diffs)
+    }
+
+    fn packages_to_process(&self) -> Vec<&Package> {
+        // Collect packages that are either publishable or git-only, with de-duplication, order is important.
+        let mut packages_to_process: Vec<&Package> = Vec::new();
+        let mut package_names: HashSet<String> = HashSet::new();
+
+        // Add publishable packages
+        for p in self.project.publishable_packages() {
+            if package_names.insert(p.name.to_string()) {
+                packages_to_process.push(p);
+            }
+        }
+
+        // Add git-only packages, not already added
+        for p in self.project.workspace_packages() {
+            if self.req.should_use_git_only(&p.name) && package_names.insert(p.name.to_string()) {
+                packages_to_process.push(p);
+            }
+        }
+        packages_to_process
     }
 
     async fn fill_commits<'a>(

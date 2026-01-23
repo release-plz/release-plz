@@ -899,3 +899,41 @@ publish = false
     assert!(tag_exists(expected_log_tag), "log tag should exist after release (git_only should not check crates.io)");
     assert!(tag_exists(expected_mybin_tag), "mybin tag should exist after release");
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_processes_packages_with_publish_false_in_manifest() {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new().await;
+
+    // Set publish = false in the Cargo.toml manifest
+    let cargo_toml_path = context.repo_dir().join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
+    context.push_all_changes("chore: set publish = false");
+
+    // Configure git_only = true in release-plz config
+    let config = r#"
+[workspace]
+git_only = true
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create initial release tag
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Make a fix commit
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    // Run release-pr - should succeed even though publish = false in manifest
+    context.run_release_pr().success();
+
+    // Verify PR was created with correct version bump (0.1.0 -> 0.1.1)
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+}
