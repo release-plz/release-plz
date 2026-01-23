@@ -982,53 +982,15 @@ async fn release_package(
             wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
         }
 
-        if should_create_git_tag {
-            // Use same tag message of cargo-release
-            let message = format!(
-                "chore: Release package {} version {}",
-                release_info.package.name, release_info.package.version
-            );
-            let should_sign_tags = repo
-                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
-                .map(|s| s.trim() == "true")?;
-            // If tag signing is enabled, create the tag locally instead of using the API
-            if should_sign_tags {
-                repo.tag(release_info.git_tag, &message)?;
-                repo.push(release_info.git_tag)?;
-            } else {
-                let sha = repo.current_commit_hash()?;
-                git_client
-                    .create_tag(release_info.git_tag, &message, &sha)
-                    .await?;
-            }
-        }
-
-        let contributors = get_contributors(release_info, git_client).await;
-
-        // TODO fill the rest
-        let remote = Remote {
-            owner: String::new(),
-            repo: String::new(),
-            link: String::new(),
-            contributors,
-        };
-        if should_create_git_release {
-            let release_body =
-                release_body(input, release_info.package, release_info.changelog, &remote);
-            let release_config = input
-                .get_package_config(&release_info.package.name)
-                .git_release;
-            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
-            let git_release_info = GitReleaseInfo {
-                git_tag: release_info.git_tag.to_string(),
-                release_name: release_info.release_name.to_string(),
-                release_body,
-                draft: release_config.draft,
-                latest: release_config.latest,
-                pre_release: is_pre_release,
-            };
-            git_client.create_release(&git_release_info).await?;
-        }
+        create_git_tag_and_release(
+            input,
+            repo,
+            git_client,
+            release_info,
+            should_create_git_tag,
+            should_create_git_release,
+        )
+        .await?;
 
         info!(
             "published {} {}",
@@ -1060,52 +1022,15 @@ async fn release_package_git_only(
         );
         Ok(false)
     } else {
-        if should_create_git_tag {
-            // Use same tag message of cargo-release
-            let message = format!(
-                "chore: Release package {} version {}",
-                release_info.package.name, release_info.package.version
-            );
-            let should_sign_tags = repo
-                .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
-                .map(|s| s.trim() == "true")?;
-            // If tag signing is enabled, create the tag locally instead of using the API
-            if should_sign_tags {
-                repo.tag(release_info.git_tag, &message)?;
-                repo.push(release_info.git_tag)?;
-            } else {
-                let sha = repo.current_commit_hash()?;
-                git_client
-                    .create_tag(release_info.git_tag, &message, &sha)
-                    .await?;
-            }
-        }
-
-        let contributors = get_contributors(release_info, git_client).await;
-
-        let remote = Remote {
-            owner: String::new(),
-            repo: String::new(),
-            link: String::new(),
-            contributors,
-        };
-        if should_create_git_release {
-            let release_body =
-                release_body(input, release_info.package, release_info.changelog, &remote);
-            let release_config = input
-                .get_package_config(&release_info.package.name)
-                .git_release;
-            let is_pre_release = release_config.is_pre_release(&release_info.package.version);
-            let git_release_info = GitReleaseInfo {
-                git_tag: release_info.git_tag.to_string(),
-                release_name: release_info.release_name.to_string(),
-                release_body,
-                draft: release_config.draft,
-                latest: release_config.latest,
-                pre_release: is_pre_release,
-            };
-            git_client.create_release(&git_release_info).await?;
-        }
+        create_git_tag_and_release(
+            input,
+            repo,
+            git_client,
+            release_info,
+            should_create_git_tag,
+            should_create_git_release,
+        )
+        .await?;
 
         info!(
             "released {} {} (git-only)",
@@ -1113,6 +1038,64 @@ async fn release_package_git_only(
         );
         Ok(true)
     }
+}
+
+/// Create git tag and/or git release for a package.
+async fn create_git_tag_and_release(
+    input: &ReleaseRequest,
+    repo: &Repo,
+    git_client: &GitClient,
+    release_info: &ReleaseInfo<'_>,
+    should_create_git_tag: bool,
+    should_create_git_release: bool,
+) -> anyhow::Result<()> {
+    if should_create_git_tag {
+        // Use same tag message of cargo-release
+        let message = format!(
+            "chore: Release package {} version {}",
+            release_info.package.name, release_info.package.version
+        );
+        let should_sign_tags = repo
+            .git(&["config", "--default", "false", "--get", "tag.gpgSign"])
+            .map(|s| s.trim() == "true")?;
+        // If tag signing is enabled, create the tag locally instead of using the API
+        if should_sign_tags {
+            repo.tag(release_info.git_tag, &message)?;
+            repo.push(release_info.git_tag)?;
+        } else {
+            let sha = repo.current_commit_hash()?;
+            git_client
+                .create_tag(release_info.git_tag, &message, &sha)
+                .await?;
+        }
+    }
+
+    if should_create_git_release {
+        let contributors = get_contributors(release_info, git_client).await;
+        let remote = Remote {
+            owner: String::new(),
+            repo: String::new(),
+            link: String::new(),
+            contributors,
+        };
+        let release_body =
+            release_body(input, release_info.package, release_info.changelog, &remote);
+        let release_config = input
+            .get_package_config(&release_info.package.name)
+            .git_release;
+        let is_pre_release = release_config.is_pre_release(&release_info.package.version);
+        let git_release_info = GitReleaseInfo {
+            git_tag: release_info.git_tag.to_string(),
+            release_name: release_info.release_name.to_string(),
+            release_body,
+            draft: release_config.draft,
+            latest: release_config.latest,
+            pre_release: is_pre_release,
+        };
+        git_client.create_release(&git_release_info).await?;
+    }
+
+    Ok(())
 }
 
 /// Traces the steps that would have been taken had release been run without dry-run.
