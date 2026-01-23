@@ -905,8 +905,7 @@ publish = false
     .to_string();
     outcome.stdout(format!("{expected_stdout}\n"));
 
-    // Verify BOTH tags were created - this is the key assertion.
-    // Before the fix, only mybin-v0.1.1 would be created because "mylib" exists on the cargo registry.
+    // Verify BOTH tags were created.
     assert!(
         tag_exists(expected_mylib_tag),
         "mylib tag should exist after release (git_only should not check the cargo registry)"
