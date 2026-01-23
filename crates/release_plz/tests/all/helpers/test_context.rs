@@ -170,6 +170,8 @@ impl TestContext {
             .arg("publish")
             .arg("-p")
             .arg(package_name)
+            .arg("--registry")
+            .arg(TEST_REGISTRY)
             .assert()
             .success();
     }

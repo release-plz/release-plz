@@ -1068,6 +1068,8 @@ async fn create_git_tag_and_release(
 
     if should_create_git_release {
         let contributors = get_contributors(release_info, git_client).await;
+
+        // TODO fill the rest
         let remote = Remote {
             owner: String::new(),
             repo: String::new(),
