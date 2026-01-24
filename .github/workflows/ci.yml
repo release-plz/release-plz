@@ -30,9 +30,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@b09de3ba77da9ca8a51dffa4fcd3692d566730a8 # v1.17.2
-        env:
-          BINSTALL_VERSION: 1.16.7
+        uses: marcoieni/cargo-binstall@allow-pinning-binstall-version-in-the-action
+        with:
+          version: 1.16.7
       - name: Install tools
         shell: bash
         run: |
@@ -64,9 +64,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@b09de3ba77da9ca8a51dffa4fcd3692d566730a8 # v1.17.2
-        env:
-          BINSTALL_VERSION: 1.16.7
+        uses: marcoieni/cargo-binstall@allow-pinning-binstall-version-in-the-action
+        with:
+          version: 1.16.7
       - name: Install tools
         shell: bash
         run: |
