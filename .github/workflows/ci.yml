@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@e7cc28468cf17df7cb288daea80c0c5437af360b # v1.16.7
+        uses: cargo-bins/cargo-binstall@b09de3ba77da9ca8a51dffa4fcd3692d566730a8 # v1.17.2
         env:
           BINSTALL_VERSION: 1.16.7
       - name: Install tools
@@ -64,7 +64,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@e7cc28468cf17df7cb288daea80c0c5437af360b # v1.16.7
+        uses: cargo-bins/cargo-binstall@b09de3ba77da9ca8a51dffa4fcd3692d566730a8 # v1.17.2
         env:
           BINSTALL_VERSION: 1.16.7
       - name: Install tools
