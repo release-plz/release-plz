@@ -29,18 +29,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@b09de3ba77da9ca8a51dffa4fcd3692d566730a8 # v1.17.2
-        env:
-          BINSTALL_VERSION: 1.16.7
-      - name: Install tools
-        shell: bash
-        run: |
-          cargo-binstall \
-              cargo-semver-checks@0.46\
-              --force\
-              --strategies=crate-meta-data\
-              --no-confirm
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@8444b4f2165ec93147f3ee41e06495653063ad11 # v2.67.6
+        with:
+          tool: cargo-semver-checks
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
@@ -63,18 +55,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@b09de3ba77da9ca8a51dffa4fcd3692d566730a8 # v1.17.2
-        env:
-          BINSTALL_VERSION: 1.16.7
-      - name: Install tools
-        shell: bash
-        run: |
-          cargo-binstall \
-              cargo-semver-checks@0.46\
-              --force\
-              --strategies=crate-meta-data\
-              --no-confirm
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@8444b4f2165ec93147f3ee41e06495653063ad11 # v2.67.6
+        with:
+          tool: cargo-semver-checks
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
       - name: Run tests
