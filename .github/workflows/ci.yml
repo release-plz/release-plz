@@ -65,8 +65,6 @@ jobs:
           persist-credentials: false
       - name: Install cargo-binstall
         uses: marcoieni/cargo-binstall@allow-pinning-binstall-version-in-the-action
-        with:
-          version: 1.16.7
       - name: Install tools
         shell: bash
         run: |
