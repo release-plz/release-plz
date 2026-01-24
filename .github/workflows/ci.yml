@@ -31,6 +31,8 @@ jobs:
           persist-credentials: false
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@e7cc28468cf17df7cb288daea80c0c5437af360b # v1.16.7
+        env:
+          BINSTALL_VERSION: 1.16.7
       - name: Install tools
         shell: bash
         run: |
@@ -39,8 +41,6 @@ jobs:
               --force\
               --strategies=crate-meta-data\
               --no-confirm
-        env:
-          BINSTALL_VERSION: 1.16.7
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
@@ -65,6 +65,8 @@ jobs:
           persist-credentials: false
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@e7cc28468cf17df7cb288daea80c0c5437af360b # v1.16.7
+        env:
+          BINSTALL_VERSION: 1.16.7
       - name: Install tools
         shell: bash
         run: |
@@ -73,8 +75,6 @@ jobs:
               --force\
               --strategies=crate-meta-data\
               --no-confirm
-        env:
-          BINSTALL_VERSION: 1.16.7
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
       - name: Run tests
