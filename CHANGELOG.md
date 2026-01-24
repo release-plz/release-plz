@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.153](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.152...release-plz-v0.3.153) - 2026-01-24
+
+### Other
+
+- specify cargo-binstall pkg-fmt for faster download ([#2612](https://github.com/release-plz/release-plz/pull/2612))
+
 ## [0.3.152](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.151...release-plz-v0.3.152) - 2026-01-23
 
 ### Fixed
