@@ -93,11 +93,29 @@ jobs:
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_BODY: ${{ github.event.release.body }}
           TYPEFULLY_API_KEY: ${{ secrets.TYPEFULLY_API_KEY }}
-        run: >-
-          curl -X POST "https://api.typefully.com/v1/drafts/"
-          -H "Content-Type: application/json"
-          -H "X-API-KEY: ${TYPEFULLY_API_KEY}"
-          -d "{
-            \"content\": \"🤖 New release: ${RELEASE_NAME}\n\n${RELEASE_BODY}\",
-            \"threadify\": true
-          }"
+        run: |
+          set -euo pipefail
+
+          # Typefully v2 API expects explicit per-platform payloads.
+          long_text=$(printf '🤖 New release: %s\n\n%s\n' "$RELEASE_NAME" "$RELEASE_BODY")
+
+          payload=$(jq -n \
+            --arg long_text "$long_text" \
+            '{
+              platforms: {
+                x: { enabled: true, posts: [{ text: $long_text }] },
+                linkedin: { enabled: true, posts: [{ text: $long_text }] },
+                mastodon: { enabled: true, posts: [{ text: $long_text }] },
+                bluesky: { enabled: true, posts: [{ text: $long_text }] }
+              }
+            }')
+
+          response=$(curl -sS --fail \
+            --request POST "https://api.typefully.com/v2/social-sets/201880/drafts" \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer ${TYPEFULLY_API_KEY}" \
+            --data "$payload")
+
+          draft_id=$(printf '%s' "$response" | jq -r '.id // empty')
+
+          echo "Typefully draft created: id=${draft_id}"
