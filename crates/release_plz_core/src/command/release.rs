@@ -656,12 +656,11 @@ async fn release_package_if_needed(
         for CargoRegistry {
             name,
             index: primary_index,
-            fallback_index,
         } in registry_indexes
         {
             let token = input.find_registry_token(name.as_deref())?;
             let (pkg_is_published, mut index) =
-                is_package_published(input, package, primary_index, fallback_index, &token)
+                is_package_published(input, package, primary_index, &token)
                     .await
                     .with_context(|| {
                         format!("can't determine if package {} is published", package.name)
@@ -719,28 +718,11 @@ async fn is_package_published(
     input: &ReleaseRequest,
     package: &Package,
     mut primary_index: CargoIndex,
-    fallback_index: Option<CargoIndex>,
     token: &Option<SecretString>,
 ) -> anyhow::Result<(bool, CargoIndex)> {
     let is_published_in_primary =
         is_published(&mut primary_index, package, input.publish_timeout, token).await;
 
-    // If a fallback index is defined.
-    if let Some(mut fallback_index) = fallback_index {
-        // And if the primary index returns an error, attempt to check the
-        // fallback.
-        if let Err(e) = &is_published_in_primary {
-            warn!(
-                "Error checking primary index for package {}: {e:?}. Trying fallback index.",
-                package.name
-            );
-            let is_published_in_fallback =
-                is_published(&mut fallback_index, package, input.publish_timeout, token).await;
-            if let Ok(fallback_is_published) = is_published_in_fallback {
-                return Ok((fallback_is_published, fallback_index));
-            }
-        };
-    };
     Ok((is_published_in_primary?, primary_index))
 }
 
@@ -829,7 +811,6 @@ fn registry_indexes(
         registry_indexes.push(CargoRegistry {
             name: None,
             index: CargoIndex::Git(GitIndex::new_cargo_default()?),
-            fallback_index: None,
         });
     }
     Ok(registry_indexes)
@@ -859,19 +840,21 @@ fn get_cargo_registry(registry: String, u: &Url) -> anyhow::Result<CargoRegistry
         (maybe_primary, maybe_fallback)
     };
 
-    let primary_index = maybe_primary_index.context("failed to get cargo registry")?;
-
-    let fallback_index = match maybe_fallback_index {
-        // In cases where the primary index succeeds, the lookup should
-        // continue regardless of the state of the fallback index.
-        None | Some(Err(_)) => None,
-        Some(Ok(fallback_index)) => Some(fallback_index),
-    };
+    let index = if let Ok(primary_index) = maybe_primary_index {
+        Ok(primary_index)
+    } else {
+        match maybe_fallback_index {
+            // In cases where the primary index succeeds, the lookup should
+            // continue regardless of the state of the fallback index.
+            None | Some(Err(_)) => maybe_primary_index,
+            Some(Ok(fallback_index)) => Ok(fallback_index),
+        }
+    }
+    .context("failed to get cargo registry")?;
 
     let registry = CargoRegistry {
         name: Some(registry),
-        index: primary_index,
-        fallback_index,
+        index,
     };
     Ok(registry)
 }
