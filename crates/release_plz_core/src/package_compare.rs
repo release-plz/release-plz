@@ -103,7 +103,13 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // we use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
+    // If this is already a packaged crate (contains Cargo.toml.orig), we can list files
+    // directly from disk without invoking `cargo package`. This avoids dependency resolution
+    // errors for workspace path dependencies when comparing git_only packages.
+    if package.join("Cargo.toml.orig").exists() || package.join("Cargo.toml.orig.orig").exists() {
+        return list_packaged_files(package).context("cannot list packaged files from directory");
+    }
+    // We use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
     let args = ["package", "--list", "--quiet", "--allow-dirty"];
     let output = run_cargo(package, &args).context("cannot run `cargo package`")?;
 
@@ -114,6 +120,35 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
     );
 
     let files = output.stdout.lines().map(Utf8PathBuf::from).collect();
+    Ok(files)
+}
+
+fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    let mut files = Vec::new();
+    let mut dirs = vec![package.to_path_buf()];
+
+    while let Some(dir) = dirs.pop() {
+        for entry in fs_err::read_dir(&dir).with_context(|| format!("cannot read dir {dir:?}"))? {
+            let entry = entry.with_context(|| format!("cannot read dir entry in {dir:?}"))?;
+            let path = Utf8PathBuf::from_path_buf(entry.path())
+                .map_err(|path| anyhow::anyhow!("non-utf8 path in package: {path:?}"))?;
+            let file_type = entry
+                .file_type()
+                .with_context(|| format!("cannot read file type for {path:?}"))?;
+
+            if file_type.is_dir() {
+                dirs.push(path);
+                continue;
+            } else {
+                let rel_path = path
+                    .strip_prefix(package)
+                    .with_context(|| format!("can't find {package:?} prefix in {path:?}"))?;
+                files.push(rel_path.to_path_buf());
+            }
+        }
+    }
+
+    files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     Ok(files)
 }
 
