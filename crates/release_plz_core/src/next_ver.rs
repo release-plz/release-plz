@@ -164,7 +164,7 @@ fn process_git_only_package(
 /// Run cargo package within a worktree
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
+    let output = run_cargo(worktree_path, &["package", "--allow-dirty", "--no-verify"])
         .context("run cargo package in worktree")?;
 
     if !output.status.success() {

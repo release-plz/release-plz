@@ -104,7 +104,13 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
     // we use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
-    let args = ["package", "--list", "--quiet", "--allow-dirty"];
+    let args = [
+        "package",
+        "--list",
+        "--quiet",
+        "--allow-dirty",
+        "--no-verify",
+    ];
     let output = run_cargo(package, &args).context("cannot run `cargo package`")?;
 
     anyhow::ensure!(
