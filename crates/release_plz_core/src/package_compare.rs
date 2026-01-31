@@ -138,7 +138,6 @@ fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
 
             if file_type.is_dir() {
                 dirs.push(path);
-                continue;
             } else {
                 let rel_path = path
                     .strip_prefix(package)
