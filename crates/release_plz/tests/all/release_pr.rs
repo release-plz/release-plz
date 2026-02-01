@@ -774,18 +774,41 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
         .success();
     context.push_all_changes("chore: update Cargo.lock");
 
-    context.run_update().success();
+    context.run_release_pr().success();
+    let today = today();
 
-    let updated_manifest = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    let updated_version = updated_manifest.data["package"]["version"]
-        .as_str()
-        .unwrap();
-    assert_eq!(updated_version, "0.1.1");
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
+    pretty_assertions::assert_eq!(
+        pr_body,
+        format!(
+            r"
+## 🤖 New release
 
-    let changelog = context.read_changelog();
-    assert!(
-        changelog.contains("update Cargo.lock dependencies"),
-        "changelog should mention Cargo.lock dependency update"
+* `{package}`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+
+### Other
+
+- update Cargo.lock dependencies
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
+        )
+        .trim()
     );
 }
 
