@@ -4,7 +4,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::{CARGO_TOML, get_manifest_metadata};
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{cargo::run_cargo, fs_utils};
 use std::{
@@ -103,7 +103,30 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // we use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
+    // If this crate was packaged locally (i.e. is inside target/package), we can list files
+    // directly from disk without invoking `cargo package`.
+    // At the moment, this only happens in the git_only flow.
+    // TODO: Do this always, not only if we are in target/package.
+    //       See https://github.com/release-plz/release-plz/issues/2130
+    info!("Getting packaged files for crate at {}", package);
+    if is_cargo_packaged_dir(package)
+        && (package.join("Cargo.toml.orig").exists()
+            || package.join("Cargo.toml.orig.orig").exists())
+    {
+        let list =
+            list_packaged_files(package).context("cannot list packaged files from directory")?;
+        debug!("Packaged files: {:?}", list);
+        Ok(list)
+    } else {
+        let list = get_cargo_package_list(package)
+            .context("cannot get packaged files from cargo package list")?;
+        debug!("Cargo Packaged files: {:?}", list);
+        Ok(list)
+    }
+}
+
+fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
+    // We use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
     let args = ["package", "--list", "--quiet", "--allow-dirty"];
     let output = run_cargo(package, &args).context("cannot run `cargo package`")?;
 
@@ -114,6 +137,41 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
     );
 
     let files = output.stdout.lines().map(Utf8PathBuf::from).collect();
+    Ok(files)
+}
+
+fn is_cargo_packaged_dir(package: &Utf8Path) -> bool {
+    package.ancestors().any(|ancestor| {
+        ancestor.file_name() == Some("package")
+            && ancestor.parent().and_then(|parent| parent.file_name()) == Some("target")
+    })
+}
+
+fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    let mut files = Vec::new();
+    let mut dirs = vec![package.to_path_buf()];
+
+    while let Some(dir) = dirs.pop() {
+        for entry in fs_err::read_dir(&dir).with_context(|| format!("cannot read dir {dir:?}"))? {
+            let entry = entry.with_context(|| format!("cannot read dir entry in {dir:?}"))?;
+            let path = Utf8PathBuf::from_path_buf(entry.path())
+                .map_err(|path| anyhow::anyhow!("non-utf8 path in package: {path:?}"))?;
+            let file_type = entry
+                .file_type()
+                .with_context(|| format!("cannot read file type for {path:?}"))?;
+
+            if file_type.is_dir() {
+                dirs.push(path);
+            } else {
+                let rel_path = path
+                    .strip_prefix(package)
+                    .with_context(|| format!("can't find {package:?} prefix in {path:?}"))?;
+                files.push(rel_path.to_path_buf());
+            }
+        }
+    }
+
+    files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     Ok(files)
 }
 

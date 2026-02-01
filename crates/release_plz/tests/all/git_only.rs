@@ -1,6 +1,10 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{test_context::TestContext, today};
+use crate::helpers::{
+    package::{PackageType, TestPackage},
+    test_context::TestContext,
+    today,
+};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -914,6 +918,40 @@ publish = false
         tag_exists(expected_mybin_tag),
         "mybin tag should exist after release"
     );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_workspace_path_dependencies() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("mylib").with_type(PackageType::Lib),
+        TestPackage::new("mybin")
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec!["../mylib"]),
+    ])
+    .await;
+
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    context
+        .repo
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
+
+    let readme = context.package_path("mybin").join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update mybin readme");
+
+    context.run_update().success();
 }
 
 #[tokio::test]
