@@ -103,9 +103,13 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // If this is already a packaged crate (contains Cargo.toml.orig), we can list files
-    // directly from disk without invoking `cargo package`.
-    if package.join("Cargo.toml.orig").exists() || package.join("Cargo.toml.orig.orig").exists() {
+    // If this is already a packaged crate (target/package), we can list files
+    // directly from disk without invoking `cargo package`. This avoids dependency
+    // resolution errors for workspace path dependencies when comparing git_only packages.
+    if is_cargo_packaged_dir(package)
+        && (package.join("Cargo.toml.orig").exists()
+            || package.join("Cargo.toml.orig.orig").exists())
+    {
         return list_packaged_files(package).context("cannot list packaged files from directory");
     }
     // We use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
@@ -120,6 +124,16 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
 
     let files = output.stdout.lines().map(Utf8PathBuf::from).collect();
     Ok(files)
+}
+
+fn is_cargo_packaged_dir(package: &Utf8Path) -> bool {
+    package.ancestors().any(|ancestor| {
+        ancestor.file_name() == Some("package")
+            && ancestor
+                .parent()
+                .and_then(|parent| parent.file_name())
+                == Some("target")
+    })
 }
 
 fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
