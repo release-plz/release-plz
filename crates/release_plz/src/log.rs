@@ -28,9 +28,13 @@ pub fn init(verbosity: Option<LevelFilter>) {
         verbose || !metadata.is_span() || is_trace_or_debug()
     });
 
+    let ansi =
+        std::env::var_os("RELEASE_PLZ_NO_ANSI").is_none() && std::env::var_os("NO_COLOR").is_none();
+
     fmt()
         .with_env_filter(env_filter)
         .with_writer(std::io::stderr)
+        .with_ansi(ansi)
         .with_target(verbose)
         .with_file(verbose)
         .with_line_number(verbose)
