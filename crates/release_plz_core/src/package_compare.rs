@@ -4,7 +4,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::{CARGO_TOML, get_manifest_metadata};
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{cargo::run_cargo, fs_utils};
 use std::{
@@ -106,12 +106,18 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
     // If this is already a packaged crate (target/package), we can list files
     // directly from disk without invoking `cargo package`. This avoids dependency
     // resolution errors for workspace path dependencies when comparing git_only packages.
+    info!("Getting packaged files for crate at {}", package);
     if is_cargo_packaged_dir(package)
         && (package.join("Cargo.toml.orig").exists()
             || package.join("Cargo.toml.orig.orig").exists())
     {
-        return list_packaged_files(package).context("cannot list packaged files from directory");
+        list_packaged_files(package).context("cannot list packaged files from directory")
+    } else {
+        get_cargo_package_list(package)
     }
+}
+
+fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
     // We use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
     let args = ["package", "--list", "--quiet", "--allow-dirty"];
     let output = run_cargo(package, &args).context("cannot run `cargo package`")?;
