@@ -111,9 +111,15 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
         && (package.join("Cargo.toml.orig").exists()
             || package.join("Cargo.toml.orig.orig").exists())
     {
-        list_packaged_files(package).context("cannot list packaged files from directory")
+        let list =
+            list_packaged_files(package).context("cannot list packaged files from directory")?;
+        debug!("Packaged files: {:?}", list);
+        Ok(list)
     } else {
-        get_cargo_package_list(package)
+        let list = get_cargo_package_list(package)
+            .context("cannot get packaged files from cargo package list")?;
+        debug!("Cargo Packaged files: {:?}", list);
+        Ok(list)
     }
 }
 

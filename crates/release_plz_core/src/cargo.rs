@@ -33,7 +33,7 @@ fn cargo_cmd() -> Command {
 }
 
 pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
-    debug!("cargo {}", args.join(" "));
+    debug!("Run `cargo {}` in {root}", args.join(" "));
 
     let output = cargo_cmd()
         .current_dir(root)
