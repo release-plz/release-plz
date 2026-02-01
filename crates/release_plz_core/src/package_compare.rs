@@ -129,10 +129,7 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
 fn is_cargo_packaged_dir(package: &Utf8Path) -> bool {
     package.ancestors().any(|ancestor| {
         ancestor.file_name() == Some("package")
-            && ancestor
-                .parent()
-                .and_then(|parent| parent.file_name())
-                == Some("target")
+            && ancestor.parent().and_then(|parent| parent.file_name()) == Some("target")
     })
 }
 
