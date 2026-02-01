@@ -37,6 +37,10 @@ pub struct TestContext {
 }
 
 impl TestContext {
+    pub fn cargo_target_dir(&self) -> Utf8PathBuf {
+        self.test_dir.path().join("target")
+    }
+
     async fn init_context(is_workspace: bool) -> Self {
         test_logs::init();
         let repo_name = fake_utils::fake_id();
@@ -167,6 +171,7 @@ impl TestContext {
     pub fn run_cargo_publish(&self, package_name: &str) {
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
+            .env("CARGO_TARGET_DIR", self.cargo_target_dir())
             .arg("publish")
             .arg("-p")
             .arg(package_name)
@@ -179,7 +184,7 @@ impl TestContext {
     }
 
     pub fn run_update(&self) -> Assert {
-        super::cmd::release_plz_cmd()
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("update")
@@ -190,7 +195,7 @@ impl TestContext {
     }
 
     pub fn run_release_pr(&self) -> Assert {
-        super::cmd::release_plz_cmd()
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release-pr")
@@ -208,7 +213,7 @@ impl TestContext {
     }
 
     pub fn run_release(&self) -> Assert {
-        super::cmd::release_plz_cmd()
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release")
@@ -268,7 +273,8 @@ impl TestContext {
 
 pub fn run_set_version(directory: &Utf8Path, change: &str) {
     let change: Vec<_> = change.split(' ').collect();
-    super::cmd::release_plz_cmd()
+    let target_dir = Utf8PathBuf::from("target");
+    super::cmd::release_plz_cmd(&target_dir)
         .current_dir(directory)
         .env(RELEASE_PLZ_LOG, log_level())
         .arg("set-version")
