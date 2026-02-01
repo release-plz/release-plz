@@ -103,9 +103,11 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // If this is already a packaged crate (target/package), we can list files
-    // directly from disk without invoking `cargo package`. This avoids dependency
-    // resolution errors for workspace path dependencies when comparing git_only packages.
+    // If this crate was packaged locally (i.e. is inside target/package), we can list files
+    // directly from disk without invoking `cargo package`.
+    // At the moment, this only happens in the git_only flow.
+    // TODO: Do this always, not only if we are in target/package.
+    //       See https://github.com/release-plz/release-plz/issues/2130
     info!("Getting packaged files for crate at {}", package);
     if is_cargo_packaged_dir(package)
         && (package.join("Cargo.toml.orig").exists()
