@@ -17,8 +17,6 @@ pub struct CargoRegistry {
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
     pub index: CargoIndex,
-    /// A fallback registry index to try if the primary `index` fails.
-    pub fallback_index: Option<CargoIndex>,
 }
 
 #[allow(clippy::large_enum_variant)]
