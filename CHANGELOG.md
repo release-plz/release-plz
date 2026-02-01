@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.154](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.153...release-plz-v0.3.154) - 2026-02-01
+
+### Fixed
+
+- git-only works with local dependencies ([#2629](https://github.com/release-plz/release-plz/pull/2629))
+
+### Other
+
+- *(tests)* show release-plz stdout better ([#2630](https://github.com/release-plz/release-plz/pull/2630))
+- remove release_plz_core tests ([#2633](https://github.com/release-plz/release-plz/pull/2633))
+
 ## [0.3.153](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.152...release-plz-v0.3.153) - 2026-01-24
 
 ### Other
