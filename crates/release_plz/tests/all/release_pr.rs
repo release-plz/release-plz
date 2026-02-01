@@ -729,6 +729,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     let publish_dep = || {
         Command::new("cargo")
             .current_dir(&dep_dir)
+            .env("CARGO_TARGET_DIR", context.cargo_target_dir())
             .args([
                 "publish",
                 "--registry",
@@ -769,6 +770,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     // Update Cargo.lock without modifying Cargo.toml.
     Command::new("cargo")
         .current_dir(context.repo_dir())
+        .env("CARGO_TARGET_DIR", context.cargo_target_dir())
         .args(["update", "-p", dep_name])
         .assert()
         .success();
