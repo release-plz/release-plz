@@ -1,5 +1,6 @@
 use crate::helpers::{
     TEST_REGISTRY,
+    gitea::{CARGO_INDEX_REPO, gitea_address},
     package::{PackageType, TestPackage},
     test_context::TestContext,
     today,
@@ -7,6 +8,7 @@ use crate::helpers::{
 use assert_cmd::Command;
 use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest};
+use release_plz_core::fs_utils::Utf8TempDir;
 
 fn assert_cargo_semver_checks_is_installed() {
     assert!(
@@ -719,11 +721,28 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     let context = TestContext::new().await;
     let dep_name = "dep";
     let dep = TestPackage::new(dep_name).with_type(PackageType::Lib);
-    let dep_dir = context.repo_dir().join(dep_name);
+    let dep_temp_dir = Utf8TempDir::new().unwrap();
+    let dep_dir = dep_temp_dir.path().join(dep_name);
     fs_err::create_dir_all(&dep_dir).unwrap();
     dep.cargo_init(&dep_dir);
 
-    context.push_all_changes("add dep crate");
+    let config_dir = dep_temp_dir.path().join(".cargo");
+    fs_err::create_dir_all(&config_dir).unwrap();
+    let username = context.gitea.user.username();
+    let cargo_registries = format!(
+        "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = "
+    );
+    let gitea_index = format!(
+        "\"http://{}/{}/{CARGO_INDEX_REPO}.git\"",
+        gitea_address(),
+        username
+    );
+    let config_end = r"
+[net]
+git-fetch-with-cli = true
+";
+    let cargo_config = format!("{cargo_registries}{gitea_index}{config_end}");
+    fs_err::write(config_dir.join("config.toml"), cargo_config).unwrap();
 
     // Publish the dependency first so the registry can resolve it.
     let publish_dep = || {
@@ -734,6 +753,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
                 "publish",
                 "--registry",
                 TEST_REGISTRY,
+                "--allow-dirty",
                 "--token",
                 &format!("Bearer {}", context.gitea.token),
             ])
@@ -763,7 +783,6 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     let mut dep_manifest = LocalManifest::try_new(&dep_manifest_path).unwrap();
     dep_manifest.set_package_version(&Version::new(0, 1, 1));
     dep_manifest.write().unwrap();
-    context.push_all_changes("dep 0.1.1");
 
     publish_dep();
 
@@ -801,7 +820,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
 
 ### Other
 
-- update Cargo.lock dependencies
+- update Cargo.lock
 </blockquote>
 
 
