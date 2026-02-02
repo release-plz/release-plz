@@ -6,7 +6,10 @@ use crate::helpers::{
     today,
 };
 use assert_cmd::Command;
-use cargo_metadata::{camino::{Utf8Path, Utf8PathBuf}, semver::Version};
+use cargo_metadata::{
+    camino::{Utf8Path, Utf8PathBuf},
+    semver::Version,
+};
 use cargo_utils::{CARGO_TOML, LocalManifest};
 use release_plz_core::fs_utils::Utf8TempDir;
 
