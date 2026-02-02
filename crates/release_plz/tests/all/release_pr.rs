@@ -6,7 +6,7 @@ use crate::helpers::{
     today,
 };
 use assert_cmd::Command;
-use cargo_metadata::semver::Version;
+use cargo_metadata::{camino::{Utf8Path, Utf8PathBuf}, semver::Version};
 use cargo_utils::{CARGO_TOML, LocalManifest};
 use release_plz_core::fs_utils::Utf8TempDir;
 
@@ -15,6 +15,70 @@ fn assert_cargo_semver_checks_is_installed() {
         release_plz_core::semver_check::is_cargo_semver_checks_installed(),
         "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
     );
+}
+
+struct RegistryDep {
+    _temp_dir: Utf8TempDir,
+    dir: Utf8PathBuf,
+}
+
+fn setup_registry_dep(context: &TestContext, dep_name: &str) -> RegistryDep {
+    let dep = TestPackage::new(dep_name).with_type(PackageType::Lib);
+    let temp_dir = Utf8TempDir::new().unwrap();
+    let dep_dir = temp_dir.path().join(dep_name);
+    fs_err::create_dir_all(&dep_dir).unwrap();
+    dep.cargo_init(&dep_dir);
+    write_registry_cargo_config(context, temp_dir.path());
+    RegistryDep {
+        _temp_dir: temp_dir,
+        dir: dep_dir,
+    }
+}
+
+fn write_registry_cargo_config(context: &TestContext, config_root: &Utf8Path) {
+    let config_dir = config_root.join(".cargo");
+    fs_err::create_dir_all(&config_dir).unwrap();
+    let username = context.gitea.user.username();
+    let cargo_registries = format!(
+        "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = "
+    );
+    let gitea_index = format!(
+        "\"http://{}/{}/{CARGO_INDEX_REPO}.git\"",
+        gitea_address(),
+        username
+    );
+    let config_end = r"
+[net]
+git-fetch-with-cli = true
+";
+    let cargo_config = format!("{cargo_registries}{gitea_index}{config_end}");
+    fs_err::write(config_dir.join("config.toml"), cargo_config).unwrap();
+}
+
+fn publish_registry_dep(context: &TestContext, dep_dir: &Utf8Path) {
+    Command::new("cargo")
+        .current_dir(dep_dir)
+        .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+        .args([
+            "publish",
+            "--registry",
+            TEST_REGISTRY,
+            "--allow-dirty",
+            "--token",
+            &format!("Bearer {}", context.gitea.token),
+        ])
+        .assert()
+        .success();
+}
+
+fn add_registry_dependency(manifest_path: &Utf8Path, dep_name: &str) {
+    let mut cargo_toml = LocalManifest::try_new(manifest_path).unwrap();
+    let mut dep_spec = toml_edit::InlineTable::new();
+    dep_spec.insert("version", toml_edit::Value::from("0.1"));
+    dep_spec.insert("registry", toml_edit::Value::from(TEST_REGISTRY));
+    cargo_toml.data["dependencies"][dep_name] =
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(dep_spec));
+    cargo_toml.write().unwrap();
 }
 
 #[tokio::test]
@@ -720,57 +784,14 @@ async fn release_plz_detects_symlink_package_changes() {
 async fn release_plz_detects_cargo_lock_updates_from_registry() {
     let context = TestContext::new().await;
     let dep_name = "dep";
-    let dep = TestPackage::new(dep_name).with_type(PackageType::Lib);
-    let dep_temp_dir = Utf8TempDir::new().unwrap();
-    let dep_dir = dep_temp_dir.path().join(dep_name);
-    fs_err::create_dir_all(&dep_dir).unwrap();
-    dep.cargo_init(&dep_dir);
-
-    let config_dir = dep_temp_dir.path().join(".cargo");
-    fs_err::create_dir_all(&config_dir).unwrap();
-    let username = context.gitea.user.username();
-    let cargo_registries = format!(
-        "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = "
-    );
-    let gitea_index = format!(
-        "\"http://{}/{}/{CARGO_INDEX_REPO}.git\"",
-        gitea_address(),
-        username
-    );
-    let config_end = r"
-[net]
-git-fetch-with-cli = true
-";
-    let cargo_config = format!("{cargo_registries}{gitea_index}{config_end}");
-    fs_err::write(config_dir.join("config.toml"), cargo_config).unwrap();
+    let dep = setup_registry_dep(&context, dep_name);
 
     // Publish the dependency first so the registry can resolve it.
-    let publish_dep = || {
-        Command::new("cargo")
-            .current_dir(&dep_dir)
-            .env("CARGO_TARGET_DIR", context.cargo_target_dir())
-            .args([
-                "publish",
-                "--registry",
-                TEST_REGISTRY,
-                "--allow-dirty",
-                "--token",
-                &format!("Bearer {}", context.gitea.token),
-            ])
-            .assert()
-            .success();
-    };
-    publish_dep();
+    publish_registry_dep(&context, &dep.dir);
 
     // Add a registry dependency so that Cargo.lock can change without touching Cargo.toml.
     let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
-    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
-    let mut dep_spec = toml_edit::InlineTable::new();
-    dep_spec.insert("version", toml_edit::Value::from("0.1"));
-    dep_spec.insert("registry", toml_edit::Value::from(TEST_REGISTRY));
-    cargo_toml.data["dependencies"][dep_name] =
-        toml_edit::Item::Value(toml_edit::Value::InlineTable(dep_spec));
-    cargo_toml.write().unwrap();
+    add_registry_dependency(&cargo_toml_path, dep_name);
 
     context.run_cargo_check();
     context.push_all_changes("add registry dep");
@@ -779,12 +800,12 @@ git-fetch-with-cli = true
     context.run_cargo_publish(&context.gitea.repo);
 
     // Publish a new dependency version so Cargo.lock can update while Cargo.toml stays the same.
-    let dep_manifest_path = dep_dir.join(CARGO_TOML);
+    let dep_manifest_path = dep.dir.join(CARGO_TOML);
     let mut dep_manifest = LocalManifest::try_new(&dep_manifest_path).unwrap();
     dep_manifest.set_package_version(&Version::new(0, 1, 1));
     dep_manifest.write().unwrap();
 
-    publish_dep();
+    publish_registry_dep(&context, &dep.dir);
 
     // Update Cargo.lock without modifying Cargo.toml.
     Command::new("cargo")
@@ -821,6 +842,101 @@ git-fetch-with-cli = true
 ### Other
 
 - update Cargo.lock
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
+        )
+        .trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_detects_cargo_lock_updates_from_registry_in_workspace() {
+    let library = "library";
+    let binary = "binary";
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library}")]),
+        TestPackage::new(library).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    let dep_name = "dep";
+    let dep = setup_registry_dep(&context, dep_name);
+    publish_registry_dep(&context, &dep.dir);
+
+    let library_manifest_path = context.package_path(library).join(CARGO_TOML);
+    add_registry_dependency(&library_manifest_path, dep_name);
+
+    context.run_cargo_check();
+    context.push_all_changes("add registry dep");
+
+    context.run_cargo_publish(library);
+    context.run_cargo_publish(binary);
+
+    let dep_manifest_path = dep.dir.join(CARGO_TOML);
+    let mut dep_manifest = LocalManifest::try_new(&dep_manifest_path).unwrap();
+    dep_manifest.set_package_version(&Version::new(0, 1, 1));
+    dep_manifest.write().unwrap();
+
+    publish_registry_dep(&context, &dep.dir);
+
+    // Update Cargo.lock without modifying Cargo.toml.
+    Command::new("cargo")
+        .current_dir(context.repo_dir())
+        .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+        .args(["update", "-p", dep_name])
+        .assert()
+        .success();
+    context.push_all_changes("chore: update Cargo.lock");
+
+    context.run_release_pr().success();
+    let today = today();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    let open_pr = &opened_prs[0];
+    assert_eq!(open_pr.title, "chore: release v0.1.1");
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    let pr_body = open_pr.body.as_ref().unwrap().trim();
+    pretty_assertions::assert_eq!(
+        pr_body,
+        format!(
+            r"
+## 🤖 New release
+
+* `{library}`: 0.1.0 -> 0.1.1
+* `{binary}`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+## `{library}`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.1.1) - {today}
+
+### Other
+
+- update Cargo.lock
+</blockquote>
+
+## `{binary}`
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
+
+### Other
+
+- updated the following local packages: {library}
 </blockquote>
 
 
