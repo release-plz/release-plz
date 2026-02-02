@@ -169,16 +169,16 @@ impl TestContext {
     }
 
     pub fn run_cargo_publish(&self, package_name: &str) {
+        let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", TEST_REGISTRY.to_uppercase());
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
             .env("CARGO_TARGET_DIR", self.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
             .arg("publish")
             .arg("-p")
             .arg(package_name)
             .arg("--registry")
             .arg(TEST_REGISTRY)
-            .arg("--token")
-            .arg(format!("Bearer {}", &self.gitea.token))
             .assert()
             .success();
     }

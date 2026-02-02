@@ -727,15 +727,15 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
 
     // Publish the dependency first so the registry can resolve it.
     let publish_dep = || {
+        let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", TEST_REGISTRY.to_uppercase());
         Command::new("cargo")
             .current_dir(&dep_dir)
             .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", context.gitea.token))
             .args([
                 "publish",
                 "--registry",
                 TEST_REGISTRY,
-                "--token",
-                &format!("Bearer {}", context.gitea.token),
             ])
             .assert()
             .success();
