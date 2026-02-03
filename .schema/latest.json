@@ -438,10 +438,10 @@
         },
         "publish_registry_protocol": {
           "title": "Publish Registry Protocol",
-          "description": "Controls which protocol is used to check if a crate is published. - `auto` (default): use sparse for crates.io, git otherwise. - `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries). - `git`: use git registry index.",
+          "description": "Controls which protocol is used to check if a crate is published.\n- `auto` (default): use sparse for crates.io, git otherwise.\n- `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries).\n- `git`: use git registry index.",
           "anyOf": [
             {
-              "$ref": "#/definitions/PublishRegistryProtocol"
+              "$ref": "#/$defs/PublishRegistryProtocol"
             },
             {
               "type": "null"
@@ -482,23 +482,17 @@
         {
           "description": "Use sparse for crates.io, git otherwise.",
           "type": "string",
-          "enum": [
-            "auto"
-          ]
+          "const": "auto"
         },
         {
           "description": "Use the sparse registry protocol.",
           "type": "string",
-          "enum": [
-            "sparse"
-          ]
+          "const": "sparse"
         },
         {
           "description": "Use the git registry index.",
           "type": "string",
-          "enum": [
-            "git"
-          ]
+          "const": "git"
         }
       ]
     },
@@ -796,10 +790,10 @@
         },
         "publish_registry_protocol": {
           "title": "Publish Registry Protocol",
-          "description": "Controls which protocol is used to check if a crate is published. - `auto` (default): use sparse for crates.io, git otherwise. - `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries). - `git`: use git registry index.",
+          "description": "Controls which protocol is used to check if a crate is published.\n- `auto` (default): use sparse for crates.io, git otherwise.\n- `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries).\n- `git`: use git registry index.",
           "anyOf": [
             {
-              "$ref": "#/definitions/PublishRegistryProtocol"
+              "$ref": "#/$defs/PublishRegistryProtocol"
             },
             {
               "type": "null"
