@@ -881,22 +881,22 @@ fn get_cargo_registry(
     let (index_url, use_sparse) = if url_str.starts_with("sparse+") {
         (url_str.to_string(), true)
     } else {
-        let use_sparse = match registry_protocol {
-            RegistryProtocol::Sparse => true,
-            RegistryProtocol::Git => false,
-            RegistryProtocol::Auto => is_crates_io_git_index(url_str),
-        };
-        if use_sparse {
-            if is_crates_io_git_index(url_str) {
+        match registry_protocol {
+            RegistryProtocol::Git => (format!("registry+{u}"), false),
+            RegistryProtocol::Auto if is_crates_io_git_index(url_str) => {
                 (CRATES_IO_SPARSE_INDEX_URL.to_string(), true)
-            } else {
-                let registry_hint = registry.as_deref().unwrap_or("unknown");
-                anyhow::bail!(
-                    "registry '{registry_hint}' index is not sparse. Set `registries.{registry_hint}.index` to a sparse+ URL or set publish_registry_protocol = \"git\""
-                );
             }
-        } else {
-            (format!("registry+{u}"), false)
+            RegistryProtocol::Auto => (format!("registry+{u}"), false),
+            RegistryProtocol::Sparse => {
+                if is_crates_io_git_index(url_str) {
+                    (CRATES_IO_SPARSE_INDEX_URL.to_string(), true)
+                } else {
+                    let registry_hint = registry.as_deref().unwrap_or("unknown");
+                    anyhow::bail!(
+                        "registry '{registry_hint}' index is not sparse. Set `registries.{registry_hint}.index` to a sparse+ URL or set publish_registry_protocol = \"git\""
+                    );
+                }
+            }
         }
     };
 
