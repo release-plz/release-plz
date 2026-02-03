@@ -416,17 +416,14 @@ impl PublishConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RegistryProtocol {
+    #[default]
     Auto,
     Sparse,
     Git,
 }
 
-impl Default for RegistryProtocol {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum ReleaseType {
     #[default]
