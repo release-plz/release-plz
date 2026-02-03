@@ -62,6 +62,7 @@
         "publish_allow_dirty": null,
         "publish_features": null,
         "publish_no_verify": null,
+        "publish_registry_protocol": null,
         "publish_timeout": null,
         "release": null,
         "release_always": null,
@@ -435,6 +436,18 @@
             "null"
           ]
         },
+        "publish_registry_protocol": {
+          "title": "Publish Registry Protocol",
+          "description": "Controls which protocol is used to check if a crate is published. - `auto` (default): use sparse for crates.io, git otherwise. - `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries). - `git`: use git registry index.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PublishRegistryProtocol"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "release": {
           "title": "Release",
           "description": "Used to toggle off the update/release process for a workspace or package.",
@@ -462,6 +475,31 @@
       },
       "required": [
         "name"
+      ]
+    },
+    "PublishRegistryProtocol": {
+      "oneOf": [
+        {
+          "description": "Use sparse for crates.io, git otherwise.",
+          "type": "string",
+          "enum": [
+            "auto"
+          ]
+        },
+        {
+          "description": "Use the sparse registry protocol.",
+          "type": "string",
+          "enum": [
+            "sparse"
+          ]
+        },
+        {
+          "description": "Use the git registry index.",
+          "type": "string",
+          "enum": [
+            "git"
+          ]
+        }
       ]
     },
     "ReleaseType": {
@@ -754,6 +792,18 @@
           "type": [
             "boolean",
             "null"
+          ]
+        },
+        "publish_registry_protocol": {
+          "title": "Publish Registry Protocol",
+          "description": "Controls which protocol is used to check if a crate is published. - `auto` (default): use sparse for crates.io, git otherwise. - `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries). - `git`: use git registry index.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PublishRegistryProtocol"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "publish_timeout": {

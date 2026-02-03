@@ -341,6 +341,9 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
             )
             .with_release(release);
 
+        if let Some(protocol) = value.publish_registry_protocol {
+            cfg = cfg.with_registry_protocol(protocol.into());
+        }
         if let Some(changelog_update) = value.changelog_update {
             cfg = cfg.with_changelog_update(changelog_update);
         }
@@ -437,6 +440,12 @@ pub struct PackageConfig {
     /// # Publish
     /// If `false`, don't run `cargo publish`.
     pub publish: Option<bool>,
+    /// # Publish Registry Protocol
+    /// Controls which protocol is used to check if a crate is published.
+    /// - `auto` (default): use sparse for crates.io, git otherwise.
+    /// - `sparse`: use sparse registry (requires a sparse+ index for non-crates.io registries).
+    /// - `git`: use git registry index.
+    pub publish_registry_protocol: Option<PublishRegistryProtocol>,
     /// # Publish Allow Dirty
     /// If `true`, add the `--allow-dirty` flag to the `cargo publish` command.
     pub publish_allow_dirty: Option<bool>,
@@ -511,6 +520,9 @@ impl PackageConfig {
             git_release_body: self.git_release_body.or(default.git_release_body),
 
             publish: self.publish.or(default.publish),
+            publish_registry_protocol: self
+                .publish_registry_protocol
+                .or(default.publish_registry_protocol),
             publish_allow_dirty: self.publish_allow_dirty.or(default.publish_allow_dirty),
             publish_no_verify: self.publish_no_verify.or(default.publish_no_verify),
             publish_features: self.publish_features.or(default.publish_features),
@@ -532,6 +544,28 @@ impl PackageConfig {
         self.changelog_path
             .as_ref()
             .map(|p| to_utf8_path(p.as_ref()).unwrap())
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishRegistryProtocol {
+    /// Use sparse for crates.io, git otherwise.
+    #[default]
+    Auto,
+    /// Use the sparse registry protocol.
+    Sparse,
+    /// Use the git registry index.
+    Git,
+}
+
+impl From<PublishRegistryProtocol> for release_plz_core::RegistryProtocol {
+    fn from(value: PublishRegistryProtocol) -> Self {
+        match value {
+            PublishRegistryProtocol::Auto => Self::Auto,
+            PublishRegistryProtocol::Sparse => Self::Sparse,
+            PublishRegistryProtocol::Git => Self::Git,
+        }
     }
 }
 

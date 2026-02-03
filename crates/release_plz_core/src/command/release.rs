@@ -189,6 +189,11 @@ impl ReleaseRequest {
         config.all_features
     }
 
+    pub fn registry_protocol(&self, package: &str) -> RegistryProtocol {
+        let config = self.get_package_config(package);
+        config.registry_protocol
+    }
+
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
     fn find_registry_token(&self, registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
         let is_registry_same_as_request = self.registry.as_deref() == registry;
@@ -283,6 +288,7 @@ impl PackagesConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseConfig {
     publish: PublishConfig,
+    registry_protocol: RegistryProtocol,
     git_release: GitReleaseConfig,
     git_tag: GitTagConfig,
     /// Don't verify the contents by building them.
@@ -308,6 +314,11 @@ pub struct ReleaseConfig {
 impl ReleaseConfig {
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
         self.publish = publish;
+        self
+    }
+
+    pub fn with_registry_protocol(mut self, registry_protocol: RegistryProtocol) -> Self {
+        self.registry_protocol = registry_protocol;
         self
     }
 
@@ -369,6 +380,7 @@ impl Default for ReleaseConfig {
     fn default() -> Self {
         Self {
             publish: PublishConfig::default(),
+            registry_protocol: RegistryProtocol::default(),
             git_release: GitReleaseConfig::default(),
             git_tag: GitTagConfig::default(),
             no_verify: false,
@@ -403,6 +415,18 @@ impl PublishConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistryProtocol {
+    Auto,
+    Sparse,
+    Git,
+}
+
+impl Default for RegistryProtocol {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum ReleaseType {
     #[default]
@@ -653,7 +677,12 @@ async fn release_package_if_needed(
     let mut package_was_released = false;
 
     if should_publish {
-        let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
+        let registry_indexes = registry_indexes(
+            package,
+            input.registry.clone(),
+            input.registry_protocol(&package.name),
+            hash_kind,
+        )
             .context("can't determine registry indexes")?;
 
         for CargoRegistry {
@@ -811,52 +840,79 @@ fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::forge::PrCo
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
+    registry_protocol: RegistryProtocol,
     hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
         .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
-    let registry_urls = registries
-        .into_iter()
-        .map(|r| {
-            cargo_utils::registry_url(package.manifest_path.as_ref(), Some(&r))
-                .context("failed to retrieve registry url")
-                .map(|url| (r, url))
-        })
-        .collect::<anyhow::Result<Vec<(String, Url)>>>()?;
+    let registry_urls = if registries.is_empty() {
+        let url =
+            cargo_utils::registry_url(package.manifest_path.as_ref(), None).context("failed to retrieve registry url")?;
+        vec![(None, url)]
+    } else {
+        registries
+            .into_iter()
+            .map(|r| {
+                cargo_utils::registry_url(package.manifest_path.as_ref(), Some(&r))
+                    .context("failed to retrieve registry url")
+                    .map(|url| (Some(r), url))
+            })
+            .collect::<anyhow::Result<Vec<(Option<String>, Url)>>>()?
+    };
 
-    let mut registry_indexes = registry_urls
+    registry_urls
         .into_iter()
-        .map(|(registry, u)| get_cargo_registry(hash_kind, registry, &u))
-        .collect::<anyhow::Result<Vec<CargoRegistry>>>()?;
-    if registry_indexes.is_empty() {
-        registry_indexes.push(CargoRegistry {
-            name: None,
-            index: CargoIndex::Git(GitIndex::new_cargo_default()?),
-            fallback_index: None,
-        });
-    }
-    Ok(registry_indexes)
+        .map(|(registry, u)| get_cargo_registry(hash_kind, registry, &u, registry_protocol))
+        .collect::<anyhow::Result<Vec<CargoRegistry>>>()
+}
+
+const CRATES_IO_GIT_INDEX_URL: &str = "https://github.com/rust-lang/crates.io-index";
+const CRATES_IO_SPARSE_INDEX_URL: &str = "sparse+https://index.crates.io/";
+
+fn is_crates_io_git_index(url: &str) -> bool {
+    url.trim_end_matches('/') == CRATES_IO_GIT_INDEX_URL
 }
 
 fn get_cargo_registry(
     hash_kind: &crates_index::HashKind,
-    registry: String,
+    registry: Option<String>,
     u: &Url,
+    registry_protocol: RegistryProtocol,
 ) -> anyhow::Result<CargoRegistry> {
     let fallback_hash = try_get_fallback_hash_kind(hash_kind);
+    let url_str = u.as_str();
+    let (index_url, use_sparse) = if url_str.starts_with("sparse+") {
+        (url_str.to_string(), true)
+    } else {
+        let use_sparse = match registry_protocol {
+            RegistryProtocol::Sparse => true,
+            RegistryProtocol::Git => false,
+            RegistryProtocol::Auto => is_crates_io_git_index(url_str),
+        };
+        if use_sparse {
+            if is_crates_io_git_index(url_str) {
+                (CRATES_IO_SPARSE_INDEX_URL.to_string(), true)
+            } else {
+                let registry_hint = registry.as_deref().unwrap_or("unknown");
+                anyhow::bail!(
+                    "registry '{registry_hint}' index is not sparse. Set `registries.{registry_hint}.index` to a sparse+ URL or set publish_registry_protocol = \"git\""
+                );
+            }
+        } else {
+            (format!("registry+{u}"), false)
+        }
+    };
 
-    let (maybe_primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
-        let index_url = u.as_str();
+    let (maybe_primary_index, maybe_fallback_index) = if use_sparse {
         let maybe_primary =
-            SparseIndex::from_url_with_hash_kind(index_url, hash_kind).map(CargoIndex::Sparse);
+            SparseIndex::from_url_with_hash_kind(&index_url, hash_kind).map(CargoIndex::Sparse);
         let maybe_fallback = fallback_hash.map(|hash_kind| {
-            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)
+            SparseIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Sparse)
         });
 
         (maybe_primary, maybe_fallback)
     } else {
-        let index_url = format!("registry+{u}");
         let maybe_primary =
             GitIndex::from_url_with_hash_kind(&index_url, hash_kind).map(CargoIndex::Git);
         let maybe_fallback = fallback_hash.map(|hash_kind| {
@@ -875,12 +931,11 @@ fn get_cargo_registry(
         Some(Ok(fallback_index)) => Some(fallback_index),
     };
 
-    let registry = CargoRegistry {
-        name: Some(registry),
+    Ok(CargoRegistry {
+        name: registry,
         index: primary_index,
         fallback_index,
-    };
-    Ok(registry)
+    })
 }
 
 struct ReleaseInfo<'a> {
