@@ -415,8 +415,7 @@ impl PublishConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RegistryProtocol {
     #[default]
     Auto,
@@ -680,7 +679,7 @@ async fn release_package_if_needed(
             input.registry_protocol(&package.name),
             hash_kind,
         )
-            .context("can't determine registry indexes")?;
+        .context("can't determine registry indexes")?;
 
         for CargoRegistry {
             name,
@@ -844,8 +843,8 @@ fn registry_indexes(
         .map(|r| vec![r])
         .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
     let registry_urls = if registries.is_empty() {
-        let url =
-            cargo_utils::registry_url(package.manifest_path.as_ref(), None).context("failed to retrieve registry url")?;
+        let url = cargo_utils::registry_url(package.manifest_path.as_ref(), None)
+            .context("failed to retrieve registry url")?;
         vec![(None, url)]
     } else {
         registries
