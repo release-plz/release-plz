@@ -882,11 +882,10 @@ fn get_cargo_registry(
         (url_str.to_string(), true)
     } else {
         match registry_protocol {
-            RegistryProtocol::Git => (format!("registry+{u}"), false),
             RegistryProtocol::Auto if is_crates_io_git_index(url_str) => {
                 (CRATES_IO_SPARSE_INDEX_URL.to_string(), true)
             }
-            RegistryProtocol::Auto => (format!("registry+{u}"), false),
+            RegistryProtocol::Git | RegistryProtocol::Auto => (format!("registry+{u}"), false),
             RegistryProtocol::Sparse => {
                 if is_crates_io_git_index(url_str) {
                     (CRATES_IO_SPARSE_INDEX_URL.to_string(), true)
