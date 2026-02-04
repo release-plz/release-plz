@@ -892,7 +892,7 @@ fn get_cargo_registry(
                 } else {
                     let registry_hint = registry.as_deref().unwrap_or("unknown");
                     anyhow::bail!(
-                        "registry '{registry_hint}' index is not sparse. Set `registries.{registry_hint}.index` to a sparse+ URL or set publish_registry_protocol = \"git\""
+                        "registry '{registry_hint}' index does not support sparse protocol. Either set the index to a sparse+ URL in your Cargo config, or set publish_registry_protocol = \"git\" in release-plz config"
                     );
                 }
             }
