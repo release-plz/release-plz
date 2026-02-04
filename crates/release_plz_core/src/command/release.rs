@@ -653,18 +653,17 @@ async fn release_package_if_needed(
         let registry_indexes = registry_indexes(package, input.registry.clone())
             .context("can't determine registry indexes")?;
 
-        for CargoRegistry {
-            name,
-            index: primary_index,
-        } in registry_indexes
-        {
+        for CargoRegistry { name, index } in registry_indexes {
             let token = input.find_registry_token(name.as_deref())?;
-            let (pkg_is_published, mut index) =
-                is_package_published(input, package, primary_index, &token)
+            let Ok((pkg_is_published, mut index)) =
+                is_package_published(input, package, index, &token)
                     .await
                     .with_context(|| {
                         format!("can't determine if package {} is published", package.name)
-                    })?;
+                    })
+            else {
+                continue;
+            };
 
             if pkg_is_published {
                 info!("{} {}: already published", package.name, package.version);
@@ -803,10 +802,17 @@ fn registry_indexes(
         })
         .collect::<anyhow::Result<Vec<(String, Url)>>>()?;
 
-    let mut registry_indexes = registry_urls
+    let maybe_registry_indexes = registry_urls
         .into_iter()
         .map(|(registry, u)| get_cargo_registry(registry, &u))
-        .collect::<anyhow::Result<Vec<CargoRegistry>>>()?;
+        .collect::<Vec<anyhow::Result<Vec<CargoRegistry>>>>();
+
+    let mut registry_indexes = maybe_registry_indexes
+        .into_iter()
+        .collect::<anyhow::Result<Vec<Vec<CargoRegistry>>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
     if registry_indexes.is_empty() {
         registry_indexes.push(CargoRegistry {
             name: None,
@@ -816,47 +822,51 @@ fn registry_indexes(
     Ok(registry_indexes)
 }
 
-fn get_cargo_registry(registry: String, u: &Url) -> anyhow::Result<CargoRegistry> {
+fn get_cargo_registry(registry: String, u: &Url) -> anyhow::Result<Vec<CargoRegistry>> {
     let hash_kind = get_hash_kind()?;
     let fallback_hash = try_get_fallback_hash_kind(&hash_kind);
 
-    let (maybe_primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
+    let (primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
         let index_url = u.as_str();
-        let maybe_primary =
-            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse);
+        let primary =
+            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)?;
         let maybe_fallback = fallback_hash.map(|hash_kind| {
             SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)
         });
 
-        (maybe_primary, maybe_fallback)
+        (primary, maybe_fallback)
     } else {
         let index_url = format!("registry+{u}");
-        let maybe_primary =
-            GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git);
+        let primary =
+            GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git)?;
         let maybe_fallback = fallback_hash.map(|hash_kind| {
             GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git)
         });
 
-        (maybe_primary, maybe_fallback)
+        (primary, maybe_fallback)
     };
 
-    let index = if let Ok(primary_index) = maybe_primary_index {
-        Ok(primary_index)
-    } else {
-        match maybe_fallback_index {
-            // In cases where the primary index succeeds, the lookup should
-            // continue regardless of the state of the fallback index.
-            None | Some(Err(_)) => maybe_primary_index,
-            Some(Ok(fallback_index)) => Ok(fallback_index),
+    let primary_registry = CargoRegistry {
+        name: Some(registry.clone()),
+        index: primary_index,
+    };
+
+    let mut ret_val = vec![primary_registry];
+
+    match maybe_fallback_index {
+        Some(Err(e)) => Err(e).context("failed to get cargo registry")?,
+        Some(Ok(fallback_index)) => {
+            let fallback_registry = CargoRegistry {
+                name: Some(registry),
+                index: fallback_index,
+            };
+
+            ret_val.push(fallback_registry);
         }
-    }
-    .context("failed to get cargo registry")?;
-
-    let registry = CargoRegistry {
-        name: Some(registry),
-        index,
+        None => (),
     };
-    Ok(registry)
+
+    Ok(ret_val)
 }
 
 struct ReleaseInfo<'a> {
