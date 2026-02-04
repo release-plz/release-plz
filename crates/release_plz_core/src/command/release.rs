@@ -826,47 +826,50 @@ fn get_cargo_registry(registry: String, u: &Url) -> anyhow::Result<Vec<CargoRegi
     let hash_kind = get_hash_kind()?;
     let fallback_hash = try_get_fallback_hash_kind(&hash_kind);
 
-    let (primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
+    let (maybe_primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
         let index_url = u.as_str();
-        let primary =
-            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)?;
+        let maybe_primary =
+            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse);
         let maybe_fallback = fallback_hash.map(|hash_kind| {
             SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)
         });
 
-        (primary, maybe_fallback)
+        (maybe_primary, maybe_fallback)
     } else {
         let index_url = format!("registry+{u}");
-        let primary =
-            GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git)?;
+        let maybe_primary =
+            GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git);
         let maybe_fallback = fallback_hash.map(|hash_kind| {
             GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git)
         });
 
-        (primary, maybe_fallback)
+        (maybe_primary, maybe_fallback)
     };
 
-    let primary_registry = CargoRegistry {
-        name: Some(registry.clone()),
-        index: primary_index,
-    };
+    match (maybe_primary_index, maybe_fallback_index) {
+        (Err(err), None) | (Err(err), Some(Err(_))) => Err(err)?,
+        (Ok(index), None) | (Ok(index), Some(Err(_))) | (Err(_), Some(Ok(index))) => {
+            let registry = CargoRegistry {
+                name: Some(registry),
+                index,
+            };
 
-    let mut ret_val = vec![primary_registry];
+            Ok(vec![registry])
+        }
+        (Ok(primary_index), Some(Ok(fallback_index))) => {
+            let primary_registry = CargoRegistry {
+                name: Some(registry.clone()),
+                index: primary_index,
+            };
 
-    match maybe_fallback_index {
-        Some(Err(e)) => Err(e).context("failed to get cargo registry")?,
-        Some(Ok(fallback_index)) => {
             let fallback_registry = CargoRegistry {
                 name: Some(registry),
                 index: fallback_index,
             };
 
-            ret_val.push(fallback_registry);
+            Ok(vec![primary_registry, fallback_registry])
         }
-        None => (),
-    };
-
-    Ok(ret_val)
+    }
 }
 
 struct ReleaseInfo<'a> {
