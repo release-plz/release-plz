@@ -952,10 +952,7 @@ async fn release_package(
             || !output.stderr.contains("Uploading")
             || output.stderr.contains("error:")
         {
-            if output.stderr.contains(&format!(
-                "crate version `{}` is already uploaded",
-                &release_info.package.version,
-            )) {
+            if is_already_published(&output, release_info) {
                 // The crate was published while `cargo publish` was running.
                 // Note that the crate wasn't published yet when `cargo publish` started,
                 // otherwise `cargo` would have returned the error "crate {package}@{version} already exists"
@@ -1003,6 +1000,18 @@ async fn release_package(
         );
         Ok(true)
     }
+}
+
+fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {
+    let already_uploaded_message =
+        format!("crate version `{}` is already uploaded", &release_info.package.version);
+    let already_exists_message = format!(
+        "crate {}@{} already exists",
+        release_info.package.name, release_info.package.version
+    );
+    [already_uploaded_message, already_exists_message]
+        .iter()
+        .any(|message| output.stderr.contains(message))
 }
 
 /// Release a package without publishing to any registry (git-only mode).
