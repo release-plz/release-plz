@@ -11,7 +11,6 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use crates_index::{GitIndex, SparseIndex};
 use git_cmd::Repo;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
@@ -21,8 +20,7 @@ use url::Url;
 use crate::{
     CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
     ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    cargo::{CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
-    cargo_hash_kind::{get_hash_kind, try_get_fallback_hash_kind},
+    cargo::{CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
     changelog_parser,
     git::forge::GitClient,
     pr_parser::{Pr, prs_from_text},
@@ -591,7 +589,6 @@ async fn release_packages(
     }
 
     let mut package_releases: Vec<PackageRelease> = vec![];
-    let hash_kind = get_hash_kind()?;
     // The same trusted publishing token can be used for all packages.
     let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
     for package in packages {
@@ -601,7 +598,6 @@ async fn release_packages(
             package,
             repo,
             git_client,
-            &hash_kind,
             &mut trusted_publishing_client,
         )
         .await?
@@ -626,7 +622,6 @@ async fn release_package_if_needed(
     package: &Package,
     repo: &Repo,
     git_client: &GitClient,
-    hash_kind: &crates_index::HashKind,
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
@@ -653,18 +648,13 @@ async fn release_package_if_needed(
     let mut package_was_released = false;
 
     if should_publish {
-        let registry_indexes = registry_indexes(package, input.registry.clone(), hash_kind)
+        let registry_indexes = registry_indexes(package, input.registry.clone())
             .context("can't determine registry indexes")?;
 
-        for CargoRegistry {
-            name,
-            index: primary_index,
-            fallback_index,
-        } in registry_indexes
-        {
+        for CargoRegistry { name, index_url } in registry_indexes {
             let token = input.find_registry_token(name.as_deref())?;
-            let (pkg_is_published, mut index) =
-                is_package_published(input, package, primary_index, fallback_index, &token)
+            let pkg_is_published =
+                is_package_published(input, package, name.as_deref(), index_url.as_ref(), &token)
                     .await
                     .with_context(|| {
                         format!("can't determine if package {} is published", package.name)
@@ -674,9 +664,8 @@ async fn release_package_if_needed(
                 info!("{} {}: already published", package.name, package.version);
                 continue;
             }
-            let is_crates_io = name.is_none();
+            let is_crates_io = name.as_deref().map(|n| n == "crates-io").unwrap_or(true);
             let package_was_released_at_index = release_package(
-                &mut index,
                 input,
                 repo,
                 git_client,
@@ -684,6 +673,8 @@ async fn release_package_if_needed(
                 &token,
                 is_crates_io,
                 trusted_publishing_client,
+                name.as_deref(),
+                index_url.as_ref(),
             )
             .await
             .context("failed to release package")?;
@@ -721,30 +712,19 @@ async fn release_package_if_needed(
 async fn is_package_published(
     input: &ReleaseRequest,
     package: &Package,
-    mut primary_index: CargoIndex,
-    fallback_index: Option<CargoIndex>,
+    registry: Option<&str>,
+    index_url: Option<&Url>,
     token: &Option<SecretString>,
-) -> anyhow::Result<(bool, CargoIndex)> {
-    let is_published_in_primary =
-        is_published(&mut primary_index, package, input.publish_timeout, token).await;
-
-    // If a fallback index is defined.
-    if let Some(mut fallback_index) = fallback_index {
-        // And if the primary index returns an error, attempt to check the
-        // fallback.
-        if let Err(e) = &is_published_in_primary {
-            warn!(
-                "Error checking primary index for package {}: {e:?}. Trying fallback index.",
-                package.name
-            );
-            let is_published_in_fallback =
-                is_published(&mut fallback_index, package, input.publish_timeout, token).await;
-            if let Ok(fallback_is_published) = is_published_in_fallback {
-                return Ok((fallback_is_published, fallback_index));
-            }
-        };
-    };
-    Ok((is_published_in_primary?, primary_index))
+) -> anyhow::Result<bool> {
+    is_published(
+        &input.metadata.workspace_root,
+        package,
+        input.publish_timeout,
+        registry,
+        index_url,
+        token,
+    )
+    .await
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -811,7 +791,6 @@ fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::forge::PrCo
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
-    hash_kind: &crates_index::HashKind,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
@@ -827,60 +806,18 @@ fn registry_indexes(
 
     let mut registry_indexes = registry_urls
         .into_iter()
-        .map(|(registry, u)| get_cargo_registry(hash_kind, registry, &u))
-        .collect::<anyhow::Result<Vec<CargoRegistry>>>()?;
+        .map(|(registry, u)| CargoRegistry {
+            name: Some(registry),
+            index_url: Some(u),
+        })
+        .collect::<Vec<CargoRegistry>>();
     if registry_indexes.is_empty() {
         registry_indexes.push(CargoRegistry {
             name: None,
-            index: CargoIndex::Git(GitIndex::new_cargo_default()?),
-            fallback_index: None,
+            index_url: None,
         });
     }
     Ok(registry_indexes)
-}
-
-fn get_cargo_registry(
-    hash_kind: &crates_index::HashKind,
-    registry: String,
-    u: &Url,
-) -> anyhow::Result<CargoRegistry> {
-    let fallback_hash = try_get_fallback_hash_kind(hash_kind);
-
-    let (maybe_primary_index, maybe_fallback_index) = if u.to_string().starts_with("sparse+") {
-        let index_url = u.as_str();
-        let maybe_primary =
-            SparseIndex::from_url_with_hash_kind(index_url, hash_kind).map(CargoIndex::Sparse);
-        let maybe_fallback = fallback_hash.map(|hash_kind| {
-            SparseIndex::from_url_with_hash_kind(index_url, &hash_kind).map(CargoIndex::Sparse)
-        });
-
-        (maybe_primary, maybe_fallback)
-    } else {
-        let index_url = format!("registry+{u}");
-        let maybe_primary =
-            GitIndex::from_url_with_hash_kind(&index_url, hash_kind).map(CargoIndex::Git);
-        let maybe_fallback = fallback_hash.map(|hash_kind| {
-            GitIndex::from_url_with_hash_kind(&index_url, &hash_kind).map(CargoIndex::Git)
-        });
-
-        (maybe_primary, maybe_fallback)
-    };
-
-    let primary_index = maybe_primary_index.context("failed to get cargo registry")?;
-
-    let fallback_index = match maybe_fallback_index {
-        // In cases where the primary index succeeds, the lookup should
-        // continue regardless of the state of the fallback index.
-        None | Some(Err(_)) => None,
-        Some(Ok(fallback_index)) => Some(fallback_index),
-    };
-
-    let registry = CargoRegistry {
-        name: Some(registry),
-        index: primary_index,
-        fallback_index,
-    };
-    Ok(registry)
 }
 
 struct ReleaseInfo<'a> {
@@ -894,7 +831,6 @@ struct ReleaseInfo<'a> {
 /// Return `true` if package was published, `false` otherwise.
 #[allow(clippy::too_many_arguments)]
 async fn release_package(
-    index: &mut CargoIndex,
     input: &ReleaseRequest,
     repo: &Repo,
     git_client: &GitClient,
@@ -902,6 +838,8 @@ async fn release_package(
     token: &Option<SecretString>,
     is_crates_io: bool,
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
+    registry: Option<&str>,
+    index_url: Option<&Url>,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
 
@@ -975,7 +913,15 @@ async fn release_package(
         Ok(false)
     } else {
         if should_publish {
-            wait_until_published(index, release_info.package, input.publish_timeout, token).await?;
+            wait_until_published(
+                workspace_root,
+                release_info.package,
+                input.publish_timeout,
+                registry,
+                index_url,
+                token,
+            )
+            .await?;
         }
 
         create_git_tag_and_release(
