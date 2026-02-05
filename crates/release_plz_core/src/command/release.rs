@@ -677,7 +677,6 @@ async fn release_package_if_needed(
                 info!("{} {}: already published", package.name, package.version);
                 continue;
             }
-            let is_crates_io = name.is_none();
             let package_was_released_at_index = release_package(
                 &mut index,
                 input,
@@ -685,7 +684,6 @@ async fn release_package_if_needed(
                 git_client,
                 &release_info,
                 &token,
-                is_crates_io,
                 name.as_deref(),
                 trusted_publishing_client,
             )
@@ -904,11 +902,11 @@ async fn release_package(
     git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
-    is_crates_io: bool,
     registry_name: Option<&str>,
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
+    let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
