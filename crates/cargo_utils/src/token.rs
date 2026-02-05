@@ -21,7 +21,7 @@ pub fn registry_token(registry: Option<&str>) -> anyhow::Result<Option<SecretStr
 /// <https://doc.rust-lang.org/cargo/reference/registry-authentication.html#cargotoken>
 pub fn registry_token_from_env(registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
     let token = if let Some(r) = registry {
-        let env_var_name = crate::cargo_registry_token_env_var_name(r)?;
+        let env_var_name = crate::cargo_registries_token_env_var_name(r)?;
         std::env::var(env_var_name)
     } else {
         std::env::var("CARGO_REGISTRY_TOKEN")

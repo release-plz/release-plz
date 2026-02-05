@@ -18,7 +18,7 @@ pub fn registry_index_url_from_env(registry: &str) -> anyhow::Result<Option<Stri
     Ok(std::env::var(env_var_name).ok())
 }
 
-pub fn cargo_registry_token_env_var_name(registry: &str) -> anyhow::Result<String> {
+pub fn cargo_registries_token_env_var_name(registry: &str) -> anyhow::Result<String> {
     Ok(format!(
         "CARGO_REGISTRIES_{}_TOKEN",
         registry_env_var_name(registry)?
