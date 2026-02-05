@@ -952,13 +952,7 @@ async fn release_package(
             || !output.stderr.contains("Uploading")
             || output.stderr.contains("error:")
         {
-            if output.stderr.contains(&format!(
-                "crate version `{}` is already uploaded",
-                &release_info.package.version,
-            )) {
-                // The crate was published while `cargo publish` was running.
-                // Note that the crate wasn't published yet when `cargo publish` started,
-                // otherwise `cargo` would have returned the error "crate {package}@{version} already exists"
+            if is_already_published(&output, release_info) {
                 info!(
                     "skipping publish of {} {}: already published",
                     release_info.package.name, release_info.package.version
@@ -1003,6 +997,25 @@ async fn release_package(
         );
         Ok(true)
     }
+}
+
+fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {
+    // Error happening if the crate was published while `cargo publish` was running.
+    let already_uploaded_message = format!(
+        "crate version `{}` is already uploaded",
+        &release_info.package.version
+    );
+
+    // Previously, I thought that this error
+    // would happen only if the crate wasn't published yet when `cargo publish` started,
+    // but then I saw this error in CI while releasing the crate for the first time.
+    let already_exists_message = format!(
+        "crate {}@{} already exists",
+        release_info.package.name, release_info.package.version
+    );
+    [already_uploaded_message, already_exists_message]
+        .iter()
+        .any(|message| output.stderr.contains(message))
 }
 
 /// Release a package without publishing to any registry (git-only mode).
