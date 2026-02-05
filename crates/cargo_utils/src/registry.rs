@@ -14,7 +14,7 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 /// - [`Result::Err`] if the registry name is invalid.
 /// - [`Result::Ok`] with [`Option::None`] if the environment variable is not set.
 pub fn registry_index_url_from_env(registry: &str) -> anyhow::Result<Option<String>> {
-    let env_var_name = get_registry_index_env_var_name(registry)?;
+    let env_var_name = cargo_registries_index_env_var_name(registry)?;
     Ok(std::env::var(env_var_name).ok())
 }
 
@@ -25,7 +25,7 @@ pub fn cargo_registries_token_env_var_name(registry: &str) -> anyhow::Result<Str
     ))
 }
 
-fn get_registry_index_env_var_name(registry: &str) -> anyhow::Result<String> {
+fn cargo_registries_index_env_var_name(registry: &str) -> anyhow::Result<String> {
     Ok(format!(
         "CARGO_REGISTRIES_{}_INDEX",
         registry_env_var_name(registry)?
@@ -191,39 +191,39 @@ mod tests {
     #[test]
     fn test_get_registry_env_var_name() {
         assert_eq!(
-            get_registry_index_env_var_name("my-registry").unwrap(),
+            cargo_registries_index_env_var_name("my-registry").unwrap(),
             "CARGO_REGISTRIES_MY_REGISTRY_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("my_registry").unwrap(),
+            cargo_registries_index_env_var_name("my_registry").unwrap(),
             "CARGO_REGISTRIES_MY_REGISTRY_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("registry1").unwrap(),
+            cargo_registries_index_env_var_name("registry1").unwrap(),
             "CARGO_REGISTRIES_REGISTRY1_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("UPPERCASE").unwrap(),
+            cargo_registries_index_env_var_name("UPPERCASE").unwrap(),
             "CARGO_REGISTRIES_UPPERCASE_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("-leading-dash").unwrap(),
+            cargo_registries_index_env_var_name("-leading-dash").unwrap(),
             "CARGO_REGISTRIES__LEADING_DASH_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("trailing-dash-").unwrap(),
+            cargo_registries_index_env_var_name("trailing-dash-").unwrap(),
             "CARGO_REGISTRIES_TRAILING_DASH__INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("multiple---dashes").unwrap(),
+            cargo_registries_index_env_var_name("multiple---dashes").unwrap(),
             "CARGO_REGISTRIES_MULTIPLE___DASHES_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("mixed-dashes-and_underscores").unwrap(),
+            cargo_registries_index_env_var_name("mixed-dashes-and_underscores").unwrap(),
             "CARGO_REGISTRIES_MIXED_DASHES_AND_UNDERSCORES_INDEX"
         );
         assert_eq!(
-            get_registry_index_env_var_name("---").unwrap(),
+            cargo_registries_index_env_var_name("---").unwrap(),
             "CARGO_REGISTRIES_____INDEX"
         );
 
@@ -243,7 +243,7 @@ mod tests {
     }
 
     fn registry_env_var_name_error(registry: &str) -> String {
-        get_registry_index_env_var_name(registry)
+        cargo_registries_index_env_var_name(registry)
             .unwrap_err()
             .to_string()
     }
