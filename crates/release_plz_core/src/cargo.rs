@@ -33,25 +33,7 @@ fn cargo_cmd() -> Command {
 }
 
 pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
-    debug!("Run `cargo {}` in {root}", args.join(" "));
-
-    let output = cargo_cmd()
-        .current_dir(root)
-        .args(args)
-        .output()
-        .context("cannot run cargo")?;
-
-    let output_stdout = String::from_utf8(output.stdout)?;
-    let output_stderr = String::from_utf8(output.stderr)?;
-
-    debug!("cargo stderr: {}", output_stderr);
-    debug!("cargo stdout: {}", output_stdout);
-
-    Ok(CmdOutput {
-        status: output.status,
-        stdout: output_stdout,
-        stderr: output_stderr,
-    })
+    run_cargo_with_env(root, args, &[])
 }
 
 pub fn run_cargo_with_env(
