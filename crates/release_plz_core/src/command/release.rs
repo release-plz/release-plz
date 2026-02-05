@@ -1392,7 +1392,8 @@ mod tests {
     fn release_request_registry_token_env_works() {
         let registry_name = "my_registry";
         let token = "t0p$eCrEt";
-        let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
+        let token_env_var =
+            cargo_utils::cargo_registries_token_env_var_name(registry_name).unwrap();
 
         with_env_var(&token_env_var, token, || {
             let request = ReleaseRequest::new(fake_metadata()).with_registry(registry_name);

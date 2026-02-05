@@ -279,7 +279,8 @@ pub fn run_set_version(directory: &Utf8Path, change: &str) {
         .env(RELEASE_PLZ_LOG, log_level())
         .arg("set-version")
         .args(&change)
-        .assert();
+        .assert()
+        .success();
 }
 
 fn log_level() -> String {
