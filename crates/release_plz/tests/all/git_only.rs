@@ -951,7 +951,43 @@ publish = false
     fs_err::write(&readme, "# Updated README").unwrap();
     context.push_all_changes("fix: update mybin readme");
 
-    context.run_update().success();
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
+
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `mybin`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{repo}/compare/mybin-v0.1.0...mybin-v0.1.1) - {today}
+
+### Fixed
+
+- update mybin readme
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
+    );
 }
 
 #[tokio::test]
