@@ -1,30 +1,78 @@
 use anyhow::Context;
-use cargo_metadata::{Package, camino::Utf8Path};
-use crates_index::{Crate, GitIndex, SparseIndex};
+use cargo::{
+    core::{SourceId, dependency::Dependency},
+    sources::{
+        SourceConfigMap,
+        source::{QueryKind, Source},
+    },
+    util::{CargoResult, GlobalContext, cache_lock::CacheLockMode, homedir},
+};
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use tracing::{debug, info};
 
-use http::{Version, header};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
+    collections::HashSet,
     env,
-    error::Error as _,
     process::{Command, ExitStatus},
+    sync::{LazyLock, Mutex},
+    task::Poll,
     time::{Duration, Instant},
 };
+
+const CARGO_REGISTRY_TOKEN_ENV_VAR: &str = "CARGO_REGISTRY_TOKEN";
+
+static TOKEN_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
 
 pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
     pub index: CargoIndex,
-    /// A fallback registry index to try if the primary `index` fails.
-    pub fallback_index: Option<CargoIndex>,
 }
 
-#[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 pub enum CargoIndex {
-    Git(GitIndex),
-    Sparse(SparseIndex),
+    CratesIo {
+        cargo_cwd: Utf8PathBuf,
+    },
+    Registry {
+        name: String,
+        cargo_cwd: Utf8PathBuf,
+    },
+}
+
+impl CargoIndex {
+    pub fn crates_io(cargo_cwd: Utf8PathBuf) -> Self {
+        Self::CratesIo { cargo_cwd }
+    }
+
+    pub fn registry(name: String, cargo_cwd: Utf8PathBuf) -> Self {
+        Self::Registry { name, cargo_cwd }
+    }
+
+    fn cargo_cwd(&self) -> &Utf8Path {
+        match self {
+            Self::CratesIo { cargo_cwd } | Self::Registry { cargo_cwd, .. } => cargo_cwd,
+        }
+    }
+
+    fn source_id(&self, config: &GlobalContext) -> CargoResult<SourceId> {
+        match self {
+            Self::CratesIo { .. } => SourceId::crates_io(config),
+            Self::Registry { name, .. } => SourceId::alt_registry(config, name),
+        }
+    }
+
+    fn token_env_var_name(&self) -> anyhow::Result<String> {
+        match self {
+            Self::CratesIo { .. } => Ok(CARGO_REGISTRY_TOKEN_ENV_VAR.to_owned()),
+            Self::Registry { name, .. } => cargo_utils::cargo_registries_token_env_var_name(name),
+        }
+    }
 }
 
 fn cargo_cmd() -> Command {
@@ -66,7 +114,7 @@ pub struct CmdOutput {
 /// to programmatically detect if a package at a certain version is published.
 /// There's `cargo info` but it is a human-focused command with very few
 /// compatibility guarantees around its behavior.
-/// Therefore, we use the [`crates_index`] crate to check if the package is already published.
+/// Therefore, we query the registry index through Cargo's internal source API.
 pub async fn is_published(
     index: &mut CargoIndex,
     package: &Package,
@@ -74,150 +122,91 @@ pub async fn is_published(
     token: &Option<SecretString>,
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
-        match index {
-            CargoIndex::Git(index) => is_published_git(index, package),
-            CargoIndex::Sparse(index) => is_in_cache_sparse(index, package, token).await,
-        }
+        with_registry_token(index, token, || is_published_cargo(index, package))
     })
     .await?
     .with_context(|| format!("timeout while publishing {}", package.name))
 }
 
-pub fn is_published_git(index: &mut GitIndex, package: &Package) -> anyhow::Result<bool> {
-    // See if we already have the package in cache.
-    if is_in_cache_git(index, package) {
-        return Ok(true);
-    }
+fn is_published_cargo(index: &CargoIndex, package: &Package) -> anyhow::Result<bool> {
+    let config =
+        new_cargo_config(index.cargo_cwd().to_owned()).context("unable to get cargo config")?;
+    let source_id = index
+        .source_id(&config)
+        .with_context(|| format!("can't determine source id for package {}", package.name))?;
+    let _lock = config
+        .acquire_package_cache_lock(CacheLockMode::DownloadExclusive)
+        .context("failed to acquire Cargo package cache lock")?;
+    let map = SourceConfigMap::new(&config).context("failed to initialize cargo source map")?;
+    let mut source = map
+        .load(source_id, &HashSet::default())
+        .context("failed to load cargo source")?;
+    source.invalidate_cache();
 
-    // The package is not in the cache, so we update the cache.
-    index.update().context("failed to update git index")?;
+    let mut dependency = Dependency::parse(package.name.as_str(), None, source.source_id())
+        .context("failed to build package dependency query")?;
+    dependency.lock_version(&package.version);
 
-    // Try again with updated index.
-    Ok(is_in_cache_git(index, package))
-}
-
-fn is_in_cache_git(index: &GitIndex, package: &Package) -> bool {
-    let crate_data = index.crate_(&package.name);
-    let version = &package.version.to_string();
-    is_in_cache(crate_data.as_ref(), version)
-}
-
-async fn is_in_cache_sparse(
-    index: &SparseIndex,
-    package: &Package,
-    token: &Option<SecretString>,
-) -> anyhow::Result<bool> {
-    let crate_data = fetch_sparse_metadata(index, &package.name, token)
-        .await
-        .context("failed fetching sparse metadata")?;
-    let version = &package.version.to_string();
-    Ok(is_in_cache(crate_data.as_ref(), version))
-}
-
-fn is_in_cache(crate_data: Option<&Crate>, version: &str) -> bool {
-    if let Some(crate_data) = crate_data
-        && is_version_present(version, crate_data)
-    {
-        return true;
-    }
-    false
-}
-
-fn is_version_present(version: &str, crate_data: &Crate) -> bool {
-    crate_data.versions().iter().any(|v| v.version() == version)
-}
-
-async fn fetch_sparse_metadata(
-    index: &SparseIndex,
-    crate_name: &str,
-    token: &Option<SecretString>,
-) -> anyhow::Result<Option<Crate>> {
-    let mut res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_2).await;
-    if let Err(ref e) = res {
-        // Inspect the error to see if we should retry this request using
-        // HTTP/1.1. Any error reqwest identifies as a connection error usually
-        // indicates that the server does not support HTTP/2.
-        //
-        // With some private registries that do not support HTTP/2, or perhaps
-        // falsely advertise as supporting it, reqwest does not always identify
-        // the cause of failure as a connection error. In this case, the
-        // underlying `h2` library may return a premature `GOAWAY` error from
-        // either the client or server. If this happens, we should also use
-        // HTTP/1.1 instead, so also check for that case.
-        match e.downcast_ref::<reqwest::Error>() {
-            Some(e) if e.is_connect() || is_h2_go_away(e) => {
-                debug!(error = ?e, "HTTP/2 sparse index request failed, trying HTTP/1.1");
-                res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_11).await;
-            }
-            _ => (),
+    let mut published = false;
+    loop {
+        match source.query(&dependency, QueryKind::RejectedVersions, &mut |_| {
+            published = true;
+        }) {
+            Poll::Ready(Ok(())) => break,
+            Poll::Ready(Err(err)) => return none_or_query_err(err),
+            Poll::Pending => source
+                .block_until_ready()
+                .context("failed waiting for registry query to finish")?,
         }
     }
-    let res = res?;
 
-    let mut builder = http::Response::builder()
-        .status(res.status())
-        .version(res.version());
-
-    if let Some(headers) = builder.headers_mut() {
-        headers.extend(res.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
-    }
-
-    let body = res.bytes().await?;
-    let res = builder.body(body.to_vec())?;
-
-    let crate_data = index.parse_cache_response(crate_name, res, true)?;
-
-    Ok(crate_data)
+    Ok(published)
 }
 
-/// Determine if a reqwest error is caused by an HTTP/2 `GOAWAY` error.
-fn is_h2_go_away(error: &reqwest::Error) -> bool {
-    let mut source = error.source();
-
-    while let Some(error) = source {
-        if let Some(h2_error) = error.downcast_ref::<h2::Error>()
-            && h2_error.is_go_away()
-        {
-            return true;
-        }
-
-        source = error.source();
+fn none_or_query_err(err: anyhow::Error) -> anyhow::Result<bool> {
+    if err.to_string().contains("failed to fetch") {
+        // This may happen with empty registries where metadata cannot be fetched yet.
+        Ok(false)
+    } else {
+        Err(err)
     }
-
-    false
 }
 
-async fn request_for_sparse_metadata(
-    index: &SparseIndex,
-    crate_name: &str,
+fn with_registry_token<T>(
+    index: &CargoIndex,
     token: &Option<SecretString>,
-    http_version: Version,
-) -> anyhow::Result<reqwest::Response> {
-    let mut req = index.make_cache_request(crate_name)?;
-    // override default http version
-    req = req.version(http_version);
-    let (parts, _) = req.body(())?.into_parts();
-    let req = http::Request::from_parts(parts, vec![]);
+    f: impl FnOnce() -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let Some(token) = token else {
+        return f();
+    };
+    let token_env_var_name = index.token_env_var_name()?;
 
-    let mut req: reqwest::Request = req.try_into()?;
-    if let Some(token) = token {
-        let authorization = token
-            .expose_secret()
-            .parse()
-            .context("parse token as header value")?;
-        req.headers_mut()
-            .insert(header::AUTHORIZATION, authorization);
+    // Environment variables are process-global, so serialize overrides.
+    let _token_env_lock = TOKEN_ENV_LOCK.lock().expect("token env lock poisoned");
+    let previous_token = env::var(&token_env_var_name).ok();
+
+    // SAFETY: Access is serialized with a global lock and values are restored before returning.
+    unsafe { env::set_var(&token_env_var_name, token.expose_secret()) };
+    let result = f();
+
+    if let Some(previous_token) = previous_token {
+        // SAFETY: Access is serialized with a global lock and values are restored before returning.
+        unsafe { env::set_var(&token_env_var_name, previous_token) };
+    } else {
+        // SAFETY: Access is serialized with a global lock and values are restored before returning.
+        unsafe { env::remove_var(&token_env_var_name) };
     }
 
-    let mut client_builder = reqwest::ClientBuilder::new().gzip(true);
-    if http_version == Version::HTTP_2 {
-        client_builder = client_builder.http2_prior_knowledge();
-    }
-    let client = client_builder.build()?;
-    client
-        .execute(req)
-        .await
-        .context("request_for_sparse_metadata")
+    result
+}
+
+fn new_cargo_config(cwd: Utf8PathBuf) -> anyhow::Result<GlobalContext> {
+    let shell = cargo::core::Shell::new();
+    let homedir = homedir(cwd.as_std_path()).context(
+        "Cargo couldn't find your home directory. This probably means that $HOME was not set.",
+    )?;
+    Ok(GlobalContext::new(shell, cwd.into_std_path_buf(), homedir))
 }
 
 pub async fn wait_until_published(

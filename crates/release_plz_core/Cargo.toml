@@ -25,19 +25,16 @@ anyhow.workspace = true
 cargo_metadata.workspace = true
 cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
-crates-index.workspace = true
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
 git-cliff-core.workspace = true
 git-url-parse.workspace = true
-h2.workspace = true
 ignore.workspace = true
 itertools.workspace = true
 parse-changelog.workspace = true
 rand.workspace = true
 rayon.workspace = true
 regex.workspace = true
-# native-tls-alpn is needed for http2 support. https://doc.rust-lang.org/cargo/reference/registry-index.html#sparse-protocol
 reqwest = { workspace = true, features = ["json", "gzip", "rustls"] }
 reqwest-middleware.workspace = true
 reqwest-retry.workspace = true
