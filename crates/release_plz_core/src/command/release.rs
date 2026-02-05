@@ -1208,10 +1208,10 @@ fn verify_ci_cargo_registry_token(token_env_var: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cargo_registry_token_env_var(registry: Option<&str>) -> String {
+fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String> {
     match registry {
-        Some(registry) => format!("CARGO_REGISTRIES_{}_TOKEN", registry.to_uppercase()),
-        None => "CARGO_REGISTRY_TOKEN".to_string(),
+        Some(registry) => cargo_utils::cargo_registries_token_env_var_name(registry),
+        None => Ok("CARGO_REGISTRY_TOKEN".to_string()),
     }
 }
 
@@ -1235,7 +1235,7 @@ fn run_cargo_publish(
         args.push("--registry");
         args.push(registry);
     }
-    let token_env_var = cargo_registry_token_env_var(registry);
+    let token_env_var = cargo_registry_token_env_var(registry)?;
     let token = token.as_ref().or(input.token.as_ref());
     if token.is_none() {
         verify_ci_cargo_registry_token(&token_env_var)?;
