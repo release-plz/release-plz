@@ -1027,3 +1027,64 @@ git_only = true
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_with_package_overrides_keeps_workspace_git_only() {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("mylib").with_type(PackageType::Lib),
+        TestPackage::new("mybin")
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec!["../mylib"]),
+    ])
+    .await;
+
+    // Set publish = false in mybin manifest.
+    let cargo_toml_path = context.package_path("mybin").join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
+    context.push_all_changes("chore: set mybin publish = false");
+
+    // Repro from issue #2595 comment:
+    // workspace git_only + package-level git tag/release name overrides.
+    let config = r#"
+[workspace]
+git_only = true
+
+[[package]]
+name = "mybin"
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }}-v{{ version }}"
+
+[[package]]
+name = "mylib"
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }}-v{{ version }}"
+"#;
+    context.write_release_plz_toml(config);
+
+    // Tag both packages at 0.1.0.
+    context
+        .repo
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
+
+    let readme = context.package_path("mybin").join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update mybin readme");
+
+    // Should use git_only path and not try to package from the registry path.
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
+    assert!(pr_body.contains("update mybin readme"));
+}
