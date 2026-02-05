@@ -14,16 +14,20 @@ const CRATES_IO_REGISTRY: &str = "crates-io";
 /// - [`Result::Err`] if the registry name is invalid.
 /// - [`Result::Ok`] with [`Option::None`] if the environment variable is not set.
 pub fn registry_index_url_from_env(registry: &str) -> anyhow::Result<Option<String>> {
-    let env_var_name = format!(
-        "CARGO_REGISTRIES_{}_INDEX",
-        registry_env_var_name(registry)?
-    );
+    let env_var_name = get_registry_index_env_var_name(registry)?;
     Ok(std::env::var(env_var_name).ok())
 }
 
 pub fn cargo_registry_token_env_var_name(registry: &str) -> anyhow::Result<String> {
     Ok(format!(
         "CARGO_REGISTRIES_{}_TOKEN",
+        registry_env_var_name(registry)?
+    ))
+}
+
+fn get_registry_index_env_var_name(registry: &str) -> anyhow::Result<String> {
+    Ok(format!(
+        "CARGO_REGISTRIES_{}_INDEX",
         registry_env_var_name(registry)?
     ))
 }
@@ -225,16 +229,16 @@ mod tests {
 
         // Invalid characters should fail
 
-        expect_test::expect!["Invalid character in registry name: '!'"]
+        expect_test::expect!["Invalid character in registry name `with-special-chars!`: `!`"]
             .assert_eq(&registry_env_var_name_error("with-special-chars!"));
 
-        expect_test::expect!["Invalid character in registry name: '+'"]
+        expect_test::expect!["Invalid character in registry name `invalid+char`: `+`"]
             .assert_eq(&registry_env_var_name_error("invalid+char"));
 
-        expect_test::expect!["Invalid character in registry name: '@'"]
+        expect_test::expect!["Invalid character in registry name `has@symbol`: `@`"]
             .assert_eq(&registry_env_var_name_error("has@symbol"));
 
-        expect_test::expect!["Invalid character in registry name: ' '"]
+        expect_test::expect!["Invalid character in registry name `space not allowed`: ` `"]
             .assert_eq(&registry_env_var_name_error("space not allowed"));
     }
 
