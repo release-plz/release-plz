@@ -6,7 +6,7 @@ use crate::helpers::{
 };
 use assert_cmd::Command;
 use cargo_metadata::semver::Version;
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 
 fn assert_cargo_semver_checks_is_installed() {
     assert!(
@@ -727,7 +727,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
 
     // Publish the dependency first so the registry can resolve it.
     let publish_dep = || {
-        let token_env_var = format!("CARGO_REGISTRIES_{}_TOKEN", TEST_REGISTRY.to_uppercase());
+        let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
         Command::new("cargo")
             .current_dir(&dep_dir)
             .env("CARGO_TARGET_DIR", context.cargo_target_dir())
