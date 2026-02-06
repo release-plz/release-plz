@@ -145,8 +145,18 @@ fn process_git_only_package(
     repo.checkout_commit(&release_commit)
         .context("checkout release commit for package")?;
 
-    // Run cargo package so we have our finalized package
-    run_cargo_package(&worktree).context("run cargo package")?;
+    // Run cargo package so we have our finalized package.
+    // When the workspace root is also a package and there are additional workspace members,
+    // plain `cargo package` tends to package only the root package; use `--workspace` so
+    // local path dependencies across members are resolved from local tarballs.
+    let workspace_manifest = input.cargo_metadata().workspace_root.join("Cargo.toml");
+    let workspace_has_root_package = input
+        .cargo_metadata()
+        .workspace_packages()
+        .iter()
+        .any(|p| p.manifest_path == workspace_manifest)
+        && input.cargo_metadata().workspace_members.len() > 1;
+    run_cargo_package(&worktree, workspace_has_root_package).context("run cargo package")?;
 
     // Get the package metadata
     let single_package = get_cargo_package(&worktree, &package.name).with_context(|| {
@@ -162,9 +172,13 @@ fn process_git_only_package(
 }
 
 /// Run cargo package within a worktree
-fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
+fn run_cargo_package(worktree: &GitWorkTree, package_workspace: bool) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
+    let mut args = vec!["package", "--allow-dirty"];
+    if package_workspace {
+        args.push("--workspace");
+    }
+    let output = run_cargo(worktree_path, &args)
         .context("run cargo package in worktree")?;
 
     if !output.status.success() {

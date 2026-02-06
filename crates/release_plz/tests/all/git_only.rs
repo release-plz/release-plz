@@ -1051,7 +1051,7 @@ publish = false
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release mybin-v0.1.1");
+    assert_eq!(opened_prs[0].title, "chore(mybin): release v0.1.1");
 
     let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
     assert!(
