@@ -114,6 +114,74 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_with_suffix_and_prerelease_tag() {
+    let context = TestContext::new().await;
+
+    let config = r#"
+[workspace]
+git_only = true
+git_tag_name = "release-{{ version }}-prod"
+"#;
+    context.write_release_plz_toml(config);
+
+    use cargo_metadata::semver::Version;
+
+    context.set_package_version(&context.gitea.repo, &Version::parse("0.1.0-rc.1").unwrap());
+    context.push_all_changes("chore: bump version to 0.1.0-rc.1");
+    context
+        .repo
+        .tag("release-0.1.0-rc.1-prod", "Release release-0.1.0-rc.1-prod")
+        .unwrap();
+
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.0-rc.2");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_ignores_invalid_prerelease_tags() {
+    let context = TestContext::new().await;
+
+    let config = r#"
+[workspace]
+git_only = true
+"#;
+    context.write_release_plz_toml(config);
+
+    use cargo_metadata::semver::Version;
+
+    // Create a valid pre-release tag.
+    context.set_package_version(&context.gitea.repo, &Version::parse("0.1.0-rc.1").unwrap());
+    context.push_all_changes("chore: bump version to 0.1.0-rc.1");
+    context
+        .repo
+        .tag("v0.1.0-rc.1", "Release v0.1.0-rc.1")
+        .unwrap();
+
+    // Add a tag that matches the regex but is not valid semver (numeric pre-release identifier
+    // with leading zero).
+    context.repo.tag("v0.1.0-rc.01", "Invalid semver").unwrap();
+
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.0-rc.2");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_ignores_non_matching_tags() {
     let context = TestContext::new().await;
 
