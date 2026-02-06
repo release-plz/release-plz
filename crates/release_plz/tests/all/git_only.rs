@@ -992,6 +992,76 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_root_package_path_dependencies() {
+    use cargo_utils::{CARGO_TOML, LocalManifest};
+
+    let context = TestContext::new().await;
+
+    // Workspace layout for this scenario:
+    // - `.` is package `mybin` (root package, binary)
+    // - `crates/mylib` is package `mylib` (workspace member, library)
+    // - `mybin` depends on `mylib` via `path = "crates/mylib"`
+    // Convert root package to `mybin` and add a workspace member at `crates/mylib`.
+    let root_manifest_path = context.repo_dir().join(CARGO_TOML);
+    let mut root_manifest = LocalManifest::try_new(&root_manifest_path).unwrap();
+    root_manifest.data["package"]["name"] = "mybin".into();
+    root_manifest.data["workspace"]["resolver"] = "3".into();
+    let mut members = toml_edit::Array::new();
+    members.push(".");
+    members.push("crates/mylib");
+    root_manifest.data["workspace"]["members"] = toml_edit::Item::Value(members.into());
+    root_manifest.write().unwrap();
+
+    let mylib_dir = context.repo_dir().join("crates").join("mylib");
+    fs_err::create_dir_all(&mylib_dir).unwrap();
+    TestPackage::new("mylib")
+        .with_type(PackageType::Lib)
+        .cargo_init(&mylib_dir);
+
+    assert_cmd::Command::new("cargo")
+        .current_dir(context.repo_dir())
+        .args(["add", "--path", "crates/mylib"])
+        .assert()
+        .success();
+
+    context.run_cargo_check();
+    context.push_all_changes("chore: setup root mybin with crates/mylib path dependency");
+
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    context
+        .repo
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
+
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update mybin readme");
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release mybin-v0.1.1");
+
+    let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
+    assert!(
+        pr_body.contains("`mybin`: 0.1.0 -> 0.1.1"),
+        "PR body should include mybin release entry"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_processes_packages_with_publish_false_in_manifest() {
     use cargo_utils::LocalManifest;
 
