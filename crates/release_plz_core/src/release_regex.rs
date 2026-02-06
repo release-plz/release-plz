@@ -5,10 +5,12 @@ use regex::Regex;
 /// Build a regex from a Tera template for matching release tags.
 /// The template supports `{{ package }}` and `{{ version }}` variables.
 /// - `{{ package }}` is replaced with the escaped package name
-/// - `{{ version }}` is replaced with a semver capture group `(\d+\.\d+\.\d+)`
+/// - `{{ version }}` is replaced with a semver-like capture group supporting:
+///   - normal versions (`1.2.3`)
+///   - pre-release versions (`1.2.3-rc.1`)
 ///
 /// For example, template `{{ package }}-v{{ version }}` with package "mylib"
-/// becomes regex `^mylib-v(\d+\.\d+\.\d+)$`
+/// becomes regex `^mylib-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$`
 ///
 /// ## Why not use `LazyLock`?
 ///
@@ -38,10 +40,15 @@ pub(crate) fn get_release_regex(template: &str, package_name: &str) -> anyhow::R
     // like `.` (e.g., template "release.{{ version }}").
     let escaped = regex::escape(&rendered);
 
-    // Replace the escaped placeholder with a capture group that matches semver.
-    // The placeholder "0.0.0-VERSION-PLACEHOLDER" becomes "(\d+\.\d+\.\d+)".
+    // Replace the escaped placeholder with a capture group that matches cargo-style versions
+    // including pre-release identifiers (e.g. 1.2.3-rc.1).
+    // The placeholder "0.0.0-VERSION-PLACEHOLDER" becomes:
+    // "(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)".
     // We must escape the placeholder too since `regex::escape` was applied to the whole string.
-    let pattern = escaped.replace(&regex::escape(VERSION_PLACEHOLDER), r"(\d+\.\d+\.\d+)");
+    let pattern = escaped.replace(
+        &regex::escape(VERSION_PLACEHOLDER),
+        r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)",
+    );
 
     // Anchor the pattern with ^ and $ to ensure we match the entire tag string,
     // not just a substring. This prevents false matches like "prefix-mylib-v1.2.3-suffix".
@@ -60,15 +67,20 @@ mod tests {
         // Matches valid tags
         assert!(regex.is_match("v1.2.3"));
         assert!(regex.is_match("v0.0.1"));
+        assert!(regex.is_match("v1.2.3-rc.1"));
+        assert!(regex.is_match("v0.1.0-beta"));
 
         // Rejects invalid formats
         assert!(!regex.is_match("1.2.3")); // missing v
         assert!(!regex.is_match("v1.2")); // incomplete semver
         assert!(!regex.is_match("v1.2.3.4")); // too many parts
+        assert!(!regex.is_match("v1.2.3-")); // invalid pre-release
 
         // Captures version correctly
         let captures = regex.captures("v1.2.3").unwrap();
         assert_eq!(captures.get(1).unwrap().as_str(), "1.2.3");
+        let captures = regex.captures("v1.2.3-rc.1").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "1.2.3-rc.1");
     }
 
     #[test]
@@ -77,6 +89,7 @@ mod tests {
 
         // Matches correct package
         assert!(regex.is_match("mylib-v1.2.3"));
+        assert!(regex.is_match("mylib-v0.9.0-beta.2"));
 
         // Rejects wrong package or format
         assert!(!regex.is_match("otherlib-v1.2.3"));
@@ -94,6 +107,7 @@ mod tests {
 
         // Matches custom format
         assert!(regex.is_match("release-1.2.3-prod"));
+        assert!(regex.is_match("release-1.2.3-rc.1-prod"));
 
         // Rejects partial matches
         assert!(!regex.is_match("release-1.2.3"));
@@ -102,6 +116,8 @@ mod tests {
         // Captures version correctly
         let captures = regex.captures("release-0.1.0-prod").unwrap();
         assert_eq!(captures.get(1).unwrap().as_str(), "0.1.0");
+        let captures = regex.captures("release-1.2.3-rc.1-prod").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "1.2.3-rc.1");
     }
 
     #[test]
