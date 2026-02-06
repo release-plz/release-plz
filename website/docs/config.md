@@ -384,9 +384,12 @@ When `git_only` is enabled:
 - The package will not be published to any cargo registry (`cargo publish` is skipped).
 - Version detection is based on git tags matching the
   [`git_tag_name`](#the-git_tag_name-field) pattern.
-  - `{{ version }}` matches Cargo-style versions:
+  - `{{ version }}` matches full [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html)
+    versions, including:
     - `x.y.z` (for example `1.2.3`)
     - `x.y.z-<pre>` (for example `1.2.3-rc.1`)
+    - `x.y.z+<build>` (for example `1.2.3+exp.sha.5114f85`)
+    - `x.y.z-<pre>+<build>` (for example `1.2.3-rc.1+exp.sha.5114f85`)
   - Prefixes and suffixes are supported through the template itself
     (for example `release-{{ version }}-prod`).
 - If no matching tag is found, the package is treated as an initial release.
