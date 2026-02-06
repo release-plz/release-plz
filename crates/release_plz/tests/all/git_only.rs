@@ -114,7 +114,7 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_with_suffix_and_prerelease_tag() {
+async fn git_only_supports_semver_build_metadata() {
     let context = TestContext::new().await;
 
     let config = r#"
@@ -126,11 +126,18 @@ git_tag_name = "release-{{ version }}-prod"
 
     use cargo_metadata::semver::Version;
 
-    context.set_package_version(&context.gitea.repo, &Version::parse("0.1.0-rc.1").unwrap());
-    context.push_all_changes("chore: bump version to 0.1.0-rc.1");
+    // Use a version with both pre-release and build metadata to verify full SemVer support
+    context.set_package_version(
+        &context.gitea.repo,
+        &Version::parse("0.1.0-rc.1+build.123").unwrap(),
+    );
+    context.push_all_changes("chore: bump version to 0.1.0-rc.1+build.123");
     context
         .repo
-        .tag("release-0.1.0-rc.1-prod", "Release release-0.1.0-rc.1-prod")
+        .tag(
+            "release-0.1.0-rc.1+build.123-prod",
+            "Release release-0.1.0-rc.1+build.123-prod",
+        )
         .unwrap();
 
     let readme = context.repo_dir().join("README.md");
@@ -141,12 +148,13 @@ git_tag_name = "release-{{ version }}-prod"
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
-    assert_eq!(opened_prs[0].title, "chore: release v0.1.0-rc.2");
+    // Build metadata should be preserved
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.0-rc.2+build.123");
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_ignores_invalid_prerelease_tags() {
+async fn git_only_ignores_invalid_semver_tags() {
     let context = TestContext::new().await;
 
     let config = r#"

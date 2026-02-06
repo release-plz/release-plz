@@ -5,12 +5,7 @@ use regex::Regex;
 /// Build a regex from a Tera template for matching release tags.
 /// The template supports `{{ package }}` and `{{ version }}` variables.
 /// - `{{ package }}` is replaced with the escaped package name
-/// - `{{ version }}` is replaced with a semver-like capture group supporting:
-///   - normal versions (`1.2.3`)
-///   - pre-release versions (`1.2.3-rc.1`)
-///
-/// For example, template `{{ package }}-v{{ version }}` with package "mylib"
-/// becomes regex `^mylib-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$`
+/// - `{{ version }}` is replaced with a semver 2.0 capture group
 ///
 /// ## Why not use `LazyLock`?
 ///
@@ -40,14 +35,12 @@ pub(crate) fn get_release_regex(template: &str, package_name: &str) -> anyhow::R
     // like `.` (e.g., template "release.{{ version }}").
     let escaped = regex::escape(&rendered);
 
-    // Replace the escaped placeholder with a capture group that matches cargo-style versions
-    // including pre-release identifiers (e.g. 1.2.3-rc.1).
-    // The placeholder "0.0.0-VERSION-PLACEHOLDER" becomes:
-    // "(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)".
+    // Replace the escaped placeholder with a semver 2.0 capture group.
     // We must escape the placeholder too since `regex::escape` was applied to the whole string.
+    // https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
     let pattern = escaped.replace(
         &regex::escape(VERSION_PLACEHOLDER),
-        r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)",
+        r"((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)",
     );
 
     // Anchor the pattern with ^ and $ to ensure we match the entire tag string,
@@ -138,6 +131,31 @@ mod tests {
         // Dot is literal, not "any char"
         assert!(regex.is_match("my.package-v1.2.3"));
         assert!(!regex.is_match("myXpackage-v1.2.3"));
+    }
+
+    #[test]
+    fn release_regex_semver_build_metadata() {
+        let regex = get_release_regex("v{{ version }}", "ignored").unwrap();
+        assert!(regex.is_match("v1.2.3+build"));
+        assert!(regex.is_match("v1.2.3+build.123"));
+        assert!(regex.is_match("v1.2.3-rc.1+build.123"));
+
+        let captures = regex.captures("v1.2.3+build.123").unwrap();
+        assert_eq!(captures.get(1).unwrap().as_str(), "1.2.3+build.123");
+    }
+
+    #[test]
+    fn release_regex_strict_semver() {
+        let regex = get_release_regex("v{{ version }}", "ignored").unwrap();
+
+        // Leading zeros not allowed
+        assert!(!regex.is_match("v01.2.3"));
+        assert!(!regex.is_match("v1.02.3"));
+        assert!(!regex.is_match("v1.2.03"));
+
+        // Leading zeros in numeric prerelease not allowed
+        assert!(!regex.is_match("v1.2.3-01"));
+        assert!(regex.is_match("v1.2.3-01a")); // Allowed (alphanumeric)
     }
 
     #[test]
