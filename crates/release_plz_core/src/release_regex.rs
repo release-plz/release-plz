@@ -38,10 +38,21 @@ pub(crate) fn get_release_regex(template: &str, package_name: &str) -> anyhow::R
     // Replace the escaped placeholder with a semver 2.0 capture group.
     // We must escape the placeholder too since `regex::escape` was applied to the whole string.
     // https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
-    let pattern = escaped.replace(
-        &regex::escape(VERSION_PLACEHOLDER),
-        r"((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)",
+    const SEMVER_REGEX: &str = concat!(
+        r"(",
+        r"(?:0|[1-9]\d*)", // major
+        r"\.",
+        r"(?:0|[1-9]\d*)", // minor
+        r"\.",
+        r"(?:0|[1-9]\d*)", // patch
+        r"(?:-",           // pre-release (optional)
+        r"(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)",
+        r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*",
+        r")?",
+        r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", // build metadata (optional)
+        r")",
     );
+    let pattern = escaped.replace(&regex::escape(VERSION_PLACEHOLDER), SEMVER_REGEX);
 
     // Anchor the pattern with ^ and $ to ensure we match the entire tag string,
     // not just a substring. This prevents false matches like "prefix-mylib-v1.2.3-suffix".
