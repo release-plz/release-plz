@@ -35,7 +35,7 @@ jobs:
           # pull-requests permission is not needed for the `release` command, so restricting it to contents only
           permission-contents: write
       - name: Run release-plz
-        uses: release-plz/action@20b23932963f7971bdff386c3542f07fbec45f42 # v0.5.125
+        uses: release-plz/action@52440b50d383aa252927de395c8b2c1e0a9cf8e9 # v0.5.126
         with:
           command: release
         env:
@@ -69,7 +69,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
       - name: Run release-plz
-        uses: release-plz/action@20b23932963f7971bdff386c3542f07fbec45f42 # v0.5.125
+        uses: release-plz/action@52440b50d383aa252927de395c8b2c1e0a9cf8e9 # v0.5.126
         with:
           command: release-pr
         env:
