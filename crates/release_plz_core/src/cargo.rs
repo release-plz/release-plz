@@ -31,13 +31,23 @@ fn cargo_cmd() -> Command {
 }
 
 pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
+    run_cargo_with_env(root, args, &[])
+}
+
+pub fn run_cargo_with_env(
+    root: &Utf8Path,
+    args: &[&str],
+    envs: &[(String, String)],
+) -> anyhow::Result<CmdOutput> {
     debug!("Run `cargo {}` in {root}", args.join(" "));
 
-    let output = cargo_cmd()
-        .current_dir(root)
-        .args(args)
-        .output()
-        .context("cannot run cargo")?;
+    let mut command = cargo_cmd();
+    command.current_dir(root).args(args);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+
+    let output = command.output().context("cannot run cargo")?;
 
     let output_stdout = String::from_utf8(output.stdout)?;
     let output_stderr = String::from_utf8(output.stderr)?;
