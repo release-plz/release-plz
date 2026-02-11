@@ -47,7 +47,7 @@ tempfile = "3.22.0"
 tera = "1.20.0"
 tokio = "1.47.1"
 toml = { version = "1.0.0" }
-toml_edit = { version = "0.24.0" }
+toml_edit = { version = "0.25.0" }
 tracing = "0.1.41"
 tracing-log = "0.2.0"
 tracing-subscriber = "0.3.20"
