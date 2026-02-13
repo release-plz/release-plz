@@ -103,16 +103,8 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // If this crate was packaged locally (i.e. is inside target/package), we can list files
-    // directly from disk without invoking `cargo package`.
-    // At the moment, this only happens in the git_only flow.
-    // TODO: Do this always, not only if we are in target/package.
-    //       See https://github.com/release-plz/release-plz/issues/2130
     info!("Getting packaged files for crate at {}", package);
-    if is_cargo_packaged_dir(package)
-        && (package.join("Cargo.toml.orig").exists()
-            || package.join("Cargo.toml.orig.orig").exists())
-    {
+    if package.join("Cargo.toml.orig").exists() || package.join("Cargo.toml.orig.orig").exists() {
         let list =
             list_packaged_files(package).context("cannot list packaged files from directory")?;
         debug!("Packaged files: {:?}", list);
@@ -138,13 +130,6 @@ fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow
 
     let files = output.stdout.lines().map(Utf8PathBuf::from).collect();
     Ok(files)
-}
-
-fn is_cargo_packaged_dir(package: &Utf8Path) -> bool {
-    package.ancestors().any(|ancestor| {
-        ancestor.file_name() == Some("package")
-            && ancestor.parent().and_then(|parent| parent.file_name()) == Some("target")
-    })
 }
 
 fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
