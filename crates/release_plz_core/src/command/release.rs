@@ -20,7 +20,11 @@ use url::Url;
 use crate::{
     CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
     ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    cargo::{CargoRegistry, CmdOutput, is_published, run_cargo, wait_until_published},
+    cargo::{
+        CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo_with_env,
+        wait_until_published,
+    },
+    cargo_hash_kind::{get_hash_kind, try_get_fallback_hash_kind},
     changelog_parser,
     git::forge::GitClient,
     pr_parser::{Pr, prs_from_text},
@@ -671,7 +675,7 @@ async fn release_package_if_needed(
                 git_client,
                 &release_info,
                 &token,
-                is_crates_io,
+                name.as_deref(),
                 trusted_publishing_client,
                 name.as_deref(),
                 index_url.as_ref(),
@@ -836,12 +840,13 @@ async fn release_package(
     git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
     token: &Option<SecretString>,
-    is_crates_io: bool,
+    registry_name: Option<&str>,
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
     registry: Option<&str>,
     index_url: Option<&Url>,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
+    let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
@@ -875,19 +880,19 @@ async fn release_package(
 
     if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let output = run_cargo_publish(release_info.package, input, workspace_root, &publish_token)
-            .context("failed to run cargo publish")?;
+        let output = run_cargo_publish(
+            release_info.package,
+            input,
+            workspace_root,
+            &publish_token,
+            registry_name,
+        )
+        .context("failed to run cargo publish")?;
         if !output.status.success()
             || !output.stderr.contains("Uploading")
             || output.stderr.contains("error:")
         {
-            if output.stderr.contains(&format!(
-                "crate version `{}` is already uploaded",
-                &release_info.package.version,
-            )) {
-                // The crate was published while `cargo publish` was running.
-                // Note that the crate wasn't published yet when `cargo publish` started,
-                // otherwise `cargo` would have returned the error "crate {package}@{version} already exists"
+            if is_already_published(&output, release_info) {
                 info!(
                     "skipping publish of {} {}: already published",
                     release_info.package.name, release_info.package.version
@@ -940,6 +945,25 @@ async fn release_package(
         );
         Ok(true)
     }
+}
+
+fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {
+    // Error happening if the crate was published while `cargo publish` was running.
+    let already_uploaded_message = format!(
+        "crate version `{}` is already uploaded",
+        &release_info.package.version
+    );
+
+    // Previously, I thought that this error
+    // would happen only if the crate wasn't published yet when `cargo publish` started,
+    // but then I saw this error in CI while releasing the crate for the first time.
+    let already_exists_message = format!(
+        "crate {}@{} already exists",
+        release_info.package.name, release_info.package.version
+    );
+    [already_uploaded_message, already_exists_message]
+        .iter()
+        .any(|message| output.stderr.contains(message))
 }
 
 /// Release a package without publishing to any registry (git-only mode).
@@ -1124,7 +1148,7 @@ pub struct GitReleaseInfo {
     pub pre_release: bool,
 }
 
-/// Return `Err` if the `CARGO_REGISTRY_TOKEN` environment variable is set to an empty string in CI.
+/// Return `Err` if the cargo registry token environment variable is set to an empty string in CI.
 /// Reason:
 /// - If the token is set to an empty string, probably the user forgot to set the
 ///   secret in GitHub actions.
@@ -1133,14 +1157,21 @@ pub struct GitReleaseInfo {
 ///   need a release that don't have the token set.
 /// - If the token is unset, the user might want to log in to the registry
 ///   with `cargo login`. Don't throw an error in this case.
-fn verify_ci_cargo_registry_token() -> anyhow::Result<()> {
-    let is_token_empty = std::env::var("CARGO_REGISTRY_TOKEN").map(|t| t.is_empty()) == Ok(true);
+fn verify_ci_cargo_registry_token(token_env_var: &str) -> anyhow::Result<()> {
+    let is_token_empty = std::env::var(token_env_var).map(|t| t.is_empty()) == Ok(true);
     let is_environment_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
     anyhow::ensure!(
         !(is_environment_github_actions && is_token_empty),
-        "CARGO_REGISTRY_TOKEN environment variable is set to empty string. Please set your token in GitHub actions secrets. Docs: https://release-plz.dev/docs/github/quickstart#2-set-the-cargo_registry_token-secret"
+        "{token_env_var} environment variable is set to empty string. Please set your token in GitHub actions secrets. Docs: https://release-plz.dev/docs/github/quickstart#2-set-the-cargo_registry_token-secret"
     );
     Ok(())
+}
+
+fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String> {
+    match registry {
+        Some(registry) => cargo_utils::cargo_registries_token_env_var_name(registry),
+        None => Ok("CARGO_REGISTRY_TOKEN".to_string()),
+    }
 }
 
 fn run_cargo_publish(
@@ -1148,6 +1179,7 @@ fn run_cargo_publish(
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
     token: &Option<SecretString>,
+    registry: Option<&str>,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
     args.push("--color");
@@ -1162,11 +1194,10 @@ fn run_cargo_publish(
         args.push("--registry");
         args.push(registry);
     }
-    if let Some(token) = token.as_ref().or(input.token.as_ref()) {
-        args.push("--token");
-        args.push(token.expose_secret());
-    } else {
-        verify_ci_cargo_registry_token()?;
+    let token_env_var = cargo_registry_token_env_var(registry)?;
+    let token = token.as_ref().or(input.token.as_ref());
+    if token.is_none() {
+        verify_ci_cargo_registry_token(&token_env_var)?;
     }
     if input.dry_run {
         args.push("--dry-run");
@@ -1185,7 +1216,10 @@ fn run_cargo_publish(
     if input.all_features(&package.name) {
         args.push("--all-features");
     }
-    run_cargo(workspace_root, &args)
+    let envs = token
+        .map(|token| vec![(token_env_var, token.expose_secret().to_string())])
+        .unwrap_or_default();
+    run_cargo_with_env(workspace_root, &args, &envs)
 }
 
 /// Return an empty string if the changelog cannot be parsed.

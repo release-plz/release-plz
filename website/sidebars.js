@@ -47,6 +47,7 @@ const sidebars = {
         "github/persist-credentials",
       ],
     },
+    "gitlab",
     "config",
     {
       type: "category",

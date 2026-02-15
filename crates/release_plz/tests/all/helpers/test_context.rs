@@ -7,7 +7,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 use git_cmd::Repo;
 use release_plz_core::{
     DEFAULT_BRANCH_PREFIX, GitClient, GitForge, GitPr, Gitea, Pr, RepoUrl,
@@ -169,16 +169,16 @@ impl TestContext {
     }
 
     pub fn run_cargo_publish(&self, package_name: &str) {
+        let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
             .env("CARGO_TARGET_DIR", self.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
             .arg("publish")
             .arg("-p")
             .arg(package_name)
             .arg("--registry")
             .arg(TEST_REGISTRY)
-            .arg("--token")
-            .arg(format!("Bearer {}", &self.gitea.token))
             .assert()
             .success();
     }
@@ -213,9 +213,11 @@ impl TestContext {
     }
 
     pub fn run_release(&self) -> Assert {
+        let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
         super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
+            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
             .arg("release")
             .arg("--verbose")
             .arg("--git-token")
@@ -224,8 +226,6 @@ impl TestContext {
             .arg("gitea")
             .arg("--registry")
             .arg(TEST_REGISTRY)
-            .arg("--token")
-            .arg(format!("Bearer {}", &self.gitea.token))
             .arg("--output")
             .arg("json")
             .timeout(Duration::from_secs(300))

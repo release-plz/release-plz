@@ -78,7 +78,9 @@ impl Repo {
         let changes = self.changes_except_typechanges()?;
         anyhow::ensure!(
             changes.is_empty(),
-            "the working directory of this project has uncommitted changes. If these files are both committed and in .gitignore, either delete them or remove them from .gitignore. Otherwise, please commit or stash these changes:\n{changes:?}"
+            "the working directory of this project has uncommitted changes. If these files are both committed and in .gitignore, either delete them or remove them from .gitignore.\n\
+             If the list includes submodules, run `git ls-files -ci --exclude-standard` in the submodule to check if files in the submodule are both committed and in .gitignore.\n\
+             Otherwise, please commit or stash these changes:\n{changes:?}"
         );
         Ok(())
     }
