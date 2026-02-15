@@ -1,5 +1,12 @@
 FROM lukemathwalker/cargo-chef:0.1.73-rust-1.93-slim-trixie AS chef
 WORKDIR /app
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        perl \
+        make \
+        ; \
+    rm -rf /var/lib/apt/lists/*
 
 FROM chef AS planner
 COPY . .
@@ -21,7 +28,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-# copied from https://github.com/rust-lang/docker-rust/blob/c606c2424f5341d20708910cd6f1fa51e9cf4e50/stable/bookworm/slim/Dockerfile#L10
+# copied from https://github.com/rust-lang/docker-rust/blob/cc333dda42f949065ae7bf90f28b29e6044a4d44/stable/bookworm/slim/Dockerfile#L10
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
