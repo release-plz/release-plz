@@ -60,6 +60,13 @@ pub struct CmdOutput {
 }
 
 /// Check if the package is published via `cargo info`.
+///
+/// `cargo info` shouldn't be used by a machine because its output is not a stable API.
+/// However, checking if a package is published by using other methods is annoying, so
+/// we accept that release-plz might not work with future cargo versions and we will fix
+/// it when that happens.
+///
+/// Returns whether the package is published.
 pub async fn is_published(
     workspace_root: &Utf8Path,
     package: &Package,

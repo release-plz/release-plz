@@ -654,7 +654,7 @@ async fn release_package_if_needed(
         for CargoRegistry { name, index_url } in registry_indexes {
             let token = input.find_registry_token(name.as_deref())?;
             let pkg_is_published =
-                is_package_published(input, package, name.as_deref(), index_url.as_ref(), &token)
+                is_published(&input.metadata.workspace_root, package, input.publish_timeout, name.as_deref(), index_url.as_ref(), &token)
                     .await
                     .with_context(|| {
                         format!("can't determine if package {} is published", package.name)
@@ -702,28 +702,6 @@ async fn release_package_if_needed(
         prs,
     });
     Ok(package_release)
-}
-
-/// Check if `package` is published in the primary index.
-/// If the check fails, check the fallback index if it exists.
-///
-/// Returns whether the package is published and the index used for the check.
-async fn is_package_published(
-    input: &ReleaseRequest,
-    package: &Package,
-    registry: Option<&str>,
-    index_url: Option<&Url>,
-    token: &Option<SecretString>,
-) -> anyhow::Result<bool> {
-    is_published(
-        &input.metadata.workspace_root,
-        package,
-        input.publish_timeout,
-        registry,
-        index_url,
-        token,
-    )
-    .await
 }
 
 #[derive(Debug, PartialEq, Eq)]
