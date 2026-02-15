@@ -1,4 +1,4 @@
-# GitLab
+# GitLab CI
 
 `release-plz` can also run in GitLab CI/CD, however the setup is slightly more complex
 than with the Github CI.
@@ -21,7 +21,7 @@ to the CI/CD variables:
 6. The username can be converted to the email address using this format:
    `$USERNAME@noreply.gitlab.com`
 7. Configure this email address as a variable named `RELEASE_PLZ_BOT_EMAIL` in
-   Settings -> CI?CD -> Variables -> Add variable
+   Settings -> CI/CD -> Variables -> Add variable
 
 ## 2. Put the component definition in a repository
 
