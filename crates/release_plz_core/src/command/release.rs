@@ -20,11 +20,7 @@ use url::Url;
 use crate::{
     CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
     ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    cargo::{
-        CargoIndex, CargoRegistry, CmdOutput, is_published, run_cargo_with_env,
-        wait_until_published,
-    },
-    cargo_hash_kind::{get_hash_kind, try_get_fallback_hash_kind},
+    cargo::{CargoRegistry, CmdOutput, is_published, run_cargo_with_env, wait_until_published},
     changelog_parser,
     git::forge::GitClient,
     pr_parser::{Pr, prs_from_text},
@@ -668,7 +664,6 @@ async fn release_package_if_needed(
                 info!("{} {}: already published", package.name, package.version);
                 continue;
             }
-            let is_crates_io = name.as_deref().map(|n| n == "crates-io").unwrap_or(true);
             let package_was_released_at_index = release_package(
                 input,
                 repo,

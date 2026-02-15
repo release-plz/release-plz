@@ -858,28 +858,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crates-index"
-version = "3.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20732703e27ea95ddd3149a0b6b0a0625e7a15cd154ffb4939f3dcaff4d4329d"
-dependencies = [
- "gix 0.77.0",
- "hex",
- "home",
- "http",
- "memchr",
- "rustc-hash",
- "rustc-stable-hash",
- "semver",
- "serde",
- "serde_derive",
- "serde_json",
- "smol_str",
- "thiserror 2.0.18",
- "toml 0.9.11+spec-1.1.0",
-]
-
-[[package]]
 name = "crates-io"
 version = "0.40.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
