@@ -19,10 +19,15 @@ pub fn registry_index_url_from_env(registry: &str) -> anyhow::Result<Option<Stri
 }
 
 pub fn cargo_registries_token_env_var_name(registry: &str) -> anyhow::Result<String> {
-    Ok(format!(
-        "CARGO_REGISTRIES_{}_TOKEN",
-        registry_env_var_name(registry)?
-    ))
+    let name = if registry == "crates-io" {
+        "CARGO_REGISTRY_TOKEN".to_string()
+    } else {
+        format!(
+            "CARGO_REGISTRIES_{}_TOKEN",
+            registry_env_var_name(registry)?
+        )
+    };
+    Ok(name)
 }
 
 fn cargo_registries_index_env_var_name(registry: &str) -> anyhow::Result<String> {
@@ -240,6 +245,33 @@ mod tests {
 
         expect_test::expect!["Invalid character in registry name `space not allowed`: ` `"]
             .assert_eq(&registry_env_var_name_error("space not allowed"));
+    }
+
+    #[test]
+    fn cargo_info_token_env_var_name_for_crates_io_works() {
+        assert_eq!(
+            cargo_registries_token_env_var_name("crates-io").unwrap(),
+            "CARGO_REGISTRY_TOKEN"
+        );
+    }
+
+    #[test]
+    fn cargo_info_token_env_var_name_normalizes_dashes() {
+        assert_eq!(
+            cargo_registries_token_env_var_name("my-registry").unwrap(),
+            "CARGO_REGISTRIES_MY_REGISTRY_TOKEN"
+        );
+    }
+
+    #[test]
+    fn cargo_info_token_env_var_name_invalid_registry_fails() {
+        let error = cargo_registries_token_env_var_name("invalid+registry")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "Invalid character in registry name `invalid+registry`: `+`"
+        );
     }
 
     fn registry_env_var_name_error(registry: &str) -> String {

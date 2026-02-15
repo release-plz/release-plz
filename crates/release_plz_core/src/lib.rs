@@ -1,5 +1,4 @@
 mod cargo;
-mod cargo_hash_kind;
 mod cargo_vcs_info;
 mod changelog;
 mod changelog_filler;

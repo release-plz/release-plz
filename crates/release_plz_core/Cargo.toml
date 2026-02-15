@@ -25,7 +25,6 @@ anyhow.workspace = true
 cargo_metadata.workspace = true
 cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
-crates-index.workspace = true
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
 git-cliff-core.workspace = true

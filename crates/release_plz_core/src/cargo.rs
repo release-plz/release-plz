@@ -1,30 +1,19 @@
 use anyhow::Context;
 use cargo_metadata::{Package, camino::Utf8Path};
-use crates_index::{Crate, GitIndex, SparseIndex};
-use tracing::{debug, info};
-
-use http::{Version, header};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
-    error::Error as _,
     process::{Command, ExitStatus},
     time::{Duration, Instant},
 };
+use tracing::{debug, info};
+use url::Url;
 
 pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    pub index: CargoIndex,
-    /// A fallback registry index to try if the primary `index` fails.
-    pub fallback_index: Option<CargoIndex>,
-}
-
-#[allow(clippy::large_enum_variant)]
-pub enum CargoIndex {
-    Git(GitIndex),
-    Sparse(SparseIndex),
+    pub index_url: Option<Url>,
 }
 
 fn cargo_cmd() -> Command {
@@ -39,14 +28,14 @@ pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
 pub fn run_cargo_with_env(
     root: &Utf8Path,
     args: &[&str],
-    envs: &[(String, String)],
+    envs: &[(String, SecretString)],
 ) -> anyhow::Result<CmdOutput> {
     debug!("Run `cargo {}` in {root}", args.join(" "));
 
     let mut command = cargo_cmd();
     command.current_dir(root).args(args);
     for (key, value) in envs {
-        command.env(key, value);
+        command.env(key, value.expose_secret());
     }
 
     let output = command.output().context("cannot run cargo")?;
@@ -70,178 +59,113 @@ pub struct CmdOutput {
     pub stderr: String,
 }
 
-/// Check if the package is published in the index.
+/// Check if the package is published via `cargo info`.
 ///
-/// Unfortunately, the `cargo` cli doesn't provide a way
-/// to programmatically detect if a package at a certain version is published.
-/// There's `cargo info` but it is a human-focused command with very few
-/// compatibility guarantees around its behavior.
-/// Therefore, we use the [`crates_index`] crate to check if the package is already published.
+/// `cargo info` shouldn't be used by a machine because its output is not a stable API.
+/// However, checking if a package is published by using other methods is annoying, so
+/// we accept that release-plz might not work with future cargo versions and we will fix
+/// it when that happens.
+///
+/// Returns whether the package is published.
 pub async fn is_published(
-    index: &mut CargoIndex,
+    workspace_root: &Utf8Path,
     package: &Package,
     timeout: Duration,
-    token: &Option<SecretString>,
+    registry: Option<&str>,
+    index_url: Option<&Url>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
-        match index {
-            CargoIndex::Git(index) => is_published_git(index, package),
-            CargoIndex::Sparse(index) => is_in_cache_sparse(index, package, token).await,
+        let output = run_cargo_info(workspace_root, package, registry, index_url, token)
+            .context("cannot run cargo info")?;
+        if output.status.success() {
+            Ok(true)
+        } else if cargo_info_reports_missing(&output) {
+            Ok(false)
+        } else {
+            let error_output = if output.stderr.trim().is_empty() {
+                output.stdout.trim()
+            } else {
+                output.stderr.trim()
+            };
+            anyhow::bail!(
+                "cargo info failed for {}@{}: {}",
+                package.name,
+                package.version,
+                error_output
+            )
         }
     })
     .await?
-    .with_context(|| format!("timeout while publishing {}", package.name))
+    .with_context(|| format!("timeout while checking if `{}` is published", package.name))
 }
 
-pub fn is_published_git(index: &mut GitIndex, package: &Package) -> anyhow::Result<bool> {
-    // See if we already have the package in cache.
-    if is_in_cache_git(index, package) {
-        return Ok(true);
+fn cargo_info_registry_name(registry: Option<&str>) -> &str {
+    match registry {
+        None | Some("crates-io") => "crates-io",
+        Some(name) => name,
     }
-
-    // The package is not in the cache, so we update the cache.
-    index.update().context("failed to update git index")?;
-
-    // Try again with updated index.
-    Ok(is_in_cache_git(index, package))
 }
 
-fn is_in_cache_git(index: &GitIndex, package: &Package) -> bool {
-    let crate_data = index.crate_(&package.name);
-    let version = &package.version.to_string();
-    is_in_cache(crate_data.as_ref(), version)
+fn cargo_info_reports_missing(output: &CmdOutput) -> bool {
+    // Cargo output for `cargo info` is not a stable API. We only match the
+    // string we have observed in practice to avoid false positives.
+    let stdout_and_stderr = format!("{}\n{}", output.stdout, output.stderr).to_lowercase();
+    stdout_and_stderr.contains("could not find")
 }
 
-async fn is_in_cache_sparse(
-    index: &SparseIndex,
+fn run_cargo_info(
+    workspace_root: &Utf8Path,
     package: &Package,
-    token: &Option<SecretString>,
-) -> anyhow::Result<bool> {
-    let crate_data = fetch_sparse_metadata(index, &package.name, token)
-        .await
-        .context("failed fetching sparse metadata")?;
-    let version = &package.version.to_string();
-    Ok(is_in_cache(crate_data.as_ref(), version))
-}
+    registry: Option<&str>,
+    index_url: Option<&Url>,
+    token: Option<&SecretString>,
+) -> anyhow::Result<CmdOutput> {
+    let registry_name = cargo_info_registry_name(registry);
+    let mut args = vec![
+        "info".to_string(),
+        format!("{}@{}", package.name, package.version),
+    ];
 
-fn is_in_cache(crate_data: Option<&Crate>, version: &str) -> bool {
-    if let Some(crate_data) = crate_data
-        && is_version_present(version, crate_data)
-    {
-        return true;
-    }
-    false
-}
-
-fn is_version_present(version: &str, crate_data: &Crate) -> bool {
-    crate_data.versions().iter().any(|v| v.version() == version)
-}
-
-async fn fetch_sparse_metadata(
-    index: &SparseIndex,
-    crate_name: &str,
-    token: &Option<SecretString>,
-) -> anyhow::Result<Option<Crate>> {
-    let mut res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_2).await;
-    if let Err(ref e) = res {
-        // Inspect the error to see if we should retry this request using
-        // HTTP/1.1. Any error reqwest identifies as a connection error usually
-        // indicates that the server does not support HTTP/2.
-        //
-        // With some private registries that do not support HTTP/2, or perhaps
-        // falsely advertise as supporting it, reqwest does not always identify
-        // the cause of failure as a connection error. In this case, the
-        // underlying `h2` library may return a premature `GOAWAY` error from
-        // either the client or server. If this happens, we should also use
-        // HTTP/1.1 instead, so also check for that case.
-        match e.downcast_ref::<reqwest::Error>() {
-            Some(e) if e.is_connect() || is_h2_go_away(e) => {
-                debug!(error = ?e, "HTTP/2 sparse index request failed, trying HTTP/1.1");
-                res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_11).await;
-            }
-            _ => (),
-        }
-    }
-    let res = res?;
-
-    let mut builder = http::Response::builder()
-        .status(res.status())
-        .version(res.version());
-
-    if let Some(headers) = builder.headers_mut() {
-        headers.extend(res.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
+    if let Some(index_url) = index_url {
+        args.push("--index".to_string());
+        args.push(index_url.as_str().to_string());
+    } else {
+        args.push("--registry".to_string());
+        args.push(registry_name.to_string());
     }
 
-    let body = res.bytes().await?;
-    let res = builder.body(body.to_vec())?;
+    debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
 
-    let crate_data = index.parse_cache_response(crate_name, res, true)?;
+    let mut cmd = cargo_cmd();
+    cmd.current_dir(workspace_root).args(&args);
 
-    Ok(crate_data)
-}
+    let mut envs = vec![];
 
-/// Determine if a reqwest error is caused by an HTTP/2 `GOAWAY` error.
-fn is_h2_go_away(error: &reqwest::Error) -> bool {
-    let mut source = error.source();
-
-    while let Some(error) = source {
-        if let Some(h2_error) = error.downcast_ref::<h2::Error>()
-            && h2_error.is_go_away()
-        {
-            return true;
-        }
-
-        source = error.source();
-    }
-
-    false
-}
-
-async fn request_for_sparse_metadata(
-    index: &SparseIndex,
-    crate_name: &str,
-    token: &Option<SecretString>,
-    http_version: Version,
-) -> anyhow::Result<reqwest::Response> {
-    let mut req = index.make_cache_request(crate_name)?;
-    // override default http version
-    req = req.version(http_version);
-    let (parts, _) = req.body(())?.into_parts();
-    let req = http::Request::from_parts(parts, vec![]);
-
-    let mut req: reqwest::Request = req.try_into()?;
     if let Some(token) = token {
-        let authorization = token
-            .expose_secret()
-            .parse()
-            .context("parse token as header value")?;
-        req.headers_mut()
-            .insert(header::AUTHORIZATION, authorization);
+        let env_var = cargo_utils::cargo_registries_token_env_var_name(registry_name)?;
+        envs.push((env_var, token.clone()));
     }
 
-    let mut client_builder = reqwest::ClientBuilder::new().gzip(true);
-    if http_version == Version::HTTP_2 {
-        client_builder = client_builder.http2_prior_knowledge();
-    }
-    let client = client_builder.build()?;
-    client
-        .execute(req)
-        .await
-        .context("request_for_sparse_metadata")
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_cargo_with_env(workspace_root, &args_refs, &envs)
 }
 
 pub async fn wait_until_published(
-    index: &mut CargoIndex,
+    workspace_root: &Utf8Path,
     package: &Package,
     timeout: Duration,
-    token: &Option<SecretString>,
+    registry: Option<&str>,
+    index_url: Option<&Url>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<()> {
     let now: Instant = Instant::now();
     let sleep_time = Duration::from_secs(2);
     let mut logged = false;
 
     loop {
-        let is_published = is_published(index, package, timeout, token).await?;
+        let is_published =
+            is_published(workspace_root, package, timeout, registry, index_url, token).await?;
         if is_published {
             break;
         } else if timeout < now.elapsed() {
