@@ -24,8 +24,11 @@ use cargo_metadata::{
 };
 use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
+use flate2::read::GzDecoder;
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::path::PathBuf;
+use tar::Archive;
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, trace};
 
@@ -164,7 +167,8 @@ fn process_git_only_package(
 /// Run cargo package within a worktree
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
+    // In git-only mode we only need the packaged files; skip verification to avoid build.rs side effects.
+    let output = run_cargo(worktree_path, &["package", "--allow-dirty", "--no-verify"])
         .context("run cargo package in worktree")?;
 
     if !output.status.success() {
@@ -172,6 +176,83 @@ fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn unpack_package_archive(package_archive_path: &Utf8Path, dest: &Utf8Path) -> anyhow::Result<()> {
+    fs_err::create_dir_all(dest)?;
+    let file = File::open(package_archive_path)
+        .with_context(|| format!("open package archive {package_archive_path}"))?;
+    let decoder = GzDecoder::new(file);
+    let mut archive = Archive::new(decoder);
+    archive
+        .unpack(dest)
+        .with_context(|| format!("unpack package archive {package_archive_path} to {dest}"))?;
+    Ok(())
+}
+
+fn single_child_dir(dir: &Utf8Path) -> anyhow::Result<Option<Utf8PathBuf>> {
+    let mut dirs = Vec::new();
+    for entry in fs_err::read_dir(dir).with_context(|| format!("read dir {dir}"))? {
+        let entry = entry.with_context(|| format!("read entry in {dir}"))?;
+        if entry
+            .file_type()
+            .with_context(|| format!("stat entry in {dir}"))?
+            .is_dir()
+        {
+            let path = Utf8PathBuf::from_path_buf(entry.path()).map_err(|path| {
+                anyhow::anyhow!("non-utf8 path in unpacked package archive: {path:?}")
+            })?;
+            dirs.push(path);
+        }
+    }
+    Ok((dirs.len() == 1).then(|| dirs.remove(0)))
+}
+
+fn resolve_packaged_manifest_dir(package_dir: &Utf8Path) -> anyhow::Result<Option<Utf8PathBuf>> {
+    if package_dir.join("Cargo.toml").exists() {
+        return Ok(Some(package_dir.to_path_buf()));
+    }
+
+    // A packaged crate usually contains a single top-level "<name>-<version>" directory.
+    // Accept that layout too, in case Cargo.toml is nested under that directory.
+    if let Some(child) = single_child_dir(package_dir)?
+        && child.join("Cargo.toml").exists()
+    {
+        return Ok(Some(child));
+    }
+
+    Ok(None)
+}
+
+fn ensure_packaged_dir(
+    target_dir: &Utf8Path,
+    package_name: &str,
+    version: &Version,
+) -> anyhow::Result<Utf8PathBuf> {
+    // Cargo may leave either an unpacked directory, a .crate archive, or both in target/package
+    // depending on version/environment. In our git-only flow we run `cargo package --no-verify`,
+    // so Cargo does not unpack for compile verification and we may need to unpack explicitly.
+    let package_dir = target_dir.join(format!("package/{package_name}-{version}"));
+    if package_dir.exists()
+        && let Some(resolved) = resolve_packaged_manifest_dir(&package_dir)?
+    {
+        return Ok(resolved);
+    }
+
+    let package_archive_path = target_dir.join(format!("package/{package_name}-{version}.crate"));
+    if !package_archive_path.exists() {
+        anyhow::bail!(
+            "package archive {package_archive_path} not found after cargo package (expected in target/package)"
+        );
+    }
+
+    unpack_package_archive(&package_archive_path, &package_dir)?;
+
+    resolve_packaged_manifest_dir(&package_dir)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Cargo.toml not found in packaged directory {package_dir} after unpacking {package_archive_path}"
+        )
+    })
 }
 
 fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
@@ -192,10 +273,11 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .find(|x| x.name == package_name)
         .with_context(|| format!("Failed to find package {package_name:?}"))?;
 
-    let package_path = rust_package.target_directory.join(format!(
-        "package/{}-{}",
-        package_details.name, package_details.version
-    ));
+    let package_path = ensure_packaged_dir(
+        &rust_package.target_directory,
+        package_details.name.as_str(),
+        &package_details.version,
+    )?;
     debug!("package for {package_name} is at {package_path}");
 
     let single_package_manifest = package_path.join("Cargo.toml");
