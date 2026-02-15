@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:0.1.73-rust-bookworm AS chef
+FROM lukemathwalker/cargo-chef:0.1.73-rust-1.93.1-slim-trixie AS chef
 WORKDIR /app
 
 FROM chef as planner
@@ -13,7 +13,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --locked --bin release-plz
 
-FROM debian:bookworm-slim as runner
+FROM debian:trixie-slim as runner
 
 WORKDIR /app
 
