@@ -28,14 +28,14 @@ pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
 pub fn run_cargo_with_env(
     root: &Utf8Path,
     args: &[&str],
-    envs: &[(String, String)],
+    envs: &[(String, SecretString)],
 ) -> anyhow::Result<CmdOutput> {
     debug!("Run `cargo {}` in {root}", args.join(" "));
 
     let mut command = cargo_cmd();
     command.current_dir(root).args(args);
     for (key, value) in envs {
-        command.env(key, value);
+        command.env(key, value.expose_secret());
     }
 
     let output = command.output().context("cannot run cargo")?;
@@ -73,7 +73,7 @@ pub async fn is_published(
     timeout: Duration,
     registry: Option<&str>,
     index_url: Option<&Url>,
-    token: &Option<SecretString>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
         let output = run_cargo_info(workspace_root, package, registry, index_url, token)
@@ -119,7 +119,7 @@ fn run_cargo_info(
     package: &Package,
     registry: Option<&str>,
     index_url: Option<&Url>,
-    token: &Option<SecretString>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<CmdOutput> {
     let registry_name = cargo_info_registry_name(registry);
     let mut args = vec![
@@ -140,27 +140,19 @@ fn run_cargo_info(
     let mut cmd = cargo_cmd();
     cmd.current_dir(workspace_root).args(&args);
 
+    let mut envs = vec![];
+
     if let Some(token) = token {
         if registry_name == "crates-io" {
-            cmd.env("CARGO_REGISTRY_TOKEN", token.expose_secret());
+            envs.push(("CARGO_REGISTRY_TOKEN".to_string(), token.clone()));
         } else {
             let env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
-            cmd.env(env_var, token.expose_secret());
+            envs.push((env_var, token.clone()));
         }
     }
 
-    let output = cmd.output().context("cannot run cargo info")?;
-    let output_stdout = String::from_utf8(output.stdout)?;
-    let output_stderr = String::from_utf8(output.stderr)?;
-
-    debug!("cargo stderr: {}", output_stderr);
-    debug!("cargo stdout: {}", output_stdout);
-
-    Ok(CmdOutput {
-        status: output.status,
-        stdout: output_stdout,
-        stderr: output_stderr,
-    })
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_cargo_with_env(workspace_root, &args_refs, &envs)
 }
 
 pub async fn wait_until_published(
@@ -169,7 +161,7 @@ pub async fn wait_until_published(
     timeout: Duration,
     registry: Option<&str>,
     index_url: Option<&Url>,
-    token: &Option<SecretString>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<()> {
     let now: Instant = Instant::now();
     let sleep_time = Duration::from_secs(2);

@@ -12,7 +12,7 @@ use cargo_metadata::{
     semver::Version,
 };
 use git_cmd::Repo;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
 use url::Url;
@@ -653,12 +653,16 @@ async fn release_package_if_needed(
 
         for CargoRegistry { name, index_url } in registry_indexes {
             let token = input.find_registry_token(name.as_deref())?;
-            let pkg_is_published =
-                is_published(&input.metadata.workspace_root, package, input.publish_timeout, name.as_deref(), index_url.as_ref(), &token)
-                    .await
-                    .with_context(|| {
-                        format!("can't determine if package {} is published", package.name)
-                    })?;
+            let pkg_is_published = is_published(
+                &input.metadata.workspace_root,
+                package,
+                input.publish_timeout,
+                name.as_deref(),
+                index_url.as_ref(),
+                token.as_ref(),
+            )
+            .await
+            .with_context(|| format!("can't determine if package {} is published", package.name))?;
 
             if pkg_is_published {
                 info!("{} {}: already published", package.name, package.version);
@@ -669,7 +673,7 @@ async fn release_package_if_needed(
                 repo,
                 git_client,
                 &release_info,
-                &token,
+                token.as_ref(),
                 name.as_deref(),
                 trusted_publishing_client,
                 name.as_deref(),
@@ -812,7 +816,7 @@ async fn release_package(
     repo: &Repo,
     git_client: &GitClient,
     release_info: &ReleaseInfo<'_>,
-    token: &Option<SecretString>,
+    token: Option<&SecretString>,
     registry_name: Option<&str>,
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
     registry: Option<&str>,
@@ -825,7 +829,7 @@ async fn release_package(
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
-    let mut publish_token: Option<SecretString> = token.clone();
+    let mut publish_token: Option<SecretString> = token.cloned();
     let should_use_trusted_publishing = {
         let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
         publish_token.is_none()
@@ -1190,7 +1194,7 @@ fn run_cargo_publish(
         args.push("--all-features");
     }
     let envs = token
-        .map(|token| vec![(token_env_var, token.expose_secret().to_string())])
+        .map(|token| vec![(token_env_var, token.clone())])
         .unwrap_or_default();
     run_cargo_with_env(workspace_root, &args, &envs)
 }
@@ -1250,6 +1254,7 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 
 #[cfg(test)]
 mod tests {
+    use secrecy::ExposeSecret as _;
     use std::env;
     use std::ffi::OsStr;
     use std::sync::{LazyLock, Mutex};
