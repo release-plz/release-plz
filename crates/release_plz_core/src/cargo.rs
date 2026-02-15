@@ -143,12 +143,8 @@ fn run_cargo_info(
     let mut envs = vec![];
 
     if let Some(token) = token {
-        if registry_name == "crates-io" {
-            envs.push(("CARGO_REGISTRY_TOKEN".to_string(), token.clone()));
-        } else {
-            let env_var = format!("CARGO_REGISTRIES_{}_TOKEN", registry_name.to_uppercase());
-            envs.push((env_var, token.clone()));
-        }
+        let env_var = cargo_utils::cargo_registries_token_env_var_name(registry_name)?;
+        envs.push((env_var, token.clone()));
     }
 
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
