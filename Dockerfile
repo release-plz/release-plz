@@ -1,11 +1,11 @@
-FROM lukemathwalker/cargo-chef:0.1.73-rust-1.93.1-slim-trixie AS chef
+FROM lukemathwalker/cargo-chef:0.1.73-rust-1.93-slim-trixie AS chef
 WORKDIR /app
 
-FROM chef as planner
+FROM chef AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef as builder
+FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the caching Docker layer!
 RUN cargo chef cook --release --recipe-path recipe.json
@@ -13,7 +13,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --locked --bin release-plz
 
-FROM debian:trixie-slim as runner
+FROM debian:trixie-slim AS runner
 
 WORKDIR /app
 
