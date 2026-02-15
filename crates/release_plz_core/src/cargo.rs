@@ -110,8 +110,8 @@ fn cargo_info_registry_name(registry: Option<&str>) -> &str {
 fn cargo_info_reports_missing(output: &CmdOutput) -> bool {
     // Cargo output for `cargo info` is not a stable API. We only match the
     // string we have observed in practice to avoid false positives.
-    let haystack = format!("{}\n{}", output.stdout, output.stderr).to_lowercase();
-    haystack.contains("could not find")
+    let stdout_and_stderr = format!("{}\n{}", output.stdout, output.stderr).to_lowercase();
+    stdout_and_stderr.contains("could not find")
 }
 
 fn run_cargo_info(
