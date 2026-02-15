@@ -97,7 +97,7 @@ pub async fn is_published(
         }
     })
     .await?
-    .with_context(|| format!("timeout while checking published {}", package.name))
+    .with_context(|| format!("timeout while checking if `{}` is published", package.name))
 }
 
 fn cargo_info_registry_name(registry: Option<&str>) -> &str {
