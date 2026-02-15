@@ -1,10 +1,12 @@
 use crate::helpers::{
+    TEST_REGISTRY,
     package::{PackageType, TestPackage},
     test_context::TestContext,
     today,
 };
+use assert_cmd::Command;
 use cargo_metadata::semver::Version;
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 
 fn assert_cargo_semver_checks_is_installed() {
     assert!(
@@ -709,6 +711,103 @@ async fn release_plz_detects_symlink_package_changes() {
 
         - update readme"]]
     .assert_eq(&gitea_release.body);
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_detects_cargo_lock_updates_from_registry() {
+    let context = TestContext::new().await;
+    let dep_name = "dep";
+    let dep = TestPackage::new(dep_name).with_type(PackageType::Lib);
+    let dep_dir = context.repo_dir().join(dep_name);
+    fs_err::create_dir_all(&dep_dir).unwrap();
+    dep.cargo_init(&dep_dir);
+
+    context.push_all_changes("add dep crate");
+
+    // Publish the dependency first so the registry can resolve it.
+    let publish_dep = || {
+        let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
+        Command::new("cargo")
+            .current_dir(&dep_dir)
+            .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", context.gitea.token))
+            .args(["publish", "--registry", TEST_REGISTRY])
+            .assert()
+            .success();
+    };
+    publish_dep();
+
+    // Add a registry dependency so that Cargo.lock can change without touching Cargo.toml.
+    let cargo_toml_path = context.repo_dir().join(CARGO_TOML);
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    let mut dep_spec = toml_edit::InlineTable::new();
+    dep_spec.insert("version", toml_edit::Value::from("0.1"));
+    dep_spec.insert("registry", toml_edit::Value::from(TEST_REGISTRY));
+    cargo_toml.data["dependencies"][dep_name] =
+        toml_edit::Item::Value(toml_edit::Value::InlineTable(dep_spec));
+    cargo_toml.write().unwrap();
+
+    context.run_cargo_check();
+    context.push_all_changes("add registry dep");
+
+    // Publish the main package to the local registry.
+    context.run_cargo_publish(&context.gitea.repo);
+
+    // Publish a new dependency version so Cargo.lock can update while Cargo.toml stays the same.
+    let dep_manifest_path = dep_dir.join(CARGO_TOML);
+    let mut dep_manifest = LocalManifest::try_new(&dep_manifest_path).unwrap();
+    dep_manifest.set_package_version(&Version::new(0, 1, 1));
+    dep_manifest.write().unwrap();
+    context.push_all_changes("dep 0.1.1");
+
+    publish_dep();
+
+    // Update Cargo.lock without modifying Cargo.toml.
+    Command::new("cargo")
+        .current_dir(context.repo_dir())
+        .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+        .args(["update", "-p", dep_name])
+        .assert()
+        .success();
+    context.push_all_changes("chore: update Cargo.lock");
+
+    context.run_release_pr().success();
+    let today = today();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
+    pretty_assertions::assert_eq!(
+        pr_body,
+        format!(
+            r"
+## 🤖 New release
+
+* `{package}`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+
+### Other
+
+- update Cargo.lock dependencies
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).",
+        )
+        .trim()
+    );
 }
 
 #[tokio::test]

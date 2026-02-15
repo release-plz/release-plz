@@ -7,7 +7,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 use git_cmd::Repo;
 use release_plz_core::{
     DEFAULT_BRANCH_PREFIX, GitClient, GitForge, GitPr, Gitea, Pr, RepoUrl,
@@ -37,6 +37,10 @@ pub struct TestContext {
 }
 
 impl TestContext {
+    pub fn cargo_target_dir(&self) -> Utf8PathBuf {
+        self.test_dir.path().join("target")
+    }
+
     async fn init_context(is_workspace: bool) -> Self {
         test_logs::init();
         let repo_name = fake_utils::fake_id();
@@ -165,21 +169,22 @@ impl TestContext {
     }
 
     pub fn run_cargo_publish(&self, package_name: &str) {
+        let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
+            .env("CARGO_TARGET_DIR", self.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
             .arg("publish")
             .arg("-p")
             .arg(package_name)
             .arg("--registry")
             .arg(TEST_REGISTRY)
-            .arg("--token")
-            .arg(format!("Bearer {}", &self.gitea.token))
             .assert()
             .success();
     }
 
     pub fn run_update(&self) -> Assert {
-        super::cmd::release_plz_cmd()
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("update")
@@ -190,7 +195,7 @@ impl TestContext {
     }
 
     pub fn run_release_pr(&self) -> Assert {
-        super::cmd::release_plz_cmd()
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("release-pr")
@@ -208,9 +213,11 @@ impl TestContext {
     }
 
     pub fn run_release(&self) -> Assert {
-        super::cmd::release_plz_cmd()
+        let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
+            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
             .arg("release")
             .arg("--verbose")
             .arg("--git-token")
@@ -219,8 +226,6 @@ impl TestContext {
             .arg("gitea")
             .arg("--registry")
             .arg(TEST_REGISTRY)
-            .arg("--token")
-            .arg(format!("Bearer {}", &self.gitea.token))
             .arg("--output")
             .arg("json")
             .timeout(Duration::from_secs(300))
@@ -268,12 +273,14 @@ impl TestContext {
 
 pub fn run_set_version(directory: &Utf8Path, change: &str) {
     let change: Vec<_> = change.split(' ').collect();
-    super::cmd::release_plz_cmd()
+    let target_dir = Utf8PathBuf::from("target");
+    super::cmd::release_plz_cmd(&target_dir)
         .current_dir(directory)
         .env(RELEASE_PLZ_LOG, log_level())
         .arg("set-version")
         .args(&change)
-        .assert();
+        .assert()
+        .success();
 }
 
 fn log_level() -> String {
