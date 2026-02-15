@@ -145,7 +145,9 @@ fn process_git_only_package(
     repo.checkout_commit(&release_commit)
         .context("checkout release commit for package")?;
 
-    // Run cargo package so we have our finalized package
+    // Run cargo package so we have our finalized package.
+    // In git_only mode we always package the whole workspace to make sure
+    // local path dependencies are materialized as local tarballs.
     run_cargo_package(&worktree).context("run cargo package")?;
 
     // Get the package metadata
@@ -164,7 +166,7 @@ fn process_git_only_package(
 /// Run cargo package within a worktree
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
+    let output = run_cargo(worktree_path, &["package", "--allow-dirty", "--workspace"])
         .context("run cargo package in worktree")?;
 
     if !output.status.success() {
