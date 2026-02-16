@@ -17,8 +17,8 @@
     // Update rust version in cargo deny whenever a new stable release is out
     {
       customType: 'regex',
-      fileMatch: [
-        '^\\.github/workflows/deny\\.yml$',
+      managerFilePatterns: [
+        '/^\\.github/workflows/deny\\.yml$/',
       ],
       matchStrings: [
         'rust-version:\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)',
