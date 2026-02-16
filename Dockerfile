@@ -28,7 +28,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-# copied from https://github.com/rust-lang/docker-rust/blob/cc333dda42f949065ae7bf90f28b29e6044a4d44/stable/bookworm/slim/Dockerfile#L10
+# copied from https://github.com/rust-lang/docker-rust/blob/cc333dda42f949065ae7bf90f28b29e6044a4d44/stable/trixie/slim/Dockerfile#L10
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -69,6 +69,10 @@ RUN set -eux; \
         's390x') \
             rustArch='s390x-unknown-linux-gnu'; \
             rustupSha256='726b7fd5d8805e73eab4a024a2889f8859d5a44e36041abac0a2436a52d42572'; \
+            ;; \
+        'riscv64') \
+            rustArch='riscv64gc-unknown-linux-gnu'; \
+            rustupSha256='09e64cc1b7a3e99adaa15dd2d46a3aad9d44d71041e2a96100d165c98a8fd7a7'; \
             ;; \
         *) \
             echo >&2 "unsupported architecture: $arch"; \
