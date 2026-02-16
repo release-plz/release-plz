@@ -1,7 +1,5 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  // Extend everything from config:recommended, except for ignoreModulesAndTests,
-  // which disables docker-compose updates.
   extends: [
     ':dependencyDashboard',
     ':semanticPrefixFixDepsChoreOthers',
@@ -14,11 +12,10 @@
   ],
   automerge: true,
   customManagers: [
-    // Update rust version in cargo deny whenever a new stable release is out
     {
       customType: 'regex',
-      fileMatch: [
-        '^\\.github/workflows/deny\\.yml$',
+      managerFilePatterns: [
+        '/^\\.github/workflows/deny\\.yml$/',
       ],
       matchStrings: [
         'rust-version:\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)',
@@ -33,7 +30,6 @@
       matchManagers: [
         'github-actions',
       ],
-      // Every weekend
       schedule: '* * * * 0,6',
       groupName: 'Github Actions',
     },
@@ -44,8 +40,6 @@
       matchUpdateTypes: [
         'patch',
       ],
-      // Disable patch updates for single dependencies because patches
-      // are updated periodically with lockfile maintainance.
       enabled: false,
     },
     {
@@ -53,15 +47,9 @@
         'docker-compose',
       ],
       groupName: 'Docker Compose',
-      // Every weekend
       schedule: '* * * * 0,6',
     },
   ],
-  // Receive any update that fixes security vulnerabilities.
-  // We need this because we disabled "patch" updates for Rust.
-  // Note: You need to enable "Dependabot alerts" in "Code security" GitHub
-  // Settings to receive security updates.
-  // See https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts
   vulnerabilityAlerts: {
     enabled: true,
   },
