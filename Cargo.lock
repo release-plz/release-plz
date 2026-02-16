@@ -564,7 +564,7 @@ dependencies = [
 
 [[package]]
 name = "cargo_utils"
-version = "0.1.77"
+version = "0.1.78"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -1617,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "git_cmd"
-version = "0.6.27"
+version = "0.6.28"
 dependencies = [
  "anyhow",
  "camino",
@@ -3399,7 +3399,7 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "git-conventional 1.0.0",
  "regex",
@@ -4397,7 +4397,7 @@ checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 
 [[package]]
 name = "release-plz"
-version = "0.3.155"
+version = "0.3.156"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.36.11"
+version = "0.36.12"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4455,7 +4455,7 @@ dependencies = [
  "http",
  "ignore",
  "itertools",
- "next_version 0.3.0",
+ "next_version 0.3.1",
  "parse-changelog",
  "rand 0.10.0",
  "rayon",

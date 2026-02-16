@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.12](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.11...release_plz_core-v0.36.12) - 2026-02-16
+
+### Other
+
+- use cargo info to understand if package was published ([#2645](https://github.com/release-plz/release-plz/pull/2645))
+
 ## [0.36.11](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.10...release_plz_core-v0.36.11) - 2026-02-05
 
 ### Fixed
