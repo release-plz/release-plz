@@ -13,6 +13,21 @@
     ':maintainLockFilesWeekly',
   ],
   automerge: true,
+  customManagers: [
+    // Update rust version in cargo deny whenever a new stable release is out
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^\\.github/workflows/deny\\.yml$/',
+      ],
+      matchStrings: [
+        'rust-version:\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'rust-lang/rust',
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver',
+    },
+  ],
   packageRules: [
     {
       matchManagers: [
