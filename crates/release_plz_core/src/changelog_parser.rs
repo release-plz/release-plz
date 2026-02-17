@@ -64,25 +64,37 @@ fn parse_header_fallback_strategy(changelog: &str) -> Option<String> {
     None
 }
 
-pub fn last_changes(changelog: &Utf8Path) -> anyhow::Result<Option<String>> {
+pub fn last_changes(
+    changelog: &Utf8Path,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<String>> {
     let changelog = fs_err::read_to_string(changelog).context("can't read changelog file")?;
-    last_changes_from_str(&changelog)
+    last_changes_from_str(&changelog, version_prefix_pattern)
 }
 
-pub fn last_changes_from_str(changelog: &str) -> anyhow::Result<Option<String>> {
-    let parser = ChangelogParser::new(changelog)?;
+pub fn last_changes_from_str(
+    changelog: &str,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let parser = ChangelogParser::new(changelog, version_prefix_pattern)?;
     let last_release = parser.last_release().map(|r| r.notes.to_string());
     Ok(last_release)
 }
 
-pub fn last_version_from_str(changelog: &str) -> anyhow::Result<Option<String>> {
-    let parser = ChangelogParser::new(changelog)?;
+pub fn last_version_from_str(
+    changelog: &str,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let parser = ChangelogParser::new(changelog, version_prefix_pattern)?;
     let last_release = parser.last_release().map(|r| r.version.to_string());
     Ok(last_release)
 }
 
-pub fn last_release_from_str(changelog: &str) -> anyhow::Result<Option<ChangelogRelease>> {
-    let parser = ChangelogParser::new(changelog)?;
+pub fn last_release_from_str(
+    changelog: &str,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<ChangelogRelease>> {
+    let parser = ChangelogParser::new(changelog, version_prefix_pattern)?;
     let last_release = parser.last_release().map(ChangelogRelease::from_release);
     Ok(last_release)
 }
@@ -115,8 +127,19 @@ pub struct ChangelogParser<'a> {
 }
 
 impl<'a> ChangelogParser<'a> {
-    pub fn new(changelog_text: &'a str) -> anyhow::Result<Self> {
-        let changelog = parse_changelog::parse(changelog_text).context("can't parse changelog")?;
+    pub fn new(
+        changelog_text: &'a str,
+        version_prefix_pattern: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let mut parser = parse_changelog::Parser::new();
+        if let Some(pattern) = version_prefix_pattern {
+            parser
+                .prefix_format(pattern)
+                .context("invalid version_prefix_pattern")?;
+        }
+        let changelog = parser
+            .parse(changelog_text)
+            .context("can't parse changelog")?;
         Ok(Self { changelog })
     }
 
@@ -144,7 +167,7 @@ mod tests {
     use super::*;
 
     fn last_changes_from_str_test(changelog: &str) -> String {
-        last_changes_from_str(changelog).unwrap().unwrap()
+        last_changes_from_str(changelog, None).unwrap().unwrap()
     }
 
     #[test]

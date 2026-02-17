@@ -78,6 +78,9 @@ impl Config {
                 update_config.common.changelog_update = false.into();
             }
             update_request = update_request.with_package_config(package, update_config.into());
+            if let Some(pattern) = self.changelog.version_prefix_pattern.clone() {
+                update_request = update_request.with_version_prefix_pattern(pattern);
+            }
         }
         Ok(update_request)
     }
@@ -92,6 +95,8 @@ impl Config {
                 set_version_request.set_changelog_path(package, changelog_path);
             }
         }
+        set_version_request
+            .set_version_prefix_pattern(self.changelog.version_prefix_pattern.clone());
         Ok(())
     }
 
@@ -115,8 +120,9 @@ impl Config {
         if allow_dirty {
             default_config.publish_allow_dirty = Some(true);
         }
-        let mut release_request =
-            release_request.with_default_package_config(default_config.into());
+        let mut release_request = release_request
+            .with_default_package_config(default_config.into())
+            .with_version_prefix_pattern(self.changelog.version_prefix_pattern.clone());
 
         for (package, config) in self.packages() {
             let mut release_config = config.clone();
@@ -838,7 +844,7 @@ unknown = false";
               |
             4 | unknown = false
               | ^^^^^^^
-            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
+            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`, `version_prefix_pattern`
         "]]
         .assert_eq(&error);
     }
