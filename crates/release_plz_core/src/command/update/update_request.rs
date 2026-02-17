@@ -48,6 +48,10 @@ pub struct UpdateRequest {
     release_commits: Option<Regex>,
     git: Option<GitForge>,
     max_analyze_commits: Option<u32>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    version_prefix_pattern: Option<String>,
 }
 
 impl UpdateRequest {
@@ -68,6 +72,7 @@ impl UpdateRequest {
             release_commits: None,
             git: None,
             max_analyze_commits: None,
+            version_prefix_pattern: None,
         })
     }
 
@@ -245,6 +250,17 @@ impl UpdateRequest {
 
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
+    }
+
+    pub fn with_version_prefix_pattern(self, version_prefix_pattern: String) -> Self {
+        Self {
+            version_prefix_pattern: Some(version_prefix_pattern),
+            ..self
+        }
+    }
+
+    pub fn version_prefix_pattern(&self) -> Option<&str> {
+        self.version_prefix_pattern.as_deref()
     }
 
     /// Determine if `git_only` mode should be used for a specific package.

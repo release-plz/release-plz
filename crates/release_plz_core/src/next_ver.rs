@@ -424,12 +424,18 @@ pub struct UpdateResult {
     /// Used to generate correct version transitions in PR body (e.g., "0.1.0 -> 0.2.0")
     /// instead of just showing "0.2.0" when `previous_version == next_version`.
     pub registry_version: Option<Version>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 impl UpdateResult {
     pub fn last_changes(&self) -> anyhow::Result<Option<ChangelogRelease>> {
         match &self.changelog {
-            Some(c) => changelog_parser::last_release_from_str(c),
+            Some(c) => {
+                changelog_parser::last_release_from_str(c, self.version_prefix_pattern.as_deref())
+            }
             None => Ok(None),
         }
     }
