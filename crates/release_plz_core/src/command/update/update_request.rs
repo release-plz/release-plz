@@ -259,10 +259,6 @@ impl UpdateRequest {
         }
     }
 
-    //pub fn version_prefix_pattern(&self) -> Option<&str> {
-    //    self.version_prefix_pattern.as_deref()
-    //}
-
     pub fn version_prefix_pattern_for(&self, package_name: &str) -> Option<String> {
         let package_config = self.packages_config.get(package_name);
         package_config
