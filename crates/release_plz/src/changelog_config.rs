@@ -29,10 +29,6 @@ pub struct ChangelogCfg {
     pub protect_breaking_commits: Option<bool>,
     /// A regular expression for matching the git tags to add to the changelog.
     pub tag_pattern: Option<String>,
-    /// A regular expression used to match the prefix portion of a release heading.
-    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
-    /// for details.
-    pub version_prefix_pattern: Option<String>,
 }
 
 impl ChangelogCfg {
