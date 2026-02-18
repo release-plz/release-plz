@@ -61,6 +61,9 @@ impl Config {
         }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
+        if let Some(pattern) = self.workspace.version_prefix_pattern.clone() {
+            update_request = update_request.with_version_prefix_pattern(pattern);
+        }
         for (package, config) in self.packages() {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
@@ -78,9 +81,6 @@ impl Config {
                 update_config.common.changelog_update = false.into();
             }
             update_request = update_request.with_package_config(package, update_config.into());
-            if let Some(pattern) = self.changelog.version_prefix_pattern.clone() {
-                update_request = update_request.with_version_prefix_pattern(pattern);
-            }
         }
         Ok(update_request)
     }
@@ -96,7 +96,7 @@ impl Config {
             }
         }
         set_version_request
-            .set_version_prefix_pattern(self.changelog.version_prefix_pattern.clone());
+            .set_version_prefix_pattern(self.workspace.version_prefix_pattern.clone());
         Ok(())
     }
 
@@ -122,7 +122,7 @@ impl Config {
         }
         let mut release_request = release_request
             .with_default_package_config(default_config.into())
-            .with_version_prefix_pattern(self.changelog.version_prefix_pattern.clone());
+            .with_version_prefix_pattern(self.workspace.version_prefix_pattern.clone());
 
         for (package, config) in self.packages() {
             let mut release_config = config.clone();
@@ -221,6 +221,10 @@ pub struct Workspace {
     #[serde(default = "default_max_analyze_commits")]
     #[schemars(default = "default_max_analyze_commits")]
     pub max_analyze_commits: Option<u32>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 impl Default for Workspace {
@@ -240,6 +244,7 @@ impl Default for Workspace {
             release_commits: None,
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
+            version_prefix_pattern: None,
         }
     }
 }
@@ -312,6 +317,10 @@ pub struct PackageSpecificConfig {
     /// # Version group
     /// The name of a group of packages that needs to have the same version.
     version_group: Option<String>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 impl PackageSpecificConfig {
@@ -321,6 +330,7 @@ impl PackageSpecificConfig {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
+            version_prefix_pattern: self.version_prefix_pattern,
         }
     }
 }
@@ -495,6 +505,7 @@ impl From<PackageSpecificConfig> for release_plz_core::PackageUpdateConfig {
             generic: config.common.into(),
             changelog_include: config.changelog_include.unwrap_or_default(),
             version_group: config.version_group,
+            version_prefix_pattern: config.version_prefix_pattern,
         }
     }
 }
@@ -621,6 +632,7 @@ mod tests {
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
                 max_analyze_commits: default_max_analyze_commits(),
+                version_prefix_pattern: None,
             },
             package: [].into(),
         }
@@ -640,6 +652,7 @@ mod tests {
                 },
                 changelog_include: None,
                 version_group: None,
+                version_prefix_pattern: None,
             },
         }
     }
@@ -746,6 +759,7 @@ mod tests {
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
                 max_analyze_commits: default_max_analyze_commits(),
+                version_prefix_pattern: None,
             },
             package: [PackageSpecificConfigWithName {
                 name: "crate1".to_string(),
@@ -761,6 +775,7 @@ mod tests {
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
                     version_group: None,
+                    version_prefix_pattern: None,
                 },
             }]
             .into(),
@@ -844,7 +859,7 @@ unknown = false";
               |
             4 | unknown = false
               | ^^^^^^^
-            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`, `version_prefix_pattern`
+            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
         "]]
         .assert_eq(&error);
     }

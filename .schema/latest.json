@@ -17,8 +17,7 @@
         "protect_breaking_commits": null,
         "sort_commits": null,
         "tag_pattern": null,
-        "trim": null,
-        "version_prefix_pattern": null
+        "trim": null
       }
     },
     "package": {
@@ -68,7 +67,8 @@
         "release_always": null,
         "release_commits": null,
         "repo_url": null,
-        "semver_check": null
+        "semver_check": null,
+        "version_prefix_pattern": null
       }
     }
   },
@@ -160,13 +160,6 @@
           "description": "If set to `true`, leading and trailing whitespace are removed from [`Self::body`].",
           "type": [
             "boolean",
-            "null"
-          ]
-        },
-        "version_prefix_pattern": {
-          "description": "A regular expression used to match the prefix portion of a release heading.\nSee the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)\nfor details.",
-          "type": [
-            "string",
             "null"
           ]
         }
@@ -462,6 +455,13 @@
         "version_group": {
           "title": "Version group",
           "description": "The name of a group of packages that needs to have the same version.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version_prefix_pattern": {
+          "description": "A regular expression used to match the prefix portion of a release heading.\nSee the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)\nfor details.",
           "type": [
             "string",
             "null"
@@ -810,6 +810,13 @@
           "description": "Controls when to run cargo-semver-checks.\nIf unspecified, run cargo-semver-checks if the package is a library.",
           "type": [
             "boolean",
+            "null"
+          ]
+        },
+        "version_prefix_pattern": {
+          "description": "A regular expression used to match the prefix portion of a release heading.\nSee the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)\nfor details.",
+          "type": [
+            "string",
             "null"
           ]
         }

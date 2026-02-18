@@ -513,7 +513,9 @@ impl Updater<'_> {
                         repo_url,
                         release_link.as_deref(),
                         package,
-                        self.req.version_prefix_pattern(),
+                        self.req
+                            .version_prefix_pattern_for(&package.name)
+                            .as_deref(),
                     )
                 })
                 .transpose()
@@ -530,7 +532,11 @@ impl Updater<'_> {
             semver_check,
             new_changelog_entry,
             registry_version,
-            version_prefix_pattern: self.req.version_prefix_pattern().map(str::to_string),
+            version_prefix_pattern: self
+                .req
+                .version_prefix_pattern_for(&package.name)
+                .as_deref()
+                .map(str::to_string),
         })
     }
 
