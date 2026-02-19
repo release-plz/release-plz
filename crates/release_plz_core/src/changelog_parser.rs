@@ -166,8 +166,10 @@ fn release_at<'a>(
 mod tests {
     use super::*;
 
-    fn last_changes_from_str_test(changelog: &str) -> String {
-        last_changes_from_str(changelog, None).unwrap().unwrap()
+    fn last_changes_from_str_test(changelog: &str, version_prefix_pattern: Option<&str>) -> String {
+        last_changes_from_str(changelog, version_prefix_pattern)
+            .unwrap()
+            .unwrap()
     }
 
     #[test]
@@ -301,7 +303,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - improved error message
 ";
-        let changes = last_changes_from_str_test(changelog);
+        let changes = last_changes_from_str_test(changelog, None);
         let expected_changes = "\
 ### Added
 
@@ -331,7 +333,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - improved error message
 ";
-        let changes = last_changes_from_str_test(changelog);
+        let changes = last_changes_from_str_test(changelog, None);
+        let expected_changes = "\
+### Added
+
+- Add function to retrieve default branch (#372)";
+        assert_eq!(changes, expected_changes);
+    }
+
+    #[test]
+    fn changelog_with_unreleased_section_is_parsed_with_prefix() {
+        let changelog = "\
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [package @ 0.2.5] - 2022-12-16
+
+### Added
+
+- Add function to retrieve default branch (#372)
+
+## [package @ 0.2.4] - 2022-12-12
+
+### Changed
+
+- improved error message
+";
+        let changes = last_changes_from_str_test(changelog, Some(r"package\s*\@\s*"));
+        let expected_changes = "\
+### Added
+
+- Add function to retrieve default branch (#372)";
+        assert_eq!(changes, expected_changes);
+    }
+
+    #[test]
+    fn changelog_without_unreleased_section_is_parsed_with_prefix() {
+        let changelog = "\
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [package @ 0.2.5](https://github.com/release-plz/release-plz/compare/git_cmd-v0.2.4...git_cmd-v0.2.5) - 2022-12-16
+
+### Added
+
+- Add function to retrieve default branch (#372)
+
+## [package @ 0.2.4] - 2022-12-12
+
+### Changed
+
+- improved error message
+";
+        let changes = last_changes_from_str_test(changelog, Some(r"package\s*\@\s*"));
         let expected_changes = "\
 ### Added
 

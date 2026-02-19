@@ -930,4 +930,57 @@ unknown = false"#;
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
     }
+
+    #[test]
+    fn workspace_version_prefix_pattern_is_serialized() {
+        let mut config = create_base_workspace_config();
+        config.workspace.version_prefix_pattern = Some("^(?:v|Version |Release |)?".to_string());
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"version_prefix_pattern = "^(?:v|Version |Release |)?""#));
+    }
+
+    #[test]
+    fn workspace_version_prefix_pattern_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            version_prefix_pattern = \"^(?:v|Version |Release |)?\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config.workspace.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn package_version_prefix_pattern_is_serialized() {
+        let mut config = create_base_workspace_config();
+        let mut package_config = create_base_package_config();
+        package_config.config.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
+        config.package = [package_config].into();
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"version_prefix_pattern = "^(?:v|Version |Release |)?""#));
+    }
+
+    #[test]
+    fn package_version_prefix_pattern_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\n{BASE_PACKAGE_CONFIG}\
+            version_prefix_pattern = \"^(?:v|Version |Release |)?\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        let mut package_config = create_base_package_config();
+        package_config.config.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
+        expected_config.package = [package_config].into();
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
 }
