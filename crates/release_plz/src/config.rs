@@ -61,9 +61,6 @@ impl Config {
         }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
-        if let Some(pattern) = self.workspace.version_prefix_pattern.clone() {
-            update_request = update_request.with_version_prefix_pattern(pattern);
-        }
         for (package, config) in self.packages() {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
@@ -89,14 +86,18 @@ impl Config {
         &self,
         set_version_request: &mut SetVersionRequest,
     ) -> anyhow::Result<()> {
+        set_version_request.set_version_prefix_pattern(
+            self.workspace
+                .packages_defaults
+                .version_prefix_pattern
+                .clone(),
+        );
         for (package, config) in self.packages() {
             if let Some(changelog_path) = config.common.changelog_path.clone() {
                 let changelog_path = to_utf8_pathbuf(changelog_path)?;
                 set_version_request.set_changelog_path(package, changelog_path);
             }
         }
-        set_version_request
-            .set_version_prefix_pattern(self.workspace.version_prefix_pattern.clone());
         Ok(())
     }
 
@@ -122,7 +123,12 @@ impl Config {
         }
         let mut release_request = release_request
             .with_default_package_config(default_config.into())
-            .with_version_prefix_pattern(self.workspace.version_prefix_pattern.clone());
+            .with_version_prefix_pattern(
+                self.workspace
+                    .packages_defaults
+                    .version_prefix_pattern
+                    .clone(),
+            );
 
         for (package, config) in self.packages() {
             let mut release_config = config.clone();
@@ -221,10 +227,6 @@ pub struct Workspace {
     #[serde(default = "default_max_analyze_commits")]
     #[schemars(default = "default_max_analyze_commits")]
     pub max_analyze_commits: Option<u32>,
-    /// A regular expression used to match the prefix portion of a release heading.
-    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
-    /// for details.
-    pub version_prefix_pattern: Option<String>,
 }
 
 impl Default for Workspace {
@@ -244,7 +246,6 @@ impl Default for Workspace {
             release_commits: None,
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
-            version_prefix_pattern: None,
         }
     }
 }
@@ -317,10 +318,6 @@ pub struct PackageSpecificConfig {
     /// # Version group
     /// The name of a group of packages that needs to have the same version.
     version_group: Option<String>,
-    /// A regular expression used to match the prefix portion of a release heading.
-    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
-    /// for details.
-    pub version_prefix_pattern: Option<String>,
 }
 
 impl PackageSpecificConfig {
@@ -330,7 +327,6 @@ impl PackageSpecificConfig {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
-            version_prefix_pattern: self.version_prefix_pattern,
         }
     }
 }
@@ -480,6 +476,10 @@ pub struct PackageConfig {
     /// Custom regex to match commit types that should trigger a major version increment.
     /// Useful when using non-conventional commit prefixes.
     pub custom_major_increment_regex: Option<String>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -495,6 +495,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            version_prefix_pattern: config.version_prefix_pattern,
         }
     }
 }
@@ -505,7 +506,6 @@ impl From<PackageSpecificConfig> for release_plz_core::PackageUpdateConfig {
             generic: config.common.into(),
             changelog_include: config.changelog_include.unwrap_or_default(),
             version_group: config.version_group,
-            version_prefix_pattern: config.version_prefix_pattern,
         }
     }
 }
@@ -542,6 +542,9 @@ impl PackageConfig {
                 .custom_major_increment_regex
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
+            version_prefix_pattern: self
+                .version_prefix_pattern
+                .or(default.version_prefix_pattern),
         }
     }
 
@@ -621,6 +624,7 @@ mod tests {
                     git_release_enable: Some(true),
                     git_release_type: Some(ReleaseType::Prod),
                     git_release_draft: Some(false),
+                    version_prefix_pattern: None,
                     ..Default::default()
                 },
                 pr_name: None,
@@ -632,7 +636,6 @@ mod tests {
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
                 max_analyze_commits: default_max_analyze_commits(),
-                version_prefix_pattern: None,
             },
             package: [].into(),
         }
@@ -648,11 +651,11 @@ mod tests {
                     git_release_enable: None,
                     git_release_type: None,
                     git_release_draft: None,
+                    version_prefix_pattern: None,
                     ..Default::default()
                 },
                 changelog_include: None,
                 version_group: None,
-                version_prefix_pattern: None,
             },
         }
     }
@@ -753,13 +756,13 @@ mod tests {
                     git_release_draft: Some(false),
                     release: Some(true),
                     changelog_path: Some("./CHANGELOG.md".into()),
+                    version_prefix_pattern: None,
                     ..Default::default()
                 },
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
                 max_analyze_commits: default_max_analyze_commits(),
-                version_prefix_pattern: None,
             },
             package: [PackageSpecificConfigWithName {
                 name: "crate1".to_string(),
@@ -771,11 +774,11 @@ mod tests {
                         git_release_type: Some(ReleaseType::Prod),
                         git_release_draft: Some(false),
                         release: Some(false),
+                        version_prefix_pattern: None,
                         ..Default::default()
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
                     version_group: None,
-                    version_prefix_pattern: None,
                 },
             }]
             .into(),
@@ -934,7 +937,8 @@ unknown = false"#;
     #[test]
     fn workspace_version_prefix_pattern_is_serialized() {
         let mut config = create_base_workspace_config();
-        config.workspace.version_prefix_pattern = Some("^(?:v|Version |Release |)?".to_string());
+        config.workspace.packages_defaults.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
 
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"version_prefix_pattern = "^(?:v|Version |Release |)?""#));
@@ -948,8 +952,10 @@ unknown = false"#;
         );
 
         let mut expected_config = create_base_workspace_config();
-        expected_config.workspace.version_prefix_pattern =
-            Some("^(?:v|Version |Release |)?".to_string());
+        expected_config
+            .workspace
+            .packages_defaults
+            .version_prefix_pattern = Some("^(?:v|Version |Release |)?".to_string());
 
         let config: Config = toml::from_str(config).unwrap();
         assert_eq!(config, expected_config);
@@ -959,7 +965,7 @@ unknown = false"#;
     fn package_version_prefix_pattern_is_serialized() {
         let mut config = create_base_workspace_config();
         let mut package_config = create_base_package_config();
-        package_config.config.version_prefix_pattern =
+        package_config.config.common.version_prefix_pattern =
             Some("^(?:v|Version |Release |)?".to_string());
         config.package = [package_config].into();
 
@@ -976,7 +982,7 @@ unknown = false"#;
 
         let mut expected_config = create_base_workspace_config();
         let mut package_config = create_base_package_config();
-        package_config.config.version_prefix_pattern =
+        package_config.config.common.version_prefix_pattern =
             Some("^(?:v|Version |Release |)?".to_string());
         expected_config.package = [package_config].into();
 
