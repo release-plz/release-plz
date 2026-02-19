@@ -30,6 +30,10 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 /// Package-specific config
@@ -41,10 +45,6 @@ pub struct PackageUpdateConfig {
     /// Include the changelogs of these packages in the changelog of the current package.
     pub changelog_include: Vec<String>,
     pub version_group: Option<String>,
-    /// A regular expression used to match the prefix portion of a release heading.
-    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
-    /// for details.
-    pub version_prefix_pattern: Option<String>,
 }
 
 impl From<UpdateConfig> for PackageUpdateConfig {
@@ -53,7 +53,6 @@ impl From<UpdateConfig> for PackageUpdateConfig {
             generic: config,
             changelog_include: vec![],
             version_group: None,
-            version_prefix_pattern: None,
         }
     }
 }
@@ -89,6 +88,7 @@ impl Default for UpdateConfig {
             changelog_path: None,
             custom_minor_increment_regex: None,
             custom_major_increment_regex: None,
+            version_prefix_pattern: None,
         }
     }
 }
