@@ -17,6 +17,10 @@ pub struct SetVersionRequest {
     /// Cargo metadata.
     metadata: Metadata,
     version_changes: SetVersionSpec,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    version_prefix_pattern: Option<String>,
 }
 
 impl SetVersionRequest {
@@ -31,6 +35,10 @@ impl SetVersionRequest {
                 });
             }
         }
+    }
+
+    pub fn set_version_prefix_pattern(&mut self, pattern: Option<impl Into<String>>) {
+        self.version_prefix_pattern = pattern.map(Into::into);
     }
 }
 
@@ -73,6 +81,7 @@ impl SetVersionRequest {
             version_changes,
             metadata,
             manifest,
+            version_prefix_pattern: None,
         })
     }
 }
@@ -99,6 +108,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
                 &all_packages,
                 change,
                 &workspace_manifest,
+                input.version_prefix_pattern.as_deref(),
             )?;
         }
         SetVersionSpec::Workspace(changes) => {
@@ -109,6 +119,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
                     &all_packages,
                     change,
                     &workspace_manifest,
+                    input.version_prefix_pattern.as_deref(),
                 )?;
             }
         }
@@ -122,6 +133,7 @@ fn set_version_in_package(
     all_packages: &[&Package],
     change: &VersionChange,
     workspace_manifest: &LocalManifest,
+    version_prefix_pattern: Option<&str>,
 ) -> Result<(), anyhow::Error> {
     let pkg = packages
         .get(package)
@@ -138,8 +150,13 @@ fn set_version_in_package(
         .changelog_path
         .as_deref()
         .unwrap_or(&default_changelog_path);
-    update_changelog(changelog_path, &pkg.version, &change.version)
-        .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
+    update_changelog(
+        changelog_path,
+        &pkg.version,
+        &change.version,
+        version_prefix_pattern,
+    )
+    .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
     Ok(())
 }
 
@@ -147,9 +164,11 @@ fn update_changelog(
     changelog_path: &Utf8Path,
     old_version: &Version,
     new_version: &Version,
+    version_prefix_pattern: Option<&str>,
 ) -> anyhow::Result<()> {
     let changelog_content = fs_err::read_to_string(changelog_path)?;
-    let last_release = last_release_from_str(&changelog_content)?.context("no release found")?;
+    let last_release = last_release_from_str(&changelog_content, version_prefix_pattern)?
+        .context("no release found")?;
 
     let new_changelog_content = {
         let old_title = last_release.title();
