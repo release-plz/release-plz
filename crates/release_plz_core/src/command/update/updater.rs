@@ -619,6 +619,19 @@ impl Updater<'_> {
     ) -> anyhow::Result<()> {
         let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
+        let registry_package_path = registry_package
+            .map(|registry_package| registry_package.package.package_path())
+            .transpose()
+            .context("can't retrieve registry package path")?;
+        let registry_package_files =
+            if let Some(registry_package_path) = registry_package_path.as_deref() {
+                Some(
+                    get_registry_package_files(package_path, repository, registry_package_path)
+                        .context("failed to determine registry package files")?,
+                )
+            } else {
+                None
+            };
         let max_analyze_commits = if registry_package.is_none() {
             match self.req.max_analyze_commits() {
                 0 => u32::MAX,
@@ -635,7 +648,12 @@ impl Updater<'_> {
             // Check if files changed in git commit belong to the current package.
             // This is required because a package can contain another package in a subdirectory.
             let are_changed_files_in_pkg = || {
-                self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
+                self.are_changed_files_in_package(
+                    package_path,
+                    repository,
+                    &current_commit_hash,
+                    registry_package_files.as_ref(),
+                )
             };
 
             if let Some(registry_package) = registry_package {
@@ -833,7 +851,18 @@ impl Updater<'_> {
         package_path: &Utf8Path,
         repository: &Repo,
         hash: &str,
+        package_files: Option<&HashSet<Utf8PathBuf>>,
     ) -> anyhow::Result<bool> {
+        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
+            warn!("failed to get changed files of commit {hash}: {e:?}");
+        }) else {
+            // Assume that this commit contains changes to the package.
+            return Ok(true);
+        };
+        if let Some(package_files) = package_files {
+            return Ok(!package_files.is_disjoint(&changed_files));
+        }
+
         // We run `cargo package` to get package files, which can edit files, such as `Cargo.lock`.
         // Store its path so it can be reverted after comparison.
         let cargo_lock_path = self
@@ -850,12 +879,6 @@ impl Updater<'_> {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
             // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
-            return Ok(true);
-        };
-        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
-            warn!("failed to get changed files of commit {hash}: {e:?}");
-        }) else {
-            // Assume that this commit contains changes to the package.
             return Ok(true);
         };
         Ok(!package_files.is_disjoint(&changed_files))
@@ -913,6 +936,27 @@ fn get_package_files(
                 .with_context(|| format!("failed to strip {repository_dir} from {normalized}"))?;
             Ok(relative_path.to_path_buf())
         })
+        .collect()
+}
+
+fn get_registry_package_files(
+    package_path: &Utf8Path,
+    repository: &Repo,
+    registry_package_path: &Utf8Path,
+) -> anyhow::Result<HashSet<Utf8PathBuf>> {
+    let repository_dir = repository.directory();
+    let package_rel_path = package_path
+        .strip_prefix(repository_dir)
+        .with_context(|| format!("failed to strip {repository_dir} from {package_path}"))?;
+    crate::get_cargo_package_files(registry_package_path)?
+        .into_iter()
+        .filter(|file| {
+            file != "Cargo.toml.orig"
+                && file != "Cargo.toml.orig.orig"
+                && file != ".cargo_vcs_info.json"
+                && file != "Cargo.lock"
+        })
+        .map(|file| Ok(package_rel_path.join(file)))
         .collect()
 }
 
