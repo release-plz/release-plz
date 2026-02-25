@@ -83,6 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - &checkout
         name: Checkout repository
@@ -169,9 +170,10 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
-    # Used to push tags, and create releases.
     permissions:
+      # Used to push tags, and create releases.
       contents: write
+      pull-requests: read
     steps:
       - &checkout
         name: Checkout repository
