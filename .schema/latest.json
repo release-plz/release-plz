@@ -57,6 +57,7 @@
         "pr_draft": false,
         "pr_labels": [],
         "pr_name": null,
+        "pr_per_package": null,
         "publish": null,
         "publish_all_features": null,
         "publish_allow_dirty": null,

@@ -175,6 +175,10 @@ pub struct Workspace {
     /// # PR Name
     /// Tera template of the pull request's name created by release-plz.
     pub pr_name: Option<String>,
+    /// # PR Per Package
+    /// - If `true`, create a separate PR for every package.
+    /// - If `false` or unspecified, create a single PR to release all packages at once.
+    pub pr_per_package: Option<bool>,
     /// # PR Body
     /// Tera template of the pull request's body created by release-plz.
     pub pr_body: Option<String>,
@@ -234,6 +238,7 @@ impl Default for Workspace {
             release_commits: None,
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
+            pr_per_package: None,
         }
     }
 }
