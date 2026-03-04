@@ -1655,3 +1655,177 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         )
     );
 }
+
+/// When `propagate_major_bump` is enabled and a dependency gets a major bump,
+/// the dependent crate should also get a major bump instead of a patch bump.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_propagates_major_bump() {
+    let binary = "binary";
+    let library = "library";
+    // dependency chain: binary -> library
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library}")]),
+        TestPackage::new(library).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // Set initial versions: library at 1.0.0 so breaking change = major bump
+    context.set_package_version(library, &Version::new(1, 0, 0));
+    context.set_package_version(binary, &Version::new(1, 0, 0));
+
+    // Enable propagate_major_bump for the workspace
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+propagate_major_bump = true
+"#,
+    );
+
+    context.push_all_changes("set initial versions");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Introduce a breaking change in the library
+    let lib_file = context.package_path(library).join("src").join("lib.rs");
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("breaking change in library");
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+
+    // Library should go 1.0.0 -> 2.0.0 (breaking change)
+    // Binary should go 1.0.0 -> 2.0.0 (propagated major bump)
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    assert!(
+        actual_body.contains(&format!("`{library}`: 1.0.0 -> 2.0.0")),
+        "Library should have major bump. PR body:\n{actual_body}"
+    );
+    assert!(
+        actual_body.contains(&format!("`{binary}`: 1.0.0 -> 2.0.0")),
+        "Binary should have propagated major bump. PR body:\n{actual_body}"
+    );
+
+    context.merge_release_pr().await;
+
+    // Verify final Cargo.toml versions
+    let binary_cargo_toml =
+        fs_err::read_to_string(context.package_path(binary).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "binary"
+        version = "2.0.0"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        library = { version = "2.0.0", path = "../library", registry = "test-registry" }
+    "#]]
+    .assert_eq(&binary_cargo_toml);
+}
+
+/// When `propagate_major_bump` is enabled, major bumps should cascade through
+/// the dependency chain: crateA breaks -> crateB major bumps -> crateC major bumps.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_propagates_major_bump_cascading() {
+    let crate_a = "crate-a";
+    let crate_b = "crate-b";
+    let crate_c = "crate-c";
+    // Dependency chain: crate_c -> crate_b -> crate_a
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(crate_c)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{crate_b}")]),
+        TestPackage::new(crate_b)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{crate_a}")]),
+        TestPackage::new(crate_a).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // All crates start at 1.0.0
+    context.set_package_version(crate_a, &Version::new(1, 0, 0));
+    context.set_package_version(crate_b, &Version::new(1, 0, 0));
+    context.set_package_version(crate_c, &Version::new(1, 0, 0));
+
+    // Enable propagate_major_bump for the workspace
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+propagate_major_bump = true
+"#,
+    );
+
+    context.push_all_changes("set initial versions");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Introduce a breaking change in crate_a
+    let lib_file = context.package_path(crate_a).join("src").join("lib.rs");
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("breaking change in crate-a");
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+
+    // crate_a: 1.0.0 -> 2.0.0 (breaking change)
+    // crate_b: 1.0.0 -> 2.0.0 (propagated from crate_a)
+    // crate_c: 1.0.0 -> 2.0.0 (propagated from crate_b)
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    assert!(
+        actual_body.contains(&format!("`{crate_a}`: 1.0.0 -> 2.0.0")),
+        "crate-a should have major bump. PR body:\n{actual_body}"
+    );
+    assert!(
+        actual_body.contains(&format!("`{crate_b}`: 1.0.0 -> 2.0.0")),
+        "crate-b should have propagated major bump. PR body:\n{actual_body}"
+    );
+    assert!(
+        actual_body.contains(&format!("`{crate_c}`: 1.0.0 -> 2.0.0")),
+        "crate-c should have cascading propagated major bump. PR body:\n{actual_body}"
+    );
+
+    context.merge_release_pr().await;
+
+    // Verify final Cargo.toml versions
+    let crate_b_cargo_toml =
+        fs_err::read_to_string(context.package_path(crate_b).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "crate-b"
+        version = "2.0.0"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        crate-a = { version = "2.0.0", path = "../crate-a", registry = "test-registry" }
+    "#]]
+    .assert_eq(&crate_b_cargo_toml);
+
+    let crate_c_cargo_toml =
+        fs_err::read_to_string(context.package_path(crate_c).join(CARGO_TOML)).unwrap();
+    expect_test::expect![[r#"
+        [package]
+        name = "crate-c"
+        version = "2.0.0"
+        edition = "2024"
+        publish = ["test-registry"]
+
+        [dependencies]
+        crate-b = { version = "2.0.0", path = "../crate-b", registry = "test-registry" }
+    "#]]
+    .assert_eq(&crate_c_cargo_toml);
+}

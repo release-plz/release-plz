@@ -362,6 +362,13 @@ impl Updater<'_> {
         // Keep a copy of all packages that have changed so far
         let mut all_changed_packages: Vec<(&Package, Version)> = initial_changed_packages.to_vec();
 
+        // Track which packages had a major version bump (old_major < new_major)
+        let mut major_bumped_packages: HashSet<String> = initial_changed_packages
+            .iter()
+            .filter(|(pkg, new_version)| new_version.major > pkg.version.major)
+            .map(|(pkg, _)| pkg.name.to_string())
+            .collect();
+
         // Continue updating packages until no more dependencies to update are found
         loop {
             let mut any_package_updated = false;
@@ -379,9 +386,23 @@ impl Updater<'_> {
                     workspace_dir,
                 ) && !deps.is_empty()
                 {
+                    // Check if any dependency had a major bump
+                    let has_major_bump_dep = deps
+                        .iter()
+                        .any(|dep| major_bumped_packages.contains(dep.name.as_str()));
+
                     // This package depends on changed packages, so it needs to be updated
-                    let update =
-                        self.calculate_package_update_result(&deps, p, &mut old_changelogs)?;
+                    let update = self.calculate_package_update_result(
+                        &deps,
+                        p,
+                        &mut old_changelogs,
+                        has_major_bump_dep,
+                    )?;
+
+                    // Track if this package itself got a major bump (for cascading)
+                    if update.1.version.major > p.version.major {
+                        major_bumped_packages.insert(p.name.to_string());
+                    }
 
                     result.push(update.clone());
 
@@ -406,6 +427,7 @@ impl Updater<'_> {
         deps: &[&Package],
         p: &Package,
         old_changelogs: &mut OldChangelogs,
+        has_major_bump_dep: bool,
     ) -> anyhow::Result<(Package, UpdateResult)> {
         let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
         let commits = {
@@ -415,8 +437,22 @@ impl Updater<'_> {
             );
             vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
         };
+        let propagate = has_major_bump_dep
+            && self
+                .req
+                .get_package_config(&p.name)
+                .generic
+                .propagate_major_bump;
         let next_version = if p.version.is_prerelease() {
             p.version.increment_prerelease()
+        } else if propagate {
+            if p.version.major == 0 && p.version.minor == 0 {
+                p.version.increment_patch()
+            } else if p.version.major == 0 {
+                p.version.increment_minor()
+            } else {
+                p.version.increment_major()
+            }
         } else {
             p.version.increment_patch()
         };
