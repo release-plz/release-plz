@@ -532,9 +532,7 @@ impl PackageConfig {
                 .custom_major_increment_regex
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
-            propagate_major_bump: self
-                .propagate_major_bump
-                .or(default.propagate_major_bump),
+            propagate_major_bump: self.propagate_major_bump.or(default.propagate_major_bump),
         }
     }
 
