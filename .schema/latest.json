@@ -714,6 +714,14 @@
             "null"
           ]
         },
+        "pr_per_package": {
+          "title": "PR Per Package",
+          "description": "- If `true`, create a separate PR for every package.\n- If `false` or unspecified, create a single PR to release all packages at once.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "publish": {
           "title": "Publish",
           "description": "If `false`, don't run `cargo publish`.",
