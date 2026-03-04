@@ -365,7 +365,10 @@ impl Updater<'_> {
         // Track which packages had a major version bump (old_major < new_major)
         let mut major_bumped_packages: HashSet<String> = initial_changed_packages
             .iter()
-            .filter(|(pkg, new_version)| new_version.major > pkg.version.major)
+            .filter(|(pkg, new_version)| {
+                new_version.major > pkg.version.major
+                    || (pkg.version.major == 0 && new_version.minor > pkg.version.minor)
+            })
             .map(|(pkg, _)| pkg.name.to_string())
             .collect();
 
@@ -400,7 +403,9 @@ impl Updater<'_> {
                     )?;
 
                     // Track if this package itself got a major bump (for cascading)
-                    if update.1.version.major > p.version.major {
+                    if update.1.version.major > p.version.major
+                        || (p.version.major == 0 && update.1.version.minor > p.version.minor)
+                    {
                         major_bumped_packages.insert(p.name.to_string());
                     }
 
