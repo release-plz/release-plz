@@ -1675,6 +1675,7 @@ async fn release_plz_propagates_major_bump() {
     // Set initial versions: library at 1.0.0 so breaking change = major bump
     context.set_package_version(library, &Version::new(1, 0, 0));
     context.set_package_version(binary, &Version::new(1, 0, 0));
+    context.push_all_changes("set initial versions");
 
     // Enable propagate_major_bump for the workspace
     context.write_release_plz_toml(
@@ -1683,8 +1684,6 @@ async fn release_plz_propagates_major_bump() {
 propagate_major_bump = true
 "#,
     );
-
-    context.push_all_changes("set initial versions");
 
     context.run_release_pr().success();
     context.merge_release_pr().await;
@@ -1755,6 +1754,7 @@ async fn release_plz_propagates_major_bump_cascading() {
     context.set_package_version(crate_a, &Version::new(1, 0, 0));
     context.set_package_version(crate_b, &Version::new(1, 0, 0));
     context.set_package_version(crate_c, &Version::new(1, 0, 0));
+    context.push_all_changes("set initial versions");
 
     // Enable propagate_major_bump for the workspace
     context.write_release_plz_toml(
@@ -1763,8 +1763,6 @@ async fn release_plz_propagates_major_bump_cascading() {
 propagate_major_bump = true
 "#,
     );
-
-    context.push_all_changes("set initial versions");
 
     context.run_release_pr().success();
     context.merge_release_pr().await;
