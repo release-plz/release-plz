@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.13](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.12...release_plz_core-v0.36.13) - 2026-03-07
+
+### Fixed
+
+- *(git-only)* handle root-package workspace path dependencies ([#2655](https://github.com/release-plz/release-plz/pull/2655))
+
 ## [0.36.12](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.11...release_plz_core-v0.36.12) - 2026-02-16
 
 ### Other
