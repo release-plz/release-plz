@@ -26,6 +26,7 @@ cargo_metadata.workspace = true
 cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
+flate2.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
 git-cliff-core.workspace = true
 git-url-parse.workspace = true
@@ -50,6 +51,7 @@ walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
 strip-ansi-escapes.workspace = true
+tar.workspace = true
 tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 http.workspace = true
