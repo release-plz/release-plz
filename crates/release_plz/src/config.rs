@@ -464,6 +464,12 @@ pub struct PackageConfig {
     /// Custom regex to match commit types that should trigger a major version increment.
     /// Useful when using non-conventional commit prefixes.
     pub custom_major_increment_regex: Option<String>,
+    /// # Propagate Major Bump
+    /// If `true`, when a workspace dependency gets a major version bump,
+    /// dependent crates will also receive a major version bump instead of a patch bump.
+    /// This is useful for strict semver compliance: if `lib-a` goes from 1.0 to 2.0,
+    /// consumers of `lib-b` (which depends on `lib-a`) also face a breaking change.
+    pub propagate_major_bump: Option<bool>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -479,6 +485,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            propagate_major_bump: config.propagate_major_bump == Some(true),
         }
     }
 }
@@ -525,6 +532,7 @@ impl PackageConfig {
                 .custom_major_increment_regex
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
+            propagate_major_bump: self.propagate_major_bump.or(default.propagate_major_bump),
         }
     }
 

@@ -30,6 +30,9 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
+    /// If `true`, when a workspace dependency gets a major version bump,
+    /// dependent crates will also receive a major version bump instead of a patch bump.
+    pub propagate_major_bump: bool,
 }
 
 /// Package-specific config
@@ -84,6 +87,7 @@ impl Default for UpdateConfig {
             changelog_path: None,
             custom_minor_increment_regex: None,
             custom_major_increment_regex: None,
+            propagate_major_bump: false,
         }
     }
 }
