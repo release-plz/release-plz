@@ -36,7 +36,7 @@ fn release_order_inner<'a>(
             d.name == *p.name
               // Exclude the current package.
               && p.name != pkg.name
-              && should_dep_be_released_before(d, pkg)
+              && should_dep_be_released_before(d)
         }) {
             anyhow::ensure!(
                 !is_package_in(dep, passed),
@@ -60,27 +60,21 @@ fn is_package_in(pkg: &Package, packages: &[&Package]) -> bool {
     packages.iter().any(|p| p.name == pkg.name)
 }
 
-/// Check if the dependency is enabled in features.
-fn is_dep_in_features(pkg: &Package, dep: &str) -> bool {
-    pkg.features
-        // Discard features name.
-        .values()
-        // Any feature contains the dependency in the format `dep/feature`.
-        .any(|enabled_features| {
-            enabled_features
-                .iter()
-                .filter_map(|feature| feature.split_once('/').map(|split| split.0))
-                .any(|enabled_dependency| enabled_dependency == dep)
-        })
-}
-
 /// Check if the dependency should be released before the current package.
-fn should_dep_be_released_before(dep: &Dependency, pkg: &Package) -> bool {
-    // Ignore development dependencies. They don't need to be published before the current package...
-    matches!(dep.kind, DependencyKind::Normal | DependencyKind::Build)
-      // ...unless they are in features. In fact, `cargo-publish` compiles crates that are in features
-      // and dev-dependencies, even if they are not present in normal dependencies.
-      || is_dep_in_features(pkg, &dep.name)
+/// Normal and Build dependencies always affect release order.
+/// Dev-dependencies affect release order only if they have a version
+/// requirement specified — matching `cargo publish --workspace` behavior.
+/// Dev-deps without a version (`req == "*"`) are stripped from the published
+/// manifest, so they don't need to be published first.
+fn should_dep_be_released_before(dep: &Dependency) -> bool {
+    match dep.kind {
+        DependencyKind::Normal | DependencyKind::Build => true,
+        // Dev-deps with a version requirement remain in the published manifest
+        // and must be resolvable on the registry. Dev-deps without a version
+        // (req == "*") are stripped by cargo on publish, so they can be ignored.
+        DependencyKind::Development => !dep.req.comparators.is_empty(),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -156,16 +150,32 @@ mod tests {
 
     /// ┌──┐
     /// │  ▼
-    /// A  B (dev dependency)
+    /// A  B (versioned dev dependency)
     /// ▲  │
     /// └──┘
+    /// Versioned dev-dep cycles are circular dependencies because
+    /// `cargo package` validates versioned dev-deps against the registry,
+    /// so neither package can be published first.
     #[test]
-    fn two_packages_dev_cycle_is_ok() {
+    fn two_packages_versioned_dev_cycle_is_detected() {
         let pkgs = [&pkg("a", &[dev_dep("b")]), &pkg("b", &[dep("a")])];
-        assert_eq!(order(&pkgs), ["a", "b"]);
+        expect_test::expect!["Circular dependency detected: a -> b"]
+            .assert_eq(&release_order(&pkgs).unwrap_err().to_string());
+    }
 
-        // check if the order of the vector matters.
-        let pkgs = [&pkg("b", &[dep("a")]), &pkg("a", &[dev_dep("b")])];
+    /// ┌──┐
+    /// │  ▼
+    /// A  B (unversioned dev dependency)
+    /// ▲  │
+    /// └──┘
+    /// Unversioned dev-deps are stripped from the published manifest,
+    /// so they don't create a real cycle.
+    #[test]
+    fn two_packages_unversioned_dev_cycle_is_ok() {
+        let pkgs = [
+            &pkg("a", &[FakeDependency::new("b").unversioned_dev()]),
+            &pkg("b", &[dep("a")]),
+        ];
         assert_eq!(order(&pkgs), ["a", "b"]);
     }
 
@@ -219,7 +229,7 @@ mod tests {
     /// ▲  │
     /// └──┘
     #[test]
-    fn two_packages_dev_cycle_with_random_feature_is_ok() {
+    fn two_packages_dev_cycle_with_random_feature_is_detected() {
         let mut a = pkg("a", &[dev_dep("b")]);
         a.features = [(
             "my_feat".to_string(),
@@ -227,6 +237,29 @@ mod tests {
         )]
         .into();
         let pkgs = [&a, &pkg("b", &[dep("a")])];
+        expect_test::expect!["Circular dependency detected: a -> b"]
+            .assert_eq(&release_order(&pkgs).unwrap_err().to_string());
+    }
+
+    /// A (versioned dev-dep on B) ──► B (no deps)
+    /// `cargo package` validates versioned dev-deps against the registry,
+    /// so B must be published before A.
+    #[test]
+    fn versioned_dev_dep_is_released_before_dependent() {
+        let pkgs = [&pkg("a", &[dev_dep("b")]), &pkg("b", &[])];
+        assert_eq!(order(&pkgs), ["b", "a"]);
+    }
+
+    /// A (unversioned dev-dep on B) ──► B (no deps)
+    /// Unversioned dev-deps are stripped from the published manifest,
+    /// so they don't constrain release order.
+    #[test]
+    fn unversioned_dev_dep_does_not_affect_order() {
+        let pkgs = [
+            &pkg("a", &[FakeDependency::new("b").unversioned_dev()]),
+            &pkg("b", &[]),
+        ];
+        // Order matches input order since there's no dependency edge.
         assert_eq!(order(&pkgs), ["a", "b"]);
     }
 }
