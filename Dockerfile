@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:0.1.73-rust-1.93-slim-trixie AS chef
+FROM lukemathwalker/cargo-chef:0.1.77-rust-1.93-slim-trixie AS chef
 WORKDIR /app
 RUN set -eux; \
     apt-get update; \
