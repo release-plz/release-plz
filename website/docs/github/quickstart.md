@@ -206,9 +206,9 @@ jobs:
     name: Release-plz PR
     runs-on: ubuntu-latest
     permissions:
-      # Used to push to the pull request branch.
+      # Push to the pull request branch.
       contents: write
-      # Used to create and update pull requests.
+      # Create and update pull requests.
       pull-requests: write
 
     # The concurrency block is explained below (after the code block).
