@@ -64,29 +64,45 @@ fn resolve_base_url(url: &RepoUrl) -> anyhow::Result<Url> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::resolve_base_url;
     use crate::RepoUrl;
 
+    static NO_PARALLEL: Mutex<()> = Mutex::new(());
+
+    fn with_github_server_url(value: Option<&str>, test: impl FnOnce()) {
+        let _guard = NO_PARALLEL.lock().unwrap();
+        let old = std::env::var("GITHUB_SERVER_URL").ok();
+
+        match value {
+            Some(v) => unsafe { std::env::set_var("GITHUB_SERVER_URL", v) },
+            None => unsafe { std::env::remove_var("GITHUB_SERVER_URL") },
+        }
+
+        test();
+
+        match old {
+            Some(v) => unsafe { std::env::set_var("GITHUB_SERVER_URL", v) },
+            None => unsafe { std::env::remove_var("GITHUB_SERVER_URL") },
+        }
+    }
+
     #[test]
     fn uses_repo_host_for_gitea_api_by_default() {
-        unsafe {
-            std::env::remove_var("GITHUB_SERVER_URL");
-        }
-        let repo = RepoUrl::new("https://git.cscherr.de/PlexSheep/rough2").unwrap();
-        let api = resolve_base_url(&repo).unwrap();
-        assert_eq!(api.as_str(), "https://git.cscherr.de/api/v1/");
+        with_github_server_url(None, || {
+            let repo = RepoUrl::new("https://git.cscherr.de/PlexSheep/rough2").unwrap();
+            let api = resolve_base_url(&repo).unwrap();
+            assert_eq!(api.as_str(), "https://git.cscherr.de/api/v1/");
+        });
     }
 
     #[test]
     fn uses_github_server_url_when_origin_host_is_github() {
-        unsafe {
-            std::env::set_var("GITHUB_SERVER_URL", "https://git.cscherr.de");
-        }
-        let repo = RepoUrl::new("https://github.com/PlexSheep/rough2").unwrap();
-        let api = resolve_base_url(&repo).unwrap();
-        assert_eq!(api.as_str(), "https://git.cscherr.de/api/v1/");
-        unsafe {
-            std::env::remove_var("GITHUB_SERVER_URL");
-        }
+        with_github_server_url(Some("https://git.cscherr.de"), || {
+            let repo = RepoUrl::new("https://github.com/PlexSheep/rough2").unwrap();
+            let api = resolve_base_url(&repo).unwrap();
+            assert_eq!(api.as_str(), "https://git.cscherr.de/api/v1/");
+        });
     }
 }
