@@ -25,13 +25,15 @@ impl ReleasePr {
         let pr_body = config.workspace.pr_body.clone();
         let pr_labels = config.workspace.pr_labels.clone();
         let pr_draft = config.workspace.pr_draft;
+        let pr_per_package = config.workspace.pr_per_package;
         let update_request = self.update.update_request(config, cargo_metadata)?;
         let request = ReleasePrRequest::new(update_request)
             .mark_as_draft(pr_draft)
             .with_labels(pr_labels)
             .with_branch_prefix(pr_branch_prefix)
             .with_pr_name_template(pr_name)
-            .with_pr_body_template(pr_body);
+            .with_pr_body_template(pr_body)
+            .with_pr_per_package(pr_per_package);
         Ok(request)
     }
 }

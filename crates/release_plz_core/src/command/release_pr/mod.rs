@@ -33,6 +33,8 @@ pub struct ReleasePrRequest {
     labels: Vec<String>,
     /// PR Branch Prefix
     branch_prefix: String,
+    /// If `true`, creates release PRs per package
+    pr_per_package: bool,
     pub update_request: UpdateRequest,
 }
 
@@ -44,6 +46,7 @@ impl ReleasePrRequest {
             draft: false,
             labels: vec![],
             branch_prefix: DEFAULT_BRANCH_PREFIX.to_string(),
+            pr_per_package: false,
             update_request,
         }
     }
@@ -71,6 +74,13 @@ impl ReleasePrRequest {
     pub fn with_branch_prefix(mut self, pr_branch_prefix: Option<String>) -> Self {
         if let Some(branch_prefix) = pr_branch_prefix {
             self.branch_prefix = branch_prefix;
+        }
+        self
+    }
+
+    pub fn with_pr_per_package(mut self, pr_per_package: Option<bool>) -> Self {
+        if let Some(pr_per_package) = pr_per_package {
+            self.pr_per_package = pr_per_package;
         }
         self
     }
