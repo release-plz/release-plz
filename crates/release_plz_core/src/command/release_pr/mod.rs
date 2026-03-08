@@ -20,6 +20,7 @@ use crate::{
 };
 
 use super::update_request::UpdateRequest;
+use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct ReleasePrRequest {
@@ -129,7 +130,7 @@ pub struct PrPackageRelease {
 /// - [`None`] if release-plz didn't open any pr. This happens when all packages
 ///   are up-to-date.
 #[instrument(skip_all)]
-pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<ReleasePr>> {
+pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Vec<ReleasePr>>> {
     let manifest_dir = input.update_request.local_manifest_dir()?;
     let original_project_root = root_repo_path_from_manifest_dir(manifest_dir)?;
     let tmp_project_root_parent = copy_to_temp_dir(&original_project_root)?;
@@ -164,21 +165,54 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
             Repo::new(&tmp_project_root).context("create new repo")?;
         let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
         if there_are_commits_to_push {
-            let pr = open_or_update_release_pr(
-                &local_manifest,
-                &packages_to_update,
-                &git_client,
-                &unreleased_package_worktree_repo,
-                ReleasePrOptions {
-                    draft: input.draft,
-                    pr_name: input.pr_name_template.clone(),
-                    pr_body: input.pr_body_template.clone(),
-                    pr_labels: input.labels.clone(),
-                    pr_branch_prefix: input.branch_prefix.clone(),
-                },
-            )
-            .await?;
-            return Ok(Some(pr));
+            if input.pr_per_package {
+                let mut prs: Vec<ReleasePr> = Vec::new();
+                let mut release_train_pr_numbers: HashSet<u64> = HashSet::new();
+                for (package, update) in packages_to_update.updates() {
+                    let package_name = package.name.to_lowercase();
+                    let single_package_update =
+                        PackagesUpdate::new(vec![(package.clone(), update.clone())]);
+                    let pr = open_or_update_release_pr(
+                        &local_manifest,
+                        &single_package_update,
+                        &git_client,
+                        &unreleased_package_worktree_repo,
+                        ReleasePrOptions {
+                            draft: input.draft,
+                            pr_name: input.pr_name_template.clone(),
+                            pr_body: input.pr_body_template.clone(),
+                            pr_labels: input.labels.clone(),
+                            pr_branch_prefix: format!(
+                                "{}-{}",
+                                input.branch_prefix.clone(),
+                                package_name.clone()
+                            ),
+                        },
+                        Some(&release_train_pr_numbers),
+                    )
+                    .await?;
+                    release_train_pr_numbers.insert(pr.number);
+                    prs.push(pr);
+                }
+                return Ok(Some(prs));
+            } else {
+                let pr = open_or_update_release_pr(
+                    &local_manifest,
+                    &packages_to_update,
+                    &git_client,
+                    &unreleased_package_worktree_repo,
+                    ReleasePrOptions {
+                        draft: input.draft,
+                        pr_name: input.pr_name_template.clone(),
+                        pr_body: input.pr_body_template.clone(),
+                        pr_labels: input.labels.clone(),
+                        pr_branch_prefix: input.branch_prefix.clone(),
+                    },
+                    None,
+                )
+                .await?;
+                return Ok(Some(vec![pr]));
+            }
         }
     }
 
@@ -199,6 +233,7 @@ async fn open_or_update_release_pr(
     git_client: &GitClient,
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
+    release_train_pr_numbers: Option<&HashSet<u64>>,
 ) -> anyhow::Result<ReleasePr> {
     let mut opened_release_prs = git_client
         .opened_prs(&release_pr_options.pr_branch_prefix)
@@ -215,8 +250,15 @@ async fn open_or_update_release_pr(
             .context("cannot get opened release-plz prs")?;
     }
 
-    // Close all release-plz prs, except one.
-    let old_release_prs = opened_release_prs.iter().skip(1);
+    // Close all release-plz prs, except one
+    let old_release_prs = opened_release_prs
+            .iter()
+            .skip(1)
+            // And except if the prs are part of an existing release train of per-package releases
+            .filter(|pr| match release_train_pr_numbers {
+                Some(set) => !set.contains(&pr.number),
+                None => true,
+            });
     for pr in old_release_prs {
         git_client
             .close_pr(pr.number)
