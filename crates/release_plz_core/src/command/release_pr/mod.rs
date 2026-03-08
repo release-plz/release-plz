@@ -183,7 +183,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Vec<R
                             pr_body: input.pr_body_template.clone(),
                             pr_labels: input.labels.clone(),
                             pr_branch_prefix: format!(
-                                "{}-{}",
+                                "{}{}-",
                                 input.branch_prefix.clone(),
                                 package_name.clone()
                             ),
