@@ -45,6 +45,7 @@ jobs:
     name: Release-plz PR
     runs-on: ubuntu-24.04
     if: ${{ github.repository_owner == 'release-plz' }}
+    environment: release-plz
     permissions:
       contents: read
     concurrency:
