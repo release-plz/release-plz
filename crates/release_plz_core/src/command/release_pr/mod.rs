@@ -148,7 +148,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Vec<R
         let mut release_train_pr_numbers: HashSet<u64> = HashSet::new();
 
         let all_packages =
-            publishable_packages_from_manifest(&input.update_request.local_manifest())?;
+            publishable_packages_from_manifest(input.update_request.local_manifest())?;
 
         for package in all_packages {
             let pkg_tmp_parent = copy_to_temp_dir(&original_project_root)?;
