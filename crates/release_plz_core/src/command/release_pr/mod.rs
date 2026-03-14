@@ -197,6 +197,9 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Vec<R
             release_train_pr_numbers.insert(pr.number);
             prs.push(pr);
         }
+        if prs.is_empty() {
+            return Ok(None);
+        }
         return Ok(Some(prs));
     }
 
