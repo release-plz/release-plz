@@ -282,13 +282,13 @@ async fn open_or_update_release_pr(
 
     // Close all release-plz prs, except one
     let old_release_prs = opened_release_prs
-            .iter()
-            .skip(1)
-            // And except if the prs are part of an existing release train of per-package releases
-            .filter(|pr| match release_train_pr_numbers {
-                Some(set) => !set.contains(&pr.number),
-                None => true,
-            });
+        .iter()
+        .skip(1)
+        // And except if the prs are part of an existing release train of per-package releases
+        .filter(|pr| match release_train_pr_numbers {
+            Some(set) => !set.contains(&pr.number),
+            None => true,
+        });
     for pr in old_release_prs {
         git_client
             .close_pr(pr.number)
