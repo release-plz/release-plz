@@ -1655,3 +1655,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         )
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_one_pr_per_package_when_configured() {
+    let pkg_a = "pkg_a";
+    let pkg_b = "pkg_b";
+    let context = TestContext::new_workspace(&[pkg_a, pkg_b]).await;
+
+    let config = r#"
+    [workspace]
+    pr_per_package = true
+    "#;
+    context.write_release_plz_toml(config);
+
+    let outcome = context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+
+    assert_eq!(opened_prs.len(), 2, "Expected one PR per package");
+
+    let pr_titles: Vec<&str> = opened_prs.iter().map(|pr| pr.title.as_str()).collect();
+    assert!(
+        pr_titles.iter().any(|t| t.contains(pkg_a)),
+        "Expected a PR for package '{pkg_a}'"
+    );
+    assert!(
+        pr_titles.iter().any(|t| t.contains(pkg_b)),
+        "Expected a PR for package '{pkg_b}'"
+    );
+
+    for pr in &opened_prs {
+        let branch = pr.branch();
+        assert!(
+            branch.starts_with(&format!("release-plz-{pkg_a}-"))
+                || branch.starts_with(&format!("release-plz-{pkg_b}-")),
+            "PR branch '{branch}' should use per-package prefix format"
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&outcome.get_output().stdout);
+    let output: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    let prs_output = output["prs"].as_array().unwrap();
+    assert_eq!(prs_output.len(), 2);
+    for pr_output in prs_output {
+        let releases = pr_output["releases"].as_array().unwrap();
+        assert_eq!(
+            releases.len(),
+            1,
+            "Each PR should contain exactly one package release, got: {releases:?}"
+        );
+    }
+
+    let still_open = context.opened_release_prs().await;
+    assert_eq!(
+        still_open.len(),
+        2,
+        "Both PRs should remain open — sibling PRs must not close each other"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_single_pr_by_default_for_multi_package_workspace() {
+    // Verify that without pr_per_package, the default behaviour (one combined PR) is unchanged
+    let pkg_a = "pkg_a";
+    let pkg_b = "pkg_b";
+    let context = TestContext::new_workspace(&[pkg_a, pkg_b]).await;
+
+    // No config — default behaviour
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(
+        opened_prs.len(),
+        1,
+        "Default config should open a single combined PR for all packages"
+    );
+
+    // The single PR should contain both packages
+    let pr = &opened_prs[0];
+    let body = pr.body.as_ref().unwrap();
+    assert!(
+        body.contains(pkg_a),
+        "Combined PR body should mention '{pkg_a}'"
+    );
+    assert!(
+        body.contains(pkg_b),
+        "Combined PR body should mention '{pkg_b}'"
+    );
+}
