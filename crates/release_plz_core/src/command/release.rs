@@ -54,6 +54,10 @@ pub struct ReleaseRequest {
     publish_timeout: Duration,
     /// PR Branch Prefix
     branch_prefix: String,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 impl ReleaseRequest {
@@ -70,6 +74,7 @@ impl ReleaseRequest {
             publish_timeout: minutes_30,
             release_always: true,
             branch_prefix: DEFAULT_BRANCH_PREFIX.to_string(),
+            version_prefix_pattern: None,
         }
     }
 
@@ -132,6 +137,11 @@ impl ReleaseRequest {
         config: ReleaseConfig,
     ) -> Self {
         self.packages_config.set(package.into(), config);
+        self
+    }
+
+    pub fn with_version_prefix_pattern(mut self, pattern: Option<impl Into<String>>) -> Self {
+        self.version_prefix_pattern = pattern.map(Into::into);
         self
     }
 
@@ -1233,7 +1243,7 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
         return String::new();
     }
     let changelog_path = req.changelog_path(package);
-    match changelog_parser::last_changes(&changelog_path) {
+    match changelog_parser::last_changes(&changelog_path, req.version_prefix_pattern.as_deref()) {
         Ok(Some(changes)) => changes,
         Ok(None) => {
             warn!(
