@@ -9,7 +9,7 @@
     'group:recommended',
     'replacements:all',
     'workarounds:all',
-    'helpers:pinGitHubActionDigests',
+    'helpers:pinGitHubActionDigestsToSemver',
     ':maintainLockFilesWeekly',
   ],
   automerge: true,
