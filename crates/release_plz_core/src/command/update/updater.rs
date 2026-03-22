@@ -147,6 +147,11 @@ impl Updater<'_> {
             }
         }
 
+        // Propagate major bumps to packages that were already updated in the main loop.
+        // If package B has its own commits (e.g. feat → minor bump) but depends on A (major bump),
+        // and propagate_major_bump is enabled for B, upgrade B's version to a breaking bump.
+        self.propagate_major_bump_to_updated_packages(&mut packages_to_update)?;
+
         let changed_packages: Vec<(&Package, Version)> = packages_to_update
             .updates()
             .iter()
@@ -331,6 +336,94 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
+    /// Propagate major bumps to packages that were already updated in the main loop.
+    /// If a package has its own commits (e.g. a `feat` commit → minor bump) but also depends
+    /// on a package that received a major/breaking bump, and `propagate_major_bump` is enabled,
+    /// we upgrade its version to a breaking bump.
+    fn propagate_major_bump_to_updated_packages(
+        &self,
+        packages_to_update: &mut PackagesUpdate,
+    ) -> anyhow::Result<()> {
+        let workspace_manifest = LocalManifest::try_new(self.req.local_manifest())?;
+        let workspace_dependencies = workspace_manifest.get_workspace_dependency_table();
+        let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
+
+        // Collect packages that had a breaking version bump
+        let major_bumped: HashSet<String> = packages_to_update
+            .updates()
+            .iter()
+            .filter(|(pkg, update)| is_breaking_bump(&pkg.version, &update.version))
+            .map(|(pkg, _)| pkg.name.to_string())
+            .collect();
+
+        if major_bumped.is_empty() {
+            return Ok(());
+        }
+
+        // Build owned (package, new_version) pairs for dependency lookup
+        let changed_packages: Vec<(Package, Version)> = packages_to_update
+            .updates()
+            .iter()
+            .map(|(p, u)| (p.clone(), u.version.clone()))
+            .collect();
+        let changed_packages_refs: Vec<(&Package, Version)> = changed_packages
+            .iter()
+            .map(|(p, v)| (p, v.clone()))
+            .collect();
+
+        // Check each updated package to see if it depends on a major-bumped package
+        for (pkg, update) in packages_to_update.updates_mut() {
+            if !self
+                .req
+                .get_package_config(&pkg.name)
+                .generic
+                .propagate_major_bump
+            {
+                continue;
+            }
+
+            // Already a breaking bump, nothing to do
+            if is_breaking_bump(&pkg.version, &update.version) {
+                continue;
+            }
+
+            // Skip prerelease packages (no clear semver-correct propagation behavior)
+            if pkg.version.is_prerelease() {
+                continue;
+            }
+
+            let deps = pkg.dependencies_to_update(
+                &changed_packages_refs,
+                workspace_dependencies,
+                workspace_dir,
+            )?;
+            let has_major_bump_dep = deps
+                .iter()
+                .any(|dep| major_bumped.contains(dep.name.as_str()));
+
+            if has_major_bump_dep {
+                let propagated_version = breaking_version(&pkg.version);
+                let old_version_str = update.version.to_string();
+                let new_version_str = propagated_version.to_string();
+                info!(
+                    "{}: propagating major bump from dependency. Version upgraded from {old_version_str} to {new_version_str}",
+                    pkg.name
+                );
+                // Update changelog to reflect the new version in headers
+                if let Some(changelog) = &mut update.changelog {
+                    *changelog =
+                        changelog.replace(&old_version_str, &new_version_str);
+                }
+                if let Some(entry) = &mut update.new_changelog_entry {
+                    *entry = entry.replace(&old_version_str, &new_version_str);
+                }
+                update.version = propagated_version;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Return the update to apply to the packages that depend on the `initial_changed_packages`.
     ///
     /// ## Args
@@ -362,13 +455,10 @@ impl Updater<'_> {
         // Keep a copy of all packages that have changed so far
         let mut all_changed_packages: Vec<(&Package, Version)> = initial_changed_packages.to_vec();
 
-        // Track which packages had a major version bump (old_major < new_major)
+        // Track which packages had a breaking version bump
         let mut major_bumped_packages: HashSet<String> = initial_changed_packages
             .iter()
-            .filter(|(pkg, new_version)| {
-                new_version.major > pkg.version.major
-                    || (pkg.version.major == 0 && new_version.minor > pkg.version.minor)
-            })
+            .filter(|(pkg, new_version)| is_breaking_bump(&pkg.version, new_version))
             .map(|(pkg, _)| pkg.name.to_string())
             .collect();
 
@@ -402,10 +492,8 @@ impl Updater<'_> {
                         has_major_bump_dep,
                     )?;
 
-                    // Track if this package itself got a major bump (for cascading)
-                    if update.1.version.major > p.version.major
-                        || (p.version.major == 0 && update.1.version.minor > p.version.minor)
-                    {
+                    // Track if this package itself got a breaking bump (for cascading)
+                    if is_breaking_bump(&p.version, &update.1.version) {
                         major_bumped_packages.insert(p.name.to_string());
                     }
 
@@ -435,29 +523,30 @@ impl Updater<'_> {
         has_major_bump_dep: bool,
     ) -> anyhow::Result<(Package, UpdateResult)> {
         let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
-        let commits = {
-            let change = format!(
-                "chore: updated the following local packages: {}",
-                deps.join(", ")
-            );
-            vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
-        };
         let propagate = has_major_bump_dep
             && self
                 .req
                 .get_package_config(&p.name)
                 .generic
                 .propagate_major_bump;
+        let commits = {
+            let change = if propagate {
+                format!(
+                    "chore!: updated the following local packages: {} (major version bump propagated)",
+                    deps.join(", ")
+                )
+            } else {
+                format!(
+                    "chore: updated the following local packages: {}",
+                    deps.join(", ")
+                )
+            };
+            vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
+        };
         let next_version = if p.version.is_prerelease() {
             p.version.increment_prerelease()
         } else if propagate {
-            if p.version.major == 0 && p.version.minor == 0 {
-                p.version.increment_patch()
-            } else if p.version.major == 0 {
-                p.version.increment_minor()
-            } else {
-                p.version.increment_major()
-            }
+            breaking_version(&p.version)
         } else {
             p.version.increment_patch()
         };
@@ -900,6 +989,26 @@ impl Updater<'_> {
             return Ok(true);
         };
         Ok(!package_files.is_disjoint(&changed_files))
+    }
+}
+
+/// Returns true if the version change represents a breaking/semver-incompatible bump.
+/// For >=1.0: major increases. For 0.x.y (x>0): minor increases. For 0.0.x: patch increases.
+fn is_breaking_bump(old: &Version, new: &Version) -> bool {
+    new.major > old.major
+        || (old.major == 0 && new.minor > old.minor)
+        || (old.major == 0 && old.minor == 0 && new.patch > old.patch)
+}
+
+/// Returns the next breaking version for a package.
+/// For 0.0.x: increment patch. For 0.x.y: increment minor. For >=1.0: increment major.
+fn breaking_version(version: &Version) -> Version {
+    if version.major == 0 && version.minor == 0 {
+        version.increment_patch()
+    } else if version.major == 0 {
+        version.increment_minor()
+    } else {
+        version.increment_major()
     }
 }
 

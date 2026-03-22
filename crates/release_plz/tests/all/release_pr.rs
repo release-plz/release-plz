@@ -1827,3 +1827,64 @@ propagate_major_bump = true
     "#]]
     .assert_eq(&crate_c_cargo_toml);
 }
+
+/// When `propagate_major_bump` is enabled and a dependent crate has its own commits,
+/// the major bump propagation should still apply, upgrading it to a breaking bump instead.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_propagates_major_bump_with_own_commits() {
+    let binary = "binary";
+    let library = "library";
+    // dependency chain: binary -> library
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(binary)
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec![format!("../{library}")]),
+        TestPackage::new(library).with_type(PackageType::Lib),
+    ])
+    .await;
+
+    // Set initial versions: both at 1.0.0
+    context.set_package_version(library, &Version::new(1, 0, 0));
+    context.set_package_version(binary, &Version::new(1, 0, 0));
+    context.push_all_changes("set initial versions");
+
+    // Enable propagate_major_bump for the workspace
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+propagate_major_bump = true
+"#,
+    );
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    // Introduce a breaking change in the library
+    let lib_file = context.package_path(library).join("src").join("lib.rs");
+    fs_err::write(&lib_file, "pub fn bar() {}").unwrap();
+
+    // Also introduce a change in the binary (its own commit)
+    let bin_file = context.package_path(binary).join("src").join("main.rs");
+    fs_err::write(&bin_file, "fn main() { println!(\"updated\"); }").unwrap();
+    context.push_all_changes("feat: breaking change in library and update in binary");
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let open_pr = &opened_prs[0];
+
+    // Library should go 1.0.0 -> 2.0.0 (breaking change)
+    // Binary should go 1.0.0 -> 2.0.0 (propagated major bump, even though it has its own commits)
+    let actual_body = open_pr.body.as_ref().unwrap().trim().to_string();
+    assert!(
+        actual_body.contains(&format!("`{library}`: 1.0.0 -> 2.0.0")),
+        "Library should have major bump. PR body:\n{actual_body}"
+    );
+    assert!(
+        actual_body.contains(&format!("`{binary}`: 1.0.0 -> 2.0.0")),
+        "Binary should have propagated major bump even with its own commits. PR body:\n{actual_body}"
+    );
+}
