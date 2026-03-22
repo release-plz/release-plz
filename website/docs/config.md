@@ -48,6 +48,7 @@ publish = false # disable `cargo publish` for `package_a`
 [[package]]
 name = "package_b"
 semver_check = true # enable semver_check for `package_b`
+semver_check_features = ["default", "server"] # only check these features for semver
 publish_no_verify = true # add `--no-verify` to `cargo publish` for `package_b`
 publish_features = ["a", "b"] # add `--features=a,b` to `cargo publish` for `package_b`
 publish_all_features = true # add `--all-features` to `cargo publish` for `package_b`
@@ -104,6 +105,7 @@ the following sections:
     packages.
   - [`repo_url`](#the-repo_url-field) — Repository URL.
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
+  - [`semver_check_features`](#the-semver_check_features-field) — List of features to pass to [cargo-semver-checks].
 - [`[[package]]`](#the-package-section) — Package-specific configurations.
   - [`name`](#the-name-field) — Package name. *(Required)*.
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
@@ -133,6 +135,8 @@ the following sections:
     — Pass `--all-features` to `cargo publish`.
   - [`release`](#the-release-field-package-section) - Enable the processing of this package.
   - [`semver_check`](#the-semver_check-field-package-section) — Run [cargo-semver-checks].
+  - [`semver_check_features`](#the-semver_check_features-field-package-section) — List of
+    features to pass to [cargo-semver-checks].
   - [`version_group`](#the-version_group-field) — Group of packages with the same version.
 - [`[changelog]`](#the-changelog-section) — Changelog configuration.
   - [`header`](#the-header-field) — Changelog header.
@@ -740,6 +744,17 @@ API breaking changes of your package:
 
 This field can be overridden in the [`[package]`](#the-package-section) section.
 
+#### The `semver_check_features` field
+
+Pass a list of features to [cargo-semver-checks] when checking for API breaking changes.
+
+- If set to a list of features (e.g. `["default", "server"]`), `release-plz` adds
+  `--only-explicit-features` and `--features=default,server` flags to `cargo-semver-checks`.
+- If not set or if it is empty, `cargo-semver-checks` uses its default heuristic. *(Default)*.
+
+This is useful when non-default features intentionally change the API surface,
+which would otherwise trigger false-positive breaking-change detections.
+
 ### The `[[package]]` section
 
 In this section, you can override some of the `workspace` fields for specific packages.
@@ -884,6 +899,10 @@ Overrides the [`workspace.release`](#the-release-field) field.
 - If `false`, don't.
 
 By default, release-plz runs [cargo-semver-checks] if the package is a library.
+
+#### The `semver_check_features` field (`package` section)
+
+Overrides the [`workspace.semver_check_features`](#the-semver_check_features-field) field.
 
 [cargo-semver-checks]: https://github.com/obi1kenobi/cargo-semver-checks
 [git-cliff]: https://git-cliff.org
