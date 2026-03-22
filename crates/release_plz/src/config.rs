@@ -503,9 +503,7 @@ impl PackageConfig {
     pub fn merge(self, default: Self) -> Self {
         Self {
             semver_check: self.semver_check.or(default.semver_check),
-            semver_check_features: self
-                .semver_check_features
-                .or(default.semver_check_features),
+            semver_check_features: self.semver_check_features.or(default.semver_check_features),
             changelog_path: self.changelog_path.or(default.changelog_path),
             changelog_update: self.changelog_update.or(default.changelog_update),
             features_always_increment_minor: self
