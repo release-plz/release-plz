@@ -453,6 +453,10 @@ pub struct PackageConfig {
     /// Controls when to run cargo-semver-checks.
     /// If unspecified, run cargo-semver-checks if the package is a library.
     pub semver_check: Option<bool>,
+    /// # Semver Check Features
+    /// If `["a", "b", "c"]`, add the `--only-explicit-features` and `--features=a,b,c` flags
+    /// to the `cargo-semver-checks` command.
+    pub semver_check_features: Option<Vec<String>>,
     /// # Release
     /// Used to toggle off the update/release process for a workspace or package.
     pub release: Option<bool>,
@@ -479,6 +483,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            semver_check_features: config.semver_check_features.unwrap_or_default(),
         }
     }
 }
@@ -498,6 +503,9 @@ impl PackageConfig {
     pub fn merge(self, default: Self) -> Self {
         Self {
             semver_check: self.semver_check.or(default.semver_check),
+            semver_check_features: self
+                .semver_check_features
+                .or(default.semver_check_features),
             changelog_path: self.changelog_path.or(default.changelog_path),
             changelog_update: self.changelog_update.or(default.changelog_update),
             features_always_increment_minor: self
