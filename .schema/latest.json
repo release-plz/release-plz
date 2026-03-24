@@ -52,6 +52,7 @@
         "git_tag_enable": null,
         "git_tag_name": null,
         "max_analyze_commits": 1000,
+        "package_resolve": null,
         "pr_body": null,
         "pr_branch_prefix": null,
         "pr_draft": false,
@@ -258,6 +259,23 @@
         "href"
       ]
     },
+    "PackageResolve": {
+      "description": "How to resolve old package metadata in `git_only` mode.",
+      "oneOf": [
+        {
+          "title": "Cargo Package",
+          "description": "Run `cargo package` to produce a packaged crate, then read metadata from it.\nThis is the default upstream behavior and validates publishability.",
+          "type": "string",
+          "const": "cargo_package"
+        },
+        {
+          "title": "Cargo Metadata",
+          "description": "Read metadata directly via `cargo metadata --no-deps`, skipping publishability validation.\nUse this when the workspace has git-sourced dependencies without version fields.",
+          "type": "string",
+          "const": "cargo_metadata"
+        }
+      ]
+    },
     "PackageSpecificConfigWithName": {
       "description": "Config at the `[[package]]` level.",
       "type": "object",
@@ -391,6 +409,18 @@
         },
         "name": {
           "type": "string"
+        },
+        "package_resolve": {
+          "title": "Package Resolve",
+          "description": "How to resolve old package metadata in `git_only` mode.\n- `cargo_package` (default): run `cargo package` to validate and read metadata.\n- `cargo_metadata`: run `cargo metadata --no-deps` directly, skipping publishability checks.\n  Use this when workspace dependencies use git sources without version fields.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PackageResolve"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "publish": {
           "title": "Publish",
@@ -673,6 +703,18 @@
           "format": "uint32",
           "default": 1000,
           "minimum": 0
+        },
+        "package_resolve": {
+          "title": "Package Resolve",
+          "description": "How to resolve old package metadata in `git_only` mode.\n- `cargo_package` (default): run `cargo package` to validate and read metadata.\n- `cargo_metadata`: run `cargo metadata --no-deps` directly, skipping publishability checks.\n  Use this when workspace dependencies use git sources without version fields.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PackageResolve"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "pr_body": {
           "title": "PR Body",

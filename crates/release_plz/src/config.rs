@@ -408,6 +408,12 @@ pub struct PackageConfig {
     /// is (i.e newest version is v0.1.3 and is associated with commit ac83762).
     /// If false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.
     pub git_only: Option<bool>,
+    /// # Package Resolve
+    /// How to resolve old package metadata in `git_only` mode.
+    /// - `cargo_package` (default): run `cargo package` to validate and read metadata.
+    /// - `cargo_metadata`: run `cargo metadata --no-deps` directly, skipping publishability checks.
+    ///   Use this when workspace dependencies use git sources without version fields.
+    pub package_resolve: Option<PackageResolve>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
@@ -479,6 +485,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            package_resolve: config.package_resolve.map(|pr| pr.into()),
         }
     }
 }
@@ -525,6 +532,7 @@ impl PackageConfig {
                 .custom_major_increment_regex
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
+            package_resolve: self.package_resolve.or(default.package_resolve),
         }
     }
 
@@ -551,6 +559,30 @@ pub enum ReleaseType {
     /// in case there is a semver pre-release in the tag e.g. v1.0.0-rc1.
     /// Otherwise, will mark the release as ready for production.
     Auto,
+}
+
+/// How to resolve old package metadata in `git_only` mode.
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageResolve {
+    /// # Cargo Package
+    /// Run `cargo package` to produce a packaged crate, then read metadata from it.
+    /// This is the default upstream behavior and validates publishability.
+    #[default]
+    CargoPackage,
+    /// # Cargo Metadata
+    /// Read metadata directly via `cargo metadata --no-deps`, skipping publishability validation.
+    /// Use this when the workspace has git-sourced dependencies without version fields.
+    CargoMetadata,
+}
+
+impl From<PackageResolve> for release_plz_core::PackageResolve {
+    fn from(value: PackageResolve) -> Self {
+        match value {
+            PackageResolve::CargoPackage => Self::CargoPackage,
+            PackageResolve::CargoMetadata => Self::CargoMetadata,
+        }
+    }
 }
 
 impl From<ReleaseType> for release_plz_core::ReleaseType {
@@ -908,5 +940,50 @@ unknown = false"#;
 
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
+    }
+
+    #[test]
+    fn package_resolve_cargo_metadata_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            git_only = true\n\
+            package_resolve = \"cargo_metadata\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config.workspace.packages_defaults.git_only = Some(true);
+        expected_config.workspace.packages_defaults.package_resolve =
+            Some(PackageResolve::CargoMetadata);
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn package_resolve_defaults_to_cargo_package() {
+        let config = BASE_WORKSPACE_CONFIG;
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config.workspace.packages_defaults.package_resolve, None);
+        // When None, the effective default should be CargoPackage
+        let update_config: release_plz_core::UpdateConfig = config.workspace.packages_defaults.into();
+        assert_eq!(update_config.package_resolve, None);
+    }
+
+    #[test]
+    fn package_resolve_at_package_level_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\n{BASE_PACKAGE_CONFIG}\
+            git_only = true\n\
+            package_resolve = \"cargo_metadata\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        let mut package_config = create_base_package_config();
+        package_config.config.common.git_only = Some(true);
+        package_config.config.common.package_resolve = Some(PackageResolve::CargoMetadata);
+        expected_config.package = [package_config].into();
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
     }
 }

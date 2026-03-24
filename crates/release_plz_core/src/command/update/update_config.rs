@@ -1,6 +1,19 @@
 use cargo_metadata::camino::Utf8PathBuf;
 use next_version::VersionUpdater;
 
+/// How to resolve the old package metadata in `git_only` mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PackageResolve {
+    /// Run `cargo package --allow-dirty` to produce a packaged crate, then read metadata from it.
+    /// This is the upstream default and validates publishability.
+    #[default]
+    CargoPackage,
+    /// Run `cargo metadata --no-deps` directly on the worktree.
+    /// Use this when the workspace has git-sourced dependencies that lack version fields,
+    /// which cause `cargo package` to fail.
+    CargoMetadata,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateConfig {
     /// This path needs to be a relative path to the Cargo.toml of the project.
@@ -30,6 +43,8 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
+    /// How to resolve old package metadata in `git_only` mode.
+    pub package_resolve: Option<PackageResolve>,
 }
 
 /// Package-specific config
@@ -69,6 +84,10 @@ impl PackageUpdateConfig {
     pub fn git_only(&self) -> Option<bool> {
         self.generic.git_only
     }
+
+    pub fn package_resolve(&self) -> PackageResolve {
+        self.generic.package_resolve.unwrap_or_default()
+    }
 }
 
 impl Default for UpdateConfig {
@@ -80,6 +99,7 @@ impl Default for UpdateConfig {
             publish: true,
             features_always_increment_minor: false,
             git_only: None,
+            package_resolve: None,
             tag_name_template: None,
             changelog_path: None,
             custom_minor_increment_regex: None,

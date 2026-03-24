@@ -1,5 +1,6 @@
 use crate::cargo::run_cargo;
 use crate::command::git::{GitRepo, GitWorkTree};
+use crate::PackageResolve;
 use crate::registry_packages::{PackagesCollection, RegistryPackage};
 use crate::release_regex;
 use crate::tera::default_tag_name_template;
@@ -145,28 +146,59 @@ fn process_git_only_package(
     repo.checkout_commit(&release_commit)
         .context("checkout release commit for package")?;
 
-    // Run cargo package so we have our finalized package.
-    // In git_only mode we always package the whole workspace to make sure
-    // local path dependencies are materialized as local tarballs.
-    run_cargo_package(&worktree).context("run cargo package")?;
+    let package_resolve = input.get_package_config(&package.name).package_resolve();
 
-    // Get the package metadata
-    let single_package = get_cargo_package(&worktree, &package.name).with_context(|| {
-        format!(
-            "get cargo package {} from worktree at {:?}",
-            package.name,
-            worktree.path()
-        )
-    })?;
+    let single_package = match package_resolve {
+        PackageResolve::CargoPackage => {
+            // Run `cargo package` to produce a packaged crate, then read metadata from it.
+            run_cargo_package(&worktree).context("run cargo package")?;
+            get_cargo_package(&worktree, &package.name).with_context(|| {
+                format!(
+                    "get cargo package {} from worktree at {:?}",
+                    package.name,
+                    worktree.path()
+                )
+            })?
+        }
+        PackageResolve::CargoMetadata => {
+            // Read metadata directly from the worktree via `cargo metadata --no-deps`.
+            // This avoids failures when workspace dependencies use git sources
+            // without version fields, which `cargo package` cannot handle.
+            let worktree_path = to_utf8_path(worktree.path())?;
+            let manifest_path = worktree_path.join("Cargo.toml");
+            let metadata = MetadataCommand::new()
+                .current_dir(worktree_path.as_std_path())
+                .no_deps()
+                .manifest_path(&manifest_path)
+                .exec()
+                .context("get cargo metadata for worktree")?;
+
+            match metadata
+                .workspace_packages()
+                .into_iter()
+                .find(|p| p.name == package.name)
+                .cloned()
+            {
+                Some(pkg) => pkg,
+                None => {
+                    info!(
+                        "Package {} not found at tag `{release_tag}`, treating as initial release.",
+                        package.name
+                    );
+                    return Ok(None);
+                }
+            }
+        }
+    };
 
     let registry_package = RegistryPackage::new(single_package, Some(release_commit));
     Ok(Some((registry_package, worktree)))
 }
 
-/// Run cargo package within a worktree
+/// Run `cargo package --allow-dirty` within a worktree.
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let output = run_cargo(worktree_path, &["package", "--allow-dirty", "--workspace"])
+    let output = run_cargo(worktree_path, &["package", "--allow-dirty"])
         .context("run cargo package in worktree")?;
 
     if !output.status.success() {
@@ -176,6 +208,7 @@ fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Read package metadata from the `cargo package` output directory.
 fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
     let worktree_path = to_utf8_path(worktree.path())?;
     let manifest_path = worktree_path.join("Cargo.toml");
@@ -234,10 +267,13 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         req: input,
     };
 
-    // Separate packages based on per-package git_only configuration
+    // Separate packages based on per-package git_only configuration.
+    // Filter out packages with `release = false` before processing, so we don't
+    // run cargo package on packages that are excluded from the release process.
     let workspace_packages = input.cargo_metadata().workspace_packages();
     let (git_only_packages, registry_packages_list): (Vec<_>, Vec<_>) = workspace_packages
         .iter()
+        .filter(|p| input.get_package_config(&p.name).generic.release)
         .partition(|p| input.should_use_git_only(&p.name));
 
     let is_multi_package = local_project.publishable_packages().len() > 1;

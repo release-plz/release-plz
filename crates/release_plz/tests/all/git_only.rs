@@ -1031,6 +1031,7 @@ async fn git_only_update_handles_root_package_path_dependencies() {
 [workspace]
 git_only = true
 publish = false
+package_resolve = "cargo_metadata"
 "#;
     context.write_release_plz_toml(config);
 
