@@ -38,8 +38,12 @@
       groupName: 'Github Actions',
     },
     {
-      matchCategories: ["rust"],
-      matchJsonata: ["isBreaking != true"],
+      matchCategories: [
+        'rust',
+      ],
+      matchJsonata: [
+        'isBreaking != true'
+      ],
       // Disable non-breaking change updates because they
       // are updated periodically with lockfile maintainance.
       enabled: false,
