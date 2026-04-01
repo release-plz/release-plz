@@ -1,5 +1,5 @@
 import React from 'react';
-import famousProjectsData from '../data/famous-projects.json';
+import famousProjectsData from '../../data/famous-projects.json';
 import styles from './styles.module.css';
 
 interface FamousProject {
