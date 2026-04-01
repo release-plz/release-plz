@@ -15,7 +15,8 @@
         "mdlint": "markdownlint '**/*.md' --config .markdownlint.yaml --ignore node_modules",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "fetch-assets": "npx tsx ./src/fetch-assets"
+        "fetch-assets": "npx tsx ./src/fetch-assets",
+        "fetch-famous-projects": "npx tsx ./src/fetch-famous-projects"
     },
     "dependencies": {
         "@docusaurus/core": "^3.6.1",
