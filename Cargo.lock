@@ -1254,7 +1254,7 @@ checksum = "ea6be833b323a56361118a747470a45a1bcd5c52a2ec9b1e40c83dafe687e453"
 dependencies = [
  "deunicode",
  "either",
- "rand 0.10.0",
+ "rand 0.10.1",
 ]
 
 [[package]]
@@ -4247,9 +4247,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc266eb313df6c5c09c1c7b1fbe2510961e5bcd3add930c1e31f7ed9da0feff8"
+checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -4481,7 +4481,7 @@ dependencies = [
  "itertools",
  "next_version 0.3.1",
  "parse-changelog",
- "rand 0.10.0",
+ "rand 0.10.1",
  "rayon",
  "regex",
  "reqwest",
@@ -5305,7 +5305,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
