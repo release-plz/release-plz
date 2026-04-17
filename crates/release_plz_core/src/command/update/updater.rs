@@ -29,6 +29,7 @@ use crate::{
     command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
     fs_utils, lock_compare,
+    next_ver::Publishable as _,
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -369,6 +370,16 @@ impl Updater<'_> {
             for p in packages_to_check_for_deps {
                 // Skip packages we've already processed in previous iterations
                 if processed.contains(p.name.as_ref()) {
+                    continue;
+                }
+
+                // Skip cascade bumps for packages that opt out (default: any
+                // package with `publish = false` in Cargo.toml). These crates
+                // have no downstream consumers, so a cascade bump just adds
+                // empty changelog sections and uninformative tags. See #2799.
+                let pkg_cfg = self.req.get_package_config(p.name.as_ref());
+                if !pkg_cfg.should_cascade_bump(p.is_publishable()) {
+                    processed.insert(p.name.to_string());
                     continue;
                 }
 

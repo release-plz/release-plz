@@ -41,6 +41,7 @@
         "custom_major_increment_regex": null,
         "custom_minor_increment_regex": null,
         "dependencies_update": null,
+        "dependent_update": null,
         "features_always_increment_minor": null,
         "git_only": null,
         "git_release_body": null,
@@ -302,6 +303,14 @@
           "description": "Custom regex to match commit types that should trigger a minor version increment.\nUseful when using non-conventional commit prefixes.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "dependent_update": {
+          "title": "Dependent Update",
+          "description": "Whether to bump this package when one of its workspace dependencies changes.\n\n- `true`: always cascade-bump (the legacy behaviour for all packages).\n- `false`: never cascade-bump (opt out explicitly).\n- Unset (default): auto — cascade-bump iff the package is publishable\n  (i.e. `publish` is not `false`/`[]` in Cargo.toml). `publish = false`\n  crates have no downstream consumers, so cascade bumps produce only\n  noise in the release PR and changelog.\n\nSee <https://github.com/release-plz/release-plz/issues/2799>.",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -575,6 +584,14 @@
         "dependencies_update": {
           "title": "Dependencies Update",
           "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.\n- If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "dependent_update": {
+          "title": "Dependent Update",
+          "description": "Whether to bump this package when one of its workspace dependencies changes.\n\n- `true`: always cascade-bump (the legacy behaviour for all packages).\n- `false`: never cascade-bump (opt out explicitly).\n- Unset (default): auto — cascade-bump iff the package is publishable\n  (i.e. `publish` is not `false`/`[]` in Cargo.toml). `publish = false`\n  crates have no downstream consumers, so cascade bumps produce only\n  noise in the release PR and changelog.\n\nSee <https://github.com/release-plz/release-plz/issues/2799>.",
           "type": [
             "boolean",
             "null"
