@@ -4433,7 +4433,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "release-plz"
-version = "0.3.157"
+version = "0.3.158"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4470,7 +4470,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.36.13"
+version = "0.36.14"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
