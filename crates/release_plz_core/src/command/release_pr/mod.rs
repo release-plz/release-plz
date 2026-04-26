@@ -310,10 +310,11 @@ async fn handle_opened_pr(
 
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
     repo.checkout_new_branch(&pr.branch)?;
+    let commit_message = commit_message_from_title(&pr.title);
     if git_client.forge == ForgeType::Github {
-        github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
+        github_create_release_branch(git_client, repo, &pr.branch, &commit_message).await?;
     } else {
-        create_release_branch(repo, &pr.branch, &pr.title)?;
+        create_release_branch(repo, &pr.branch, &commit_message)?;
     }
     debug!("changes committed to release branch {}", pr.branch);
 
@@ -418,7 +419,8 @@ fn reset_branch(
 }
 
 fn force_push(pr: &GitPr, repository: &Repo) -> anyhow::Result<()> {
-    add_changes_and_commit(repository, &pr.title)?;
+    let commit_message = commit_message_from_title(&pr.title);
+    add_changes_and_commit(repository, &commit_message)?;
     repository.force_push(pr.branch())?;
     Ok(())
 }
@@ -439,8 +441,10 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
+    let commit_message = commit_message_from_title(&pr.title);
     let sha =
-        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
+        github_create_release_branch(client, repository, &tmp_release_branch, &commit_message)
+            .await?;
 
     let force_push_result =
         execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
@@ -497,9 +501,26 @@ async fn github_create_release_branch(
     Ok(sha)
 }
 
+fn commit_message_from_title(title: &str) -> String {
+    format!("{title}\n")
+}
+
 fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
     let changes_expect_typechanges = repository.changes_except_typechanges()?;
     repository.add(&changes_expect_typechanges)?;
     repository.commit_signed(commit_message)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::commit_message_from_title;
+
+    #[test]
+    fn title_is_converted_to_newline_terminated_commit_message() {
+        assert_eq!(
+            commit_message_from_title("release: package 0.1.0"),
+            "release: package 0.1.0\n"
+        );
+    }
 }
