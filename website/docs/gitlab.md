@@ -12,8 +12,7 @@ to the CI/CD variables:
 2. Go to Settings -> Access token -> Add new token
     - If you don't see the Access token menu, then you don't have sufficient permissions
       to create tokens
-3. Give the token the Maintainer role and grant the `api`, `read_api`, `read_repository`,
-   and `write_repository` scopes
+3. Give the token the Maintainer role and grant the `api` and `write_repository` scopes
 4. Configure this token as a masked variable named `RELEASE_PLZ_TOKEN` in
    Settings -> CI/CD -> Variables -> Add variable
 5. Go to Manage -> Members and find the bot account that was created for this token
