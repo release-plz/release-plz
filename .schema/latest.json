@@ -57,6 +57,7 @@
         "pr_draft": false,
         "pr_labels": [],
         "pr_name": null,
+        "pr_per_package": null,
         "publish": null,
         "publish_all_features": null,
         "publish_allow_dirty": null,
@@ -710,6 +711,14 @@
           "description": "Tera template of the pull request's name created by release-plz.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "pr_per_package": {
+          "title": "PR Per Package",
+          "description": "- If `true`, create a separate PR for every package.\n- If `false` or unspecified, create a single PR to release all packages at once.",
+          "type": [
+            "boolean",
             "null"
           ]
         },
