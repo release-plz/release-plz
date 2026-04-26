@@ -129,12 +129,99 @@ fn update_changelogs(
     update_request: &UpdateRequest,
     local_packages: &PackagesUpdate,
 ) -> anyhow::Result<()> {
+    // When workspace_changelog_path is set, aggregate all packages into one file.
+    if let Some(ws_path) = update_request.workspace_changelog_path() {
+        return update_workspace_changelog(update_request, local_packages, ws_path);
+    }
+    // Default: write per-crate CHANGELOG.md.
     for (package, update) in local_packages.updates() {
         if let Some(changelog) = update.changelog.as_ref() {
             let changelog_path = update_request.changelog_path(package);
             fs_err::write(&changelog_path, changelog).context("cannot write changelog")?;
         }
     }
+    Ok(())
+}
+
+fn update_workspace_changelog(
+    update_request: &UpdateRequest,
+    local_packages: &PackagesUpdate,
+    ws_changelog_path: &Utf8Path,
+) -> anyhow::Result<()> {
+    use chrono::Utc;
+
+    // Collect non-empty new changelog entries sorted by package name.
+    let mut pkg_entries: Vec<(String, String, cargo_metadata::semver::Version)> = local_packages
+        .updates()
+        .iter()
+        .filter_map(|(pkg, update)| {
+            update.new_changelog_entry.as_ref().and_then(|e| {
+                let trimmed = e.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some((pkg.name.to_string(), trimmed, update.version.clone()))
+                }
+            })
+        })
+        .collect();
+
+    if pkg_entries.is_empty() {
+        return Ok(());
+    }
+
+    pkg_entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Determine the release version: use max version across all updated packages.
+    let version = pkg_entries
+        .iter()
+        .map(|(_, _, v)| v)
+        .max()
+        .cloned()
+        .unwrap_or_else(|| cargo_metadata::semver::Version::new(0, 0, 0));
+
+    let date = Utc::now().format("%Y-%m-%d");
+    let mut new_entry = format!("## v{version} — {date}\n\n");
+
+    for (pkg_name, entry, _) in &pkg_entries {
+        new_entry.push_str(&format!("### {pkg_name}\n"));
+        // Demote package-level heading sections: ### Foo → #### Foo
+        for line in entry.lines() {
+            if let Some(rest) = line.strip_prefix("### ") {
+                new_entry.push_str(&format!("#### {rest}\n"));
+            } else {
+                new_entry.push_str(line);
+                new_entry.push('\n');
+            }
+        }
+        new_entry.push('\n');
+    }
+
+    // Resolve path relative to workspace root (parent of local_manifest).
+    let abs_path = update_request
+        .local_manifest()
+        .parent()
+        .context("cannot determine workspace root from local manifest path")?
+        .join(ws_changelog_path);
+
+    let existing = if abs_path.exists() {
+        fs_err::read_to_string(&abs_path)?
+    } else {
+        String::new()
+    };
+
+    const HEADER: &str = "# Changelog\n\n";
+    let body = existing.strip_prefix(HEADER).unwrap_or(existing.as_str());
+
+    // Separate from previous entry with a horizontal rule.
+    let separator = if body.trim().is_empty() {
+        String::new()
+    } else {
+        "---\n\n".to_string()
+    };
+
+    let new_content = format!("{HEADER}{new_entry}{separator}{body}");
+    fs_err::write(&abs_path, new_content).context("cannot write workspace changelog")?;
     Ok(())
 }
 
