@@ -267,9 +267,12 @@ impl Updater<'_> {
                                 "Checking API compatibility with cargo-semver-checks..."
                             );
                         });
-                        let semver_check =
-                            semver_check::run_semver_check(&package_path, registry_package_path)
-                                .context("error while running cargo-semver-checks")?;
+                        let semver_check = semver_check::run_semver_check(
+                            &package_path,
+                            registry_package_path,
+                            package_config.semver_check_features(),
+                        )
+                        .context("error while running cargo-semver-checks")?;
                         diff.set_semver_check(semver_check);
                     }
                 }

@@ -67,7 +67,8 @@
         "release_always": null,
         "release_commits": null,
         "repo_url": null,
-        "semver_check": null
+        "semver_check": null,
+        "semver_check_features": null
       }
     }
   },
@@ -451,6 +452,17 @@
             "null"
           ]
         },
+        "semver_check_features": {
+          "title": "Semver Check Features",
+          "description": "If `[\"a\", \"b\", \"c\"]`, add the `--only-explicit-features` and `--features=a,b,c` flags\nto the `cargo-semver-checks` command.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
         "version_group": {
           "title": "Version group",
           "description": "The name of a group of packages that needs to have the same version.",
@@ -804,6 +816,17 @@
             "boolean",
             "null"
           ]
+        },
+        "semver_check_features": {
+          "title": "Semver Check Features",
+          "description": "If `[\"a\", \"b\", \"c\"]`, add the `--only-explicit-features` and `--features=a,b,c` flags\nto the `cargo-semver-checks` command.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
