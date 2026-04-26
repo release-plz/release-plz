@@ -247,6 +247,11 @@ impl UpdateRequest {
         self.release_commits.as_ref()
     }
 
+    pub fn version_prefix_pattern_for(&self, package_name: &str) -> Option<String> {
+        let package_config = self.packages_config.get(package_name);
+        package_config.generic.version_prefix_pattern
+    }
+
     /// Determine if `git_only` mode should be used for a specific package.
     pub fn should_use_git_only(&self, package_name: &str) -> bool {
         let pkg_config = self.get_package_config(package_name);
