@@ -96,6 +96,8 @@ fn set_version_updates_version_in_package() {
         version = "0.1.1"
 
         [dependencies]
+
+        [workspace]
     "#]]
     .assert_eq(&fs_err::read_to_string(manifest).unwrap());
 
