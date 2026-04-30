@@ -85,6 +85,7 @@ the following sections:
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
   - [`git_only`](#the-git_only-field) — Use git tags instead of cargo registry.
+  - [`post_update_commands`](#the-post_update_commands-field) — Run commands after version bumps.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
   - [`pr_name`](#the-pr_name-field) — Customize the name of the release Pull Request.
@@ -524,6 +525,16 @@ pr_body = """
 This PR was generated with [release-plz](https://github.com/release-plz/release-plz/).
 """
 ````
+
+#### The `post_update_commands` field
+
+Shell commands to run after version bumps and changelog updates,
+but before the release PR is created or updated.
+Each command is executed in the project root directory via `sh -c` on Unix
+and `cmd /C` on Windows.
+If any command fails, the release PR is not created.
+
+By default, it is empty and no commands are run.
 
 #### The `pr_branch_prefix` field
 
