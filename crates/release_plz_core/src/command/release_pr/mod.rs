@@ -33,6 +33,8 @@ pub struct ReleasePrRequest {
     labels: Vec<String>,
     /// PR Branch Prefix
     branch_prefix: String,
+    /// Shell commands to run after version bumps but before PR creation.
+    post_update_commands: Vec<String>,
     pub update_request: UpdateRequest,
 }
 
@@ -44,6 +46,7 @@ impl ReleasePrRequest {
             draft: false,
             labels: vec![],
             branch_prefix: DEFAULT_BRANCH_PREFIX.to_string(),
+            post_update_commands: vec![],
             update_request,
         }
     }
@@ -72,6 +75,11 @@ impl ReleasePrRequest {
         if let Some(branch_prefix) = pr_branch_prefix {
             self.branch_prefix = branch_prefix;
         }
+        self
+    }
+
+    pub fn with_post_update_commands(mut self, commands: Vec<String>) -> Self {
+        self.post_update_commands = commands;
         self
     }
 }
@@ -144,6 +152,11 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     let (packages_to_update, _temp_repository) = update(&new_update_request)
         .await
         .context("failed to update packages")?;
+
+    if !input.post_update_commands.is_empty() && !packages_to_update.updates().is_empty() {
+        run_post_update_commands(&input.post_update_commands, &tmp_project_root)?;
+    }
+
     let git_client = input
         .update_request
         .git_client()?
@@ -502,4 +515,101 @@ fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Re
     repository.add(&changes_expect_typechanges)?;
     repository.commit_signed(commit_message)?;
     Ok(())
+}
+
+fn run_post_update_commands(commands: &[String], project_root: &Utf8Path) -> anyhow::Result<()> {
+    for command in commands {
+        info!("running post-update command: {command}");
+        let (shell, flag) = if cfg!(windows) {
+            ("cmd", "/C")
+        } else {
+            ("sh", "-c")
+        };
+        let output = std::process::Command::new(shell)
+            .arg(flag)
+            .arg(command)
+            .current_dir(project_root)
+            .output()
+            .with_context(|| format!("failed to execute post-update command: {command}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!(
+                "post-update command failed (exit {}): {command}\n{stderr}",
+                output.status.code().unwrap_or(-1)
+            );
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !stdout.is_empty() {
+            debug!("post-update command output: {stdout}");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn post_update_command_succeeds() {
+        let dir = tempdir().unwrap();
+        let path = Utf8Path::from_path(dir.path()).unwrap();
+        let commands = vec!["echo hello".to_string()];
+        run_post_update_commands(&commands, path).unwrap();
+    }
+
+    #[test]
+    fn post_update_command_fails_on_bad_exit() {
+        let dir = tempdir().unwrap();
+        let path = Utf8Path::from_path(dir.path()).unwrap();
+        let commands = vec!["exit 1".to_string()];
+        let err = run_post_update_commands(&commands, path).unwrap_err();
+        assert!(err.to_string().contains("post-update command failed"));
+    }
+
+    #[test]
+    fn post_update_command_runs_in_project_root() {
+        let dir = tempdir().unwrap();
+        let marker = dir.path().join("marker.txt");
+        let path = Utf8Path::from_path(dir.path()).unwrap();
+        let commands = vec!["touch marker.txt".to_string()];
+        run_post_update_commands(&commands, path).unwrap();
+        assert!(marker.exists());
+    }
+
+    #[test]
+    fn post_update_commands_run_in_order() {
+        let dir = tempdir().unwrap();
+        let path = Utf8Path::from_path(dir.path()).unwrap();
+        let commands = vec![
+            "echo first > order.txt".to_string(),
+            "echo second >> order.txt".to_string(),
+        ];
+        run_post_update_commands(&commands, path).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("order.txt")).unwrap();
+        #[cfg(not(windows))]
+        assert_eq!(content.trim(), "first\nsecond");
+        #[cfg(windows)]
+        assert_eq!(content.trim(), "first \r\nsecond");
+    }
+
+    #[test]
+    fn post_update_commands_stop_on_first_failure() {
+        let dir = tempdir().unwrap();
+        let path = Utf8Path::from_path(dir.path()).unwrap();
+        let commands = vec![
+            "exit 1".to_string(),
+            "touch should_not_exist.txt".to_string(),
+        ];
+        let _err = run_post_update_commands(&commands, path);
+        assert!(!dir.path().join("should_not_exist.txt").exists());
+    }
+
+    #[test]
+    fn empty_commands_is_noop() {
+        let dir = tempdir().unwrap();
+        let path = Utf8Path::from_path(dir.path()).unwrap();
+        run_post_update_commands(&[], path).unwrap();
+    }
 }

@@ -189,6 +189,14 @@ pub struct Workspace {
     /// # PR Branch Prefix
     /// Prefix for the PR Branch
     pub pr_branch_prefix: Option<String>,
+    /// # Post Update Commands
+    /// Shell commands to run after version bumps and changelog updates,
+    /// but before the release PR is created/updated.
+    /// Useful for updating secondary lockfiles or running code generation
+    /// that depends on the new version.
+    /// Each command is executed in the project root directory.
+    #[serde(default)]
+    pub post_update_commands: Vec<String>,
     /// # Publish Timeout
     /// Timeout for the publishing process
     pub publish_timeout: Option<String>,
@@ -230,6 +238,7 @@ impl Default for Workspace {
             pr_draft: false,
             pr_labels: Vec::new(),
             pr_branch_prefix: None,
+            post_update_commands: Vec::new(),
             publish_timeout: None,
             release_commits: None,
             release_always: None,
@@ -611,6 +620,7 @@ mod tests {
                 pr_draft: false,
                 pr_labels: vec![],
                 pr_branch_prefix: Some("f-".to_string()),
+                post_update_commands: Vec::new(),
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
@@ -726,6 +736,7 @@ mod tests {
                 pr_draft: false,
                 pr_labels: vec!["label1".to_string()],
                 pr_branch_prefix: Some("f-".to_string()),
+                post_update_commands: Vec::new(),
                 packages_defaults: PackageConfig {
                     semver_check: None,
                     changelog_update: true.into(),
@@ -772,6 +783,7 @@ mod tests {
             pr_draft = false
             pr_labels = ["label1"]
             pr_branch_prefix = "f-"
+            post_update_commands = []
             publish_timeout = "10m"
             repo_url = "https://github.com/release-plz/release-plz"
             release_commits = "^feat:"
@@ -908,5 +920,28 @@ unknown = false"#;
 
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
+    }
+
+    #[test]
+    fn post_update_commands_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\n\
+            post_update_commands = [\"cargo fetch --manifest-path=tests/Cargo.toml\", \"echo done\"]"
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config.workspace.post_update_commands = vec![
+            "cargo fetch --manifest-path=tests/Cargo.toml".to_string(),
+            "echo done".to_string(),
+        ];
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn post_update_commands_defaults_to_empty() {
+        let config: Config = toml::from_str(BASE_WORKSPACE_CONFIG).unwrap();
+        assert!(config.workspace.post_update_commands.is_empty());
     }
 }

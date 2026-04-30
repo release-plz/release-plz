@@ -52,6 +52,7 @@
         "git_tag_enable": null,
         "git_tag_name": null,
         "max_analyze_commits": 1000,
+        "post_update_commands": [],
         "pr_body": null,
         "pr_branch_prefix": null,
         "pr_draft": false,
@@ -673,6 +674,15 @@
           "format": "uint32",
           "default": 1000,
           "minimum": 0
+        },
+        "post_update_commands": {
+          "title": "Post Update Commands",
+          "description": "Shell commands to run after version bumps and changelog updates,\nbut before the release PR is created/updated.\nUseful for updating secondary lockfiles or running code generation\nthat depends on the new version.\nEach command is executed in the project root directory.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         },
         "pr_body": {
           "title": "PR Body",
