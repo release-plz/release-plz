@@ -30,6 +30,17 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
+    /// Whether to bump this package when one of its workspace dependencies changes.
+    ///
+    /// - `Some(true)`: always cascade-bump (old default for all packages).
+    /// - `Some(false)`: never cascade-bump (user opt-out).
+    /// - `None` (default): auto — cascade-bump iff the package is publishable
+    ///   (i.e. `publish` is not `false`/`[]` in Cargo.toml). `publish = false`
+    ///   crates have no downstream consumers, so cascade bumps produce only
+    ///   noise in the release PR and changelog.
+    ///
+    /// See <https://github.com/release-plz/release-plz/issues/2799>.
+    pub dependent_update: Option<bool>,
 }
 
 /// Package-specific config
@@ -69,6 +80,16 @@ impl PackageUpdateConfig {
     pub fn git_only(&self) -> Option<bool> {
         self.generic.git_only
     }
+
+    /// Resolve whether this package should be cascade-bumped when one of its
+    /// workspace dependencies changes. If `dependent_update` is set, use it;
+    /// otherwise fall back to `is_publishable_fallback` (normally the crate's
+    /// `publish` field from Cargo.toml).
+    pub fn should_cascade_bump(&self, is_publishable_fallback: bool) -> bool {
+        self.generic
+            .dependent_update
+            .unwrap_or(is_publishable_fallback)
+    }
 }
 
 impl Default for UpdateConfig {
@@ -84,6 +105,7 @@ impl Default for UpdateConfig {
             changelog_path: None,
             custom_minor_increment_regex: None,
             custom_major_increment_regex: None,
+            dependent_update: None,
         }
     }
 }
@@ -181,5 +203,32 @@ mod tests {
         let version = Version::new(1, 2, 3);
         let new_version = updater.increment(&version, commits);
         assert_eq!(new_version, Version::new(2, 0, 0));
+    }
+
+    #[test]
+    fn should_cascade_bump_defaults_to_publishable() {
+        // Unset => cascade iff publishable.
+        let cfg: PackageUpdateConfig = UpdateConfig::default().into();
+        assert!(cfg.should_cascade_bump(true));
+        assert!(!cfg.should_cascade_bump(false));
+    }
+
+    #[test]
+    fn should_cascade_bump_explicit_override_wins() {
+        let explicit_true: PackageUpdateConfig = UpdateConfig {
+            dependent_update: Some(true),
+            ..Default::default()
+        }
+        .into();
+        // Even for non-publishable, explicit `true` forces cascade.
+        assert!(explicit_true.should_cascade_bump(false));
+
+        let explicit_false: PackageUpdateConfig = UpdateConfig {
+            dependent_update: Some(false),
+            ..Default::default()
+        }
+        .into();
+        // Even for publishable, explicit `false` suppresses cascade.
+        assert!(!explicit_false.should_cascade_bump(true));
     }
 }
