@@ -67,7 +67,8 @@
         "release_always": null,
         "release_commits": null,
         "repo_url": null,
-        "semver_check": null
+        "semver_check": null,
+        "workspace_changelog": null
       }
     }
   },
@@ -802,6 +803,14 @@
           "description": "Controls when to run cargo-semver-checks.\nIf unspecified, run cargo-semver-checks if the package is a library.",
           "type": [
             "boolean",
+            "null"
+          ]
+        },
+        "workspace_changelog": {
+          "title": "Workspace Changelog",
+          "description": "Path to the aggregated workspace-wide changelog file, relative to the workspace root.\nWhen set, instead of writing per-crate CHANGELOG.md files, all package changes are\ncollected into a single file grouped by package name.\nExample: `workspace_changelog = \"CHANGELOG.md\"`",
+          "type": [
+            "string",
             "null"
           ]
         }
