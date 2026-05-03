@@ -43,14 +43,10 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
             let cargo_metadata = cmd_args.update.cargo_metadata()?;
             let config = cmd_args.update.config.load()?;
             let request = cmd_args.release_pr_req(&config, cargo_metadata)?;
-            let release_pr = release_plz_core::release_pr(&request).await?;
+            let release_prs = release_plz_core::release_pr(&request).await?;
             if let Some(output_type) = cmd_args.output {
-                let prs = match release_pr {
-                    Some(pr) => vec![pr],
-                    None => vec![],
-                };
                 let prs_json = serde_json::json!({
-                    "prs": prs
+                    "prs": release_prs.unwrap_or_default(),
                 });
                 print_output(output_type, prs_json);
             }
