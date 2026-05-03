@@ -148,16 +148,47 @@ fn process_git_only_package(
     // Run cargo package so we have our finalized package.
     // In git_only mode we always package the whole workspace to make sure
     // local path dependencies are materialized as local tarballs.
-    run_cargo_package(&worktree).context("run cargo package")?;
+    //
+    // This can fail for workspaces whose internal path dependencies are not
+    // published to crates.io and whose `[workspace.dependencies]` path entries
+    // lack a `version` field (either entirely or at the baseline commit).
+    // In that case, we fall back to reading package metadata directly from the
+    // worktree source instead of the packaged tarball — `package_compare` then
+    // hashes source files directly (see `get_cargo_package_files`).
+    //
+    // Tracks: <https://github.com/release-plz/release-plz/issues/2595>
+    let cargo_package_ok = match run_cargo_package(&worktree) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                "cargo package failed in git_only mode for package {}, \
+                 falling back to source directory comparison: {e:#}",
+                package.name
+            );
+            false
+        }
+    };
 
-    // Get the package metadata
-    let single_package = get_cargo_package(&worktree, &package.name).with_context(|| {
-        format!(
-            "get cargo package {} from worktree at {:?}",
-            package.name,
-            worktree.path()
-        )
-    })?;
+    // Get the package metadata. When cargo package succeeded we read the
+    // tarball metadata (canonical path); otherwise we read it from the
+    // worktree source directly.
+    let single_package = if cargo_package_ok {
+        get_cargo_package(&worktree, &package.name).with_context(|| {
+            format!(
+                "get cargo package {} from worktree at {:?}",
+                package.name,
+                worktree.path()
+            )
+        })?
+    } else {
+        get_cargo_package_from_source(&worktree, &package.name).with_context(|| {
+            format!(
+                "get cargo package {} from source at {:?}",
+                package.name,
+                worktree.path()
+            )
+        })?
+    };
 
     let registry_package = RegistryPackage::new(single_package, Some(release_commit));
     Ok(Some((registry_package, worktree)))
@@ -212,6 +243,39 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .clone();
 
     Ok(single_package)
+}
+
+/// Fallback: read package metadata directly from the worktree source (no `cargo package`).
+///
+/// Used when `run_cargo_package` fails (e.g. for monorepos with path dependencies
+/// whose versions cannot be resolved through the registry). The returned `Package`
+/// points to the source directory rather than a `target/package/<name>-<version>/`
+/// tarball — `package_compare::are_packages_equal` handles this via the source-
+/// directory fallback in `get_cargo_package_files`.
+fn get_cargo_package_from_source(
+    worktree: &GitWorkTree,
+    package_name: &str,
+) -> anyhow::Result<Package> {
+    let worktree_path = to_utf8_path(worktree.path())?;
+    let manifest_path = worktree_path.join("Cargo.toml");
+
+    let metadata = MetadataCommand::new()
+        .current_dir(worktree_path.as_std_path())
+        .no_deps()
+        .manifest_path(&manifest_path)
+        .exec()
+        .context("get cargo metadata for worktree")?;
+
+    let package = metadata
+        .workspace_packages()
+        .into_iter()
+        .find(|p| p.name == package_name)
+        .with_context(|| {
+            format!("package {package_name:?} not found in workspace at {worktree_path:?}")
+        })?
+        .clone();
+
+    Ok(package)
 }
 
 /// Determine next version of packages.

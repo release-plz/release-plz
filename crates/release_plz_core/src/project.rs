@@ -114,6 +114,28 @@ impl Project {
             .collect()
     }
 
+    /// Packages that should be processed by the `release` command.
+    ///
+    /// In `git_only` mode, packages with `publish = false` in their Cargo.toml
+    /// are still eligible for release (git tag + GitHub release) even though
+    /// they won't be published to a cargo registry. Without this, the entire
+    /// release pipeline silently does nothing for unpublished monorepos.
+    ///
+    /// Tracks: <https://github.com/release-plz/release-plz/issues/2595>
+    pub fn releasable_packages(&self, git_only_names: &[String]) -> Vec<&Package> {
+        if git_only_names.is_empty() {
+            return self.publishable_packages();
+        }
+        let mut names = std::collections::HashSet::new();
+        let mut result = Vec::new();
+        for p in &self.packages {
+            if (p.is_publishable() || git_only_names.contains(&p.name)) && names.insert(&p.name) {
+                result.push(p);
+            }
+        }
+        result
+    }
+
     /// Get all packages, including non-publishable.
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
