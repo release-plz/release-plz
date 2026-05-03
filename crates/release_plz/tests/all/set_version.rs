@@ -72,6 +72,11 @@ fn set_version_updates_version_in_workspace() {
         - stuff in crate two
     "]]
     .assert_eq(&fs_err::read_to_string(two_changelog).unwrap());
+
+    let workspace_lock = project_dir.join("Cargo.lock");
+    let workspace_lock = fs_err::read_to_string(workspace_lock).unwrap();
+    assert!(workspace_lock.contains("name = \"one\"\nversion = \"0.1.1\""));
+    assert!(workspace_lock.contains("name = \"two\"\nversion = \"0.3.0\""));
 }
 
 #[test]
@@ -91,6 +96,8 @@ fn set_version_updates_version_in_package() {
         version = "0.1.1"
 
         [dependencies]
+
+        [workspace]
     "#]]
     .assert_eq(&fs_err::read_to_string(manifest).unwrap());
 
@@ -110,4 +117,9 @@ fn set_version_updates_version_in_package() {
         - stuff in crate
     "]]
     .assert_eq(&fs_err::read_to_string(changelog).unwrap());
+
+    let lockfile = project_dir.join("Cargo.lock");
+    let lockfile = fs_err::read_to_string(lockfile).unwrap();
+    assert!(lockfile.contains("name = \"set-version-in-package\""));
+    assert!(lockfile.contains("version = \"0.1.1\""));
 }
