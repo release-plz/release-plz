@@ -1,0 +1,74 @@
+[
+  {
+    "name": "SurrealDB",
+    "url": "https://github.com/surrealdb/surrealdb",
+    "stars": 27000,
+    "description": "A scalable, distributed, collaborative, document-graph database"
+  },
+  {
+    "name": "tokei",
+    "url": "https://github.com/XAMPPRocky/tokei",
+    "stars": 10000,
+    "description": "Count your code, quickly"
+  },
+  {
+    "name": "aws-lambda-rust-runtime",
+    "url": "https://github.com/aws/aws-lambda-rust-runtime",
+    "stars": 2500,
+    "description": "A Rust runtime for AWS Lambda"
+  },
+  {
+    "name": "windows-drivers-rs",
+    "url": "https://github.com/microsoft/windows-drivers-rs",
+    "stars": 400,
+    "description": "Rust for Windows Drivers"
+  },
+  {
+    "name": "farm",
+    "url": "https://github.com/farm-fe/farm",
+    "stars": 5000,
+    "description": "Extremely fast Vite-compatible web build tool written in Rust"
+  },
+  {
+    "name": "cargo-generate",
+    "url": "https://github.com/cargo-generate/cargo-generate",
+    "stars": 1500,
+    "description": "cargo, make me a project"
+  },
+  {
+    "name": "pavex",
+    "url": "https://github.com/LukeMathWalker/pavex",
+    "stars": 700,
+    "description": "A blueprint framework for Rust APIs"
+  },
+  {
+    "name": "octocrab",
+    "url": "https://github.com/XAMPPRocky/octocrab",
+    "stars": 1000,
+    "description": "A modern, extensible GitHub API Client for Rust"
+  },
+  {
+    "name": "crux",
+    "url": "https://github.com/redbadger/crux",
+    "stars": 800,
+    "description": "Cross-platform core components for Rust apps"
+  },
+  {
+    "name": "daktilo",
+    "url": "https://github.com/orhun/daktilo",
+    "stars": 300,
+    "description": "Turn your keyboard into a typewriter"
+  },
+  {
+    "name": "trillium",
+    "url": "https://github.com/trillium-rs/trillium",
+    "stars": 300,
+    "description": "Trillium is a modular rust web framework"
+  },
+  {
+    "name": "rabbitmq-stream-rust-client",
+    "url": "https://github.com/rabbitmq/rabbitmq-stream-rust-client",
+    "stars": 100,
+    "description": "RabbitMQ Stream Rust Client"
+  }
+]

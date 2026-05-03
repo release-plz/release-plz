@@ -1,0 +1,29 @@
+.projectsCounter {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.projectsCounterLink {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: var(--ifm-border-radius);
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+}
+
+.projectsCounterLink:hover {
+  background: var(--ifm-color-emphasis-200);
+  text-decoration: none;
+}
+
+[data-theme="dark"] .projectsCounterLink {
+  background: var(--ifm-color-emphasis-200);
+}
+
+[data-theme="dark"] .projectsCounterLink:hover {
+  background: var(--ifm-color-emphasis-300);
+}
