@@ -490,7 +490,7 @@ async fn release_plz_should_set_custom_pr_details() {
 
     let config = r#"
 [workspace]
-pr_name = "release:{% if package and version %} {{ package }} {{ version }}{% endif %}"
+pr_name = "release:{% if package and version and branch %} {{ package }} {{ version }} {{ branch }}{% endif %}"
 pr_body = """
 {% for release in releases %}
 {% if release.title %}
@@ -509,7 +509,7 @@ Changes:
     context.run_release_pr().success();
     let today = today();
 
-    let expected_title = format!("release: {} 0.1.0", context.gitea.repo);
+    let expected_title = format!("release: {} 0.1.0 main", context.gitea.repo);
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, expected_title);

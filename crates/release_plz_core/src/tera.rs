@@ -2,6 +2,7 @@ use anyhow::Context as _;
 
 use crate::Remote;
 
+pub const BRANCH_VAR: &str = "branch";
 pub const PACKAGE_VAR: &str = "package";
 pub const VERSION_VAR: &str = "version";
 pub const CHANGELOG_VAR: &str = "changelog";
