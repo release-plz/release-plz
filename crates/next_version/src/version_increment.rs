@@ -35,6 +35,15 @@ fn is_there_a_custom_match(
     })
 }
 
+fn commit_matches_custom_regex(regex: &Regex, message: &str) -> bool {
+    // Part of commit message to analyze depends on whether the commit follows conventional commits specification or not.
+    let part_of_message = match Commit::parse(message) {
+        Ok(commit) => commit.type_().as_str(),
+        Err(_) => message,
+    };
+    regex.is_match(part_of_message)
+}
+
 impl VersionIncrement {
     /// Analyze commits and determine which part of version to increment based on
     /// [conventional commits](https://www.conventionalcommits.org/) and
@@ -64,22 +73,29 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let mut commits = commits.into_iter().peekable();
-        let are_commits_present = commits.peek().is_some();
-        if are_commits_present {
-            if !current_version.pre.is_empty() {
-                return Some(Self::Prerelease);
-            }
-            // Parse commits and keep only the ones that follow conventional commits specification.
-            let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
+        let commit_messages: Vec<String> = commits
+            .into_iter()
+            .filter_map(|c| {
+                let message = c.as_ref();
+                let should_skip = updater
+                    .no_increment_regex
+                    .as_ref()
+                    .is_some_and(|regex| commit_matches_custom_regex(regex, message));
+                (!should_skip).then(|| message.to_string())
+            })
+            .collect();
 
+        if commit_messages.is_empty() {
+            None
+        } else if !current_version.pre.is_empty() {
+            Some(Self::Prerelease)
+        } else {
+            // Parse commits and keep only the ones that follow conventional commits specification.
             Some(Self::from_conventional_commits(
                 current_version,
                 &commit_messages,
                 updater,
             ))
-        } else {
-            None
         }
     }
 
