@@ -158,7 +158,7 @@ fn non_conventional_commit_with_no_increment_regex_does_not_increment_version() 
             .with_no_increment_regex("skip release")
             .unwrap()
             .increment(&version, commits),
-        Version::new(1, 2, 3)
+        version
     );
 }
 
