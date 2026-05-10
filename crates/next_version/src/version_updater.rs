@@ -145,7 +145,7 @@ impl VersionUpdater {
     /// triggered by conventional breaking-change commits, subject to
     /// [`Self::with_breaking_always_increment_major`].
     ///
-    /// By default, no custom major-increment regex is configured.
+    /// By default, no regex is configured.
     ///
     /// ### Note
     ///
@@ -218,7 +218,7 @@ impl VersionUpdater {
     /// [`Self::with_features_always_increment_minor`], and by breaking-change commits on `0.x`
     /// versions as described in [`Self::with_breaking_always_increment_major`].
     ///
-    /// By default, no custom minor-increment regex is configured.
+    /// By default, no regex is configured.
     ///
     /// ### Note
     ///
@@ -263,7 +263,7 @@ impl VersionUpdater {
     /// - For non-conventional commits, this will check the entire commit message against the given pattern.
     ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
     ///
-    /// By default, no no-increment regex is configured.
+    /// By default, no regex is configured.
     ///
     /// ### Note
     ///
