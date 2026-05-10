@@ -36,10 +36,12 @@ fn is_there_a_custom_match(
 }
 
 fn commit_matches_custom_regex(regex: &Regex, message: &str) -> bool {
-    match Commit::parse(message) {
-        Ok(commit) => regex.is_match(commit.type_().as_str()),
-        Err(_) => regex.is_match(message),
-    }
+    // Part of commit message to analyze depends on whether the commit follows conventional commits specification or not.
+    let part_of_message = match Commit::parse(message) {
+        Ok(commit) => commit.type_().as_str(),
+        Err(_) => message,
+    };
+    regex.is_match(part_of_message)
 }
 
 impl VersionIncrement {
