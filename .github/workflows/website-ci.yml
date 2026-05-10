@@ -31,6 +31,10 @@ jobs:
         run: npm ci
         working-directory: ./website
 
+      - name: Check formatting
+        run: npm run format:check
+        working-directory: ./website
+
       - name: Markdown lint
         run: npm run mdlint
         working-directory: ./website
