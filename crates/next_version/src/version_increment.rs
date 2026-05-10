@@ -35,6 +35,13 @@ fn is_there_a_custom_match(
     })
 }
 
+fn commit_matches_custom_regex(regex: &Regex, message: &str) -> bool {
+    match Commit::parse(message) {
+        Ok(commit) => regex.is_match(commit.type_().as_str()),
+        Err(_) => regex.is_match(message),
+    }
+}
+
 impl VersionIncrement {
     /// Analyze commits and determine which part of version to increment based on
     /// [conventional commits](https://www.conventionalcommits.org/) and
@@ -64,22 +71,30 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let mut commits = commits.into_iter().peekable();
-        let are_commits_present = commits.peek().is_some();
-        if are_commits_present {
+        let commit_messages: Vec<String> = commits
+            .into_iter()
+            .filter_map(|c| {
+                let message = c.as_ref();
+                let no_increment = updater
+                    .no_increment_regex
+                    .as_ref()
+                    .is_some_and(|regex| commit_matches_custom_regex(regex, message));
+                (!no_increment).then(|| message.to_string())
+            })
+            .collect();
+
+        if commit_messages.is_empty() {
+            None
+        } else {
             if !current_version.pre.is_empty() {
                 return Some(Self::Prerelease);
             }
             // Parse commits and keep only the ones that follow conventional commits specification.
-            let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
-
             Some(Self::from_conventional_commits(
                 current_version,
                 &commit_messages,
                 updater,
             ))
-        } else {
-            None
         }
     }
 
