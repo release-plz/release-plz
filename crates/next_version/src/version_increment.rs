@@ -77,11 +77,11 @@ impl VersionIncrement {
             .into_iter()
             .filter_map(|c| {
                 let message = c.as_ref();
-                let no_increment = updater
+                let should_skip = updater
                     .no_increment_regex
                     .as_ref()
                     .is_some_and(|regex| commit_matches_custom_regex(regex, message));
-                (!no_increment).then(|| message.to_string())
+                (!should_skip).then(|| message.to_string())
             })
             .collect();
 
