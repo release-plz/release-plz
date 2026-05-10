@@ -85,10 +85,9 @@ impl VersionIncrement {
 
         if commit_messages.is_empty() {
             None
+        } else if !current_version.pre.is_empty() {
+            Some(Self::Prerelease)
         } else {
-            if !current_version.pre.is_empty() {
-                return Some(Self::Prerelease);
-            }
             // Parse commits and keep only the ones that follow conventional commits specification.
             Some(Self::from_conventional_commits(
                 current_version,
