@@ -151,7 +151,7 @@ impl Update {
                     repo.is_on_github(),
                     "Can't create PR: the repository is not hosted in GitHub. Please select a different forge."
                 );
-                GitForge::Github(GitHub::new(repo.owner, repo.name, token))
+                GitForge::Github(GitHub::from_repo_url(repo, token)?)
             }
             GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
             GitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),

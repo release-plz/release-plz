@@ -96,7 +96,7 @@ impl Release {
                 forge: match self.forge {
                     ReleaseGitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo_url, git_token)?),
                     ReleaseGitForgeKind::Github => {
-                        GitForge::Github(GitHub::new(repo_url.owner, repo_url.name, git_token))
+                        GitForge::Github(GitHub::from_repo_url(repo_url, git_token)?)
                     }
                     ReleaseGitForgeKind::Gitlab => {
                         GitForge::Gitlab(GitLab::new(repo_url, git_token)?)
