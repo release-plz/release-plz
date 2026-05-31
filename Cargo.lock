@@ -426,7 +426,7 @@ dependencies = [
  "flate2",
  "futures",
  "futures-timer",
- "git2",
+ "git2 0.20.4",
  "git2-curl",
  "gix",
  "glob",
@@ -1698,13 +1698,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "git2"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
+dependencies = [
+ "bitflags",
+ "libc",
+ "libgit2-sys",
+ "log",
+]
+
+[[package]]
 name = "git2-curl"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be8dcabbc09ece4d30a9aa983d5804203b7e2f8054a171f792deff59b56d31fa"
 dependencies = [
  "curl",
- "git2",
+ "git2 0.20.4",
  "log",
  "url",
 ]
@@ -4654,7 +4666,7 @@ dependencies = [
  "fs-err",
  "git-cliff-core",
  "git-url-parse",
- "git2",
+ "git2 0.21.0",
  "git_cmd",
  "h2",
  "http",
