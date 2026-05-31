@@ -61,7 +61,7 @@ impl GitRepo {
             .tag_names(None)
             .context("get tags for repo")?
             .iter()
-            .filter_map(|x| x.map(ToString::to_string))
+            .filter_map(|x| x.ok().flatten().map(ToString::to_string))
             .collect();
         Ok(tags)
     }
@@ -181,7 +181,7 @@ impl GitRepo {
             .worktrees()
             .context("get worktrees for repo")?
             .iter()
-            .filter_map(|x| x.map(ToString::to_string))
+            .filter_map(|x| x.ok().flatten().map(ToString::to_string))
             .collect();
 
         if trees.contains(&name.to_string()) {
@@ -262,8 +262,14 @@ impl Drop for GitWorkTree {
         }
 
         // go ahead and delete the branch now
-        if let Err(e) = repo.delete_branch(self.worktree.name().unwrap_or_default()) {
-            error!("Error deleting branch: {e:?}");
+        match self.worktree.name() {
+            Ok(Some(branch_name)) => {
+                if let Err(e) = repo.delete_branch(branch_name) {
+                    error!("Error deleting branch: {e:?}");
+                }
+            }
+            Ok(None) => warn!("Worktree has no valid UTF-8 name, cannot delete branch"),
+            Err(e) => warn!("Error getting worktree name for cleanup: {e:?}"),
         }
 
         // death to the trees!
