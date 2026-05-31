@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, anyhow};
 use cargo_metadata::{Package, camino::Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 
 use crate::clone::{Cloner, ClonerSource, Crate};
 
@@ -45,7 +45,7 @@ impl PackageDownloader {
     }
 
     #[instrument]
-    pub fn download(&self) -> anyhow::Result<Vec<Package>> {
+    pub async fn download(&self) -> anyhow::Result<Vec<Package>> {
         let source: ClonerSource = match &self.registry {
             Some(registry) => ClonerSource::registry(registry),
             None => ClonerSource::crates_io(),
@@ -69,6 +69,7 @@ impl PackageDownloader {
             .build()
             .context("can't build cloner")?
             .clone(&crates)
+            .await
             .context("error while downloading packages")?;
 
         downloaded_packages
@@ -100,42 +101,45 @@ mod tests {
 
     use super::*;
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network"]
-    fn one_package_is_downloaded() {
+    async fn one_package_is_downloaded() {
         let package_name = "rand";
         let temp_dir = tempdir().unwrap();
         let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
         let packages = PackageDownloader::new([package_name], directory)
             .download()
+            .await
             .unwrap();
         let rand = &packages[0];
         assert_eq!(*rand.name, package_name);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network"]
-    fn two_packages_are_downloaded() {
+    async fn two_packages_are_downloaded() {
         let first_package = "rand";
         let second_package = "rust-gh-example";
         let temp_dir = tempdir().unwrap();
         let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
         let packages = PackageDownloader::new([first_package, second_package], directory)
             .download()
+            .await
             .unwrap();
         assert_eq!(*packages[0].name, first_package);
         assert_eq!(*packages[1].name, second_package);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network"]
-    fn downloading_non_existing_package_does_not_error() {
+    async fn downloading_non_existing_package_does_not_error() {
         // Generate random string 15 characters long.
         let package: String = 15.fake();
         let temp_dir = tempdir().unwrap();
         let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
         PackageDownloader::new([&package], directory)
             .download()
+            .await
             .unwrap();
     }
 }
