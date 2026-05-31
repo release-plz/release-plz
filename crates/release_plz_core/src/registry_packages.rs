@@ -127,6 +127,7 @@ async fn download_packages_from_registry(
         downloaders.push(downloader);
     }
 
+    // Clone from the different registries in parallel
     let registry_packages = try_join_all(
         downloaders
             .iter()
