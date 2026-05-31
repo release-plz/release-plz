@@ -1,13 +1,11 @@
 # Single-job workflow
 
 The [quickstart](../github/quickstart.md) splits release-plz into two GitHub
-Actions jobs: one for `release` and one for `release-pr`. There's a good
-reason for that — they need different `concurrency` settings, see
-[Workflow explanation](../github/quickstart.md#concurrency) — but it does
-mean release-plz checks out and installs Rust twice on every run.
+Actions jobs: one for `release` and one for `release-pr`.
 
-If you'd rather pay for one job, omit the `with: command:` field and the
-action runs both `release` and `release-pr` in sequence:
+As explained in [Input](../github/input.md) docs,
+if you want to run both `release` and `release-pr` in sequence in a single job,
+omit the `with: command:` field:
 
 ```yaml
 name: Release-plz
@@ -42,21 +40,19 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 ```
 
+:::warning
+This setup is not recommended. Bug reports that might be caused by this setup
+(instead of splitting the jobs) won't be investigated.
+:::
+
 ## Trade-off: concurrency
 
-The split-job setup gives `release-pr` its own `concurrency` group so a
-back-to-back push cancels the in-flight PR job (cheap to redo) but never
-cancels the `release` job (must not be skipped). Combining the two into one
-job means **either**:
+The two-jobs setup gives `release-pr` its own `concurrency` group.
+Combining the two into one job means **either**:
 
-- you don't set a `concurrency` group, and a burst of pushes spawns multiple
-  full release-plz runs in parallel (fine for small repos, wasteful for big
-  ones), **or**
+- you don't set a `concurrency` group, and every push runs release-plz.
+  So in busy repositories, release-plz runs in parallel.
 - you set one `concurrency` group with `cancel-in-progress: false`, which
-  serializes runs and avoids the wasted parallel work, but doesn't get the
-  "cancel the in-flight PR" benefit of the split version.
-
-Pick this single-job shape when you'd rather save the duplicate
-checkout / toolchain install than have separate concurrency rules for the
-two commands. Stick with the split shape from the quickstart if you have
-frequent pushes and want the PR job to short-circuit cleanly.
+  serializes runs, and could lead to release-plz releasing the wrong version
+  of your packages (because if you merge multiple PRs at once, release-plz
+  could be skipped in the commit where you merge the Release PR).
