@@ -18,7 +18,16 @@ pub struct CargoRegistry {
 
 fn cargo_cmd() -> Command {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-    Command::new(cargo)
+    let mut cmd = Command::new(cargo);
+    // release-plz parses cargo's stdout/stderr to drive its own logic
+    // (e.g. it scans `cargo publish` output for the "Uploading" marker to
+    // detect a successful upload, see `release.rs`). If the user has
+    // `[term] quiet = true` in their cargo config, cargo silences those
+    // markers and release-plz fails with confusing errors. Force quiet mode
+    // off; the env var takes precedence over the config file.
+    // See https://github.com/release-plz/release-plz/issues/2821
+    cmd.env("CARGO_TERM_QUIET", "false");
+    cmd
 }
 
 pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
@@ -188,4 +197,31 @@ pub async fn wait_until_published(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for <https://github.com/release-plz/release-plz/issues/2821>
+    ///
+    /// release-plz parses cargo's output to detect package files, the "Uploading"
+    /// marker on `cargo publish`, etc. If a user has `[term] quiet = true` in their
+    /// cargo config, those markers disappear and release-plz fails with confusing
+    /// errors. `cargo_cmd()` must always set `CARGO_TERM_QUIET=false` so the env var
+    /// (which takes precedence over the config file) overrides any user config.
+    #[test]
+    fn cargo_cmd_disables_term_quiet() {
+        let cmd = cargo_cmd();
+        let env_value = cmd
+            .get_envs()
+            .find(|(k, _)| *k == std::ffi::OsStr::new("CARGO_TERM_QUIET"))
+            .and_then(|(_, v)| v)
+            .map(|v| v.to_string_lossy().into_owned());
+        assert_eq!(
+            env_value.as_deref(),
+            Some("false"),
+            "cargo_cmd() must set CARGO_TERM_QUIET=false to override `[term] quiet = true` in user cargo config"
+        );
+    }
 }
