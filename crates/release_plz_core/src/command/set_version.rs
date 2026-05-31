@@ -32,6 +32,31 @@ impl SetVersionRequest {
             }
         }
     }
+
+    /// Apply a workspace-level default changelog path to every package that
+    /// does not already have its own per-package override.
+    ///
+    /// Without this, `[workspace] changelog_path = "./CHANGELOG.md"` would be
+    /// silently ignored by `set-version` and the command would look for a
+    /// per-crate `CHANGELOG.md` that doesn't exist in monorepos that share a
+    /// single workspace changelog.
+    /// See <https://github.com/release-plz/release-plz/issues/2441>
+    pub fn set_default_changelog_path(&mut self, changelog_path: Utf8PathBuf) {
+        match &mut self.version_changes {
+            SetVersionSpec::Single(change) => {
+                if change.changelog_path.is_none() {
+                    change.changelog_path = Some(changelog_path);
+                }
+            }
+            SetVersionSpec::Workspace(changes) => {
+                for change in changes.values_mut() {
+                    if change.changelog_path.is_none() {
+                        change.changelog_path = Some(changelog_path.clone());
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -134,8 +159,20 @@ fn set_version_in_package(
         &workspace_manifest.path,
     )?;
     let default_changelog_path = pkg_path.join(CHANGELOG_FILENAME);
-    let changelog_path: &Utf8Path = change
-        .changelog_path
+    // Resolve a configured `changelog_path` relative to the workspace
+    // manifest's parent (matching how `update` interprets it). Without this,
+    // a value like `./CHANGELOG.md` would be resolved against the process
+    // cwd, which is unreliable and inconsistent with the rest of release-plz.
+    let resolved_changelog_path: Option<Utf8PathBuf> = change.changelog_path.as_ref().map(|p| {
+        if p.is_absolute() {
+            p.clone()
+        } else if let Some(workspace_dir) = workspace_manifest.path.parent() {
+            workspace_dir.join(p)
+        } else {
+            p.clone()
+        }
+    });
+    let changelog_path: &Utf8Path = resolved_changelog_path
         .as_deref()
         .unwrap_or(&default_changelog_path);
     update_changelog(changelog_path, &pkg.version, &change.version)
@@ -162,4 +199,109 @@ fn update_changelog(
     fs_err::write(changelog_path, new_changelog_content)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_change() -> VersionChange {
+        VersionChange::new(Version::new(1, 0, 0))
+    }
+
+    /// Workspace-default `changelog_path` should land on every package that
+    /// doesn't have its own override. Regression for
+    /// <https://github.com/release-plz/release-plz/issues/2441>.
+    #[test]
+    fn workspace_default_propagates_to_all_packages() {
+        let mut spec = SetVersionSpec::Workspace(BTreeMap::from([
+            ("a".to_string(), dummy_change()),
+            ("b".to_string(), dummy_change()),
+        ]));
+        let mut req = SetVersionRequest {
+            manifest: Utf8PathBuf::from("/tmp/Cargo.toml"),
+            metadata: empty_metadata(),
+            version_changes: spec_take(&mut spec),
+        };
+        req.set_default_changelog_path(Utf8PathBuf::from("./CHANGELOG.md"));
+        let SetVersionSpec::Workspace(changes) = req.version_changes else {
+            unreachable!()
+        };
+        assert_eq!(
+            changes["a"].changelog_path.as_deref(),
+            Some(Utf8Path::new("./CHANGELOG.md")),
+        );
+        assert_eq!(
+            changes["b"].changelog_path.as_deref(),
+            Some(Utf8Path::new("./CHANGELOG.md")),
+        );
+    }
+
+    /// A per-package override applied first must NOT be replaced by a
+    /// subsequent workspace default.
+    #[test]
+    fn per_package_override_wins_over_workspace_default() {
+        let mut changes = BTreeMap::new();
+        let mut a = dummy_change();
+        a.with_changelog_path(Utf8PathBuf::from("./crates/a/CHANGELOG.md"));
+        changes.insert("a".to_string(), a);
+        changes.insert("b".to_string(), dummy_change());
+        let mut spec = SetVersionSpec::Workspace(changes);
+        let mut req = SetVersionRequest {
+            manifest: Utf8PathBuf::from("/tmp/Cargo.toml"),
+            metadata: empty_metadata(),
+            version_changes: spec_take(&mut spec),
+        };
+        req.set_default_changelog_path(Utf8PathBuf::from("./CHANGELOG.md"));
+        let SetVersionSpec::Workspace(changes) = req.version_changes else {
+            unreachable!()
+        };
+        assert_eq!(
+            changes["a"].changelog_path.as_deref(),
+            Some(Utf8Path::new("./crates/a/CHANGELOG.md")),
+            "package-specific changelog_path must not be clobbered by the workspace default"
+        );
+        assert_eq!(
+            changes["b"].changelog_path.as_deref(),
+            Some(Utf8Path::new("./CHANGELOG.md")),
+        );
+    }
+
+    #[test]
+    fn workspace_default_applies_to_single_spec() {
+        let mut req = SetVersionRequest {
+            manifest: Utf8PathBuf::from("/tmp/Cargo.toml"),
+            metadata: empty_metadata(),
+            version_changes: SetVersionSpec::Single(dummy_change()),
+        };
+        req.set_default_changelog_path(Utf8PathBuf::from("./CHANGELOG.md"));
+        let SetVersionSpec::Single(change) = req.version_changes else {
+            unreachable!()
+        };
+        assert_eq!(
+            change.changelog_path.as_deref(),
+            Some(Utf8Path::new("./CHANGELOG.md")),
+        );
+    }
+
+    fn spec_take(spec: &mut SetVersionSpec) -> SetVersionSpec {
+        let placeholder = SetVersionSpec::Workspace(BTreeMap::new());
+        std::mem::replace(spec, placeholder)
+    }
+
+    fn empty_metadata() -> Metadata {
+        // Minimal valid cargo metadata JSON. The set_default_changelog_path
+        // tests don't touch metadata, but Rust insists we construct one.
+        let json = r#"{
+            "packages": [],
+            "workspace_members": [],
+            "workspace_default_members": [],
+            "resolve": null,
+            "target_directory": "/tmp/target",
+            "version": 1,
+            "workspace_root": "/tmp",
+            "metadata": null
+        }"#;
+        serde_json::from_str(json).expect("valid empty metadata JSON")
+    }
 }

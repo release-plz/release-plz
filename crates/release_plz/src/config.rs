@@ -86,6 +86,14 @@ impl Config {
         &self,
         set_version_request: &mut SetVersionRequest,
     ) -> anyhow::Result<()> {
+        // Apply the workspace-level default first so every package picks it
+        // up. Per-package `[[package]] changelog_path` is applied below and
+        // overrides this default for that specific package.
+        // See <https://github.com/release-plz/release-plz/issues/2441>
+        if let Some(changelog_path) = self.workspace.packages_defaults.changelog_path.clone() {
+            let changelog_path = to_utf8_pathbuf(changelog_path)?;
+            set_version_request.set_default_changelog_path(changelog_path);
+        }
         for (package, config) in self.packages() {
             if let Some(changelog_path) = config.common.changelog_path.clone() {
                 let changelog_path = to_utf8_pathbuf(changelog_path)?;
