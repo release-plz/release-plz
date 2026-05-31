@@ -261,12 +261,13 @@ impl TestContext {
         fs_err::read_to_string(changelog_path).unwrap()
     }
 
-    pub fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
+    pub async fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
         let crate_name = &self.gitea.repo;
         release_plz_core::PackageDownloader::new([crate_name], dest_dir.as_str())
             .with_registry(TEST_REGISTRY.to_string())
             .with_cargo_cwd(self.repo_dir())
             .download()
+            .await
             .unwrap()
     }
 }

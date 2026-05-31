@@ -77,13 +77,12 @@ async fn release_plz_releases_a_new_project() {
 
     let dest_dir = Utf8TempDir::new().unwrap();
 
-    let packages = || context.download_package(dest_dir.path());
     // Before running release-plz, no packages should be present.
-    assert!(packages().is_empty());
+    assert!(context.download_package(dest_dir.path()).await.is_empty());
 
     context.run_release().success();
 
-    assert_eq!(packages().len(), 1);
+    assert_eq!(context.download_package(dest_dir.path()).await.len(), 1);
 }
 
 // TODO: switch `### Contributors` to `=== Contributors` and make test pass

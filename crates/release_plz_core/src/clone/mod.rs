@@ -107,7 +107,7 @@ impl Cloner {
     /// Each crate is cloned in a subdirectory named as the crate name.
     /// Returns the cloned crates and the path where they are cloned.
     /// If a crate doesn't exist, is not returned.
-    pub fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
+    pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
         let mut cloned_pkgs = vec![];
@@ -119,6 +119,7 @@ impl Cloner {
 
             let pkg = self
                 .clone_in(crate_, &dest_path, src.as_ref())
+                .await
                 .with_context(|| {
                     format!("failed to clone package {} in {dest_path}", &crate_.name)
                 })?;
@@ -159,7 +160,7 @@ impl Cloner {
         package_set.get_one(package_id).cloned()
     }
 
-    fn clone_in(
+    async fn clone_in(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
@@ -175,11 +176,11 @@ impl Cloner {
             bail!("destination path '{dest_path}' already exists and is not an empty directory.");
         }
 
-        self.clone_single(crate_, dest_path, src)
+        self.clone_single(crate_, dest_path, src).await
     }
 
     /// Clone one crate.
-    fn clone_single(
+    async fn clone_single(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
@@ -187,7 +188,7 @@ impl Cloner {
     ) -> CargoResult<Option<Package>> {
         let name = &crate_.name;
         let vers = crate_.version.as_deref();
-        let latest = query_latest_package_summary(src, name, vers)?;
+        let latest = query_latest_package_summary(src, name, vers).await?;
 
         let pkg = match latest {
             Some(l) => {
@@ -203,13 +204,13 @@ impl Cloner {
     }
 }
 
-fn query_latest_package_summary(
+async fn query_latest_package_summary(
     src: &dyn Source,
     name: &str,
     vers: Option<&str>,
 ) -> CargoResult<Option<IndexSummary>> {
     let dep = Dependency::parse(name, vers, src.source_id())?;
-    let summaries = match futures::executor::block_on(src.query_vec(&dep, QueryKind::Exact)) {
+    let summaries = match src.query_vec(&dep, QueryKind::Exact).await {
         Ok(summaries) => summaries,
         Err(err) => return none_or_query_err(err),
     };

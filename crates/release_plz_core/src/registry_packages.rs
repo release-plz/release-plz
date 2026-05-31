@@ -56,7 +56,7 @@ impl PackagesCollection {
 ///
 /// - If `registry` is provided, the packages are downloaded from the specified registry.
 /// - Otherwise, the packages are downloaded from crates.io.
-pub fn get_registry_packages(
+pub async fn get_registry_packages(
     registry_manifest: Option<&Utf8Path>,
     local_packages: &[&Package],
     registry: Option<&str>,
@@ -77,7 +77,7 @@ pub fn get_registry_packages(
             let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
 
             let registry_packages =
-                download_packages_from_registry(local_packages, registry, directory)?;
+                download_packages_from_registry(local_packages, registry, directory).await?;
 
             // After downloading the package, we initialize a git repo in the package.
             // This is because if cargo doesn't find a git repo in the package, it doesn't
@@ -100,7 +100,7 @@ pub fn get_registry_packages(
     })
 }
 
-fn download_packages_from_registry(
+async fn download_packages_from_registry(
     local_packages: &[&Package],
     registry: Option<&str>,
     directory: &str,
@@ -116,29 +116,20 @@ fn download_packages_from_registry(
         })
     });
 
-    // Clone from the different registries in parallel
-    std::thread::scope(|scope| {
-        let mut registry_packages: Vec<Package> = vec![];
-        let mut handles = Vec::new();
-        for (registry, packages) in &packages_grouped_by_registry {
-            let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
-            let mut downloader = download::PackageDownloader::new(packages_names, directory);
-            if let Some(registry) = registry {
-                downloader = downloader.with_registry(registry.to_string());
-            }
-            let handle = scope.spawn(move || downloader.download());
-            handles.push(handle);
+    let mut registry_packages = Vec::new();
+    for (registry, packages) in &packages_grouped_by_registry {
+        let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
+        let mut downloader = download::PackageDownloader::new(packages_names, directory);
+        if let Some(registry) = registry {
+            downloader = downloader.with_registry(registry.to_string());
         }
-
-        for handle in handles {
-            let downloaded_packages = handle
-                .join()
-                .expect("Panicked while downloading packages")
-                .context("Failed to download packages")?;
-            registry_packages.extend(downloaded_packages);
-        }
-        Ok(registry_packages)
-    })
+        let downloaded_packages = downloader
+            .download()
+            .await
+            .context("Failed to download packages")?;
+        registry_packages.extend(downloaded_packages);
+    }
+    Ok(registry_packages)
 }
 
 fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<RegistryPackage>> {
