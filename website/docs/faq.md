@@ -83,3 +83,21 @@ Release-plz uses the [next_version](https://crates.io/crates/next_version)
 crate to determine the next version.
 Please read the [documentation](https://docs.rs/next_version/latest/next_version/),
 and open an issue if it's not clear enough.
+
+### Empty commits don't trigger a bump
+
+Release-plz detects releaseable changes by diffing the local package against
+the registry version, not by parsing every commit message in isolation. An
+empty commit (e.g. `git commit --allow-empty -m 'feat!: force major bump'`)
+leaves the package contents identical to the registry version, so release-plz
+sees no changes to release and does not bump the version.
+
+If you need to force a version, two reliable options:
+
+1. **Make a real change.** Even a one-line edit (e.g. updating the README) is
+   enough to make the package differ from the registry copy and let
+   release-plz pick up the conventional-commit footer.
+2. **Use `release-plz set-version`.** Run
+   `release-plz set-version <package>@<version>` to bump the version
+   directly, commit the change, and release-plz will release the new version
+   when the PR is merged.
