@@ -335,10 +335,16 @@ async fn update_pr(
             repository.original_branch()
         )
     })?;
+    // Use `new_pr.title` (not `opened_pr.title`) as the commit message: when a
+    // breaking change is pushed onto an existing release PR, the new title
+    // reflects the bumped version (e.g. v0.32.0). Using `opened_pr.title` here
+    // would commit with the stale title (v0.31.2) while the PR title gets
+    // edited to the new one a few lines below — leaving commit and PR title
+    // inconsistent. See https://github.com/release-plz/release-plz/issues/2849
     if git_client.forge == ForgeType::Github {
-        github_force_push(git_client, opened_pr, repository).await?;
+        github_force_push(git_client, opened_pr, repository, &new_pr.title).await?;
     } else {
-        force_push(opened_pr, repository)?;
+        force_push(opened_pr, repository, &new_pr.title)?;
     }
     let pr_edit = {
         let mut pr_edit = PrEdit::new();
@@ -417,8 +423,8 @@ fn reset_branch(
     Ok(())
 }
 
-fn force_push(pr: &GitPr, repository: &Repo) -> anyhow::Result<()> {
-    add_changes_and_commit(repository, &pr.title)?;
+fn force_push(pr: &GitPr, repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
+    add_changes_and_commit(repository, commit_message)?;
     repository.force_push(pr.branch())?;
     Ok(())
 }
@@ -427,6 +433,7 @@ async fn github_force_push(
     client: &GitClient,
     pr: &GitPr,
     repository: &Repo,
+    commit_message: &str,
 ) -> anyhow::Result<()> {
     let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
     repository.checkout_new_branch(&tmp_release_branch)?;
@@ -439,8 +446,8 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let sha =
-        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
+    let sha = github_create_release_branch(client, repository, &tmp_release_branch, commit_message)
+        .await?;
 
     let force_push_result =
         execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
