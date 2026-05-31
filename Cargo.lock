@@ -4652,7 +4652,6 @@ dependencies = [
  "fake",
  "fake_package",
  "fs-err",
- "futures",
  "git-cliff-core",
  "git-url-parse",
  "git2",
