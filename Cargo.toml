@@ -22,6 +22,7 @@ dunce = "1.0.5"
 expect-test = "1.5.1"
 fake = "5.0.0"
 fs-err = "3.1.1"
+futures-util = "0.3.32"
 git2 = "0.20.2"
 git-cliff-core = { version = "2.10.0", default-features = false }
 git-conventional = "1.0.0"

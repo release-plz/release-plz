@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use anyhow::Context;
 use cargo_metadata::{Package, camino::Utf8Path};
+use futures_util::future::try_join_all;
 use git_cmd::git_in_dir;
 use itertools::Itertools;
 use tempfile::{TempDir, tempdir};
@@ -116,20 +117,24 @@ async fn download_packages_from_registry(
         })
     });
 
-    let mut registry_packages = Vec::new();
+    let mut downloaders = Vec::new();
     for (registry, packages) in &packages_grouped_by_registry {
         let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
         let mut downloader = download::PackageDownloader::new(packages_names, directory);
         if let Some(registry) = registry {
             downloader = downloader.with_registry(registry.to_string());
         }
-        let downloaded_packages = downloader
-            .download()
-            .await
-            .context("Failed to download packages")?;
-        registry_packages.extend(downloaded_packages);
+        downloaders.push(downloader);
     }
-    Ok(registry_packages)
+
+    let registry_packages = try_join_all(
+        downloaders
+            .iter()
+            .map(download::PackageDownloader::download),
+    )
+    .await
+    .context("Failed to download packages")?;
+    Ok(registry_packages.into_iter().flatten().collect())
 }
 
 fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<RegistryPackage>> {
