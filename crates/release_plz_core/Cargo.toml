@@ -28,7 +28,6 @@ cargo-util-terminal.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
-futures-util.workspace = true
 git-cliff-core.workspace = true
 git-url-parse.workspace = true
 h2.workspace = true

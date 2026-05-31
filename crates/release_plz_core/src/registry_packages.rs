@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use anyhow::Context;
 use cargo_metadata::{Package, camino::Utf8Path};
-use futures_util::future::try_join_all;
 use git_cmd::git_in_dir;
 use itertools::Itertools;
 use tempfile::{TempDir, tempdir};
@@ -127,15 +126,19 @@ async fn download_packages_from_registry(
         downloaders.push(downloader);
     }
 
-    // Clone from the different registries in parallel
-    let registry_packages = try_join_all(
-        downloaders
-            .iter()
-            .map(download::PackageDownloader::download),
-    )
-    .await
-    .context("Failed to download packages")?;
-    Ok(registry_packages.into_iter().flatten().collect())
+    let mut registry_packages = Vec::new();
+    for downloader in &downloaders {
+        // Download registry groups sequentially. `Cloner::clone` holds Cargo's
+        // blocking package-cache lock while awaiting registry queries, so polling
+        // multiple downloads in the same async task can deadlock.
+        let packages = downloader
+            .download()
+            .await
+            .context("Failed to download packages")?;
+        registry_packages.extend(packages);
+    }
+
+    Ok(registry_packages)
 }
 
 fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<RegistryPackage>> {
