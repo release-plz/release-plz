@@ -68,6 +68,7 @@ const sidebars = {
       items: [
         "extra/releasing-binaries",
         "extra/single-changelog",
+        "extra/single-job-workflow",
         "extra/single-tag",
         "extra/yanked-packages",
       ],
