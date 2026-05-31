@@ -533,6 +533,14 @@ Prefix for the release PR branch. By default, it's set to: `release-plz-`
 Before changing the release-plz branch you should close the old release PR.
 :::
 
+:::note
+Unlike [`pr_name`](#the-pr_name-field), `pr_branch_prefix` is treated as a
+literal string — Tera template variables such as `{{ package }}` are **not**
+substituted. Branches need stable names so release-plz can find the existing
+release PR across runs; templating per-package would also be ambiguous in
+multi-crate workspaces (which package would the variable resolve to?).
+:::
+
 #### The `pr_draft` field
 
 - If `true`, release-plz creates the release PR as a draft.
