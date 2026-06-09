@@ -17,4 +17,5 @@ exclude = [
   'https://github.com/release-plz/release-plz/issues/*',
   # GitHub search returns 502 intermittently
   'https://github.com/search*',
+  'https://wiki.alpinelinux.org/*'
 ]
