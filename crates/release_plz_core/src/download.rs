@@ -84,7 +84,8 @@ pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
     let manifest_path = directory.as_ref().join(CARGO_TOML);
     let manifest_path = cargo_metadata::camino::Utf8PathBuf::from_path_buf(manifest_path)
         .map_err(|path| anyhow!("non-utf8 manifest path: {path:?}"))?;
-    let metadata = cargo_utils::get_manifest_metadata(&manifest_path)?;
+    let metadata = cargo_utils::get_manifest_metadata(&manifest_path)
+        .context("failed to execute cargo_metadata")?;
     let package = metadata
         .packages
         .first()

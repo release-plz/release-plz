@@ -1,6 +1,5 @@
 use std::process::Command;
 
-use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 
 const CARGO_TERM_QUIET: &str = "CARGO_TERM_QUIET";
@@ -22,11 +21,10 @@ fn disable_cargo_metadata_quiet(
     command.env(CARGO_TERM_QUIET, FALSE)
 }
 
-pub fn get_manifest_metadata(manifest_path: &Utf8Path) -> anyhow::Result<cargo_metadata::Metadata> {
+pub fn get_manifest_metadata(manifest_path: &Utf8Path) -> Result<cargo_metadata::Metadata, cargo_metadata::Error> {
     let mut command = cargo_metadata_command();
     command
         .no_deps()
         .manifest_path(manifest_path)
         .exec()
-        .context("failed to execute cargo_metadata")
 }
