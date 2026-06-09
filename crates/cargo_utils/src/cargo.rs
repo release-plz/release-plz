@@ -17,7 +17,7 @@ pub fn cargo_metadata_command() -> cargo_metadata::MetadataCommand {
     command
 }
 
-/// Disable cargo's quiet mode, to improve the debugging experience when cargo_metadata fails.
+/// Disable cargo's quiet mode, to improve the debugging experience when `cargo_metadata` fails.
 fn disable_cargo_metadata_quiet(
     command: &mut cargo_metadata::MetadataCommand,
 ) -> &mut cargo_metadata::MetadataCommand {
