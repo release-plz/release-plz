@@ -18,7 +18,9 @@ pub struct CargoRegistry {
 
 fn cargo_cmd() -> Command {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-    Command::new(cargo)
+    let mut command = Command::new(cargo);
+    cargo_utils::disable_cargo_quiet(&mut command);
+    command
 }
 
 pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
