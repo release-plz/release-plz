@@ -5,6 +5,8 @@ use cargo_metadata::camino::Utf8Path;
 const CARGO_TERM_QUIET: &str = "CARGO_TERM_QUIET";
 const FALSE: &str = "false";
 
+/// Disable cargo's quiet mode, to improve the debugging experience when cargo fails.
+/// Plus, release-plz parses cargo's output to determine what happened.
 pub fn disable_cargo_quiet(command: &mut Command) -> &mut Command {
     command.env(CARGO_TERM_QUIET, FALSE)
 }
@@ -15,6 +17,7 @@ pub fn cargo_metadata_command() -> cargo_metadata::MetadataCommand {
     command
 }
 
+/// Disable cargo's quiet mode, to improve the debugging experience when cargo_metadata fails.
 fn disable_cargo_metadata_quiet(
     command: &mut cargo_metadata::MetadataCommand,
 ) -> &mut cargo_metadata::MetadataCommand {
