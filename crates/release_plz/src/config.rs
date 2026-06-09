@@ -9,7 +9,7 @@ use release_plz_core::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, env, path::PathBuf, time::Duration};
 use url::Url;
 
 use crate::changelog_config::ChangelogCfg;
@@ -34,6 +34,14 @@ pub struct Config {
 }
 
 impl Config {
+    /// Apply environment variable overrides to the configuration.
+    /// Environment variables take precedence over config file values.
+    pub fn apply_env_overrides(&mut self) {
+        if let Ok(val) = env::var("PR_BRANCH_PREFIX") {
+            self.workspace.pr_branch_prefix = Some(val);
+        }
+    }
+
     /// Package-specific configurations.
     /// Returns `<package name, package config>`.
     fn packages(&self) -> HashMap<&str, &PackageSpecificConfig> {
@@ -908,5 +916,41 @@ unknown = false"#;
 
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
+    }
+
+    #[test]
+    fn env_var_overrides_pr_branch_prefix() {
+        let mut config = Config::default();
+        assert_eq!(config.workspace.pr_branch_prefix, None);
+
+        // Set the environment variable and apply overrides
+        // SAFETY: This test runs serially (not multi-threaded) and we clean up after.
+        unsafe { env::set_var("PR_BRANCH_PREFIX", "env-prefix-") };
+        config.apply_env_overrides();
+        assert_eq!(
+            config.workspace.pr_branch_prefix,
+            Some("env-prefix-".to_string())
+        );
+
+        // Clean up
+        unsafe { env::remove_var("PR_BRANCH_PREFIX") };
+    }
+
+    #[test]
+    fn env_var_overrides_config_file_pr_branch_prefix() {
+        let mut config = Config::default();
+        config.workspace.pr_branch_prefix = Some("file-prefix-".to_string());
+
+        // Environment variable should override the config file value
+        // SAFETY: This test runs serially (not multi-threaded) and we clean up after.
+        unsafe { env::set_var("PR_BRANCH_PREFIX", "env-prefix-") };
+        config.apply_env_overrides();
+        assert_eq!(
+            config.workspace.pr_branch_prefix,
+            Some("env-prefix-".to_string())
+        );
+
+        // Clean up
+        unsafe { env::remove_var("PR_BRANCH_PREFIX") };
     }
 }

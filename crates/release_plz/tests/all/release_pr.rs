@@ -1655,3 +1655,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         )
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_pr_branch_prefix_env_var_for_multiple_branches() {
+    let context = TestContext::new().await;
+    let crate_name = &context.gitea.repo;
+
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+
+    // Initial release: publish v0.8.0
+    context.set_package_version(crate_name, &Version::new(0, 8, 0));
+    fs_err::write(&lib_file, "pub fn hello() {}").unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("initial v0.8.0");
+    context.run_release().success();
+
+    // Create v0.8.x maintenance branch from the current state
+    context.repo.git(&["checkout", "-b", "v0.8.x"]).unwrap();
+    context.repo.git(&["push", "origin", "v0.8.x"]).unwrap();
+    context.repo.git(&["checkout", "main"]).unwrap();
+
+    // Make a major change on main (will become 0.9.0)
+    fs_err::write(&lib_file, "pub fn hello_new() {}").unwrap();
+    context.push_all_changes("feat: major feature on main");
+
+    // Switch to v0.8.x and make a maintenance change
+    context.repo.git(&["checkout", "v0.8.x"]).unwrap();
+    fs_err::write(&lib_file, "pub fn hello() {}\npub fn maintenance_fix() {}").unwrap();
+    context
+        .repo
+        .add_all_and_commit("fix: maintenance fix on v0.8.x")
+        .unwrap();
+    context
+        .repo
+        .git(&["push", "--set-upstream", "origin", "v0.8.x"])
+        .unwrap();
+
+    // Run release-pr on v0.8.x branch with a custom prefix
+    context
+        .run_release_pr_with_prefix("release-plz-v0.8.x-")
+        .success();
+
+    // Switch back to main and run release-pr with a different prefix
+    context.repo.git(&["checkout", "main"]).unwrap();
+    context
+        .run_release_pr_with_prefix("release-plz-main-")
+        .success();
+
+    // Verify that two PRs were created with different prefixes
+    let main_prs = context.opened_prs_with_prefix("release-plz-main-").await;
+    let maintenance_prs = context.opened_prs_with_prefix("release-plz-v0.8.x-").await;
+
+    assert_eq!(main_prs.len(), 1, "Expected 1 PR for main branch");
+    assert_eq!(maintenance_prs.len(), 1, "Expected 1 PR for v0.8.x branch");
+
+    // Verify PRs target the correct base branches
+    assert_eq!(main_prs[0].base.ref_field, "main");
+    assert_eq!(maintenance_prs[0].base.ref_field, "v0.8.x");
+
+    // Verify the PRs have different branch prefixes
+    assert!(
+        main_prs[0].head.ref_field.starts_with("release-plz-main-"),
+        "Main PR branch should start with 'release-plz-main-', got: {}",
+        main_prs[0].head.ref_field
+    );
+    assert!(
+        maintenance_prs[0]
+            .head
+            .ref_field
+            .starts_with("release-plz-v0.8.x-"),
+        "Maintenance PR branch should start with 'release-plz-v0.8.x-', got: {}",
+        maintenance_prs[0].head.ref_field
+    );
+
+    // Verify each PR contains the appropriate change
+    let main_pr_body = main_prs[0].body.as_ref().unwrap();
+    assert!(
+        main_pr_body.contains("major feature on main"),
+        "Main PR should contain the main branch commit message"
+    );
+
+    let maintenance_pr_body = maintenance_prs[0].body.as_ref().unwrap();
+    assert!(
+        maintenance_pr_body.contains("maintenance fix on v0.8.x"),
+        "Maintenance PR should contain the v0.8.x branch commit message"
+    );
+}
