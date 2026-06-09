@@ -24,6 +24,7 @@ next_version = { path = "../next_version", version = "0.3" }
 anyhow.workspace = true
 cargo_metadata.workspace = true
 cargo = { workspace = true }
+cargo-util-terminal.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
@@ -54,7 +55,7 @@ tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 http.workspace = true
 urlencoding.workspace = true
-git2 = "0.20.2"
+git2.workspace = true
 
 [dev-dependencies]
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
