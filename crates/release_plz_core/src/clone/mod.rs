@@ -19,9 +19,9 @@ use std::process::Command;
 
 use anyhow::{Context, bail};
 
-use cargo::core::Package;
 use cargo::core::dependency::Dependency;
-use cargo::sources::source::{QueryKind, Source};
+use cargo::core::{Package, PackageSet};
+use cargo::sources::source::{QueryKind, Source, SourceMap};
 use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
 
 use walkdir::WalkDir;
@@ -75,11 +75,10 @@ impl Cloner {
         &self,
         summary: &IndexSummary,
         dest_path: &Utf8Path,
-        src: &mut impl Source,
     ) -> CargoResult<Package> {
         let name = summary.as_summary().name();
 
-        let pkg = Box::new(src).download_now(summary.package_id(), &self.config)?;
+        let pkg = self.download_package(summary)?;
 
         if self.use_git {
             let repo = pkg
@@ -108,9 +107,9 @@ impl Cloner {
     /// Each crate is cloned in a subdirectory named as the crate name.
     /// Returns the cloned crates and the path where they are cloned.
     /// If a crate doesn't exist, is not returned.
-    pub fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
+    pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
-        let mut src = self.get_source()?;
+        let src = self.get_source()?;
         let mut cloned_pkgs = vec![];
 
         for crate_ in crates {
@@ -119,7 +118,8 @@ impl Cloner {
             dest_path.push(&crate_.name);
 
             let pkg = self
-                .clone_in(crate_, &dest_path, &mut src)
+                .clone_in(crate_, &dest_path, src.as_ref())
+                .await
                 .with_context(|| {
                     format!("failed to clone package {} in {dest_path}", &crate_.name)
                 })?;
@@ -140,7 +140,7 @@ impl Cloner {
     }
 
     fn get_source(&self) -> CargoResult<Box<dyn Source + '_>> {
-        let mut source = if self.srcid.is_path() {
+        let source = if self.srcid.is_path() {
             let path = self.srcid.url().to_file_path().expect("path must be valid");
             Box::new(PathSource::new(&path, self.srcid, &self.config))
         } else {
@@ -152,11 +152,19 @@ impl Cloner {
         Ok(source)
     }
 
-    fn clone_in(
+    fn download_package(&self, summary: &IndexSummary) -> CargoResult<Package> {
+        let package_id = summary.package_id();
+        let mut sources = SourceMap::new();
+        sources.insert(self.get_source()?);
+        let package_set = PackageSet::new(&[package_id], sources, &self.config)?;
+        package_set.get_one(package_id).cloned()
+    }
+
+    async fn clone_in(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
-        src: &mut impl Source,
+        src: &dyn Source,
     ) -> CargoResult<Option<Package>> {
         if !dest_path.exists() {
             fs_err::create_dir_all(dest_path)?;
@@ -168,23 +176,23 @@ impl Cloner {
             bail!("destination path '{dest_path}' already exists and is not an empty directory.");
         }
 
-        self.clone_single(crate_, dest_path, src)
+        self.clone_single(crate_, dest_path, src).await
     }
 
     /// Clone one crate.
-    fn clone_single(
+    async fn clone_single(
         &self,
         crate_: &Crate,
         dest_path: &Utf8Path,
-        src: &mut impl Source,
+        src: &dyn Source,
     ) -> CargoResult<Option<Package>> {
         let name = &crate_.name;
         let vers = crate_.version.as_deref();
-        let latest = query_latest_package_summary(src, name, vers)?;
+        let latest = query_latest_package_summary(src, name, vers).await?;
 
         let pkg = match latest {
             Some(l) => {
-                let pkg = self.clone_from_summary_into(&l, dest_path, src)?;
+                let pkg = self.clone_from_summary_into(&l, dest_path)?;
                 Some(pkg)
             }
             None => {
@@ -196,38 +204,19 @@ impl Cloner {
     }
 }
 
-fn query_latest_package_summary(
-    src: &mut impl Source,
+async fn query_latest_package_summary(
+    src: &dyn Source,
     name: &str,
     vers: Option<&str>,
 ) -> CargoResult<Option<IndexSummary>> {
     let dep = Dependency::parse(name, vers, src.source_id())?;
-    let mut latest_summary: Option<IndexSummary> = None;
-    loop {
-        let query_result = src.query(&dep, QueryKind::Exact, &mut |summary| {
-            let is_summary_newer = latest_summary.as_ref().is_none_or(|latest| {
-                latest.as_summary().version() < summary.as_summary().version()
-            });
-            if is_summary_newer {
-                latest_summary = Some(summary);
-            };
-        });
-        match query_result {
-            std::task::Poll::Ready(res) => match res {
-                Ok(()) => break,
-                Err(err) => {
-                    return none_or_query_err(err);
-                }
-            },
-            std::task::Poll::Pending => match src.block_until_ready() {
-                Ok(()) => {}
-                Err(err) => {
-                    return none_or_query_err(err);
-                }
-            },
-        }
-    }
-    Ok(latest_summary)
+    let summaries = match src.query_vec(&dep, QueryKind::Exact).await {
+        Ok(summaries) => summaries,
+        Err(err) => return none_or_query_err(err),
+    };
+    Ok(summaries
+        .into_iter()
+        .max_by(|a, b| a.as_summary().version().cmp(b.as_summary().version())))
 }
 
 fn none_or_query_err<T>(err: anyhow::Error) -> CargoResult<Option<T>> {

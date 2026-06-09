@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/release-plz/release-plz/compare/next_version-v0.3.1...next_version-v0.3.2) - 2026-05-10
+
+### Added
+
+- *(set-version)* add no-increment regex ([#2830](https://github.com/release-plz/release-plz/pull/2830))
+
+### Other
+
+- *(set-version)* improve custom regex docs ([#2829](https://github.com/release-plz/release-plz/pull/2829))
+
 ## [0.3.1](https://github.com/release-plz/release-plz/compare/next_version-v0.3.0...next_version-v0.3.1) - 2026-02-16
 
 ### Other

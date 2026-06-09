@@ -16,17 +16,11 @@ keywords.
 
 Try to do one pull request per change.
 
+## AI Policy
+
+Read our [AI policy](https://github.com/release-plz/.github/blob/main/AI_POLICY.md).
+
 ## Developing
-
-### Set up
-
-This is no different than other Rust projects.
-
-```shell
-git clone https://github.com/release-plz/release-plz
-cd release-plz
-cargo test
-```
 
 ### Useful Commands
 

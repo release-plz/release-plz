@@ -822,7 +822,7 @@ publish = false
 
     // Verify no packages were published (since publish = false)
     let dest_dir = Utf8TempDir::new().unwrap();
-    let packages = context.download_package(dest_dir.path());
+    let packages = context.download_package(dest_dir.path()).await;
     assert!(packages.is_empty());
 }
 
