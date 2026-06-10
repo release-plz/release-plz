@@ -48,6 +48,9 @@ pub struct UpdateRequest {
     release_commits: Option<Regex>,
     git: Option<GitForge>,
     max_analyze_commits: Option<u32>,
+    /// When set, all package changelogs are aggregated into this single file
+    /// instead of writing per-crate CHANGELOG.md files.
+    workspace_changelog_path: Option<Utf8PathBuf>,
 }
 
 impl UpdateRequest {
@@ -68,6 +71,7 @@ impl UpdateRequest {
             release_commits: None,
             git: None,
             max_analyze_commits: None,
+            workspace_changelog_path: None,
         })
     }
 
@@ -245,6 +249,15 @@ impl UpdateRequest {
 
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
+    }
+
+    pub fn workspace_changelog_path(&self) -> Option<&Utf8Path> {
+        self.workspace_changelog_path.as_deref()
+    }
+
+    pub fn with_workspace_changelog(mut self, path: Utf8PathBuf) -> Self {
+        self.workspace_changelog_path = Some(path);
+        self
     }
 
     /// Determine if `git_only` mode should be used for a specific package.
