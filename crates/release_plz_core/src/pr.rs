@@ -1,6 +1,6 @@
 use crate::{
     PackagesUpdate, ReleaseInfo,
-    tera::{PACKAGE_VAR, RELEASES_VAR, VERSION_VAR, render_template},
+    tera::{BRANCH_VAR, PACKAGE_VAR, RELEASES_VAR, VERSION_VAR, render_template},
 };
 use chrono::SecondsFormat;
 
@@ -67,6 +67,7 @@ impl Pr {
             title: pr_title(
                 packages_to_update,
                 project_contains_multiple_pub_packages,
+                default_branch,
                 title_template,
             )?,
             body: pr_body(packages_to_update, body_template)?,
@@ -99,6 +100,7 @@ fn release_branch(prefix: &str) -> String {
 fn pr_title(
     packages_to_update: &PackagesUpdate,
     project_contains_multiple_pub_packages: bool,
+    default_branch: &str,
     title_template: Option<String>,
 ) -> anyhow::Result<String> {
     let updates = packages_to_update.updates();
@@ -121,6 +123,8 @@ fn pr_title(
         if are_all_versions_equal() {
             context.insert(VERSION_VAR, first_version.to_string().as_str());
         }
+
+        context.insert(BRANCH_VAR, default_branch);
 
         render_template(&title_template, &context, "pr_name")?
     } else if updates.len() == 1 && project_contains_multiple_pub_packages {
