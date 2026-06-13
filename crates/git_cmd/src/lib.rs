@@ -64,6 +64,20 @@ impl Repo {
                     let branch = get_current_branch(directory)?;
                     warn!("no upstream configured for branch {branch}");
                     Ok(("origin".to_string(), branch))
+                } else if err.contains("fatal: HEAD does not point to a branch") {
+                    // Detached HEAD: there is no current branch to ask about
+                    // upstream. Tools like `jj` run in this state by default.
+                    // Read-only flows (e.g. `release-plz update`) can still
+                    // operate; flows that need a real branch (push, open PR)
+                    // will surface a more specific error when they try to use
+                    // it. Fall back to the raw HEAD ref so we don't bail at
+                    // construction time.
+                    // See <https://github.com/release-plz/release-plz/issues/2442>
+                    let branch = get_current_branch(directory)?;
+                    warn!(
+                        "git repository is in detached HEAD state ({branch}); push and PR operations will not work"
+                    );
+                    Ok(("origin".to_string(), branch))
                 } else if err.contains("fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.") {
                     Err(anyhow!("git repository does not contain any commit."))
                 } else {
@@ -584,5 +598,33 @@ D  crates/git_cmd/CHANGELOG.md
         let commit_hash = repo.current_commit_hash().unwrap();
         let branches = repo.get_branches_of_commit(&commit_hash).unwrap();
         assert_eq!(branches, vec![repo.original_branch()]);
+    }
+
+    /// Regression test for <https://github.com/release-plz/release-plz/issues/2442>
+    ///
+    /// Tools like `jj` work in a detached HEAD state by default. Constructing
+    /// `Repo` in that state used to bail with `fatal: HEAD does not point to
+    /// a branch`, which made even read-only flows like `release-plz update`
+    /// unusable. After the fix we accept the state and surface a warning;
+    /// flows that genuinely need a branch can still error later when they
+    /// try to use it.
+    #[test]
+    fn detached_head_does_not_bail_at_construction() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let commit_hash = repo.current_commit_hash().unwrap();
+        // Detach HEAD by checking out the raw commit.
+        let path = Utf8Path::from_path(repository_dir.as_ref()).unwrap();
+        git_in_dir(path, &["checkout", "--detach", &commit_hash]).unwrap();
+        // Sanity: HEAD is now detached.
+        let head = git_in_dir(path, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
+        assert_eq!(head.trim(), "HEAD");
+
+        // Construction must succeed.
+        Repo::new(path).expect(
+            "Repo::new must not bail on detached HEAD; jj users and anyone running on a CI \
+             checkout pinned to a sha would be locked out of `release-plz update` otherwise",
+        );
     }
 }
