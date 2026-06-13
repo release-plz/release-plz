@@ -628,15 +628,26 @@ impl Updater<'_> {
             u32::MAX
         };
 
-        for _ in 0..max_analyze_commits {
+        // Precompute the commit list from the branch tip. The previous
+        // HEAD-walk via `git log -n 2 -- <paths>` lost visibility of sibling
+        // branches after the first HEAD move.
+        repository
+            .checkout_head()
+            .context("can't checkout head to enumerate package commits")?;
+        let range = match tag_commit {
+            Some(tc) => format!("{tc}..HEAD"),
+            None => "HEAD".to_string(),
+        };
+        let commits = repository.commits_in_range_at_paths(&range, &paths_to_check)?;
+
+        for current_commit_hash in commits.iter().take(max_analyze_commits as usize) {
+            repository.checkout(current_commit_hash)?;
             let current_commit_message = repository.current_commit_message()?;
-            let current_commit_hash = repository.current_commit_hash()?;
 
             // Check if files changed in git commit belong to the current package.
             // This is required because a package can contain another package in a subdirectory.
-            let are_changed_files_in_pkg = || {
-                self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
-            };
+            let are_changed_files_in_pkg =
+                || self.are_changed_files_in_package(package_path, repository, current_commit_hash);
 
             if let Some(registry_package) = registry_package {
                 debug!(
@@ -656,7 +667,7 @@ impl Updater<'_> {
                         repository,
                         tag_commit,
                         registry_package.published_at_sha1(),
-                        &current_commit_hash,
+                        current_commit_hash,
                     )
                 };
                 if are_packages_equal || commit_too_old() {
@@ -696,23 +707,16 @@ impl Updater<'_> {
                         // At this point of the git history, the two packages are different,
                         // which means that this commit is not present in the published package.
                         diff.commits.push(Commit::new(
-                            current_commit_hash,
+                            current_commit_hash.clone(),
                             current_commit_message.clone(),
                         ));
                     }
                 }
             } else if are_changed_files_in_pkg()? {
                 diff.commits.push(Commit::new(
-                    current_commit_hash,
+                    current_commit_hash.clone(),
                     current_commit_message.clone(),
                 ));
-            }
-            // Go back to the previous commit.
-            // Keep in mind that the info contained in `package` might be outdated,
-            // because commits could contain changes to Cargo.toml.
-            if let Err(_err) = repository.checkout_previous_commit_at_paths(&paths_to_check) {
-                debug!("there are no other commits");
-                break;
             }
         }
         Ok(())

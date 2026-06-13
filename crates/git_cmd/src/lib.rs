@@ -241,6 +241,30 @@ impl Repo {
         Ok(())
     }
 
+    /// List commits in the given revision range that touch any of the given paths.
+    ///
+    /// `range` is passed as-is to `git rev-list`, e.g. `"<tag>..<branch>"` for a
+    /// bounded walk or a single revision for an unbounded one.
+    ///
+    /// Returns commits in topological order (children before parents). This is
+    /// resilient to sibling branches: every commit reachable from the upper
+    /// bound that touches `paths` is returned, including commits on branches
+    /// that merged in via a merge commit. A sequential HEAD-walk via
+    /// `git log -n 2` would miss those after the first HEAD move.
+    pub fn commits_in_range_at_paths(
+        &self,
+        range: &str,
+        paths: &[&Path],
+    ) -> anyhow::Result<Vec<String>> {
+        let mut args = vec!["rev-list", "--topo-order", range, "--"];
+        for p in paths {
+            let path = p.to_str().expect("invalid path");
+            args.push(path);
+        }
+        let output = self.git(&args)?;
+        Ok(output.lines().map(|s| s.to_string()).collect())
+    }
+
     /// Get `nth` commit starting from `1`.
     #[instrument(
         skip(self)
@@ -478,6 +502,67 @@ mod tests {
         }
         repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
         assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
+    }
+
+    /// Regression test for the bug where the per-package commit walk dropped
+    /// commits on sibling branches. With sibling PRs branching off a shared
+    /// parent and merged via separate merge commits, the previous walk via
+    /// `git log -n 2 -- <paths>` only saw one side after the first HEAD move.
+    /// `commits_in_range_at_paths` must list both.
+    #[test]
+    fn sibling_branch_commits_at_paths_are_listed() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let pkg_dir = repository_dir.as_ref().join("pkg");
+        fs_err::create_dir(&pkg_dir).unwrap();
+
+        // Base commit B touching pkg/, tagged as previous release.
+        fs_err::write(pkg_dir.join("lib.rs"), b"base").unwrap();
+        repo.add_all_and_commit("chore: release v0.1.0").unwrap();
+        repo.tag_lightweight("v0.1.0").unwrap();
+        let main_branch = repo.original_branch().to_string();
+
+        // Branch off B for PR #1, commit C — adds pkg/c.rs.
+        repo.git(&["checkout", "-b", "pr1", "v0.1.0"]).unwrap();
+        fs_err::write(pkg_dir.join("c.rs"), b"c").unwrap();
+        repo.add_all_and_commit("fix: feature one (C)").unwrap();
+
+        // Branch off B for PR #2, commit D — adds pkg/d.rs. Sibling of C.
+        repo.git(&["checkout", "-b", "pr2", "v0.1.0"]).unwrap();
+        fs_err::write(pkg_dir.join("d.rs"), b"d").unwrap();
+        repo.add_all_and_commit("fix: feature two (D)").unwrap();
+
+        // Merge both PRs into main via separate merge commits, producing the
+        // sibling-branch shape that triggered the bug.
+        repo.git(&["checkout", &main_branch]).unwrap();
+        repo.git(&["merge", "--no-ff", "-m", "Merge PR #1", "pr1"])
+            .unwrap();
+        repo.git(&["merge", "--no-ff", "-m", "Merge PR #2", "pr2"])
+            .unwrap();
+
+        let commits = repo
+            .commits_in_range_at_paths(
+                "v0.1.0..HEAD",
+                &[pkg_dir.strip_prefix(repository_dir.as_ref()).unwrap()],
+            )
+            .unwrap();
+
+        let messages: Vec<String> = commits
+            .iter()
+            .map(|hash| {
+                repo.git(&["log", "-1", "--pretty=format:%s", hash])
+                    .unwrap()
+            })
+            .collect();
+        assert!(
+            messages.iter().any(|m| m == "fix: feature one (C)"),
+            "commit C missing from sibling-branch walk: {messages:?}"
+        );
+        assert!(
+            messages.iter().any(|m| m == "fix: feature two (D)"),
+            "commit D missing from sibling-branch walk: {messages:?}"
+        );
     }
 
     #[test]
