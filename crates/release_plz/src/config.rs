@@ -464,6 +464,18 @@ pub struct PackageConfig {
     /// Custom regex to match commit types that should trigger a major version increment.
     /// Useful when using non-conventional commit prefixes.
     pub custom_major_increment_regex: Option<String>,
+    /// # Dependent Update
+    /// Whether to bump this package when one of its workspace dependencies changes.
+    ///
+    /// - `true`: always cascade-bump (the legacy behaviour for all packages).
+    /// - `false`: never cascade-bump (opt out explicitly).
+    /// - Unset (default): auto — cascade-bump iff the package is publishable
+    ///   (i.e. `publish` is not `false`/`[]` in Cargo.toml). `publish = false`
+    ///   crates have no downstream consumers, so cascade bumps produce only
+    ///   noise in the release PR and changelog.
+    ///
+    /// See <https://github.com/release-plz/release-plz/issues/2799>.
+    pub dependent_update: Option<bool>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -479,6 +491,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            dependent_update: config.dependent_update,
         }
     }
 }
@@ -525,6 +538,7 @@ impl PackageConfig {
                 .custom_major_increment_regex
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
+            dependent_update: self.dependent_update.or(default.dependent_update),
         }
     }
 

@@ -70,6 +70,8 @@ the following sections:
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
+  - [`dependent_update`](#the-dependent_update-field) — Control cascade version
+    bumps when a workspace dependency changes.
   - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field)
     — Custom regex for major version increments.
   - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
@@ -109,6 +111,8 @@ the following sections:
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
   - [`changelog_path`](#the-changelog_path-field-package-section) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
+  - [`dependent_update`](#the-dependent_update-field-package-section) — Control
+    cascade version bumps when a workspace dependency changes.
   - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field-package-section)
     — Custom regex for major version increments.
   - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field-package-section)
@@ -211,6 +215,22 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 - If `true`, update all the dependencies in the `Cargo.lock` file by running `cargo update`.
 - If `false`, only update the workspace packages by running `cargo update --workspace`. *(Default)*.
+
+#### The `dependent_update` field
+
+Controls whether a package should be cascade-bumped when one of its workspace
+dependencies changes.
+
+- If `true`, the package is always cascade-bumped (the legacy behaviour for all
+  packages).
+- If `false`, the package is never cascade-bumped.
+- If unset *(default)*, release-plz applies auto behaviour: cascade-bump iff the
+  package is publishable (i.e. `publish` is **not** `false` or `[]` in
+  `Cargo.toml`). `publish = false` crates have no downstream consumers, so
+  cascade bumps produce only empty changelog sections and uninformative tags.
+
+This setting can also be overridden per-package in the
+[`[[package]]`](#the-dependent_update-field-package-section) section.
 
 #### The `custom_major_increment_regex` field
 
@@ -801,6 +821,13 @@ This field cannot be set in the `[workspace]` section.
 
 - If `true`, update the changelog of this package. *(Default)*.
 - If `false`, don't.
+
+#### The `dependent_update` field (`package` section)
+
+Overrides the [`workspace.dependent_update`](#the-dependent_update-field) field
+for this package. Useful when you want a specific `publish = false` crate to
+still cascade-bump its dependents (set `true`), or when you want a publishable
+crate to stop cascade-bumping (set `false`).
 
 #### The `custom_major_increment_regex` field (`package` section)
 
