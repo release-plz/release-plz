@@ -7,7 +7,6 @@ use tracing::{debug, trace};
 use url::Url;
 
 use crate::GitClient;
-use crate::git::forge::Remote;
 
 /// Commit all the changes (except typestates) that are present in the repository
 /// using GitHub's [GraphQL api](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch).
@@ -19,7 +18,7 @@ pub async fn commit_changes(
     branch: &str,
 ) -> Result<String> {
     let commit = GithubCommit::new(&client.remote.owner_slash_repo(), repo, message, branch)?;
-    let graphql_endpoint = get_graphql_endpoint(&client.remote);
+    let graphql_endpoint = graphql_endpoint_from_rest_base(&client.remote.base_url);
 
     let commit_query = commit
         .to_query_json()
@@ -53,11 +52,14 @@ pub async fn commit_changes(
     Ok(commit_sha)
 }
 
-fn get_graphql_endpoint(remote: &Remote) -> Url {
-    let mut base_url = remote.base_url.clone();
-    base_url.set_path("graphql");
-
-    base_url
+fn graphql_endpoint_from_rest_base(rest_base: &Url) -> Url {
+    let mut graphql = rest_base.clone();
+    if rest_base.host_str() == Some("api.github.com") {
+        graphql.set_path("/graphql");
+    } else {
+        graphql.set_path("/api/graphql");
+    }
+    graphql
 }
 
 // get the list of changes in repository excluding typechanges and removed files
@@ -169,6 +171,30 @@ mod tests {
     use super::*;
 
     use crate::copy_dir::create_symlink;
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_dotcom() {
+        let rest: Url = "https://api.github.com/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(graphql.as_str(), "https://api.github.com/graphql");
+    }
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_ghes() {
+        let rest: Url = "https://github.example.com/api/v3/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(graphql.as_str(), "https://github.example.com/api/graphql");
+    }
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_ghes_with_port() {
+        let rest: Url = "https://github.example.com:8443/api/v3/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(
+            graphql.as_str(),
+            "https://github.example.com:8443/api/graphql"
+        );
+    }
 
     #[tokio::test]
     async fn github_commit_query() {
