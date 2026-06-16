@@ -439,7 +439,7 @@ dependencies = [
  "ignore",
  "im-rc",
  "indexmap",
- "itertools",
+ "itertools 0.14.0",
  "jiff",
  "jobserver",
  "libc",
@@ -3218,6 +3218,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4668,7 +4677,7 @@ dependencies = [
  "h2",
  "http",
  "ignore",
- "itertools",
+ "itertools 0.15.0",
  "next_version 0.3.2",
  "parse-changelog",
  "rand 0.10.1",
