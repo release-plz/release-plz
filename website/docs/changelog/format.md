@@ -30,9 +30,9 @@ changelog format.
 
 **git-cliff** uses the [Tera](https://keats.github.io/tera/) template engine.
 
-See the [Tera Documentation](https://keats.github.io/tera/docs/#templates) for more information
-about [control structures](https://keats.github.io/tera/docs/#control-structures),
-[built-in filters](https://keats.github.io/tera/docs/#built-ins), etc.
+See the [Tera Documentation](https://keats.github.io/tera/#template) for more information
+about [control structures](https://keats.github.io/tera/#control-structures),
+[built-in filters](https://keats.github.io/tera/#built-ins), etc.
 
 Custom built-in filters that **git-cliff** uses:
 
