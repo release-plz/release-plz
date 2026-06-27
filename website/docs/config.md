@@ -442,7 +442,7 @@ release-plz creates.
 
 By default it contains the summary of package updates, the changelog for each package, a section
 for breaking changes, and a footer with credits for release-plz. If the text is longer than
-65536 characters, the changelog isn't inclued.
+65536 characters, the changelog isn't included.
 This limit is imposed by Github.
 
 Here is an example of how you can customize the PR body template:
@@ -488,21 +488,19 @@ The default PR body template is the following:
 ````toml
 [workspace]
 pr_body = """
-{% macro get_changes(releases, type="text") %}
+{% set changes %}
 {%- for release in releases %}
-{%- if release.title and release.changelog %}{% if releases | length > 1 %}
+{%- if release.changelog %}{% if releases | length > 1 %}
 ## `{{ release.package }}`
 {% endif %}
 <blockquote>
 
-## {{ release.title }}
-
+{% if release.title %}## {{ release.title }}
+{% endif %}
 {{ release.changelog }}
 </blockquote>{% endif %}
 {% endfor %}
-{% endmacro -%}
-
-{% set changes = self::get_changes(releases=releases) %}
+{% endset %}
 
 ## 🤖 New release
 {% for release in releases %}
