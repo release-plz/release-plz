@@ -265,7 +265,7 @@ The supported git releases are:
 
 #### The `git_release_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git release name that
+[Tera template](https://keats.github.io/tera/#template) of the git release name that
 release-plz creates.
 Use this to customize the git release name pattern.
 
@@ -282,7 +282,7 @@ Where:
 
 #### The `git_release_body` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git release body that
+[Tera template](https://keats.github.io/tera/#template) of the git release body that
 release-plz creates.
 Use this to customize the git release body pattern.
 
@@ -356,7 +356,7 @@ Drafts and prereleases cannot be set as latest.
 
 #### The `git_tag_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git tags that release-plz creates.
+[Tera template](https://keats.github.io/tera/#template) of the git tags that release-plz creates.
 Use this to customize the git tags name pattern.
 
 By default, it's:
@@ -401,7 +401,7 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `pr_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's name that
+[Tera template](https://keats.github.io/tera/#template) of pull request's name that
 release-plz creates.
 
 By default, it's:
@@ -437,7 +437,7 @@ pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% en
 
 #### The `pr_body` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's body that
+[Tera template](https://keats.github.io/tera/#template) of pull request's body that
 release-plz creates.
 
 By default it contains the summary of package updates, the changelog for each package, a section
