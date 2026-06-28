@@ -490,13 +490,12 @@ The default PR body template is the following:
 pr_body = """
 {% set changes %}
 {%- for release in releases %}
-{%- if release.changelog %}{% if releases | length > 1 %}
+{%- if release.title and if release.changelog %}{% if releases | length > 1 %}
 ## `{{ release.package }}`
 {% endif %}
 <blockquote>
 
-{% if release.title %}## {{ release.title }}
-{% endif %}
+## {{ release.title }}
 {{ release.changelog }}
 </blockquote>{% endif %}
 {% endfor %}
