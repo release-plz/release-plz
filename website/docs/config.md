@@ -496,6 +496,7 @@ pr_body = """
 <blockquote>
 
 ## {{ release.title }}
+
 {{ release.changelog }}
 </blockquote>{% endif %}
 {% endfor %}
