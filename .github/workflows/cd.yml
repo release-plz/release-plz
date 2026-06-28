@@ -55,19 +55,19 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       # Don't cache when uploading artifacts for security.
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: false
       - uses: taiki-e/setup-cross-toolchain-action@3d9770ce98eb7dbcf378563182a5e8031165f75b # v1.41.0
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@3d832235cb306500b868c2632a137d48634568cd # v2.81.0
+      - uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
         with:
           tool: cross
         if: contains(matrix.target, '-musl')

@@ -146,6 +146,12 @@ the following sections:
   - [`link_parsers`](#the-link_parsers-field) — Parse links in commit messages.
   - [`commit_parsers`](#the-commit_parsers-field) — Organize commits into sections.
 
+:::note
+The release-plz-rendered template fields `git_release_name`, `git_release_body`,
+`git_tag_name`, `pr_name`, and `pr_body` use Tera 2. Changelog templates configured
+through `changelog` or `changelog_config` are rendered by git-cliff, which still uses Tera 1.
+:::
+
 ### The `[workspace]` section
 
 Defines the global configuration, applied to all packages by default.
@@ -265,7 +271,7 @@ The supported git releases are:
 
 #### The `git_release_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git release name that
+[Tera template](https://keats.github.io/tera/#template) of the git release name that
 release-plz creates.
 Use this to customize the git release name pattern.
 
@@ -282,7 +288,7 @@ Where:
 
 #### The `git_release_body` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git release body that
+[Tera template](https://keats.github.io/tera/#template) of the git release body that
 release-plz creates.
 Use this to customize the git release body pattern.
 
@@ -356,7 +362,7 @@ Drafts and prereleases cannot be set as latest.
 
 #### The `git_tag_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git tags that release-plz creates.
+[Tera template](https://keats.github.io/tera/#template) of the git tags that release-plz creates.
 Use this to customize the git tags name pattern.
 
 By default, it's:
@@ -401,7 +407,7 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `pr_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's name that
+[Tera template](https://keats.github.io/tera/#template) of pull request's name that
 release-plz creates.
 
 By default, it's:
@@ -437,12 +443,12 @@ pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% en
 
 #### The `pr_body` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's body that
+[Tera template](https://keats.github.io/tera/#template) of pull request's body that
 release-plz creates.
 
 By default it contains the summary of package updates, the changelog for each package, a section
 for breaking changes, and a footer with credits for release-plz. If the text is longer than
-65536 characters, the changelog isn't inclued.
+65536 characters, the changelog isn't included.
 This limit is imposed by Github.
 
 Here is an example of how you can customize the PR body template:
@@ -488,7 +494,7 @@ The default PR body template is the following:
 ````toml
 [workspace]
 pr_body = """
-{% macro get_changes(releases, type="text") %}
+{% set changes %}
 {%- for release in releases %}
 {%- if release.title and release.changelog %}{% if releases | length > 1 %}
 ## `{{ release.package }}`
@@ -500,9 +506,7 @@ pr_body = """
 {{ release.changelog }}
 </blockquote>{% endif %}
 {% endfor %}
-{% endmacro -%}
-
-{% set changes = self::get_changes(releases=releases) %}
+{% endset %}
 
 ## 🤖 New release
 {% for release in releases %}

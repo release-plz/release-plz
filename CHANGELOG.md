@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.159](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.158...release-plz-v0.3.159) - 2026-06-09
+
+### Fixed
+
+- *(set-version)* update Cargo.lock after version changes ([#2812](https://github.com/release-plz/release-plz/pull/2812))
+
+### Other
+
+- Bump Cargo to 0.97 ([#2869](https://github.com/release-plz/release-plz/pull/2869))
+- force cargo quiet to false ([#2889](https://github.com/release-plz/release-plz/pull/2889))
+- update to git2 0.21 ([#2872](https://github.com/release-plz/release-plz/pull/2872))
+
 ## [0.3.158](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.157...release-plz-v0.3.158) - 2026-05-10
 
 ### Other
