@@ -146,6 +146,12 @@ the following sections:
   - [`link_parsers`](#the-link_parsers-field) — Parse links in commit messages.
   - [`commit_parsers`](#the-commit_parsers-field) — Organize commits into sections.
 
+:::note
+The release-plz-rendered template fields `git_release_name`, `git_release_body`,
+`git_tag_name`, `pr_name`, and `pr_body` use Tera 2. Changelog templates configured
+through `changelog` or `changelog_config` are rendered by git-cliff, which still uses Tera 1.
+:::
+
 ### The `[workspace]` section
 
 Defines the global configuration, applied to all packages by default.
