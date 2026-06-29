@@ -628,15 +628,34 @@ impl Updater<'_> {
             u32::MAX
         };
 
-        for _ in 0..max_analyze_commits {
+        // Precompute the commit list from the branch tip. The previous
+        // HEAD-walk via `git log -n 2 -- <paths>` lost visibility of sibling
+        // branches after the first HEAD move.
+        repository
+            .checkout_head()
+            .context("can't checkout head to enumerate package commits")?;
+        let range = match tag_commit {
+            Some(tc) => format!("{tc}..HEAD"),
+            None => "HEAD".to_string(),
+        };
+        let commits = repository.commits_in_range_at_paths(&range, &paths_to_check)?;
+
+        // Whether we reached a commit at which the package matches the published
+        // version. Tracked instead of breaking out of the loop: with sibling
+        // branches the commit list is topologically ordered, so a parallel
+        // branch that left the package untouched can match the published
+        // version while a sibling branch later in the list still differs.
+        // Breaking there would silently drop the sibling's commits.
+        let mut reached_published_package = false;
+
+        for current_commit_hash in commits.iter().take(max_analyze_commits as usize) {
+            repository.checkout(current_commit_hash)?;
             let current_commit_message = repository.current_commit_message()?;
-            let current_commit_hash = repository.current_commit_hash()?;
 
             // Check if files changed in git commit belong to the current package.
             // This is required because a package can contain another package in a subdirectory.
-            let are_changed_files_in_pkg = || {
-                self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
-            };
+            let are_changed_files_in_pkg =
+                || self.are_changed_files_in_package(package_path, repository, current_commit_hash);
 
             if let Some(registry_package) = registry_package {
                 debug!(
@@ -656,29 +675,20 @@ impl Updater<'_> {
                         repository,
                         tag_commit,
                         registry_package.published_at_sha1(),
-                        &current_commit_hash,
+                        current_commit_hash,
                     )
                 };
                 if are_packages_equal || commit_too_old() {
                     debug!(
-                        "next version calculated starting from commits after `{current_commit_hash}`"
+                        "package matches the published version at commit `{current_commit_hash}`; this commit is not counted as part of the release"
                     );
-                    if diff.commits.is_empty() {
-                        // Even if the packages are equal, the Cargo.lock or Cargo.toml of the
-                        // workspace might have changed.
-                        // If the dependencies changed, we add a commit to the diff.
-                        self.add_dependencies_update_if_any(
-                            diff,
-                            &registry_package.package,
-                            package,
-                            registry_package_path,
-                        )?;
-                    }
                     // The local package is identical to the registry one, which means that
-                    // the package was published at this commit, so we will not count this commit
-                    // as part of the release.
-                    // We can process the next package.
-                    break;
+                    // the package was published at this commit, so we don't count this commit
+                    // as part of the release. We keep scanning the remaining commits rather
+                    // than breaking, because sibling branches later in the topological order
+                    // may still contain commits that differ from the published package.
+                    reached_published_package = true;
+                    continue;
                 } else {
                     // When version is already bumped, we still collect commits to update the changelog,
                     // but mark that version should not be bumped further.
@@ -696,25 +706,38 @@ impl Updater<'_> {
                         // At this point of the git history, the two packages are different,
                         // which means that this commit is not present in the published package.
                         diff.commits.push(Commit::new(
-                            current_commit_hash,
+                            current_commit_hash.clone(),
                             current_commit_message.clone(),
                         ));
                     }
                 }
             } else if are_changed_files_in_pkg()? {
                 diff.commits.push(Commit::new(
-                    current_commit_hash,
+                    current_commit_hash.clone(),
                     current_commit_message.clone(),
                 ));
             }
-            // Go back to the previous commit.
-            // Keep in mind that the info contained in `package` might be outdated,
-            // because commits could contain changes to Cargo.toml.
-            if let Err(_err) = repository.checkout_previous_commit_at_paths(&paths_to_check) {
-                debug!("there are no other commits");
-                break;
+        }
+
+        // Even if the package matched the published version at some commit, the
+        // workspace Cargo.lock or Cargo.toml might have changed. If we found no
+        // package commits, record a dependency update so the changelog reflects
+        // it. Done once after the walk rather than at the first matching commit,
+        // since a sibling branch may still contribute real commits.
+        if reached_published_package && diff.commits.is_empty() {
+            if let Some(registry_package) = registry_package {
+                repository
+                    .checkout_head()
+                    .context("can't checkout head to compare dependencies")?;
+                self.add_dependencies_update_if_any(
+                    diff,
+                    &registry_package.package,
+                    package,
+                    registry_package.package.package_path()?,
+                )?;
             }
         }
+
         Ok(())
     }
 
