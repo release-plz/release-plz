@@ -29,6 +29,7 @@ use crate::{
     command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
     fs_utils, lock_compare,
+    next_ver::Publishable as _,
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -113,6 +114,32 @@ impl Updater<'_> {
             // - Package is new.
             // - Version was already bumped with pending unreleased commits so that we update the changelog.
             let version_already_bumped = !diff.is_version_published && !diff.commits.is_empty();
+
+            // Skip packages whose version is only changing because the workspace
+            // `[workspace.package] version` is being bumped (via `version.workspace = true`
+            // inheritance), but which have no direct commits of their own. Without
+            // this skip, such packages appear in the release PR with an empty commit
+            // list, and the PR body falls back to re-rendering their *previous*
+            // changelog entry under a misleading new version header.
+            //
+            // Controlled by the same `dependent_update` config used for dependency
+            // cascades; auto-resolves to `!is_publishable()`, so only `publish = false`
+            // crates opt out by default. See #2799.
+            let is_workspace_version_bump =
+                workspace_version_pkgs.contains(p.name.as_ref()) && diff.commits.is_empty();
+            if is_workspace_version_bump
+                && !self
+                    .req
+                    .get_package_config(p.name.as_ref())
+                    .should_cascade_bump(p.is_publishable())
+            {
+                info!(
+                    "{}: skipping workspace-version bump (no direct commits, publish=false)",
+                    p.name
+                );
+                continue;
+            }
+
             if next_version != current_version
                 || !diff.registry_package_exists
                 || version_already_bumped
@@ -369,6 +396,16 @@ impl Updater<'_> {
             for p in packages_to_check_for_deps {
                 // Skip packages we've already processed in previous iterations
                 if processed.contains(p.name.as_ref()) {
+                    continue;
+                }
+
+                // Skip cascade bumps for packages that opt out (default: any
+                // package with `publish = false` in Cargo.toml). These crates
+                // have no downstream consumers, so a cascade bump just adds
+                // empty changelog sections and uninformative tags. See #2799.
+                let pkg_cfg = self.req.get_package_config(p.name.as_ref());
+                if !pkg_cfg.should_cascade_bump(p.is_publishable()) {
+                    processed.insert(p.name.to_string());
                     continue;
                 }
 
