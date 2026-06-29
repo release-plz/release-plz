@@ -64,25 +64,37 @@ fn parse_header_fallback_strategy(changelog: &str) -> Option<String> {
     None
 }
 
-pub fn last_changes(changelog: &Utf8Path) -> anyhow::Result<Option<String>> {
+pub fn last_changes(
+    changelog: &Utf8Path,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<String>> {
     let changelog = fs_err::read_to_string(changelog).context("can't read changelog file")?;
-    last_changes_from_str(&changelog)
+    last_changes_from_str(&changelog, version_prefix_pattern)
 }
 
-pub fn last_changes_from_str(changelog: &str) -> anyhow::Result<Option<String>> {
-    let parser = ChangelogParser::new(changelog)?;
+pub fn last_changes_from_str(
+    changelog: &str,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let parser = ChangelogParser::new(changelog, version_prefix_pattern)?;
     let last_release = parser.last_release().map(|r| r.notes.to_string());
     Ok(last_release)
 }
 
-pub fn last_version_from_str(changelog: &str) -> anyhow::Result<Option<String>> {
-    let parser = ChangelogParser::new(changelog)?;
+pub fn last_version_from_str(
+    changelog: &str,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let parser = ChangelogParser::new(changelog, version_prefix_pattern)?;
     let last_release = parser.last_release().map(|r| r.version.to_string());
     Ok(last_release)
 }
 
-pub fn last_release_from_str(changelog: &str) -> anyhow::Result<Option<ChangelogRelease>> {
-    let parser = ChangelogParser::new(changelog)?;
+pub fn last_release_from_str(
+    changelog: &str,
+    version_prefix_pattern: Option<&str>,
+) -> anyhow::Result<Option<ChangelogRelease>> {
+    let parser = ChangelogParser::new(changelog, version_prefix_pattern)?;
     let last_release = parser.last_release().map(ChangelogRelease::from_release);
     Ok(last_release)
 }
@@ -115,8 +127,19 @@ pub struct ChangelogParser<'a> {
 }
 
 impl<'a> ChangelogParser<'a> {
-    pub fn new(changelog_text: &'a str) -> anyhow::Result<Self> {
-        let changelog = parse_changelog::parse(changelog_text).context("can't parse changelog")?;
+    pub fn new(
+        changelog_text: &'a str,
+        version_prefix_pattern: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let mut parser = parse_changelog::Parser::new();
+        if let Some(pattern) = version_prefix_pattern {
+            parser
+                .prefix_format(pattern)
+                .context("invalid version_prefix_pattern")?;
+        }
+        let changelog = parser
+            .parse(changelog_text)
+            .context("can't parse changelog")?;
         Ok(Self { changelog })
     }
 
@@ -143,8 +166,10 @@ fn release_at<'a>(
 mod tests {
     use super::*;
 
-    fn last_changes_from_str_test(changelog: &str) -> String {
-        last_changes_from_str(changelog).unwrap().unwrap()
+    fn last_changes_from_str_test(changelog: &str, version_prefix_pattern: Option<&str>) -> String {
+        last_changes_from_str(changelog, version_prefix_pattern)
+            .unwrap()
+            .unwrap()
     }
 
     #[test]
@@ -278,7 +303,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - improved error message
 ";
-        let changes = last_changes_from_str_test(changelog);
+        let changes = last_changes_from_str_test(changelog, None);
         let expected_changes = "\
 ### Added
 
@@ -308,7 +333,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - improved error message
 ";
-        let changes = last_changes_from_str_test(changelog);
+        let changes = last_changes_from_str_test(changelog, None);
+        let expected_changes = "\
+### Added
+
+- Add function to retrieve default branch (#372)";
+        assert_eq!(changes, expected_changes);
+    }
+
+    #[test]
+    fn changelog_with_unreleased_section_is_parsed_with_prefix() {
+        let changelog = "\
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [package @ 0.2.5] - 2022-12-16
+
+### Added
+
+- Add function to retrieve default branch (#372)
+
+## [package @ 0.2.4] - 2022-12-12
+
+### Changed
+
+- improved error message
+";
+        let changes = last_changes_from_str_test(changelog, Some(r"package\s*\@\s*"));
+        let expected_changes = "\
+### Added
+
+- Add function to retrieve default branch (#372)";
+        assert_eq!(changes, expected_changes);
+    }
+
+    #[test]
+    fn changelog_without_unreleased_section_is_parsed_with_prefix() {
+        let changelog = "\
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [package @ 0.2.5](https://github.com/release-plz/release-plz/compare/git_cmd-v0.2.4...git_cmd-v0.2.5) - 2022-12-16
+
+### Added
+
+- Add function to retrieve default branch (#372)
+
+## [package @ 0.2.4] - 2022-12-12
+
+### Changed
+
+- improved error message
+";
+        let changes = last_changes_from_str_test(changelog, Some(r"package\s*\@\s*"));
         let expected_changes = "\
 ### Added
 

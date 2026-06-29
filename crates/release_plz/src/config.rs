@@ -86,6 +86,12 @@ impl Config {
         &self,
         set_version_request: &mut SetVersionRequest,
     ) -> anyhow::Result<()> {
+        set_version_request.set_version_prefix_pattern(
+            self.workspace
+                .packages_defaults
+                .version_prefix_pattern
+                .clone(),
+        );
         for (package, config) in self.packages() {
             if let Some(changelog_path) = config.common.changelog_path.clone() {
                 let changelog_path = to_utf8_pathbuf(changelog_path)?;
@@ -115,8 +121,14 @@ impl Config {
         if allow_dirty {
             default_config.publish_allow_dirty = Some(true);
         }
-        let mut release_request =
-            release_request.with_default_package_config(default_config.into());
+        let mut release_request = release_request
+            .with_default_package_config(default_config.into())
+            .with_version_prefix_pattern(
+                self.workspace
+                    .packages_defaults
+                    .version_prefix_pattern
+                    .clone(),
+            );
 
         for (package, config) in self.packages() {
             let mut release_config = config.clone();
@@ -464,6 +476,10 @@ pub struct PackageConfig {
     /// Custom regex to match commit types that should trigger a major version increment.
     /// Useful when using non-conventional commit prefixes.
     pub custom_major_increment_regex: Option<String>,
+    /// A regular expression used to match the prefix portion of a release heading.
+    /// See the [`prefix_format` documentation](https://docs.rs/parse-changelog/latest/parse_changelog/struct.Parser.html#method.prefix_format)
+    /// for details.
+    pub version_prefix_pattern: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -479,6 +495,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            version_prefix_pattern: config.version_prefix_pattern,
         }
     }
 }
@@ -525,6 +542,9 @@ impl PackageConfig {
                 .custom_major_increment_regex
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
+            version_prefix_pattern: self
+                .version_prefix_pattern
+                .or(default.version_prefix_pattern),
         }
     }
 
@@ -604,6 +624,7 @@ mod tests {
                     git_release_enable: Some(true),
                     git_release_type: Some(ReleaseType::Prod),
                     git_release_draft: Some(false),
+                    version_prefix_pattern: None,
                     ..Default::default()
                 },
                 pr_name: None,
@@ -630,6 +651,7 @@ mod tests {
                     git_release_enable: None,
                     git_release_type: None,
                     git_release_draft: None,
+                    version_prefix_pattern: None,
                     ..Default::default()
                 },
                 changelog_include: None,
@@ -734,6 +756,7 @@ mod tests {
                     git_release_draft: Some(false),
                     release: Some(true),
                     changelog_path: Some("./CHANGELOG.md".into()),
+                    version_prefix_pattern: None,
                     ..Default::default()
                 },
                 publish_timeout: Some("10m".to_string()),
@@ -751,6 +774,7 @@ mod tests {
                         git_release_type: Some(ReleaseType::Prod),
                         git_release_draft: Some(false),
                         release: Some(false),
+                        version_prefix_pattern: None,
                         ..Default::default()
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
@@ -908,5 +932,61 @@ unknown = false"#;
 
         let serialized = toml::to_string(&config).unwrap();
         assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
+    }
+
+    #[test]
+    fn workspace_version_prefix_pattern_is_serialized() {
+        let mut config = create_base_workspace_config();
+        config.workspace.packages_defaults.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"version_prefix_pattern = "^(?:v|Version |Release |)?""#));
+    }
+
+    #[test]
+    fn workspace_version_prefix_pattern_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            version_prefix_pattern = \"^(?:v|Version |Release |)?\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config
+            .workspace
+            .packages_defaults
+            .version_prefix_pattern = Some("^(?:v|Version |Release |)?".to_string());
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn package_version_prefix_pattern_is_serialized() {
+        let mut config = create_base_workspace_config();
+        let mut package_config = create_base_package_config();
+        package_config.config.common.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
+        config.package = [package_config].into();
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"version_prefix_pattern = "^(?:v|Version |Release |)?""#));
+    }
+
+    #[test]
+    fn package_version_prefix_pattern_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\n{BASE_PACKAGE_CONFIG}\
+            version_prefix_pattern = \"^(?:v|Version |Release |)?\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        let mut package_config = create_base_package_config();
+        package_config.config.common.version_prefix_pattern =
+            Some("^(?:v|Version |Release |)?".to_string());
+        expected_config.package = [package_config].into();
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
     }
 }

@@ -513,6 +513,9 @@ impl Updater<'_> {
                         repo_url,
                         release_link.as_deref(),
                         package,
+                        self.req
+                            .version_prefix_pattern_for(&package.name)
+                            .as_deref(),
                     )
                 })
                 .transpose()
@@ -529,6 +532,11 @@ impl Updater<'_> {
             semver_check,
             new_changelog_entry,
             registry_version,
+            version_prefix_pattern: self
+                .req
+                .version_prefix_pattern_for(&package.name)
+                .as_deref()
+                .map(str::to_string),
         })
     }
 
@@ -962,6 +970,7 @@ fn pathbufs_to_check(
 /// - the entire changelog (with the new entries);
 /// - the new changelog entry alone
 ///   (i.e. changelog body update without header and footer).
+#[allow(clippy::too_many_arguments)]
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
@@ -970,6 +979,7 @@ fn get_changelog(
     repo_url: Option<&RepoUrl>,
     release_link: Option<&str>,
     package: &Package,
+    version_prefix_pattern: Option<&str>,
 ) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
@@ -1003,7 +1013,7 @@ fn get_changelog(
         let is_package_published = next_version != &package.version;
 
         let last_version = old_changelog.and_then(|old_changelog| {
-            changelog_parser::last_version_from_str(old_changelog)
+            changelog_parser::last_version_from_str(old_changelog, version_prefix_pattern)
                 .ok()
                 .flatten()
         });
@@ -1115,6 +1125,7 @@ mod tests {
             None,
             None,
             &fake_package::FakePackage::new("my_package").into(),
+            None,
         )
         .unwrap();
         assert_eq!(old, new.0);
