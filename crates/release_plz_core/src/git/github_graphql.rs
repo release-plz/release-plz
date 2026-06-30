@@ -114,12 +114,24 @@ impl GithubCommit {
             .await
             .context("failed to get git additions")?;
 
+        // Split the commit message into the headline (first line) and the body (the rest),
+        // so that trailers like `Signed-off-by` end up in the commit body.
+        let (headline, body) = match message.split_once('\n') {
+            Some((headline, body)) => (headline, body.trim_start_matches('\n')),
+            None => (message.as_str(), ""),
+        };
+        let commit_message = if body.is_empty() {
+            json!({"headline": headline})
+        } else {
+            json!({"headline": headline, "body": body})
+        };
+
         let input = json!({
             "branch": {
                 "repositoryNameWithOwner": owner_slash_repo,
                 "branchName": branch,
             },
-            "message": {"headline": message},
+            "message": commit_message,
             "expectedHeadOid": current_head,
             "fileChanges": {
                 "deletions": deletions,
@@ -258,5 +270,27 @@ mod tests {
 
         expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}""#]]
         .assert_eq(&query["query"].to_string());
+    }
+
+    #[tokio::test]
+    async fn commit_message_with_trailer_is_split_into_headline_and_body() {
+        let temporary = tempdir().unwrap();
+        let repo_dir = temporary.as_ref();
+        let repo = Repo::init(repo_dir);
+
+        let message = "chore: release v1.2.3\n\nSigned-off-by: Test User <test@example.com>";
+        let query = GithubCommit::new("owner/repo", &repo, message, "main")
+            .unwrap()
+            .to_query_json()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            query["variables"]["input"]["message"],
+            json!({
+                "headline": "chore: release v1.2.3",
+                "body": "Signed-off-by: Test User <test@example.com>",
+            })
+        );
     }
 }

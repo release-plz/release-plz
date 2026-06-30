@@ -151,6 +151,18 @@ impl Repo {
         Ok(())
     }
 
+    /// The `Signed-off-by` trailer that `git commit --signoff` would add, built from
+    /// the `user.name` and `user.email` of the git configuration.
+    pub fn signoff_trailer(&self) -> anyhow::Result<String> {
+        let name = self
+            .git(&["config", "user.name"])
+            .context("failed to get `user.name` from git config, needed for the sign-off trailer")?;
+        let email = self.git(&["config", "user.email"]).context(
+            "failed to get `user.email` from git config, needed for the sign-off trailer",
+        )?;
+        Ok(format!("Signed-off-by: {name} <{email}>"))
+    }
+
     pub fn push(&self, obj: &str) -> anyhow::Result<()> {
         self.git(&["push", &self.original_remote, obj])?;
         Ok(())

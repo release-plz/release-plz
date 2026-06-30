@@ -33,6 +33,8 @@ pub struct ReleasePrRequest {
     labels: Vec<String>,
     /// PR Branch Prefix
     branch_prefix: String,
+    /// If `true`, add a `Signed-off-by` trailer to the release commit.
+    signoff: bool,
     pub update_request: UpdateRequest,
 }
 
@@ -44,6 +46,7 @@ impl ReleasePrRequest {
             draft: false,
             labels: vec![],
             branch_prefix: DEFAULT_BRANCH_PREFIX.to_string(),
+            signoff: false,
             update_request,
         }
     }
@@ -72,6 +75,11 @@ impl ReleasePrRequest {
         if let Some(branch_prefix) = pr_branch_prefix {
             self.branch_prefix = branch_prefix;
         }
+        self
+    }
+
+    pub fn with_signoff(mut self, signoff: bool) -> Self {
+        self.signoff = signoff;
         self
     }
 }
@@ -165,6 +173,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
                     pr_body: input.pr_body_template.clone(),
                     pr_labels: input.labels.clone(),
                     pr_branch_prefix: input.branch_prefix.clone(),
+                    signoff: input.signoff,
                 },
             )
             .await?;
@@ -181,6 +190,7 @@ struct ReleasePrOptions {
     pr_body: Option<String>,
     pr_labels: Vec<String>,
     pr_branch_prefix: String,
+    signoff: bool,
 }
 
 async fn open_or_update_release_pr(
@@ -227,6 +237,7 @@ async fn open_or_update_release_pr(
         )?
         .mark_as_draft(release_pr_options.draft)
         .with_labels(release_pr_options.pr_labels)
+        .with_signoff(release_pr_options.signoff)
     };
     let release_pr = match opened_release_prs.first() {
         Some(opened_pr) => {
@@ -311,9 +322,9 @@ async fn handle_opened_pr(
 async fn create_pr(git_client: &GitClient, repo: &Repo, pr: &Pr) -> anyhow::Result<ReleasePr> {
     repo.checkout_new_branch(&pr.branch)?;
     if git_client.forge == ForgeType::Github {
-        github_create_release_branch(git_client, repo, &pr.branch, &pr.title).await?;
+        github_create_release_branch(git_client, repo, &pr.branch, &pr.title, pr.signoff).await?;
     } else {
-        create_release_branch(repo, &pr.branch, &pr.title)?;
+        create_release_branch(repo, &pr.branch, &pr.title, pr.signoff)?;
     }
     debug!("changes committed to release branch {}", pr.branch);
 
@@ -336,9 +347,9 @@ async fn update_pr(
         )
     })?;
     if git_client.forge == ForgeType::Github {
-        github_force_push(git_client, opened_pr, repository).await?;
+        github_force_push(git_client, opened_pr, repository, new_pr.signoff).await?;
     } else {
-        force_push(opened_pr, repository)?;
+        force_push(opened_pr, repository, new_pr.signoff)?;
     }
     let pr_edit = {
         let mut pr_edit = PrEdit::new();
@@ -417,8 +428,8 @@ fn reset_branch(
     Ok(())
 }
 
-fn force_push(pr: &GitPr, repository: &Repo) -> anyhow::Result<()> {
-    add_changes_and_commit(repository, &pr.title)?;
+fn force_push(pr: &GitPr, repository: &Repo, signoff: bool) -> anyhow::Result<()> {
+    add_changes_and_commit(repository, &pr.title, signoff)?;
     repository.force_push(pr.branch())?;
     Ok(())
 }
@@ -427,6 +438,7 @@ async fn github_force_push(
     client: &GitClient,
     pr: &GitPr,
     repository: &Repo,
+    signoff: bool,
 ) -> anyhow::Result<()> {
     let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
     repository.checkout_new_branch(&tmp_release_branch)?;
@@ -440,7 +452,8 @@ async fn github_force_push(
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
     let sha =
-        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
+        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title, signoff)
+            .await?;
 
     let force_push_result =
         execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
@@ -474,8 +487,9 @@ fn create_release_branch(
     repository: &Repo,
     release_branch: &str,
     commit_message: &str,
+    signoff: bool,
 ) -> anyhow::Result<()> {
-    add_changes_and_commit(repository, commit_message)?;
+    add_changes_and_commit(repository, commit_message, signoff)?;
     repository.push(release_branch)?;
     Ok(())
 }
@@ -485,10 +499,12 @@ async fn github_create_release_branch(
     repository: &Repo,
     release_branch: &str,
     commit_message: &str,
+    signoff: bool,
 ) -> anyhow::Result<String> {
     let sha = repository.current_commit_hash()?;
     client.create_branch(release_branch, &sha).await?;
-    let sha = github_graphql::commit_changes(client, repository, commit_message, release_branch)
+    let commit_message = commit_message_with_signoff(repository, commit_message, signoff)?;
+    let sha = github_graphql::commit_changes(client, repository, &commit_message, release_branch)
         .await
         .with_context(|| {
             format!("failed to create commit via graphql on branch `{release_branch}`")
@@ -497,9 +513,34 @@ async fn github_create_release_branch(
     Ok(sha)
 }
 
-fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Result<()> {
+fn add_changes_and_commit(
+    repository: &Repo,
+    commit_message: &str,
+    signoff: bool,
+) -> anyhow::Result<()> {
     let changes_expect_typechanges = repository.changes_except_typechanges()?;
     repository.add(&changes_expect_typechanges)?;
-    repository.commit_signed(commit_message)?;
+    if signoff {
+        repository.commit_signed(commit_message)?;
+    } else {
+        repository.commit(commit_message)?;
+    }
     Ok(())
+}
+
+/// Append the `Signed-off-by` trailer to the commit message if `signoff` is enabled.
+///
+/// The git-based commit paths use `git commit --signoff` directly, but the GitHub GraphQL
+/// commit doesn't go through `git`, so we add the trailer to the message ourselves.
+fn commit_message_with_signoff(
+    repository: &Repo,
+    commit_message: &str,
+    signoff: bool,
+) -> anyhow::Result<String> {
+    if signoff {
+        let trailer = repository.signoff_trailer()?;
+        Ok(format!("{commit_message}\n\n{trailer}"))
+    } else {
+        Ok(commit_message.to_string())
+    }
 }

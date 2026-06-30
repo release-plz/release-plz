@@ -104,6 +104,7 @@ the following sections:
     packages.
   - [`repo_url`](#the-repo_url-field) — Repository URL.
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
+  - [`signoff`](#the-signoff-field) — Add a `Signed-off-by` trailer to the release commit.
 - [`[[package]]`](#the-package-section) — Package-specific configurations.
   - [`name`](#the-name-field) — Package name. *(Required)*.
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
@@ -743,6 +744,29 @@ API breaking changes of your package:
 :::
 
 This field can be overridden in the [`[package]`](#the-package-section) section.
+
+#### The `signoff` field
+
+- If `true`, release-plz adds a `Signed-off-by` trailer to the release commit,
+  like `git commit --signoff` does. This is useful to comply with a
+  [Developer Certificate of Origin (DCO)](https://developercertificate.org/).
+- If `false`, no trailer is added. *(Default)*.
+
+The trailer uses the `user.name` and `user.email` of the git configuration, so make
+sure they are set (e.g. in CI):
+
+```toml
+[workspace]
+signoff = true
+```
+
+The resulting commit message looks like:
+
+```text
+chore: release v1.2.3
+
+Signed-off-by: Your Name <you@example.com>
+```
 
 ### The `[[package]]` section
 

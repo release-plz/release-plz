@@ -48,6 +48,8 @@ pub struct Pr {
     pub body: String,
     pub draft: bool,
     pub labels: Vec<String>,
+    /// If `true`, add a `Signed-off-by` trailer to the release commit.
+    pub signoff: bool,
 }
 
 impl Pr {
@@ -70,12 +72,18 @@ impl Pr {
             body: pr_body(packages_to_update, body_template)?,
             draft: false,
             labels: vec![],
+            signoff: false,
         };
         Ok(pr)
     }
 
     pub fn mark_as_draft(mut self, draft: bool) -> Self {
         self.draft = draft;
+        self
+    }
+
+    pub fn with_signoff(mut self, signoff: bool) -> Self {
+        self.signoff = signoff;
         self
     }
 

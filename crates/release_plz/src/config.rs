@@ -189,6 +189,12 @@ pub struct Workspace {
     /// # PR Branch Prefix
     /// Prefix for the PR Branch
     pub pr_branch_prefix: Option<String>,
+    /// # Sign-off
+    /// If `true`, add a `Signed-off-by` trailer to the release commit
+    /// (like `git commit --signoff`), e.g. to comply with a Developer Certificate of Origin (DCO).
+    /// The trailer uses the `user.name` and `user.email` of the git configuration.
+    #[serde(default)]
+    pub signoff: bool,
     /// # Publish Timeout
     /// Timeout for the publishing process
     pub publish_timeout: Option<String>,
@@ -230,6 +236,7 @@ impl Default for Workspace {
             pr_draft: false,
             pr_labels: Vec::new(),
             pr_branch_prefix: None,
+            signoff: false,
             publish_timeout: None,
             release_commits: None,
             release_always: None,
@@ -611,6 +618,7 @@ mod tests {
                 pr_draft: false,
                 pr_labels: vec![],
                 pr_branch_prefix: Some("f-".to_string()),
+                signoff: false,
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
@@ -726,6 +734,7 @@ mod tests {
                 pr_draft: false,
                 pr_labels: vec!["label1".to_string()],
                 pr_branch_prefix: Some("f-".to_string()),
+                signoff: false,
                 packages_defaults: PackageConfig {
                     semver_check: None,
                     changelog_update: true.into(),
@@ -772,6 +781,7 @@ mod tests {
             pr_draft = false
             pr_labels = ["label1"]
             pr_branch_prefix = "f-"
+            signoff = false
             publish_timeout = "10m"
             repo_url = "https://github.com/release-plz/release-plz"
             release_commits = "^feat:"

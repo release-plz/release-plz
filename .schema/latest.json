@@ -67,7 +67,8 @@
         "release_always": null,
         "release_commits": null,
         "repo_url": null,
-        "semver_check": null
+        "semver_check": null,
+        "signoff": false
       }
     }
   },
@@ -804,6 +805,12 @@
             "boolean",
             "null"
           ]
+        },
+        "signoff": {
+          "title": "Sign-off",
+          "description": "If `true`, add a `Signed-off-by` trailer to the release commit\n(like `git commit --signoff`), e.g. to comply with a Developer Certificate of Origin (DCO).\nThe trailer uses the `user.name` and `user.email` of the git configuration.",
+          "type": "boolean",
+          "default": false
         }
       },
       "additionalProperties": false
