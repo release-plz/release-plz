@@ -77,6 +77,36 @@ impl RepoUrl {
             format!("{scheme}://{}/{v4}/{prj_path}", self.host)
         }
     }
+
+    pub fn github_api_url(&self) -> String {
+        let scheme = self.scheme_ssh_as_https();
+        if self.host == "github.com" {
+            format!("{scheme}://api.github.com/")
+        } else if let Some(port) = self.port {
+            format!("{scheme}://{}:{port}/api/v3/", self.host)
+        } else {
+            format!("{scheme}://{}/api/v3/", self.host)
+        }
+    }
+
+    pub fn github_graphql_url(&self) -> String {
+        let scheme = self.scheme_ssh_as_https();
+        if self.host == "github.com" {
+            format!("{scheme}://api.github.com/graphql")
+        } else if let Some(port) = self.port {
+            format!("{scheme}://{}:{port}/api/graphql", self.host)
+        } else {
+            format!("{scheme}://{}/api/graphql", self.host)
+        }
+    }
+
+    fn scheme_ssh_as_https(&self) -> &str {
+        if self.scheme == "ssh" {
+            "https"
+        } else {
+            self.scheme.as_str()
+        }
+    }
 }
 
 fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
@@ -145,6 +175,34 @@ mod tests {
         assert_eq!(
             "https://host.example.com/api/v4/projects/ab%2Fcd%2Fmyproj",
             http_repo.gitlab_api_url()
+        );
+    }
+
+    #[test]
+    fn github_api_url_dotcom() {
+        let r = RepoUrl::new("https://github.com/owner/repo").unwrap();
+        assert_eq!(r.github_api_url(), "https://api.github.com/");
+        assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
+    }
+
+    #[test]
+    fn github_api_url_enterprise_https() {
+        let r = RepoUrl::new("https://github.example.com/owner/repo").unwrap();
+        assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
+        assert_eq!(
+            r.github_graphql_url(),
+            "https://github.example.com/api/graphql"
+        );
+    }
+
+    #[test]
+    fn github_api_url_enterprise_ssh_origin() {
+        // SSH origins must be promoted to HTTPS for the REST/GraphQL APIs.
+        let r = RepoUrl::new("git@github.example.com:owner/repo.git").unwrap();
+        assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
+        assert_eq!(
+            r.github_graphql_url(),
+            "https://github.example.com/api/graphql"
         );
     }
 }
