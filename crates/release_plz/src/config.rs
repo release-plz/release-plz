@@ -61,6 +61,10 @@ impl Config {
         }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
+        if let Some(ref path) = self.workspace.workspace_changelog {
+            let path = to_utf8_pathbuf(path.clone())?;
+            update_request = update_request.with_workspace_changelog(path);
+        }
         for (package, config) in self.packages() {
             let mut update_config = config.clone();
             update_config = update_config.merge(self.workspace.packages_defaults.clone());
@@ -215,6 +219,12 @@ pub struct Workspace {
     #[serde(default = "default_max_analyze_commits")]
     #[schemars(default = "default_max_analyze_commits")]
     pub max_analyze_commits: Option<u32>,
+    /// # Workspace Changelog
+    /// Path to the aggregated workspace-wide changelog file, relative to the workspace root.
+    /// When set, instead of writing per-crate CHANGELOG.md files, all package changes are
+    /// collected into a single file grouped by package name.
+    /// Example: `workspace_changelog = "CHANGELOG.md"`
+    pub workspace_changelog: Option<PathBuf>,
 }
 
 impl Default for Workspace {
@@ -234,6 +244,7 @@ impl Default for Workspace {
             release_commits: None,
             release_always: None,
             max_analyze_commits: default_max_analyze_commits(),
+            workspace_changelog: None,
         }
     }
 }
@@ -590,6 +601,7 @@ mod tests {
         Config {
             changelog: ChangelogCfg::default(),
             workspace: Workspace {
+                workspace_changelog: None,
                 dependencies_update: Some(false),
                 changelog_config: Some("../git-cliff.toml".into()),
                 allow_dirty: Some(false),
@@ -713,6 +725,7 @@ mod tests {
         let config = Config {
             changelog: ChangelogCfg::default(),
             workspace: Workspace {
+                workspace_changelog: None,
                 dependencies_update: None,
                 changelog_config: Some("../git-cliff.toml".into()),
                 allow_dirty: None,
