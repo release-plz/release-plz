@@ -522,6 +522,47 @@ git_only = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_with_non_verifiable_build_script() {
+    let context = TestContext::new().await;
+
+    let config = r#"
+[workspace]
+git_only = true
+"#;
+    context.write_release_plz_toml(config);
+
+    // Create build script that writes under the package source directory
+    // (this requires --no-verify during packaging).
+    let build_rs = context.repo_dir().join("build.rs");
+    fs_err::write(
+        &build_rs,
+        r#"
+use std::{env, fs, path::PathBuf};
+
+fn main() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"));
+    let gen_dir = manifest_dir.join("gen");
+    fs::create_dir_all(&gen_dir).expect("create gen dir");
+    fs::write(gen_dir.join("version.txt"), "generated").expect("write generated file");
+}
+"#,
+    )
+    .unwrap();
+    context.push_all_changes("chore: add non-verifiable build script");
+
+    // Create initial release tag
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // Make a fix commit
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    context.run_update().success();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_breaking_change() {
     let context = TestContext::new().await;
 
