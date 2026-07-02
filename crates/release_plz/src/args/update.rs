@@ -109,8 +109,12 @@ pub struct Update {
     pub git_token: Option<String>,
 
     /// Kind of git host where your project is hosted.
-    #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
-    forge: GitForgeKind,
+    /// If not specified, release-plz infers it from the repository host to
+    /// choose the changelog PR link format (GitHub-style `/pull` for
+    /// `github.com`-like hosts, `/pulls` otherwise). Specify it explicitly for
+    /// GitHub Enterprise Server, whose host can't be auto-detected.
+    #[arg(long, visible_alias = "backend", value_enum)]
+    forge: Option<GitForgeKind>,
     /// Maximum number of commits to analyze when the package hasn't been published yet.
     /// Default: 1000.
     #[arg(long)]
@@ -155,11 +159,31 @@ impl Update {
             return Ok(None);
         };
         let token = SecretString::from(token);
-        Ok(Some(match self.forge {
+        let forge = self.forge.unwrap_or(GitForgeKind::Github);
+        Ok(Some(match forge {
             GitForgeKind::Github => GitForge::Github(GitHub::from_repo_url(repo, token)?),
             GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
             GitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),
         }))
+    }
+
+    /// Forge type used to render changelog PR links.
+    ///
+    /// Prefers the explicit `--forge` flag. When it's not provided, it falls
+    /// back to host-based inference so that Gitea/GitLab users keep getting
+    /// `/pulls` links without passing `--forge` (matching the behavior before
+    /// explicit forge selection existed). GitHub Enterprise Server hosts can't
+    /// be detected from the host, so they need an explicit `--forge github`.
+    fn changelog_forge_type(&self, repo_url: Option<&RepoUrl>) -> ForgeType {
+        match self.forge {
+            Some(kind) => kind.into(),
+            // `is_on_github()` matches `github.com`-style hosts. Any other host
+            // is assumed to use the `/pulls` path (Gitea and GitLab both do).
+            None => match repo_url {
+                Some(url) if !url.is_on_github() => ForgeType::Gitea,
+                _ => ForgeType::Github,
+            },
+        }
     }
 
     fn dependencies_update(&self, config: &Config) -> bool {
@@ -188,7 +212,6 @@ impl Update {
             })?
             .with_dependencies_update(self.dependencies_update(config))
             .with_max_analyze_commits(self.max_analyze_commits(config))
-            .with_forge_type(self.forge.into())
             .with_allow_dirty(self.allow_dirty(config));
         match self.get_repo_url(config) {
             Ok(repo_url) => {
@@ -199,6 +222,8 @@ impl Update {
                 e
             ),
         }
+        let forge_type = self.changelog_forge_type(update.repo_url());
+        update = update.with_forge_type(forge_type);
 
         if let Some(registry_manifest_path) = &self.registry_manifest_path {
             let registry_manifest_path = to_utf8_path(registry_manifest_path)?;
@@ -218,9 +243,7 @@ impl Update {
                         .context("cannot parse release_date to y-m-d format")
                 })
                 .transpose()?;
-            let pr_link = update
-                .repo_url()
-                .map(|url| url.git_pr_link_for(self.forge.into()));
+            let pr_link = update.repo_url().map(|url| url.git_pr_link_for(forge_type));
             let changelog_req = ChangelogRequest {
                 release_date,
                 changelog_config: Some(self.changelog_config(config, pr_link.as_deref())?),
@@ -325,7 +348,7 @@ mod tests {
             allow_dirty: false,
             repo_url: None,
             config: ConfigPath::default(),
-            forge: GitForgeKind::Github,
+            forge: None,
             git_token: None,
             max_analyze_commits: None,
         };

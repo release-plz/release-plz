@@ -136,9 +136,9 @@ async fn release_plz_adds_custom_changelog() {
 <blockquote>
 
 
-owner: {username}, repo: {package}, link: https://localhost/{username}/{package}
+owner: {username}, repo: {package}, link: https://localhost:3000/{username}/{package}
 
-== {package} - [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0)
+== {package} - [0.1.0](https://localhost:3000/{username}/{package}/releases/tag/v0.1.0)
 
 
 === Other
@@ -183,10 +183,12 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     let expected_changelog = "Changelog\n\n";
     let username = context.gitea.user.username();
     let repo = context.gitea.repo;
-    let remote_string =
-        format!("owner: {username}, repo: {repo}, link: https://localhost/{username}/{repo}\n\n",);
-    let package_string =
-        format!("== {repo} - [0.1.0](https://localhost/{username}/{repo}/releases/tag/v0.1.0)\n\n");
+    let remote_string = format!(
+        "owner: {username}, repo: {repo}, link: https://localhost:3000/{username}/{repo}\n\n",
+    );
+    let package_string = format!(
+        "== {repo} - [0.1.0](https://localhost:3000/{username}/{repo}/releases/tag/v0.1.0)\n\n"
+    );
     let commits = ["add config file", "cargo init", "Initial commit"];
     #[expect(clippy::format_collect)]
     let commits_str = commits
@@ -412,15 +414,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
+## [0.1.0](https://localhost:3000/{username}/{package}/releases/tag/v0.1.0) - {today}
 
 ### Added
 
-- new file ([#1](https://localhost/{username}/{package}/pulls/1))
+- new file ([#1](https://localhost:3000/{username}/{package}/pulls/1))
 
 ### Other
 
-- non-conventional commit ([#2](https://localhost/{username}/{package}/pulls/2))
+- non-conventional commit ([#2](https://localhost:3000/{username}/{package}/pulls/2))
 - cargo init
 - Initial commit",
         )
