@@ -22,8 +22,8 @@ use std::sync::Once;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
-    ChangelogBuilder, ChangelogRequest, NO_COMMIT_ID, PackagePath as _, Project, Remote, RepoUrl,
-    UpdateResult,
+    ChangelogBuilder, ChangelogRequest, ForgeType, NO_COMMIT_ID, PackagePath as _, Project, Remote,
+    RepoUrl, UpdateResult,
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser,
     command::update::changelog_update::OldChangelogs,
@@ -510,7 +510,10 @@ impl Updater<'_> {
                         &version,
                         Some(r),
                         old_changelog,
-                        repo_url,
+                        repo_url.map(|url| ChangelogRepo {
+                            url,
+                            forge: self.req.forge_type(),
+                        }),
                         release_link.as_deref(),
                         package,
                     )
@@ -958,6 +961,14 @@ fn pathbufs_to_check(
     Ok(paths)
 }
 
+/// Repository info needed to generate changelog links.
+/// The forge type is only relevant when a repository URL is known, so the two
+/// are bundled together.
+struct ChangelogRepo<'a> {
+    url: &'a RepoUrl,
+    forge: ForgeType,
+}
+
 /// Return the following tuple:
 /// - the entire changelog (with the new entries);
 /// - the new changelog entry alone
@@ -967,7 +978,7 @@ fn get_changelog(
     next_version: &Version,
     changelog_req: Option<ChangelogRequest>,
     old_changelog: Option<&str>,
-    repo_url: Option<&RepoUrl>,
+    repo: Option<ChangelogRepo<'_>>,
     release_link: Option<&str>,
     package: &Package,
 ) -> anyhow::Result<(String, String)> {
@@ -988,7 +999,8 @@ fn get_changelog(
         if let Some(link) = release_link {
             changelog_builder = changelog_builder.with_release_link(link);
         }
-        if let Some(repo_url) = repo_url {
+        if let Some(repo) = repo {
+            let repo_url = repo.url;
             let remote = Remote {
                 owner: repo_url.owner.clone(),
                 repo: repo_url.name.clone(),
@@ -997,7 +1009,7 @@ fn get_changelog(
             };
             changelog_builder = changelog_builder.with_remote(remote);
 
-            let pr_link = repo_url.git_pr_link();
+            let pr_link = repo_url.git_pr_link_for(repo.forge);
             changelog_builder = changelog_builder.with_pr_link(pr_link);
         }
         let is_package_published = next_version != &package.version;

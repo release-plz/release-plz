@@ -9,7 +9,7 @@ use clap::{
 };
 use git_cliff_core::config::Config as GitCliffConfig;
 use release_plz_core::{
-    ChangelogRequest, GitForge, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
+    ChangelogRequest, ForgeType, GitForge, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
     update_request::UpdateRequest,
 };
 use secrecy::SecretString;
@@ -127,6 +127,16 @@ pub enum GitForgeKind {
     Gitlab,
 }
 
+impl From<GitForgeKind> for ForgeType {
+    fn from(kind: GitForgeKind) -> Self {
+        match kind {
+            GitForgeKind::Github => Self::Github,
+            GitForgeKind::Gitea => Self::Gitea,
+            GitForgeKind::Gitlab => Self::Gitlab,
+        }
+    }
+}
+
 impl RepoCommand for Update {
     fn repo_url(&self) -> Option<&str> {
         self.repo_url.as_deref()
@@ -146,13 +156,7 @@ impl Update {
         };
         let token = SecretString::from(token);
         Ok(Some(match self.forge {
-            GitForgeKind::Github => {
-                anyhow::ensure!(
-                    repo.is_on_github(),
-                    "Can't create PR: the repository is not hosted in GitHub. Please select a different forge."
-                );
-                GitForge::Github(GitHub::from_repo_url(repo, token)?)
-            }
+            GitForgeKind::Github => GitForge::Github(GitHub::from_repo_url(repo, token)?),
             GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
             GitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),
         }))
@@ -184,6 +188,7 @@ impl Update {
             })?
             .with_dependencies_update(self.dependencies_update(config))
             .with_max_analyze_commits(self.max_analyze_commits(config))
+            .with_forge_type(self.forge.into())
             .with_allow_dirty(self.allow_dirty(config));
         match self.get_repo_url(config) {
             Ok(repo_url) => {
@@ -213,7 +218,9 @@ impl Update {
                         .context("cannot parse release_date to y-m-d format")
                 })
                 .transpose()?;
-            let pr_link = update.repo_url().map(|url| url.git_pr_link());
+            let pr_link = update
+                .repo_url()
+                .map(|url| url.git_pr_link_for(self.forge.into()));
             let changelog_req = ChangelogRequest {
                 release_date,
                 changelog_config: Some(self.changelog_config(config, pr_link.as_deref())?),

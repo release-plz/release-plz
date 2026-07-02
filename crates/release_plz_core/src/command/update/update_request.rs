@@ -10,7 +10,9 @@ use cargo_metadata::{
 };
 use regex::Regex;
 
-use crate::{ChangelogRequest, GitClient, GitForge, PackagePath as _, RepoUrl, fs_utils};
+use crate::{
+    ChangelogRequest, ForgeType, GitClient, GitForge, PackagePath as _, RepoUrl, fs_utils,
+};
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
@@ -47,6 +49,10 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+    /// Kind of git forge hosting the repository.
+    /// Determines forge-specific link formats (e.g. `/pull` vs `/pulls`).
+    /// Known independently of `git`, which is only set when a token is provided.
+    forge_type: ForgeType,
     max_analyze_commits: Option<u32>,
 }
 
@@ -67,6 +73,7 @@ impl UpdateRequest {
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            forge_type: ForgeType::Github,
             max_analyze_commits: None,
         })
     }
@@ -110,9 +117,18 @@ impl UpdateRequest {
 
     pub fn with_git_client(self, git: GitForge) -> Self {
         Self {
+            forge_type: git.forge_type(),
             git: Some(git),
             ..self
         }
+    }
+
+    pub fn with_forge_type(self, forge_type: ForgeType) -> Self {
+        Self { forge_type, ..self }
+    }
+
+    pub fn forge_type(&self) -> ForgeType {
+        self.forge_type
     }
 
     pub fn with_max_analyze_commits(self, max_commits: Option<u32>) -> Self {

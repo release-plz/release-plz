@@ -2,6 +2,8 @@ use anyhow::Context;
 use git_cmd::Repo;
 use git_url_parse::{GitUrl, types::provider::GenericProvider};
 
+use crate::ForgeType;
+
 #[derive(Debug, Clone)]
 pub struct RepoUrl {
     pub scheme: String,
@@ -34,7 +36,10 @@ impl RepoUrl {
     }
 
     pub fn full_host(&self) -> String {
-        format!("https://{}/{}/{}", self.host, self.owner, self.name)
+        match self.https_port() {
+            Some(port) => format!("https://{}:{port}/{}/{}", self.host, self.owner, self.name),
+            None => format!("https://{}/{}/{}", self.host, self.owner, self.name),
+        }
     }
 
     /// Get GitHub/Gitea release link
@@ -48,9 +53,22 @@ impl RepoUrl {
         }
     }
 
+    #[deprecated(
+        since = "0.37.0",
+        note = "the forge can't be reliably derived from the host (e.g. GitHub Enterprise Server uses arbitrary hostnames); use `git_pr_link_for` with an explicit `ForgeType`"
+    )]
     pub fn git_pr_link(&self) -> String {
         let host = self.full_host();
         let pull_path = if self.is_on_github() { "pull" } else { "pulls" };
+        format!("{host}/{pull_path}")
+    }
+
+    pub fn git_pr_link_for(&self, forge: ForgeType) -> String {
+        let host = self.full_host();
+        let pull_path = match forge {
+            ForgeType::Github => "pull",
+            ForgeType::Gitea | ForgeType::Gitlab => "pulls",
+        };
         format!("{host}/{pull_path}")
     }
 
@@ -82,7 +100,7 @@ impl RepoUrl {
         let scheme = self.scheme_ssh_as_https();
         if self.host == "github.com" {
             format!("{scheme}://api.github.com/")
-        } else if let Some(port) = self.port {
+        } else if let Some(port) = self.https_port() {
             format!("{scheme}://{}:{port}/api/v3/", self.host)
         } else {
             format!("{scheme}://{}/api/v3/", self.host)
@@ -93,7 +111,7 @@ impl RepoUrl {
         let scheme = self.scheme_ssh_as_https();
         if self.host == "github.com" {
             format!("{scheme}://api.github.com/graphql")
-        } else if let Some(port) = self.port {
+        } else if let Some(port) = self.https_port() {
             format!("{scheme}://{}:{port}/api/graphql", self.host)
         } else {
             format!("{scheme}://{}/api/graphql", self.host)
@@ -105,6 +123,15 @@ impl RepoUrl {
             "https"
         } else {
             self.scheme.as_str()
+        }
+    }
+
+    /// SSH remotes encode an SSH port (e.g. `ssh://git@host:2222/...`) that must
+    /// not be reused for HTTPS traffic, so it is dropped in that case.
+    fn https_port(&self) -> Option<u16> {
+        match self.scheme.as_str() {
+            "ssh" => None,
+            _ => self.port,
         }
     }
 }
@@ -137,6 +164,7 @@ fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
 #[cfg(test)]
 mod tests {
     use super::RepoUrl;
+    use crate::ForgeType;
 
     const GITHUB_REPO_URL: &str = "https://github.com/release-plz/release-plz";
 
@@ -203,6 +231,69 @@ mod tests {
         assert_eq!(
             r.github_graphql_url(),
             "https://github.example.com/api/graphql"
+        );
+    }
+
+    #[test]
+    fn github_enterprise_https_port_is_kept_for_api_and_web_links() {
+        let r = RepoUrl::new("https://github.example.com:8443/owner/repo").unwrap();
+        assert_eq!(r.full_host(), "https://github.example.com:8443/owner/repo");
+        assert_eq!(
+            r.github_api_url(),
+            "https://github.example.com:8443/api/v3/"
+        );
+        assert_eq!(
+            r.github_graphql_url(),
+            "https://github.example.com:8443/api/graphql"
+        );
+    }
+
+    #[test]
+    fn github_enterprise_ssh_port_is_not_reused_for_https() {
+        let r = RepoUrl::new("ssh://git@github.example.com:2222/owner/repo.git").unwrap();
+        assert_eq!(r.full_host(), "https://github.example.com/owner/repo");
+        assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
+        assert_eq!(
+            r.github_graphql_url(),
+            "https://github.example.com/api/graphql"
+        );
+    }
+
+    #[test]
+    fn git_pr_link_uses_pull_for_github_including_enterprise() {
+        let dotcom = RepoUrl::new("https://github.com/owner/repo").unwrap();
+        assert_eq!(
+            dotcom.git_pr_link_for(ForgeType::Github),
+            "https://github.com/owner/repo/pull"
+        );
+
+        // GitHub Enterprise host without "github" in the name still uses `/pull`.
+        let ghes = RepoUrl::new("https://git.company.com/org/repo").unwrap();
+        assert_eq!(
+            ghes.git_pr_link_for(ForgeType::Github),
+            "https://git.company.com/org/repo/pull"
+        );
+    }
+
+    #[test]
+    fn git_pr_link_uses_pulls_for_gitea() {
+        let r = RepoUrl::new("https://gitea.example.com/owner/repo").unwrap();
+        assert_eq!(
+            r.git_pr_link_for(ForgeType::Gitea),
+            "https://gitea.example.com/owner/repo/pulls"
+        );
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_git_pr_link_keeps_host_based_behavior() {
+        let gh = RepoUrl::new("https://github.com/owner/repo").unwrap();
+        assert_eq!(gh.git_pr_link(), "https://github.com/owner/repo/pull");
+
+        let other = RepoUrl::new("https://gitea.example.com/owner/repo").unwrap();
+        assert_eq!(
+            other.git_pr_link(),
+            "https://gitea.example.com/owner/repo/pulls"
         );
     }
 }
