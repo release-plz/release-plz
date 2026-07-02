@@ -961,9 +961,6 @@ fn pathbufs_to_check(
     Ok(paths)
 }
 
-/// Repository info needed to generate changelog links.
-/// The forge type is only relevant when a repository URL is known, so the two
-/// are bundled together.
 struct ChangelogRepo<'a> {
     url: &'a RepoUrl,
     forge: ForgeType,

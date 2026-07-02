@@ -54,7 +54,6 @@ impl RepoUrl {
     }
 
     #[deprecated(
-        since = "0.37.0",
         note = "the forge can't be reliably derived from the host (e.g. GitHub Enterprise Server uses arbitrary hostnames); use `git_pr_link_for` with an explicit `ForgeType`"
     )]
     pub fn git_pr_link(&self) -> String {
