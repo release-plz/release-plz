@@ -37,7 +37,14 @@ impl Config {
     /// Apply environment variable overrides to the configuration.
     /// Environment variables take precedence over config file values.
     pub fn apply_env_overrides(&mut self) {
-        if let Ok(val) = env::var("PR_BRANCH_PREFIX") {
+        self.apply_env_overrides_with(|key| env::var(key));
+    }
+
+    fn apply_env_overrides_with(
+        &mut self,
+        get_env: impl Fn(&str) -> Result<String, env::VarError>,
+    ) {
+        if let Ok(val) = get_env("PR_BRANCH_PREFIX") {
             self.workspace.pr_branch_prefix = Some(val);
         }
     }
@@ -923,17 +930,15 @@ unknown = false"#;
         let mut config = Config::default();
         assert_eq!(config.workspace.pr_branch_prefix, None);
 
-        // Set the environment variable and apply overrides
-        // SAFETY: This test runs serially (not multi-threaded) and we clean up after.
-        unsafe { env::set_var("PR_BRANCH_PREFIX", "env-prefix-") };
-        config.apply_env_overrides();
+        config.apply_env_overrides_with(|key| match key {
+            "PR_BRANCH_PREFIX" => Ok("env-prefix-".to_string()),
+            _ => Err(env::VarError::NotPresent),
+        });
+
         assert_eq!(
             config.workspace.pr_branch_prefix,
             Some("env-prefix-".to_string())
         );
-
-        // Clean up
-        unsafe { env::remove_var("PR_BRANCH_PREFIX") };
     }
 
     #[test]
@@ -941,16 +946,14 @@ unknown = false"#;
         let mut config = Config::default();
         config.workspace.pr_branch_prefix = Some("file-prefix-".to_string());
 
-        // Environment variable should override the config file value
-        // SAFETY: This test runs serially (not multi-threaded) and we clean up after.
-        unsafe { env::set_var("PR_BRANCH_PREFIX", "env-prefix-") };
-        config.apply_env_overrides();
+        config.apply_env_overrides_with(|key| match key {
+            "PR_BRANCH_PREFIX" => Ok("env-prefix-".to_string()),
+            _ => Err(env::VarError::NotPresent),
+        });
+
         assert_eq!(
             config.workspace.pr_branch_prefix,
             Some("env-prefix-".to_string())
         );
-
-        // Clean up
-        unsafe { env::remove_var("PR_BRANCH_PREFIX") };
     }
 }
