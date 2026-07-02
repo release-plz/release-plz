@@ -3,3 +3,5 @@ name = "set-version-in-package"
 version = "0.1.0"
 
 [dependencies]
+
+[workspace]

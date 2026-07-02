@@ -82,10 +82,9 @@ impl PackageDownloader {
 /// Read a package from file system
 pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
     let manifest_path = directory.as_ref().join(CARGO_TOML);
-    let metadata = cargo_metadata::MetadataCommand::new()
-        .no_deps()
-        .manifest_path(manifest_path)
-        .exec()
+    let manifest_path = cargo_metadata::camino::Utf8PathBuf::from_path_buf(manifest_path)
+        .map_err(|path| anyhow!("non-utf8 manifest path: {path:?}"))?;
+    let metadata = cargo_utils::get_manifest_metadata(&manifest_path)
         .context("failed to execute cargo_metadata")?;
     let package = metadata
         .packages

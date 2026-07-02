@@ -18,7 +18,7 @@ use crate::{
 use anyhow::Context;
 use cargo_metadata::TargetKind;
 use cargo_metadata::{
-    Metadata, MetadataCommand, Package,
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
@@ -181,7 +181,8 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
     let manifest_path = worktree_path.join("Cargo.toml");
 
     // Use current_dir so that CARGO_TARGET_DIR resolves correctly relative to worktree
-    let rust_package = MetadataCommand::new()
+    let mut command = cargo_utils::cargo_metadata_command();
+    let rust_package = command
         .current_dir(worktree_path.as_std_path())
         .no_deps()
         .manifest_path(&manifest_path)

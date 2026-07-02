@@ -139,7 +139,10 @@ fn update_changelogs(
 }
 
 #[instrument(skip_all)]
-fn update_cargo_lock(root: &Utf8Path, update_all_dependencies: bool) -> anyhow::Result<()> {
+pub(crate) fn update_cargo_lock(
+    root: &Utf8Path,
+    update_all_dependencies: bool,
+) -> anyhow::Result<()> {
     let mut args = vec!["update"];
     if !update_all_dependencies {
         args.push("--workspace");

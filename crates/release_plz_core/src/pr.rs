@@ -7,7 +7,7 @@ use chrono::SecondsFormat;
 pub const DEFAULT_BRANCH_PREFIX: &str = "release-plz-";
 pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
 pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
-{% macro get_changes(releases, type="text") %}
+{% set changes %}
 {%- for release in releases %}
 {%- if release.changelog %}{% if releases | length > 1 %}
 ## `{{ release.package }}`
@@ -19,9 +19,7 @@ pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 {{ release.changelog }}
 </blockquote>{% endif %}
 {% endfor %}
-{% endmacro -%}
-
-{% set changes = self::get_changes(releases=releases) %}
+{% endset %}
 
 ## 🤖 New release
 {% for release in releases %}
@@ -187,5 +185,31 @@ fn trim_pr_body(body: String) -> String {
         body.chars().take(MAX_BODY_LEN).collect()
     } else {
         body
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_pr_body_template_renders() {
+        let releases = serde_json::json!([{
+            "package": "my-package",
+            "title": "[0.1.1] - 2026-06-27",
+            "changelog": "### Other\n\n- fixed a bug",
+            "previous_version": "0.1.0",
+            "next_version": "0.1.1",
+            "breaking_changes": null,
+            "semver_check": "compatible",
+        }]);
+        let mut context = tera::Context::new();
+        context.insert(RELEASES_VAR, &releases);
+
+        let body = render_template(DEFAULT_PR_BODY_TEMPLATE, &context, "pr_body").unwrap();
+
+        assert!(body.contains("## 🤖 New release"));
+        assert!(body.contains("* `my-package`: 0.1.0 -> 0.1.1 (✓ API compatible changes)"));
+        assert!(body.contains("- fixed a bug"));
     }
 }
