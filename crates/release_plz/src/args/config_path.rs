@@ -33,25 +33,35 @@ impl ConfigPath {
     /// default paths (`release-plz.toml` and `.release-plz.toml`) and load the first one that
     /// exists.
     pub fn load(&self) -> anyhow::Result<Config> {
-        if let Some(path) = self.path.as_deref() {
+        let mut config = if let Some(path) = self.path.as_deref() {
             match load_config(path) {
-                Ok(Some(config)) => return Ok(config),
+                Ok(Some(config)) => config,
                 Ok(None) => bail!("specified config file {} does not exist", path.display()),
                 Err(err) => return Err(err.context("failed to read config file")),
             }
-        }
-
-        for path in DEFAULT_CONFIG_PATHS {
-            let path = Path::new(path);
-            match load_config(path) {
-                Ok(Some(config)) => return Ok(config),
-                Ok(None) => (),
-                Err(err) => return Err(err.context("invalid config file")),
+        } else {
+            let mut found = None;
+            for path in DEFAULT_CONFIG_PATHS {
+                let path = Path::new(path);
+                match load_config(path) {
+                    Ok(Some(config)) => {
+                        found = Some(config);
+                        break;
+                    }
+                    Ok(None) => (),
+                    Err(err) => return Err(err.context("invalid config file")),
+                }
             }
-        }
-
-        info!("release-plz config file not found, using default configuration");
-        Ok(Config::default())
+            match found {
+                Some(config) => config,
+                None => {
+                    info!("release-plz config file not found, using default configuration");
+                    Config::default()
+                }
+            }
+        };
+        config.apply_env_overrides();
+        Ok(config)
     }
 }
 
