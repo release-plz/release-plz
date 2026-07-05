@@ -36,10 +36,11 @@ impl RepoUrl {
     }
 
     pub fn full_host(&self) -> String {
-        match self.https_port() {
-            Some(port) => format!("https://{}:{port}/{}/{}", self.host, self.owner, self.name),
-            None => format!("https://{}/{}/{}", self.host, self.owner, self.name),
-        }
+        let instance = match self.https_port() {
+            Some(port) => format!("{}:{port}", self.host),
+            None => self.host.clone(),
+        };
+        format!("https://{}/{}/{}", instance, self.owner, self.name)
     }
 
     /// Get GitHub/Gitea release link
