@@ -97,10 +97,12 @@ impl RepoUrl {
     }
 
     pub fn github_api_url(&self) -> String {
-        let scheme = self.scheme_ssh_as_https();
         if self.host == "github.com" {
-            format!("{scheme}://api.github.com/")
-        } else if let Some(port) = self.https_port() {
+            return "https://api.github.com/".to_string();
+        }
+
+        let scheme = self.scheme_ssh_as_https();
+        if let Some(port) = self.https_port() {
             format!("{scheme}://{}:{port}/api/v3/", self.host)
         } else {
             format!("{scheme}://{}/api/v3/", self.host)
@@ -108,10 +110,12 @@ impl RepoUrl {
     }
 
     pub fn github_graphql_url(&self) -> String {
-        let scheme = self.scheme_ssh_as_https();
         if self.host == "github.com" {
-            format!("{scheme}://api.github.com/graphql")
-        } else if let Some(port) = self.https_port() {
+            return "https://api.github.com/graphql".to_string();
+        }
+
+        let scheme = self.scheme_ssh_as_https();
+        if let Some(port) = self.https_port() {
             format!("{scheme}://{}:{port}/api/graphql", self.host)
         } else {
             format!("{scheme}://{}/api/graphql", self.host)
@@ -209,6 +213,13 @@ mod tests {
     #[test]
     fn github_api_url_dotcom() {
         let r = RepoUrl::new("https://github.com/owner/repo").unwrap();
+        assert_eq!(r.github_api_url(), "https://api.github.com/");
+        assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
+    }
+
+    #[test]
+    fn github_api_url_dotcom_http_still_uses_https() {
+        let r = RepoUrl::new("http://github.com/owner/repo").unwrap();
         assert_eq!(r.github_api_url(), "https://api.github.com/");
         assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
     }
