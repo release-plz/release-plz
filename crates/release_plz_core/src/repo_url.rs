@@ -56,15 +56,6 @@ impl RepoUrl {
         }
     }
 
-    #[deprecated(
-        note = "the forge can't be reliably derived from the host (e.g. GitHub Enterprise Server uses arbitrary hostnames); use `git_pr_link_for` with an explicit `ForgeType`"
-    )]
-    pub fn git_pr_link(&self) -> String {
-        let host = self.full_host();
-        let pull_path = if self.is_on_github() { "pull" } else { "pulls" };
-        format!("{host}/{pull_path}")
-    }
-
     pub fn git_pr_link_for(&self, forge: ForgeType) -> String {
         let host = self.full_host();
         let pull_path = match forge {
@@ -293,19 +284,6 @@ mod tests {
         let r = RepoUrl::new("https://gitea.example.com/owner/repo").unwrap();
         assert_eq!(
             r.git_pr_link_for(ForgeType::Gitea),
-            "https://gitea.example.com/owner/repo/pulls"
-        );
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn deprecated_git_pr_link_keeps_host_based_behavior() {
-        let gh = RepoUrl::new("https://github.com/owner/repo").unwrap();
-        assert_eq!(gh.git_pr_link(), "https://github.com/owner/repo/pull");
-
-        let other = RepoUrl::new("https://gitea.example.com/owner/repo").unwrap();
-        assert_eq!(
-            other.git_pr_link(),
             "https://gitea.example.com/owner/repo/pulls"
         );
     }
