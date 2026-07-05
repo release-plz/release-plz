@@ -4,6 +4,8 @@ use git_url_parse::{GitUrl, types::provider::GenericProvider};
 
 use crate::ForgeType;
 
+const GITHUB_COM: &str = "github.com";
+
 #[derive(Debug, Clone)]
 pub struct RepoUrl {
     pub scheme: String,
@@ -97,8 +99,8 @@ impl RepoUrl {
     }
 
     pub fn github_api_url(&self) -> String {
-        if self.host == "github.com" {
-            return "https://api.github.com/".to_string();
+        if self.host == GITHUB_COM {
+            return format!("https://api.{GITHUB_COM}/");
         }
 
         let scheme = self.scheme_ssh_as_https();
@@ -110,8 +112,8 @@ impl RepoUrl {
     }
 
     pub fn github_graphql_url(&self) -> String {
-        if self.host == "github.com" {
-            return "https://api.github.com/graphql".to_string();
+        if self.host == GITHUB_COM {
+            return format!("https://api.{GITHUB_COM}/graphql");
         }
 
         let scheme = self.scheme_ssh_as_https();
