@@ -106,6 +106,8 @@ pub struct CommitParser {
     pub message: Option<String>,
     /// Regex for matching the commit body.
     pub body: Option<String>,
+    /// Regex for matching the commit footer.
+    pub footer: Option<String>,
     /// Group of the commit.
     pub group: Option<String>,
     /// Default scope of the commit.
@@ -136,7 +138,7 @@ impl TryFrom<CommitParser> for git_cliff_core::config::CommitParser {
             field: cfg.field,
             pattern: to_opt_regex(cfg.pattern.as_deref(), "pattern")?,
             sha: cfg.sha,
-            footer: None,
+            footer: to_opt_regex(cfg.footer.as_deref(), "footer")?,
         })
     }
 }
@@ -248,7 +250,7 @@ mod tests {
             ]
 
             commit_parsers = [
-                { message = "message", body = "body", group = "group", default_scope = "default_scope", scope = "scope", skip = true, field = "field", pattern = "pattern"}
+                { message = "message", body = "body", footer = "footer", group = "group", default_scope = "default_scope", scope = "scope", skip = true, field = "field", pattern = "pattern"}
             ]
 
             link_parsers = [
@@ -295,7 +297,7 @@ mod tests {
                     field: Some("field".to_string()),
                     pattern: Some(regex::Regex::new("pattern").unwrap()),
                     sha: None,
-                    footer: None,
+                    footer: Some(regex::Regex::new("footer").unwrap()),
                 }],
                 link_parsers: vec![git_cliff_core::config::LinkParser {
                     pattern: regex::Regex::new("pattern").unwrap(),
