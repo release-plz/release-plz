@@ -109,9 +109,7 @@ pub struct Update {
     pub git_token: Option<String>,
 
     /// Kind of git host where your project is hosted.
-    /// If not specified, release-plz infers it from the repository host to
-    /// choose the changelog PR link format (GitHub-style `/pull` for
-    /// `github.com`-like hosts, `/pulls` otherwise). Specify it explicitly for
+    /// If not specified, release-plz infers it from the repository host. Specify it explicitly for
     /// GitHub Enterprise Server, whose host can't be auto-detected.
     #[arg(long, visible_alias = "backend", value_enum)]
     forge: Option<GitForgeKind>,
