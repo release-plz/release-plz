@@ -95,11 +95,11 @@ impl RepoUrl {
         }
 
         let scheme = self.scheme_ssh_as_https();
-        if let Some(port) = self.https_port() {
-            format!("{scheme}://{}:{port}/api/v3/", self.host)
-        } else {
-            format!("{scheme}://{}/api/v3/", self.host)
-        }
+        let instance = match self.https_port() {
+            Some(port) => format!("{}:{port}", self.host),
+            None => self.host.clone(),
+        };
+        format!("{scheme}://{instance}/api/v3/")
     }
 
     pub fn github_graphql_url(&self) -> String {
@@ -108,11 +108,11 @@ impl RepoUrl {
         }
 
         let scheme = self.scheme_ssh_as_https();
-        if let Some(port) = self.https_port() {
-            format!("{scheme}://{}:{port}/api/graphql", self.host)
-        } else {
-            format!("{scheme}://{}/api/graphql", self.host)
-        }
+        let instance = match self.https_port() {
+            Some(port) => format!("{}:{port}", self.host),
+            None => self.host.clone(),
+        };
+        format!("{scheme}://{instance}/api/graphql")
     }
 
     fn scheme_ssh_as_https(&self) -> &str {
