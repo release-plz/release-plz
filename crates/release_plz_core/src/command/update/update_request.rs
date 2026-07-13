@@ -50,8 +50,6 @@ pub struct UpdateRequest {
     release_commits: Option<Regex>,
     git: Option<GitForge>,
     /// Kind of git forge hosting the repository.
-    /// Determines forge-specific link formats (e.g. `/pull` vs `/pulls`).
-    /// Known independently of `git`, which is only set when a token is provided.
     forge_type: ForgeType,
     max_analyze_commits: Option<u32>,
 }
