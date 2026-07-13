@@ -42,7 +42,7 @@ impl RepoUrl {
             Some(port) => format!("{}:{port}", self.host),
             None => self.host.clone(),
         };
-        format!("https://{}/{}/{}", instance, self.owner, self.name)
+        format!("https://{instance}/{}/{}", self.owner, self.name)
     }
 
     /// Get GitHub/Gitea release link
