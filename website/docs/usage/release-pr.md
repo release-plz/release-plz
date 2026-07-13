@@ -56,6 +56,10 @@ through the [GraphQL API](https://docs.github.com/en/graphql) rather
 than making a commit locally and pushing the changes.
 This allows having a [Verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
 commit without specifying a GPG signature.
+This works on both github.com and self-hosted
+[GitHub Enterprise Server](https://docs.github.com/en/enterprise-server),
+release-plz derives the API host from your git remote. For GitHub Enterprise
+Server, explicitly select GitHub with `--forge github`.
 
 ## GitLab
 
