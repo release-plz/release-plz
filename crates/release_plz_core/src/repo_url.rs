@@ -94,12 +94,7 @@ impl RepoUrl {
             return format!("https://api.{GITHUB_COM}/");
         }
 
-        let scheme = self.scheme_ssh_as_https();
-        let instance = match self.https_port() {
-            Some(port) => format!("{}:{port}", self.host),
-            None => self.host.clone(),
-        };
-        format!("{scheme}://{instance}/api/v3/")
+        format!("{}/api/v3/", self.github_enterprise_base_url())
     }
 
     pub fn github_graphql_url(&self) -> String {
@@ -107,12 +102,16 @@ impl RepoUrl {
             return format!("https://api.{GITHUB_COM}/graphql");
         }
 
+        format!("{}/api/graphql", self.github_enterprise_base_url())
+    }
+
+    fn github_enterprise_base_url(&self) -> String {
         let scheme = self.scheme_ssh_as_https();
         let instance = match self.https_port() {
             Some(port) => format!("{}:{port}", self.host),
             None => self.host.clone(),
         };
-        format!("{scheme}://{instance}/api/graphql")
+        format!("{scheme}://{instance}")
     }
 
     fn scheme_ssh_as_https(&self) -> &str {
