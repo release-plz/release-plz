@@ -157,7 +157,13 @@ impl Update {
             return Ok(None);
         };
         let token = SecretString::from(token);
-        let forge = self.forge.unwrap_or(GitForgeKind::Github);
+        let forge = match self.forge {
+            Some(forge) => forge,
+            None if repo.is_on_github_dot_com() => GitForgeKind::Github,
+            None => anyhow::bail!(
+                "Can't create PR: the repository host isn't recognized as GitHub.com. Select a forge with `--forge`; GitHub Enterprise Server requires `--forge github`."
+            ),
+        };
         Ok(Some(match forge {
             GitForgeKind::Github => GitForge::Github(GitHub::from_repo_url(repo, token)?),
             GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
@@ -332,9 +338,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn input_generates_correct_release_request() {
-        let update_args = Update {
+    fn default_args() -> Update {
+        Update {
             manifest_path: None,
             registry_manifest_path: None,
             package: None,
@@ -349,12 +354,41 @@ mod tests {
             forge: None,
             git_token: None,
             max_analyze_commits: None,
-        };
+        }
+    }
+
+    #[test]
+    fn input_generates_correct_release_request() {
+        let update_args = default_args();
         let config = update_args.config.load().unwrap();
         let req = update_args
             .update_request(&config, fake_metadata())
             .unwrap();
         let pkg_config = req.get_package_config("aaa");
         assert_eq!(pkg_config, release_plz_core::PackageUpdateConfig::default());
+    }
+
+    #[test]
+    fn implicit_github_forge_rejects_unknown_host() {
+        let mut update_args = default_args();
+        update_args.git_token = Some("token".to_string());
+        let repo = RepoUrl::new("https://git.company.example/owner/repo").unwrap();
+
+        let error = update_args.git_forge(repo).unwrap_err();
+
+        assert!(error.to_string().contains("--forge github"));
+    }
+
+    #[test]
+    fn explicit_github_forge_accepts_enterprise_host() {
+        let mut update_args = default_args();
+        update_args.forge = Some(GitForgeKind::Github);
+        update_args.git_token = Some("token".to_string());
+        let repo = RepoUrl::new("https://git.company.example/owner/repo").unwrap();
+
+        core::assert_matches!(
+            update_args.git_forge(repo).unwrap(),
+            Some(GitForge::Github(_))
+        );
     }
 }

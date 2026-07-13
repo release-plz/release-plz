@@ -58,7 +58,8 @@ This allows having a [Verified](https://docs.github.com/en/authentication/managi
 commit without specifying a GPG signature.
 This works on both github.com and self-hosted
 [GitHub Enterprise Server](https://docs.github.com/en/enterprise-server),
-release-plz auto-detects the host from your git remote.
+release-plz derives the API host from your git remote. For GitHub Enterprise
+Server, explicitly select GitHub with `--forge github`.
 
 ## GitLab
 

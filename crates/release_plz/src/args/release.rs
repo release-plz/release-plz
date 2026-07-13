@@ -4,7 +4,7 @@ use clap::{
     ValueEnum,
     builder::{NonEmptyStringValueParser, PathBufValueParser},
 };
-use release_plz_core::{GitForge, GitHub, GitLab, Gitea, ReleaseRequest};
+use release_plz_core::{GitForge, GitHub, GitLab, Gitea, ReleaseRequest, RepoUrl};
 use secrecy::SecretString;
 
 use crate::config::Config;
@@ -59,9 +59,9 @@ pub struct Release {
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
     pub git_token: Option<String>,
 
-    /// Kind of git forge
-    #[arg(long, visible_alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
-    forge: ReleaseGitForgeKind,
+    /// Kind of git forge.
+    #[arg(long, visible_alias = "backend", value_enum)]
+    forge: Option<ReleaseGitForgeKind>,
 
     /// Path to the release-plz config file.
     #[command(flatten)]
@@ -84,6 +84,22 @@ pub enum ReleaseGitForgeKind {
 }
 
 impl Release {
+    fn git_forge(&self, repo: RepoUrl, token: SecretString) -> anyhow::Result<GitForge> {
+        let forge = match self.forge {
+            Some(forge) => forge,
+            None if repo.is_on_github_dot_com() => ReleaseGitForgeKind::Github,
+            None => anyhow::bail!(
+                "Can't create release: the repository host isn't recognized as GitHub.com. Select a forge with `--forge`; GitHub Enterprise Server requires `--forge github`."
+            ),
+        };
+
+        Ok(match forge {
+            ReleaseGitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
+            ReleaseGitForgeKind::Github => GitForge::Github(GitHub::from_repo_url(repo, token)?),
+            ReleaseGitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),
+        })
+    }
+
     pub fn release_request(
         self,
         config: &Config,
@@ -93,15 +109,7 @@ impl Release {
             let git_token = SecretString::from(git_token.clone());
             let repo_url = self.get_repo_url(config)?;
             let release = release_plz_core::GitRelease {
-                forge: match self.forge {
-                    ReleaseGitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo_url, git_token)?),
-                    ReleaseGitForgeKind::Github => {
-                        GitForge::Github(GitHub::from_repo_url(repo_url, git_token)?)
-                    }
-                    ReleaseGitForgeKind::Gitlab => {
-                        GitForge::Gitlab(GitLab::new(repo_url, git_token)?)
-                    }
-                },
+                forge: self.git_forge(repo_url, git_token)?,
             };
             Some(release)
         } else {
@@ -210,7 +218,7 @@ mod tests {
             dry_run: false,
             repo_url: None,
             git_token: None,
-            forge: ReleaseGitForgeKind::Github,
+            forge: None,
             config: ConfigPath::default(),
             output: None,
         }
@@ -227,5 +235,31 @@ mod tests {
         let expected = release_plz_core::ReleaseConfig::default();
         assert_eq!(pkg_config, expected);
         assert!(pkg_config.git_release().is_enabled());
+    }
+
+    #[test]
+    fn implicit_github_forge_rejects_unknown_host() {
+        let release_args = default_args();
+        let repo = RepoUrl::new("https://git.company.example/owner/repo").unwrap();
+
+        let error = release_args
+            .git_forge(repo, SecretString::from("token"))
+            .unwrap_err();
+
+        assert!(error.to_string().contains("--forge github"));
+    }
+
+    #[test]
+    fn explicit_github_forge_accepts_enterprise_host() {
+        let mut release_args = default_args();
+        release_args.forge = Some(ReleaseGitForgeKind::Github);
+        let repo = RepoUrl::new("https://git.company.example/owner/repo").unwrap();
+
+        assert!(matches!(
+            release_args
+                .git_forge(repo, SecretString::from("token"))
+                .unwrap(),
+            GitForge::Github(_)
+        ));
     }
 }

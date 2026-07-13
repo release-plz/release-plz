@@ -39,6 +39,14 @@ impl RepoUrl {
         self.host.contains("github")
     }
 
+    /// Whether this repository uses one of GitHub.com's public Git hostnames.
+    pub fn is_on_github_dot_com(&self) -> bool {
+        matches!(
+            self.host.as_str(),
+            GITHUB_COM | GITHUB_COM_SSH | GITHUB_COM_WWW
+        )
+    }
+
     pub fn full_host(&self) -> String {
         let instance = match self.https_port() {
             Some(port) => format!("{}:{port}", self.host),
@@ -92,7 +100,7 @@ impl RepoUrl {
     }
 
     pub fn github_api_url(&self) -> String {
-        if self.is_github_dot_com_host() {
+        if self.is_on_github_dot_com() {
             return format!("https://api.{GITHUB_COM}/");
         }
 
@@ -100,7 +108,7 @@ impl RepoUrl {
     }
 
     pub fn github_graphql_url(&self) -> String {
-        if self.is_github_dot_com_host() {
+        if self.is_on_github_dot_com() {
             return format!("https://api.{GITHUB_COM}/graphql");
         }
 
@@ -114,13 +122,6 @@ impl RepoUrl {
             None => self.host.clone(),
         };
         format!("{scheme}://{instance}")
-    }
-
-    fn is_github_dot_com_host(&self) -> bool {
-        matches!(
-            self.host.as_str(),
-            GITHUB_COM | GITHUB_COM_SSH | GITHUB_COM_WWW
-        )
     }
 
     fn scheme_ssh_as_https(&self) -> &str {
