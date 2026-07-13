@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.15...release_plz_core-v0.37.0) - 2026-07-13
+
+### Added
+
+- Github Enterprise Server support ([#2846](https://github.com/release-plz/release-plz/pull/2846))
+
+### Fixed
+
+- fix clippy lint of rust 1.97 ([#2932](https://github.com/release-plz/release-plz/pull/2932))
+
+### Other
+
+- update to tera v2 ([#2914](https://github.com/release-plz/release-plz/pull/2914))
+
 ## [0.36.15](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.14...release_plz_core-v0.36.15) - 2026-06-09
 
 ### Fixed
