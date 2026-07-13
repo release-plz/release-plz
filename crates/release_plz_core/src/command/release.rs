@@ -928,7 +928,7 @@ fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> b
     // Error happening if the crate was published while `cargo publish` was running.
     let already_uploaded_message = format!(
         "crate version `{}` is already uploaded",
-        &release_info.package.version
+        release_info.package.version
     );
 
     // Previously, I thought that this error

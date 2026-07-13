@@ -88,9 +88,8 @@ impl Cloner {
                 .as_ref()
                 .with_context(|| {
                     format!(
-                        "Cannot clone {} from git repo because \
-                        repository is not specified in package's manifest.",
-                        &name
+                        "Cannot clone {name} from git repo because \
+                        repository is not specified in package's manifest."
                     )
                 })?;
 
@@ -121,7 +120,7 @@ impl Cloner {
                 .clone_in(crate_, &dest_path, src.as_ref())
                 .await
                 .with_context(|| {
-                    format!("failed to clone package {} in {dest_path}", &crate_.name)
+                    format!("failed to clone package {} in {dest_path}", crate_.name)
                 })?;
 
             if let Some(pkg) = pkg {
