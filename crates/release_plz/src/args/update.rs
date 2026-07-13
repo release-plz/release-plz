@@ -3,21 +3,20 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use chrono::NaiveDate;
-use clap::{
-    ValueEnum,
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
-};
+use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
 use git_cliff_core::config::Config as GitCliffConfig;
 use release_plz_core::{
-    ChangelogRequest, ForgeType, GitForge, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
-    update_request::UpdateRequest,
+    ChangelogRequest, ForgeType, RepoUrl, fs_utils::to_utf8_path, update_request::UpdateRequest,
 };
 use secrecy::SecretString;
 
 use crate::{changelog_config, config::Config};
 
 use super::{
-    config_path::ConfigPath, manifest_command::ManifestCommand, repo_command::RepoCommand,
+    config_path::ConfigPath,
+    git_forge::{GitForgeKind, git_forge},
+    manifest_command::ManifestCommand,
+    repo_command::RepoCommand,
 };
 
 /// Update your project locally, without opening a PR.
@@ -119,26 +118,6 @@ pub struct Update {
     max_analyze_commits: Option<u32>,
 }
 
-#[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GitForgeKind {
-    #[value(name = "github")]
-    Github,
-    #[value(name = "gitea")]
-    Gitea,
-    #[value(name = "gitlab")]
-    Gitlab,
-}
-
-impl From<GitForgeKind> for ForgeType {
-    fn from(kind: GitForgeKind) -> Self {
-        match kind {
-            GitForgeKind::Github => Self::Github,
-            GitForgeKind::Gitea => Self::Gitea,
-            GitForgeKind::Gitlab => Self::Gitlab,
-        }
-    }
-}
-
 impl RepoCommand for Update {
     fn repo_url(&self) -> Option<&str> {
         self.repo_url.as_deref()
@@ -152,25 +131,6 @@ impl ManifestCommand for Update {
 }
 
 impl Update {
-    pub fn git_forge(&self, repo: RepoUrl) -> anyhow::Result<Option<GitForge>> {
-        let Some(token) = self.git_token.clone() else {
-            return Ok(None);
-        };
-        let token = SecretString::from(token);
-        let forge = match self.forge {
-            Some(forge) => forge,
-            None if repo.is_on_github_dot_com() => GitForgeKind::Github,
-            None => anyhow::bail!(
-                "Can't create PR: the repository host isn't recognized as GitHub.com. Select a forge with `--forge`; GitHub Enterprise Server requires `--forge github`."
-            ),
-        };
-        Ok(Some(match forge {
-            GitForgeKind::Github => GitForge::Github(GitHub::from_repo_url(repo, token)?),
-            GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
-            GitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),
-        }))
-    }
-
     /// Forge type used to render changelog PR links.
     ///
     /// Prefers the explicit `--forge` flag. When it's not provided, it falls
@@ -264,8 +224,14 @@ impl Update {
             update = update.with_release_commits(release_commits)?;
         }
         if let Some(repo) = update.repo_url()
-            && let Some(git_client) = self.git_forge(repo.clone())?
+            && let Some(token) = self.git_token.clone()
         {
+            let git_client = git_forge(
+                repo.clone(),
+                SecretString::from(token),
+                self.forge,
+                "create PR",
+            )?;
             update = update.with_git_client(git_client);
         }
 
@@ -366,29 +332,5 @@ mod tests {
             .unwrap();
         let pkg_config = req.get_package_config("aaa");
         assert_eq!(pkg_config, release_plz_core::PackageUpdateConfig::default());
-    }
-
-    #[test]
-    fn implicit_github_forge_rejects_unknown_host() {
-        let mut update_args = default_args();
-        update_args.git_token = Some("token".to_string());
-        let repo = RepoUrl::new("https://git.company.example/owner/repo").unwrap();
-
-        let error = update_args.git_forge(repo).unwrap_err();
-
-        assert!(error.to_string().contains("--forge github"));
-    }
-
-    #[test]
-    fn explicit_github_forge_accepts_enterprise_host() {
-        let mut update_args = default_args();
-        update_args.forge = Some(GitForgeKind::Github);
-        update_args.git_token = Some("token".to_string());
-        let repo = RepoUrl::new("https://git.company.example/owner/repo").unwrap();
-
-        core::assert_matches!(
-            update_args.git_forge(repo).unwrap(),
-            Some(GitForge::Github(_))
-        );
     }
 }
