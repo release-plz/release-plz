@@ -3,21 +3,20 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use chrono::NaiveDate;
-use clap::{
-    ValueEnum,
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
-};
+use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
 use git_cliff_core::config::Config as GitCliffConfig;
 use release_plz_core::{
-    ChangelogRequest, GitForge, GitHub, GitLab, Gitea, RepoUrl, fs_utils::to_utf8_path,
-    update_request::UpdateRequest,
+    ChangelogRequest, ForgeType, RepoUrl, fs_utils::to_utf8_path, update_request::UpdateRequest,
 };
 use secrecy::SecretString;
 
 use crate::{changelog_config, config::Config};
 
 use super::{
-    config_path::ConfigPath, manifest_command::ManifestCommand, repo_command::RepoCommand,
+    config_path::ConfigPath,
+    git_forge::{GitForgeKind, git_forge},
+    manifest_command::ManifestCommand,
+    repo_command::RepoCommand,
 };
 
 /// Update your project locally, without opening a PR.
@@ -109,22 +108,14 @@ pub struct Update {
     pub git_token: Option<String>,
 
     /// Kind of git host where your project is hosted.
-    #[arg(long, visible_alias = "backend", value_enum, default_value_t = GitForgeKind::Github)]
-    forge: GitForgeKind,
+    /// If not specified, release-plz infers it from the repository host. Specify it explicitly for
+    /// GitHub Enterprise Server, whose host can't be auto-detected.
+    #[arg(long, visible_alias = "backend", value_enum)]
+    forge: Option<GitForgeKind>,
     /// Maximum number of commits to analyze when the package hasn't been published yet.
     /// Default: 1000.
     #[arg(long)]
     max_analyze_commits: Option<u32>,
-}
-
-#[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GitForgeKind {
-    #[value(name = "github")]
-    Github,
-    #[value(name = "gitea")]
-    Gitea,
-    #[value(name = "gitlab")]
-    Gitlab,
 }
 
 impl RepoCommand for Update {
@@ -140,22 +131,23 @@ impl ManifestCommand for Update {
 }
 
 impl Update {
-    pub fn git_forge(&self, repo: RepoUrl) -> anyhow::Result<Option<GitForge>> {
-        let Some(token) = self.git_token.clone() else {
-            return Ok(None);
-        };
-        let token = SecretString::from(token);
-        Ok(Some(match self.forge {
-            GitForgeKind::Github => {
-                anyhow::ensure!(
-                    repo.is_on_github(),
-                    "Can't create PR: the repository is not hosted in GitHub. Please select a different forge."
-                );
-                GitForge::Github(GitHub::new(repo.owner, repo.name, token))
-            }
-            GitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo, token)?),
-            GitForgeKind::Gitlab => GitForge::Gitlab(GitLab::new(repo, token)?),
-        }))
+    /// Forge type used to render changelog PR links.
+    ///
+    /// Prefers the explicit `--forge` flag. When it's not provided, it falls
+    /// back to host-based inference so that Gitea/GitLab users keep getting
+    /// `/pulls` links without passing `--forge` (matching the behavior before
+    /// explicit forge selection existed). GitHub Enterprise Server hosts can't
+    /// be detected from the host, so they need an explicit `--forge github`.
+    fn changelog_forge_type(&self, repo_url: Option<&RepoUrl>) -> ForgeType {
+        match self.forge {
+            Some(kind) => kind.into(),
+            // `is_on_github()` matches `github.com`-style hosts. Any other host
+            // is assumed to use the `/pulls` path (Gitea and GitLab both do).
+            None => match repo_url {
+                Some(url) if !url.is_on_github() => ForgeType::Gitea,
+                _ => ForgeType::Github,
+            },
+        }
     }
 
     fn dependencies_update(&self, config: &Config) -> bool {
@@ -194,6 +186,8 @@ impl Update {
                 e
             ),
         }
+        let forge_type = self.changelog_forge_type(update.repo_url());
+        update = update.with_forge_type(forge_type);
 
         if let Some(registry_manifest_path) = &self.registry_manifest_path {
             let registry_manifest_path = to_utf8_path(registry_manifest_path)?;
@@ -213,7 +207,7 @@ impl Update {
                         .context("cannot parse release_date to y-m-d format")
                 })
                 .transpose()?;
-            let pr_link = update.repo_url().map(|url| url.git_pr_link());
+            let pr_link = update.repo_url().map(|url| url.git_pr_link_for(forge_type));
             let changelog_req = ChangelogRequest {
                 release_date,
                 changelog_config: Some(self.changelog_config(config, pr_link.as_deref())?),
@@ -230,8 +224,14 @@ impl Update {
             update = update.with_release_commits(release_commits)?;
         }
         if let Some(repo) = update.repo_url()
-            && let Some(git_client) = self.git_forge(repo.clone())?
+            && let Some(token) = self.git_token.clone()
         {
+            let git_client = git_forge(
+                repo.clone(),
+                SecretString::from(token),
+                self.forge,
+                "create PR",
+            )?;
             update = update.with_git_client(git_client);
         }
 
@@ -304,9 +304,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn input_generates_correct_release_request() {
-        let update_args = Update {
+    fn default_args() -> Update {
+        Update {
             manifest_path: None,
             registry_manifest_path: None,
             package: None,
@@ -318,10 +317,15 @@ mod tests {
             allow_dirty: false,
             repo_url: None,
             config: ConfigPath::default(),
-            forge: GitForgeKind::Github,
+            forge: None,
             git_token: None,
             max_analyze_commits: None,
-        };
+        }
+    }
+
+    #[test]
+    fn input_generates_correct_release_request() {
+        let update_args = default_args();
         let config = update_args.config.load().unwrap();
         let req = update_args
             .update_request(&config, fake_metadata())

@@ -29,8 +29,10 @@ To learn more, run `release-plz release --help`.
 
 ## Git Forges
 
-GitHub is the default release-plz forge. You can use the `--forge` flag to
-specify a different forge.
+GitHub is the default release-plz forge. Both github.com and self-hosted
+[GitHub Enterprise Server](https://docs.github.com/en/enterprise-server) are
+supported. For GitHub Enterprise Server, explicitly select GitHub with
+`--forge github`. Use the `--forge` flag to specify other forges as well.
 
 ### GitLab
 

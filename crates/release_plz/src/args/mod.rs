@@ -1,5 +1,6 @@
 mod config_path;
 mod generate_completions;
+mod git_forge;
 mod init;
 pub(crate) mod manifest_command;
 mod release;
