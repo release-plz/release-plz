@@ -184,7 +184,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     let username = context.gitea.user.username();
     let repo = context.gitea.repo;
     let remote_string = format!(
-        "owner: {username}, repo: {repo}, link: https://localhost:3000/{username}/{repo}\n\n",
+        "owner: {username}, repo: {repo}, link: https://localhost:3000/{username}/{repo}\n\n"
     );
     let package_string = format!(
         "== {repo} - [0.1.0](https://localhost:3000/{username}/{repo}/releases/tag/v0.1.0)\n\n"
