@@ -5,6 +5,8 @@ use git_url_parse::{GitUrl, types::provider::GenericProvider};
 use crate::ForgeType;
 
 const GITHUB_COM: &str = "github.com";
+const GITHUB_COM_SSH: &str = "ssh.github.com";
+const GITHUB_COM_WWW: &str = "www.github.com";
 
 #[derive(Debug, Clone)]
 pub struct RepoUrl {
@@ -90,7 +92,7 @@ impl RepoUrl {
     }
 
     pub fn github_api_url(&self) -> String {
-        if self.host == GITHUB_COM {
+        if self.is_github_dot_com_host() {
             return format!("https://api.{GITHUB_COM}/");
         }
 
@@ -98,7 +100,7 @@ impl RepoUrl {
     }
 
     pub fn github_graphql_url(&self) -> String {
-        if self.host == GITHUB_COM {
+        if self.is_github_dot_com_host() {
             return format!("https://api.{GITHUB_COM}/graphql");
         }
 
@@ -112,6 +114,13 @@ impl RepoUrl {
             None => self.host.clone(),
         };
         format!("{scheme}://{instance}")
+    }
+
+    fn is_github_dot_com_host(&self) -> bool {
+        matches!(
+            self.host.as_str(),
+            GITHUB_COM | GITHUB_COM_SSH | GITHUB_COM_WWW
+        )
     }
 
     fn scheme_ssh_as_https(&self) -> &str {
@@ -214,6 +223,18 @@ mod tests {
         let r = RepoUrl::new("http://github.com/owner/repo").unwrap();
         assert_eq!(r.github_api_url(), "https://api.github.com/");
         assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
+    }
+
+    #[test]
+    fn github_api_url_dotcom_aliases() {
+        for url in [
+            "ssh://git@ssh.github.com:443/owner/repo.git",
+            "https://www.github.com/owner/repo.git",
+        ] {
+            let r = RepoUrl::new(url).unwrap();
+            assert_eq!(r.github_api_url(), "https://api.github.com/");
+            assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
+        }
     }
 
     #[test]
