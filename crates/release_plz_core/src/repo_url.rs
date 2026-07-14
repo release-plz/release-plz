@@ -139,6 +139,15 @@ impl RepoUrl {
 }
 
 fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
+    // `git-url-parse` accepted Git protocol URLs without `//`. Keep supporting
+    // that form instead of interpreting `git` as the host of an SCP-style URL.
+    if let Some(path) = git_host_url.strip_prefix("git:")
+        && !path.starts_with("//")
+    {
+        let git_url = Url::parse(&format!("git://{path}"))?;
+        return repo_url_from_url(&git_url);
+    }
+
     match Url::parse(git_host_url) {
         Ok(git_url) if git_url.has_host() => repo_url_from_url(&git_url),
         _ => new_scp_url(git_host_url),
@@ -146,10 +155,19 @@ fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
 }
 
 fn new_scp_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
-    let separator = git_host_url
-        .find("]:")
-        .map_or_else(|| git_host_url.find(':'), |index| Some(index + 1))
-        .context("cannot determine host")?;
+    let first_colon = git_host_url.find(':');
+    let host_start = git_host_url
+        .find('@')
+        .filter(|&at| first_colon.is_none_or(|colon| at < colon))
+        .map_or(0, |at| at + 1);
+    let separator = if git_host_url[host_start..].starts_with('[') {
+        git_host_url[host_start..]
+            .find("]:")
+            .map(|index| host_start + index + 1)
+    } else {
+        first_colon
+    }
+    .context("cannot determine host")?;
     let (authority, path) = git_host_url.split_at(separator);
     let path = path
         .strip_prefix(':')
@@ -164,6 +182,10 @@ fn new_scp_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
 }
 
 fn repo_url_from_url(git_url: &Url) -> anyhow::Result<RepoUrl> {
+    if git_url.scheme() == "file" {
+        bail!("local file URLs do not identify a git provider");
+    }
+
     let host = git_url.host_str().context("cannot determine host")?;
     repo_url_from_parts(host, git_url.port(), git_url.scheme(), git_url.path())
 }
@@ -239,14 +261,80 @@ mod tests {
     }
 
     #[test]
-    fn scp_style_url_parts() {
-        let repo = RepoUrl::new("git@host.example.com:ab/cd/myproj.git").unwrap();
+    fn standard_git_url_parts() {
+        for (url, scheme, port, path) in [
+            (
+                "https://user:token@host.example.com:8443/ab/cd/myproj.git",
+                "https",
+                Some(8443),
+                "/ab/cd/myproj",
+            ),
+            (
+                "ssh://git@host.example.com:2222/ab/cd/myproj.git",
+                "ssh",
+                Some(2222),
+                "/ab/cd/myproj",
+            ),
+            (
+                "git://host.example.com:9418/ab/cd/myproj.git",
+                "git",
+                Some(9418),
+                "/ab/cd/myproj",
+            ),
+            (
+                "git@host.example.com:ab/cd/myproj.git",
+                "ssh",
+                None,
+                "ab/cd/myproj",
+            ),
+            (
+                "host.example.com:ab/cd/myproj.git",
+                "ssh",
+                None,
+                "ab/cd/myproj",
+            ),
+        ] {
+            let repo = RepoUrl::new(url).unwrap();
+            assert_eq!(repo.scheme, scheme, "{url}");
+            assert_eq!(repo.host, "host.example.com", "{url}");
+            assert_eq!(repo.port, port, "{url}");
+            assert_eq!(repo.owner, "ab", "{url}");
+            assert_eq!(repo.name, "cd/myproj", "{url}");
+            assert_eq!(repo.path, path, "{url}");
+        }
+    }
+
+    #[test]
+    fn scp_style_ipv6_url() {
+        let repo = RepoUrl::new("git@[2001:db8::1]:owner/repo.git").unwrap();
         assert_eq!(repo.scheme, "ssh");
+        assert_eq!(repo.host, "[2001:db8::1]");
+        assert_eq!(repo.owner, "owner");
+        assert_eq!(repo.name, "repo");
+        assert_eq!(repo.full_host(), "https://[2001:db8::1]/owner/repo");
+    }
+
+    #[test]
+    fn scp_style_path_can_contain_ipv6_separator_characters() {
+        let repo = RepoUrl::new("git@host.example.com:owner/repo]:archive.git").unwrap();
         assert_eq!(repo.host, "host.example.com");
-        assert_eq!(repo.port, None);
-        assert_eq!(repo.owner, "ab");
-        assert_eq!(repo.name, "cd/myproj");
-        assert_eq!(repo.path, "ab/cd/myproj");
+        assert_eq!(repo.owner, "owner");
+        assert_eq!(repo.name, "repo]:archive");
+    }
+
+    #[test]
+    fn short_git_protocol_url() {
+        let repo = RepoUrl::new("git:host.example.com/owner/repo.git").unwrap();
+        assert_eq!(repo.scheme, "git");
+        assert_eq!(repo.host, "host.example.com");
+        assert_eq!(repo.owner, "owner");
+        assert_eq!(repo.name, "repo");
+        assert_eq!(repo.path, "/owner/repo");
+    }
+
+    #[test]
+    fn file_url_does_not_identify_a_provider() {
+        assert!(RepoUrl::new("file://host.example.com/owner/repo.git").is_err());
     }
 
     #[test]
