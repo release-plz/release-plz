@@ -1,9 +1,5 @@
-use anyhow::Context;
+use anyhow::{Context, bail};
 use git_cmd::Repo;
-use git_url_parse::{
-    GitUrl,
-    types::provider::{GenericProvider, GitProvider as _},
-};
 use url::Url;
 
 use crate::ForgeType;
@@ -24,12 +20,7 @@ pub struct RepoUrl {
 
 impl RepoUrl {
     pub fn new(git_host_url: &str) -> anyhow::Result<Self> {
-        let git_host_url = if git_host_url.ends_with(".git") {
-            git_host_url.to_string()
-        } else {
-            format!("{git_host_url}.git")
-        };
-        new_url(&git_host_url).with_context(|| format!("cannot parse git url {git_host_url}"))
+        new_url(git_host_url).with_context(|| format!("cannot parse git url {git_host_url}"))
     }
 
     pub fn from_repo(repo: &Repo) -> Result<Self, anyhow::Error> {
@@ -148,60 +139,58 @@ impl RepoUrl {
 }
 
 fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
-    if git_host_url
-        .split_once("://")
-        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("git"))
-    {
-        return new_git_protocol_url(git_host_url);
+    match Url::parse(git_host_url) {
+        Ok(git_url) if git_url.has_host() => repo_url_from_url(&git_url),
+        _ => new_scp_url(git_host_url),
     }
-
-    let git_url = GitUrl::parse(git_host_url)?;
-    let provider: GenericProvider = git_url
-        .provider_info()
-        .context("cannot determine git provider")?;
-    let host = git_url.host().context("cannot determine host")?;
-    let scheme = git_url.scheme().context("cannot determine scheme")?;
-    Ok(repo_url_from_parts(
-        &provider,
-        host,
-        git_url.port(),
-        scheme,
-        git_url.path(),
-    ))
 }
 
-fn new_git_protocol_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
-    // `git-url-parse` 0.6 treats the authority as part of the path when a
-    // `git://` URL includes its standard port, so use `url` for this form.
-    // See https://github.com/tjtelan/git-url-parse-rs/issues/85
-    let git_url = Url::parse(git_host_url)?;
-    let provider =
-        GenericProvider::from_git_url(&git_url).context("cannot determine git provider")?;
+fn new_scp_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
+    let separator = git_host_url
+        .find("]:")
+        .map_or_else(|| git_host_url.find(':'), |index| Some(index + 1))
+        .context("cannot determine host")?;
+    let (authority, path) = git_host_url.split_at(separator);
+    let path = path
+        .strip_prefix(':')
+        .context("cannot determine repository path")?;
+    if authority.contains('/') || authority.is_empty() || path.is_empty() {
+        bail!("invalid SCP-style git URL");
+    }
+
+    let git_url = Url::parse(&format!("ssh://{authority}/{path}"))?;
     let host = git_url.host_str().context("cannot determine host")?;
-    Ok(repo_url_from_parts(
-        &provider,
-        host,
-        git_url.port(),
-        git_url.scheme(),
-        git_url.path(),
-    ))
+    repo_url_from_parts(host, git_url.port(), git_url.scheme(), path)
+}
+
+fn repo_url_from_url(git_url: &Url) -> anyhow::Result<RepoUrl> {
+    let host = git_url.host_str().context("cannot determine host")?;
+    repo_url_from_parts(host, git_url.port(), git_url.scheme(), git_url.path())
 }
 
 fn repo_url_from_parts(
-    provider: &GenericProvider,
     host: &str,
     port: Option<u16>,
     scheme: &str,
     path: &str,
-) -> RepoUrl {
-    RepoUrl {
-        owner: provider.owner().clone(),
-        name: provider.repo().clone(),
+) -> anyhow::Result<RepoUrl> {
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let provider_path = path.strip_prefix('/').unwrap_or(path);
+    let (owner, name) = provider_path
+        .split_once('/')
+        .context("cannot determine git provider")?;
+    if owner.is_empty() || name.is_empty() {
+        bail!("cannot determine git provider");
+    }
+
+    Ok(RepoUrl {
+        owner: owner.to_string(),
+        name: name.to_string(),
         host: host.to_string(),
         port,
         scheme: scheme.to_string(),
-        path: path.strip_suffix(".git").unwrap_or(path).to_string(),
-    }
+        path: path.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -247,6 +236,17 @@ mod tests {
             "https://host.example.com/api/v4/projects/ab%2Fcd%2Fmyproj",
             http_repo.gitlab_api_url()
         );
+    }
+
+    #[test]
+    fn scp_style_url_parts() {
+        let repo = RepoUrl::new("git@host.example.com:ab/cd/myproj.git").unwrap();
+        assert_eq!(repo.scheme, "ssh");
+        assert_eq!(repo.host, "host.example.com");
+        assert_eq!(repo.port, None);
+        assert_eq!(repo.owner, "ab");
+        assert_eq!(repo.name, "cd/myproj");
+        assert_eq!(repo.path, "ab/cd/myproj");
     }
 
     #[test]
