@@ -63,6 +63,8 @@ impl Updater<'_> {
             .await?;
         let version_groups = self.get_version_groups(&packages_diffs)?;
         debug!("version groups: {:?}", version_groups);
+        let version_groups_with_release_commit =
+            self.version_groups_with_release_commit(&packages_diffs);
 
         let mut packages_to_check_for_deps: Vec<&Package> = vec![];
         let mut packages_to_update = PackagesUpdate::default();
@@ -88,8 +90,14 @@ impl Updater<'_> {
 
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
+            let pkg_config = self.req.get_package_config(&p.name);
+            let group_has_release_commit = pkg_config
+                .version_group
+                .as_ref()
+                .is_some_and(|group| version_groups_with_release_commit.contains(group));
             if let Some(release_commits_regex) = self.req.release_commits()
                 && !diff.any_commit_matches(release_commits_regex)
+                && !group_has_release_commit
             {
                 info!("{}: no commit matches the `release_commits` regex", p.name);
                 // We need to update this package only if one of its dependencies has changed.
@@ -186,6 +194,24 @@ impl Updater<'_> {
         }
 
         Ok(version_groups)
+    }
+
+    fn version_groups_with_release_commit(
+        &self,
+        packages_diffs: &[(&Package, Diff)],
+    ) -> HashSet<String> {
+        let mut groups = HashSet::new();
+        if let Some(release_commits_regex) = self.req.release_commits() {
+            for (pkg, diff) in packages_diffs {
+                let pkg_config = self.req.get_package_config(&pkg.name);
+                if let Some(version_group) = pkg_config.version_group
+                    && diff.any_commit_matches(release_commits_regex)
+                {
+                    groups.insert(version_group);
+                }
+            }
+        }
+        groups
     }
 
     fn new_workspace_version(
