@@ -139,6 +139,13 @@ impl RepoUrl {
 }
 
 fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
+    if matches!(
+        git_host_url.as_bytes(),
+        [drive, b':', b'/' | b'\\', ..] if drive.is_ascii_alphabetic()
+    ) {
+        bail!("local file paths do not identify a git provider");
+    }
+
     // `git-url-parse` accepted Git protocol URLs without `//`. Keep supporting
     // that form instead of interpreting `git` as the host of an SCP-style URL.
     if let Some(path) = git_host_url.strip_prefix("git:")
@@ -196,6 +203,7 @@ fn repo_url_from_parts(
     scheme: &str,
     path: &str,
 ) -> anyhow::Result<RepoUrl> {
+    let path = path.strip_suffix('/').unwrap_or(path);
     let path = path.strip_suffix(".git").unwrap_or(path);
     let provider_path = path.strip_prefix('/').unwrap_or(path);
     let (owner, name) = provider_path
@@ -301,6 +309,32 @@ mod tests {
             assert_eq!(repo.owner, "ab", "{url}");
             assert_eq!(repo.name, "cd/myproj", "{url}");
             assert_eq!(repo.path, path, "{url}");
+        }
+    }
+
+    #[test]
+    fn trailing_slash_is_removed_from_repo_path() {
+        for (url, path) in [
+            ("https://host.example.com/owner/repo.git/", "/owner/repo"),
+            ("git@host.example.com:owner/repo.git/", "owner/repo"),
+        ] {
+            let repo = RepoUrl::new(url).unwrap();
+            assert_eq!(repo.owner, "owner", "{url}");
+            assert_eq!(repo.name, "repo", "{url}");
+            assert_eq!(repo.path, path, "{url}");
+            assert_eq!(repo.full_host(), "https://host.example.com/owner/repo");
+        }
+    }
+
+    #[test]
+    fn windows_file_paths_do_not_identify_a_provider() {
+        for path in [
+            r"C:\owner\repo.git",
+            r"C:\owner/repo.git",
+            "C:/owner/repo.git",
+            "C://base/owner/repo.git",
+        ] {
+            assert!(RepoUrl::new(path).is_err(), "{path}");
         }
     }
 
