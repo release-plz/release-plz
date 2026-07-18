@@ -146,15 +146,6 @@ fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
         bail!("local file paths do not identify a git provider");
     }
 
-    // `git-url-parse` accepted Git protocol URLs without `//`. Keep supporting
-    // that form instead of interpreting `git` as the host of an SCP-style URL.
-    if let Some(path) = git_host_url.strip_prefix("git:")
-        && !path.starts_with("//")
-    {
-        let git_url = Url::parse(&format!("git://{path}"))?;
-        return repo_url_from_url(&git_url);
-    }
-
     match Url::parse(git_host_url) {
         Ok(git_url) if git_url.has_host() => repo_url_from_url(&git_url),
         _ => new_scp_url(git_host_url),
@@ -354,16 +345,6 @@ mod tests {
         assert_eq!(repo.host, "host.example.com");
         assert_eq!(repo.owner, "owner");
         assert_eq!(repo.name, "repo]:archive");
-    }
-
-    #[test]
-    fn short_git_protocol_url() {
-        let repo = RepoUrl::new("git:host.example.com/owner/repo.git").unwrap();
-        assert_eq!(repo.scheme, "git");
-        assert_eq!(repo.host, "host.example.com");
-        assert_eq!(repo.owner, "owner");
-        assert_eq!(repo.name, "repo");
-        assert_eq!(repo.path, "/owner/repo");
     }
 
     #[test]
