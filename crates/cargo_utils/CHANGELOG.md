@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.80](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.79...cargo_utils-v0.1.80) - 2026-07-13
+
+### Fixed
+
+- fix clippy lint of rust 1.97 ([#2932](https://github.com/release-plz/release-plz/pull/2932))
+
 ## [0.1.79](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.78...cargo_utils-v0.1.79) - 2026-06-09
 
 ### Other
