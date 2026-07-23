@@ -9,7 +9,7 @@ edition = "2024"
 [workspace.dependencies]
 anyhow = "1.0.99"
 assert_cmd = "2.0.17"
-base64 = "0.22.1"
+base64 = "0.23.0"
 camino = "1.1.12"
 cargo_metadata = "0.23.0"
 cargo = { version = "0.98.0" }
