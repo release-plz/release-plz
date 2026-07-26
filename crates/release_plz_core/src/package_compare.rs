@@ -60,6 +60,7 @@ pub fn are_packages_equal(
             && *file != "Cargo.toml.orig.orig"
             && *file != ".cargo_vcs_info.json"
             && *file != "Cargo.lock"
+            && *file != ".cargo-ok"
     });
 
     if !local_files.clone().eq(registry_files) {
