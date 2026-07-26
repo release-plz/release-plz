@@ -772,7 +772,12 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
         .success();
     context.push_all_changes("chore: update Cargo.lock");
 
-    context.run_release_pr().success();
+    let debug_outcome = context.run_release_pr();
+    eprintln!(
+        "DEBUG2130 STDERR:\n{}",
+        String::from_utf8_lossy(&debug_outcome.get_output().stderr)
+    );
+    debug_outcome.success();
     let today = today();
 
     let opened_prs = context.opened_release_prs().await;
