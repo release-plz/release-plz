@@ -932,18 +932,11 @@ async fn git_only_update_handles_workspace_path_dependencies() {
     ])
     .await;
 
-    for package in ["mylib-a", "mylib-b"] {
-        let manifest_path = context.package_path(package).join("Cargo.toml");
-        let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
-        manifest.data["package"]["publish"] = false.into();
-        manifest.write().unwrap();
-    }
-    context.push_all_changes("chore: make internal libraries unpublished");
-
     let config = r#"
 [workspace]
 git_only = true
 publish = false
+git_tag_name = "v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
