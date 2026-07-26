@@ -281,7 +281,7 @@ mod tests {
     /// should use the fast, disk-listing path when `Cargo.toml.orig` is
     /// present, instead of shelling out to `cargo package --list`.
     /// Regression test for
-    /// https://github.com/release-plz/release-plz/issues/2130
+    /// <https://github.com/release-plz/release-plz/issues/2130>
     #[test]
     fn get_cargo_package_files_uses_disk_listing_when_cargo_toml_orig_present() {
         let dir = tempfile::tempdir().expect("cannot create tempdir");
