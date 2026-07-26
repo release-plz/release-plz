@@ -924,12 +924,21 @@ publish = false
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_update_handles_workspace_path_dependencies() {
     let context = TestContext::new_workspace_with_packages(&[
-        TestPackage::new("mylib").with_type(PackageType::Lib),
+        TestPackage::new("mylib-a").with_type(PackageType::Lib),
+        TestPackage::new("mylib-b").with_type(PackageType::Lib),
         TestPackage::new("mybin")
             .with_type(PackageType::Bin)
-            .with_path_dependencies(vec!["../mylib"]),
+            .with_path_dependencies(vec!["../mylib-a", "../mylib-b"]),
     ])
     .await;
+
+    for package in ["mylib-a", "mylib-b"] {
+        let manifest_path = context.package_path(package).join("Cargo.toml");
+        let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+        manifest.data["package"]["publish"] = false.into();
+        manifest.write().unwrap();
+    }
+    context.push_all_changes("chore: make internal libraries unpublished");
 
     let config = r#"
 [workspace]
@@ -940,7 +949,11 @@ publish = false
 
     context
         .repo
-        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .tag("mylib-a-v0.1.0", "Release mylib-a v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mylib-b-v0.1.0", "Release mylib-b v0.1.0")
         .unwrap();
     context
         .repo
@@ -951,7 +964,17 @@ publish = false
     fs_err::write(&readme, "# Updated README").unwrap();
     context.push_all_changes("fix: update mybin readme");
 
-    context.run_release_pr().success();
+    let outcome = context
+        .run_release_pr_with_log("DEBUG,hyper=INFO")
+        .success();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert_eq!(
+        stderr
+            .matches("Run `cargo package --allow-dirty --workspace`")
+            .count(),
+        1,
+        "packages at one historical commit should share workspace reconstruction\n{stderr}"
+    );
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
