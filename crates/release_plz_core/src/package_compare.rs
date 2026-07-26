@@ -364,7 +364,8 @@ mod tests {
         // registry extraction, with content that would trip up the comparison
         // if it weren't filtered out.
         fs::create_dir_all(package.join(".git/objects")).expect("cannot create .git dir");
-        fs::write(package.join(".git/HEAD"), "ref: refs/heads/main").expect("cannot write .git/HEAD");
+        fs::write(package.join(".git/HEAD"), "ref: refs/heads/main")
+            .expect("cannot write .git/HEAD");
         fs::write(
             package.join(".git/objects/pack-dummy"),
             "binary-ish content",
