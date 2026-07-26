@@ -339,4 +339,45 @@ mod tests {
         let files = get_cargo_package_files(package).expect("should use disk listing");
         assert_eq!(files, vec![Utf8PathBuf::from("Cargo.toml.orig.orig")]);
     }
+
+    /// Some registries (e.g. this environment's Gitea cargo registry) extract
+    /// packages via `git clone`, leaving a full `.git` directory inside the
+    /// extracted package. `cargo package --list` always ignores `.git`, so the
+    /// disk-listing fast path must ignore it too, or every file inside it would
+    /// make a registry-extracted package look different from the local one for
+    /// reasons unrelated to the actual packaged contents.
+    /// Regression test for <https://github.com/release-plz/release-plz/issues/2130>.
+    #[test]
+    fn get_cargo_package_files_ignores_nested_git_dir() {
+        let dir = tempfile::tempdir().expect("cannot create tempdir");
+        let package = Utf8Path::from_path(dir.path()).expect("non-utf8 tempdir path");
+
+        fs::write(
+            package.join("Cargo.toml.orig"),
+            "this is not a real manifest",
+        )
+        .expect("cannot write Cargo.toml.orig");
+        fs::create_dir(package.join("src")).expect("cannot create src dir");
+        fs::write(package.join("src/lib.rs"), "").expect("cannot write lib.rs");
+
+        // Simulate a nested `.git` directory left behind by a git-clone-based
+        // registry extraction, with content that would trip up the comparison
+        // if it weren't filtered out.
+        fs::create_dir_all(package.join(".git/objects")).expect("cannot create .git dir");
+        fs::write(package.join(".git/HEAD"), "ref: refs/heads/main")
+            .expect("cannot write .git/HEAD");
+        fs::write(package.join(".git/objects/pack-dummy"), "binary-ish content")
+            .expect("cannot write .git/objects/pack-dummy");
+
+        let mut files = get_cargo_package_files(package).expect("should use disk listing");
+        files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        assert_eq!(
+            files,
+            vec![
+                Utf8PathBuf::from("Cargo.toml.orig"),
+                Utf8PathBuf::from("src/lib.rs")
+            ]
+        );
+    }
 }
