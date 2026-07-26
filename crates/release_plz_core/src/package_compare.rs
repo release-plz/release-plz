@@ -294,8 +294,11 @@ mod tests {
         // returns exactly the files we wrote proves the disk-listing fast
         // path was taken -- without this needing to be a real cargo project
         // or to live under target/package.
-        fs::write(package.join("Cargo.toml.orig"), "this is not a real manifest")
-            .expect("cannot write Cargo.toml.orig");
+        fs::write(
+            package.join("Cargo.toml.orig"),
+            "this is not a real manifest",
+        )
+        .expect("cannot write Cargo.toml.orig");
         fs::create_dir(package.join("src")).expect("cannot create src dir");
         fs::write(package.join("src/lib.rs"), "").expect("cannot write lib.rs");
 
@@ -304,7 +307,10 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![Utf8PathBuf::from("Cargo.toml.orig"), Utf8PathBuf::from("src/lib.rs")]
+            vec![
+                Utf8PathBuf::from("Cargo.toml.orig"),
+                Utf8PathBuf::from("src/lib.rs")
+            ]
         );
     }
 
