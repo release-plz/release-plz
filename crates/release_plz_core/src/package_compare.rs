@@ -66,8 +66,7 @@ pub fn are_packages_equal(
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
         eprintln!(
-            "DEBUG2130: file list differs. local={:?} registry={:?}",
-            local_package_files, registry_package_files
+            "DEBUG2130: file list differs. local={local_package_files:?} registry={registry_package_files:?}"
         );
         return Ok(false);
     }
