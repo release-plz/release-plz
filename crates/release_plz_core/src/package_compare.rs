@@ -211,7 +211,9 @@ pub fn is_readme_updated(
         Some(local_package_readme_path) => {
             let registry_package_readme_path = registry_package_path.join("README.md");
             if !registry_package_readme_path.exists() {
-                eprintln!("DEBUG2130: registry readme missing at {registry_package_readme_path:?}, returning true");
+                eprintln!(
+                    "DEBUG2130: registry readme missing at {registry_package_readme_path:?}, returning true"
+                );
                 return Ok(true);
             }
             match are_files_equal(&local_package_readme_path, &registry_package_readme_path) {
