@@ -1655,3 +1655,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         )
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_whole_version_group_with_matching_release_commits() {
+    let foo = "foo";
+    let bar = "bar";
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(bar)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{foo}")]),
+        TestPackage::new(foo).with_type(PackageType::Lib),
+    ])
+    .await;
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    let config = format!(
+        r#"
+[workspace]
+release_commits = "^feat"
+
+[[package]]
+name = "{foo}"
+version_group = "a"
+
+[[package]]
+name = "{bar}"
+version_group = "a"
+"#
+    );
+    context.write_release_plz_toml(&config);
+
+    let bar_file = context.package_path(bar).join("src").join("aa.rs");
+    fs_err::write(&bar_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("feat: update bar");
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let pr_body = opened_prs[0].body.as_ref().unwrap();
+    assert!(
+        pr_body.contains(&format!("`{foo}`: 0.1.0 -> 0.1.1")),
+        "expected `{foo}` to be bumped alongside its version group"
+    );
+    assert!(
+        pr_body.contains(&format!("`{bar}`: 0.1.0 -> 0.1.1")),
+        "expected `{bar}` to be bumped"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_does_not_release_version_group_without_matching_release_commits() {
+    let foo = "foo";
+    let bar = "bar";
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(bar)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{foo}")]),
+        TestPackage::new(foo).with_type(PackageType::Lib),
+    ])
+    .await;
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    let config = format!(
+        r#"
+[workspace]
+release_commits = "^feat"
+
+[[package]]
+name = "{foo}"
+version_group = "a"
+
+[[package]]
+name = "{bar}"
+version_group = "a"
+"#
+    );
+    context.write_release_plz_toml(&config);
+
+    let bar_file = context.package_path(bar).join("src").join("aa.rs");
+    fs_err::write(&bar_file, "pub fn bar() {}").unwrap();
+    context.push_all_changes("chore: update bar");
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert!(
+        opened_prs.is_empty(),
+        "expected no release PR since no commit matches `release_commits`"
+    );
+}
