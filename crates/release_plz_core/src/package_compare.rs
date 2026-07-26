@@ -364,10 +364,12 @@ mod tests {
         // registry extraction, with content that would trip up the comparison
         // if it weren't filtered out.
         fs::create_dir_all(package.join(".git/objects")).expect("cannot create .git dir");
-        fs::write(package.join(".git/HEAD"), "ref: refs/heads/main")
-            .expect("cannot write .git/HEAD");
-        fs::write(package.join(".git/objects/pack-dummy"), "binary-ish content")
-            .expect("cannot write .git/objects/pack-dummy");
+        fs::write(package.join(".git/HEAD"), "ref: refs/heads/main").expect("cannot write .git/HEAD");
+        fs::write(
+            package.join(".git/objects/pack-dummy"),
+            "binary-ish content",
+        )
+        .expect("cannot write .git/objects/pack-dummy");
 
         let mut files = get_cargo_package_files(package).expect("should use disk listing");
         files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
