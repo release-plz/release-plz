@@ -206,10 +206,12 @@ pub fn is_readme_updated(
     };
 
     let local_package_readme_path = local_readme_override(&package, local_package_path);
+    eprintln!("DEBUG2130: local_package_readme_path={local_package_readme_path:?}");
     let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
             let registry_package_readme_path = registry_package_path.join("README.md");
             if !registry_package_readme_path.exists() {
+                eprintln!("DEBUG2130: registry readme missing at {registry_package_readme_path:?}, returning true");
                 return Ok(true);
             }
             match are_files_equal(&local_package_readme_path, &registry_package_readme_path) {
