@@ -980,7 +980,7 @@ git_tag_name = "v{{ version }}"
 
 <blockquote>
 
-## [0.1.1](https://localhost:3000/{username}/{repo}/compare/mybin-v0.1.0...mybin-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/v0.1.0...v0.1.1) - {today}
 
 ### Fixed
 
