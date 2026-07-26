@@ -271,3 +271,61 @@ fn read_package_metadata(
         .context("cannot find package in Cargo.toml")?;
     Ok(package)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Registry-extracted packages (which don't live under `target/package`)
+    /// should use the fast, disk-listing path when `Cargo.toml.orig` is
+    /// present, instead of shelling out to `cargo package --list`.
+    /// Regression test for
+    /// https://github.com/release-plz/release-plz/issues/2130
+    #[test]
+    fn get_cargo_package_files_uses_disk_listing_when_cargo_toml_orig_present() {
+        let dir = tempfile::tempdir().expect("cannot create tempdir");
+        let package = Utf8Path::from_path(dir.path()).expect("non-utf8 tempdir path");
+
+        // Deliberately do NOT write a valid Cargo.toml manifest. If
+        // `get_cargo_package_files` fell through to invoking
+        // `cargo package --list`, it would fail here since there's no valid
+        // cargo manifest in this directory. The fact that it succeeds and
+        // returns exactly the files we wrote proves the disk-listing fast
+        // path was taken -- without this needing to be a real cargo project
+        // or to live under target/package.
+        fs::write(package.join("Cargo.toml.orig"), "this is not a real manifest")
+            .expect("cannot write Cargo.toml.orig");
+        fs::create_dir(package.join("src")).expect("cannot create src dir");
+        fs::write(package.join("src/lib.rs"), "").expect("cannot write lib.rs");
+
+        let mut files = get_cargo_package_files(package).expect("should use disk listing");
+        files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        assert_eq!(
+            files,
+            vec![
+                Utf8PathBuf::from("Cargo.toml.orig"),
+                Utf8PathBuf::from("src/lib.rs"),
+            ]
+        );
+    }
+
+    /// Same as above, but for the `Cargo.toml.orig.orig` marker used while
+    /// `are_packages_equal` has temporarily renamed the registry package's
+    /// `Cargo.toml.orig` out of the way.
+    #[test]
+    fn get_cargo_package_files_uses_disk_listing_when_cargo_toml_orig_orig_present() {
+        let dir = tempfile::tempdir().expect("cannot create tempdir");
+        let package = Utf8Path::from_path(dir.path()).expect("non-utf8 tempdir path");
+
+        fs::write(
+            package.join("Cargo.toml.orig.orig"),
+            "this is not a real manifest",
+        )
+        .expect("cannot write Cargo.toml.orig.orig");
+
+        let files = get_cargo_package_files(package).expect("should use disk listing");
+        assert_eq!(files, vec![Utf8PathBuf::from("Cargo.toml.orig.orig")]);
+    }
+}
