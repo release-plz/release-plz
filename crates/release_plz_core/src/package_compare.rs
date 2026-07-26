@@ -363,14 +363,12 @@ mod tests {
         // Simulate a nested `.git` directory left behind by a git-clone-based
         // registry extraction, with content that would trip up the comparison
         // if it weren't filtered out.
-        fs::create_dir_all(package.join(".git/objects")).expect("cannot create .git dir");
-        fs::write(package.join(".git/HEAD"), "ref: refs/heads/main")
-            .expect("cannot write .git/HEAD");
-        fs::write(
-            package.join(".git/objects/pack-dummy"),
-            "binary-ish content",
-        )
-        .expect("cannot write .git/objects/pack-dummy");
+        let git_objects = package.join(".git/objects");
+        let git_head = package.join(".git/HEAD");
+        let pack_file = package.join(".git/objects/pack-dummy");
+        fs::create_dir_all(&git_objects).expect("cannot create .git dir");
+        fs::write(&git_head, "ref: refs/heads/main").expect("cannot write .git/HEAD");
+        fs::write(&pack_file, "binary-ish content").expect("cannot write pack file");
 
         let mut files = get_cargo_package_files(package).expect("should use disk listing");
         files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
