@@ -27,7 +27,7 @@ pub fn are_packages_equal(
         local_package, registry_package
     );
     if !are_cargo_toml_equal(local_package, registry_package) {
-        debug!("Cargo.toml is different");
+        eprintln!("DEBUG2130: Cargo.toml is different");
         return Ok(false);
     }
 
@@ -65,7 +65,10 @@ pub fn are_packages_equal(
 
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
-        debug!("cargo package list is different");
+        eprintln!(
+            "DEBUG2130: file list differs. local={:?} registry={:?}",
+            local_package_files, registry_package_files
+        );
         return Ok(false);
     }
 
@@ -91,6 +94,7 @@ pub fn are_packages_equal(
 
         let registry_path = registry_package.join(relative_path);
         if !are_files_equal(&local_path, &registry_path).context("files are not equal")? {
+            eprintln!("DEBUG2130: file content differs for {relative_path:?}");
             return Ok(false);
         }
     }
