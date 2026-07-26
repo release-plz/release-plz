@@ -304,10 +304,7 @@ mod tests {
 
         assert_eq!(
             files,
-            vec![
-                Utf8PathBuf::from("Cargo.toml.orig"),
-                Utf8PathBuf::from("src/lib.rs"),
-            ]
+            vec![Utf8PathBuf::from("Cargo.toml.orig"), Utf8PathBuf::from("src/lib.rs")]
         );
     }
 
