@@ -949,15 +949,7 @@ publish = false
 
     context
         .repo
-        .tag("mylib-a-v0.1.0", "Release mylib-a v0.1.0")
-        .unwrap();
-    context
-        .repo
-        .tag("mylib-b-v0.1.0", "Release mylib-b v0.1.0")
-        .unwrap();
-    context
-        .repo
-        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .tag("v0.1.0", "Release workspace v0.1.0")
         .unwrap();
 
     let readme = context.package_path("mybin").join("README.md");
