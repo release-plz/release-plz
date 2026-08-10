@@ -35,19 +35,22 @@ impl GitRepo {
             .prefix(&prefix)
             .tempdir()
             .context("create temporary directory for worktree")?;
+        let random_suffix = temp_dir
+            .path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("get temporary worktree directory name")?;
+        let unique_name = format!("{name}-{random_suffix}");
 
         // Append "worktree" to get a path that doesn't exist yet (git worktree will create it)
         let temp_base = to_utf8_path(temp_dir.path())?;
         let path = temp_base.join("worktree");
         let path_std = path.as_std_path();
 
-        // Clean up existing worktree if it exists
-        self.cleanup_worktree_if_exists(name)?;
-
-        debug!("Creating worktree called {name} at {path}");
+        debug!("Creating worktree called {unique_name} at {path}");
         let wt = self
             .repo
-            .worktree(name, path_std, None)
+            .worktree(&unique_name, path_std, None)
             .with_context(|| format!("create worktree at {path}"))?;
         Ok(GitWorkTree {
             worktree: wt,
