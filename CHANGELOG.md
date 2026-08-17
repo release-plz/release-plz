@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.161](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.160...release-plz-v0.3.161) - 2026-08-17
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.3.160](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.159...release-plz-v0.3.160) - 2026-07-13
 
 ### Added
