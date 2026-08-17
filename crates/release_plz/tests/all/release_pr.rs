@@ -831,6 +831,60 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
     assert_eq!(opened_prs.len(), 0);
 }
 
+/// When the version changes while a release PR is open, the commit of the release branch
+/// must be updated, too — not just the PR title.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_commit_message_when_version_changes() {
+    let context = TestContext::new().await;
+    // Make the version bump of a 0.x package deterministic, without cargo-semver-checks.
+    let config = r"
+    [workspace]
+    features_always_increment_minor = true
+    ";
+    context.write_release_plz_toml(config);
+
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+    let write_lib_file = |content: &str, commit_message: &str| {
+        fs_err::write(&lib_file, content).unwrap();
+        context.push_all_changes(commit_message);
+    };
+
+    // Release v0.1.0, so that the following runs compare against a released version.
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    write_lib_file("pub fn foo() {}", "fix: add lib");
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    let pr_number = opened_prs[0].number;
+
+    // A feature is merged while the release PR is open: the version becomes 0.2.0.
+    write_lib_file("pub fn bar() {}", "feat: edit lib");
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    let updated_pr = &opened_prs[0];
+    // The PR is updated, not closed and reopened.
+    assert_eq!(updated_pr.number, pr_number);
+    assert_eq!(updated_pr.title, "chore: release v0.2.0");
+
+    // The commit of the release branch contains the new version, like the PR title.
+    context
+        .repo
+        .git(&["fetch", "origin", updated_pr.branch()])
+        .unwrap();
+    let commit_message = context
+        .repo
+        .git(&["log", "-1", "--format=%s", "FETCH_HEAD"])
+        .unwrap();
+    assert_eq!(commit_message.trim(), "chore: release v0.2.0");
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_adds_labels_to_release_pr() {

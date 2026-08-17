@@ -335,10 +335,13 @@ async fn update_pr(
             repository.original_branch()
         )
     })?;
+    // The commit message comes from the new PR, while the branch comes from the opened one:
+    // `opened_pr.title` still contains the version calculated by the previous release-plz run,
+    // which we are about to replace below.
     if git_client.forge == ForgeType::Github {
-        github_force_push(git_client, opened_pr, repository).await?;
+        github_force_push(git_client, opened_pr.branch(), &new_pr.title, repository).await?;
     } else {
-        force_push(opened_pr, repository)?;
+        force_push(opened_pr.branch(), &new_pr.title, repository)?;
     }
     let pr_edit = {
         let mut pr_edit = PrEdit::new();
@@ -417,18 +420,19 @@ fn reset_branch(
     Ok(())
 }
 
-fn force_push(pr: &GitPr, repository: &Repo) -> anyhow::Result<()> {
-    add_changes_and_commit(repository, &pr.title)?;
-    repository.force_push(pr.branch())?;
+fn force_push(branch: &str, commit_message: &str, repository: &Repo) -> anyhow::Result<()> {
+    add_changes_and_commit(repository, commit_message)?;
+    repository.force_push(branch)?;
     Ok(())
 }
 
 async fn github_force_push(
     client: &GitClient,
-    pr: &GitPr,
+    branch: &str,
+    commit_message: &str,
     repository: &Repo,
 ) -> anyhow::Result<()> {
-    let tmp_release_branch = format!("{}-tmp-{}", pr.branch(), rand::random::<u32>());
+    let tmp_release_branch = format!("{branch}-tmp-{}", rand::random::<u32>());
     repository.checkout_new_branch(&tmp_release_branch)?;
 
     // Push the "Verified" commit in the temporary branch using
@@ -439,11 +443,11 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let sha =
-        github_create_release_branch(client, repository, &tmp_release_branch, &pr.title).await?;
+    let sha = github_create_release_branch(client, repository, &tmp_release_branch, commit_message)
+        .await?;
 
     let force_push_result =
-        execute_github_force_push(client, pr, repository, &tmp_release_branch, &sha).await;
+        execute_github_force_push(client, branch, repository, &tmp_release_branch, &sha).await;
     // Delete the temporary branch if it was created. Even if the push failed.
     if let Err(e) = client.delete_branch(&tmp_release_branch).await {
         tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
@@ -454,7 +458,7 @@ async fn github_force_push(
 
 async fn execute_github_force_push(
     client: &GitClient,
-    pr: &GitPr,
+    branch: &str,
     repository: &Repo,
     tmp_release_branch: &str,
     sha: &str,
@@ -463,7 +467,7 @@ async fn execute_github_force_push(
 
     // Rewrite the PR branch so that it's the same as the temporary branch.
     client
-        .patch_github_ref(&format!("heads/{}", pr.branch()), sha)
+        .patch_github_ref(&format!("heads/{branch}"), sha)
         .await
         .context("failed to force push PR branch")?;
 
