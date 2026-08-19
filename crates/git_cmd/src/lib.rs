@@ -218,6 +218,52 @@ impl Repo {
         Ok(())
     }
 
+    /// Hashes of the commits that modified `paths`, from newest (`HEAD`) to oldest,
+    /// excluding any commit reachable from one of `boundary_commits` (typically the git tag
+    /// and/or the commit at which the last version was published).
+    ///
+    /// Bounding the walk by the last release — rather than walking commit by commit and
+    /// stopping at the first already-released commit — matters in the presence of merge
+    /// commits: a commit-by-commit walk can descend into a branch that forked *before* the
+    /// last release and rejoin already-released history, stopping early and dropping the
+    /// commits that landed on the main line after the release (release-plz#2494).
+    ///
+    /// `head` must be the branch tip the changelog is being computed for (not necessarily the
+    /// currently checked-out commit). Only boundary commits that are ancestors of `head` are
+    /// used: a commit that isn't reachable from `head` (a newer release living on another
+    /// branch, a hash missing from a shallow clone, or simply the tag of a package unchanged
+    /// since before `head`) isn't a point `head` was released at, and excluding it would
+    /// wrongly drop the commits it shares with `head`. At most `max_commits` are returned.
+    pub fn commits_at_paths_since(
+        &self,
+        head: &str,
+        boundary_commits: &[&str],
+        paths: &[&Path],
+        max_commits: u32,
+    ) -> anyhow::Result<Vec<String>> {
+        let excludes: Vec<String> = boundary_commits
+            .iter()
+            .filter(|commit| self.is_ancestor(commit, head))
+            .map(|commit| format!("^{commit}"))
+            .collect();
+        // `u32::MAX` means "no limit"; git's `--max-count` doesn't accept a value that large.
+        let max_commits = (max_commits != u32::MAX).then(|| max_commits.to_string());
+
+        let mut git_args = vec!["log", "--format=%H"];
+        if let Some(max_commits) = &max_commits {
+            git_args.push("--max-count");
+            git_args.push(max_commits.as_str());
+        }
+        git_args.push(head);
+        git_args.extend(excludes.iter().map(String::as_str));
+        git_args.push("--");
+        for p in paths {
+            git_args.push(p.to_str().expect("invalid path"));
+        }
+        let commit_list = self.git(&git_args)?;
+        Ok(commit_list.lines().map(|c| c.to_string()).collect())
+    }
+
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         self.git(&["checkout", object])
@@ -478,6 +524,145 @@ mod tests {
         }
         repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
         assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
+    }
+
+    /// A feature branch that forks *before* a release and merges *after* it must not hide
+    /// the commits that landed on the main line between the release and the merge.
+    /// Regression test for release-plz#2494.
+    #[test]
+    fn commits_at_paths_since_keeps_main_line_after_a_straddling_merge() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let pkg = repository_dir.as_ref().join("pkg");
+        fs_err::create_dir_all(&pkg).unwrap();
+        let lib = pkg.join("lib.rs");
+
+        // Base commit. The feature branch forks from here, i.e. before the release.
+        fs_err::write(&lib, b"0").unwrap();
+        repo.add_all_and_commit("base").unwrap();
+        let base = repo.current_commit_hash().unwrap();
+
+        // Release commit on the main line, tagged: this is the last released version.
+        fs_err::write(&lib, b"1").unwrap();
+        repo.add_all_and_commit("release").unwrap();
+        repo.git(&["tag", "v1"]).unwrap();
+        let release = repo.current_commit_hash().unwrap();
+
+        // Two commits that land on the main line after the release. These are the commits
+        // the old commit-by-commit walk dropped.
+        fs_err::write(&lib, b"2").unwrap();
+        repo.add_all_and_commit("main-after-release-1").unwrap();
+        let main_1 = repo.current_commit_hash().unwrap();
+        fs_err::write(pkg.join("extra.rs"), b"x").unwrap();
+        repo.add_all_and_commit("main-after-release-2").unwrap();
+        let main_2 = repo.current_commit_hash().unwrap();
+
+        // A feature branch forked from `base` (before the release) and merged after it.
+        repo.git(&["checkout", "-b", "feature", &base]).unwrap();
+        fs_err::write(pkg.join("feature.rs"), b"f").unwrap();
+        repo.add_all_and_commit("feature").unwrap();
+        let feature = repo.current_commit_hash().unwrap();
+        repo.checkout(&main_2).unwrap();
+        repo.git(&["merge", "--no-ff", "feature", "-m", "merge feature"])
+            .unwrap();
+
+        let commits = repo
+            .commits_at_paths_since("HEAD", &[&release], &[pkg.as_ref()], u32::MAX)
+            .unwrap();
+
+        // All three commits made after the release are collected, regardless of the branch
+        // they landed on.
+        for expected in [&main_1, &main_2, &feature] {
+            assert!(
+                commits.contains(expected),
+                "expected commit {expected} to be collected, got {commits:?}"
+            );
+        }
+        // Already-released commits are excluded.
+        for released in [&base, &release] {
+            assert!(
+                !commits.contains(released),
+                "released commit {released} should not be collected, got {commits:?}"
+            );
+        }
+    }
+
+    /// A boundary that is not an ancestor of `HEAD` (a newer release published on another
+    /// branch, or a hash missing from a shallow clone) is ignored, so the commits it shares
+    /// with `HEAD` are not dropped.
+    #[test]
+    fn commits_at_paths_since_ignores_non_ancestor_boundaries() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let file = repository_dir.as_ref().join("file.rs");
+
+        fs_err::write(&file, b"0").unwrap();
+        repo.add_all_and_commit("first").unwrap();
+        let first = repo.current_commit_hash().unwrap();
+
+        // A commit on a divergent branch: it shares `first` with the main line but is not an
+        // ancestor of it. Excluding it would wrongly drop `first`.
+        repo.git(&["checkout", "-b", "other"]).unwrap();
+        fs_err::write(repository_dir.as_ref().join("other.rs"), b"x").unwrap();
+        repo.add_all_and_commit("other").unwrap();
+        let other = repo.current_commit_hash().unwrap();
+
+        // Back on the main line, advancing HEAD past the fork point.
+        repo.checkout(&first).unwrap();
+        fs_err::write(&file, b"1").unwrap();
+        repo.add_all_and_commit("second").unwrap();
+        let second = repo.current_commit_hash().unwrap();
+
+        let bogus = "0000000000000000000000000000000000000000";
+        for boundary in [other.as_str(), bogus] {
+            let commits = repo
+                .commits_at_paths_since("HEAD", &[boundary], &[file.as_ref()], u32::MAX)
+                .unwrap();
+            assert!(
+                commits.contains(&first) && commits.contains(&second),
+                "boundary {boundary} should have been ignored, got {commits:?}"
+            );
+        }
+    }
+
+    /// The walk is bounded by the `head` argument, not by whatever commit is currently checked
+    /// out. A package untouched since before the release must not dump its entire history just
+    /// because the caller moved `HEAD` to an old commit (the release boundary is still an
+    /// ancestor of `head`, so it applies).
+    #[test]
+    fn commits_at_paths_since_bounds_by_head_arg_not_checked_out_commit() {
+        test_logs::init();
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let stable = repository_dir.as_ref().join("stable.rs");
+        let other = repository_dir.as_ref().join("other.rs");
+
+        // `stable.rs` is last touched here, before the release.
+        fs_err::write(&stable, b"0").unwrap();
+        repo.add_all_and_commit("touch stable").unwrap();
+        let stable_commit = repo.current_commit_hash().unwrap();
+
+        // The release, then further history that does not touch `stable.rs`.
+        fs_err::write(&other, b"a").unwrap();
+        repo.add_all_and_commit("release").unwrap();
+        let release = repo.current_commit_hash().unwrap();
+        fs_err::write(&other, b"b").unwrap();
+        repo.add_all_and_commit("after release").unwrap();
+        let head = repo.current_commit_hash().unwrap();
+
+        // Simulate the caller checking out the last commit that touched `stable.rs` (older than
+        // the release) before computing the diff.
+        repo.checkout(&stable_commit).unwrap();
+
+        let commits = repo
+            .commits_at_paths_since(&head, &[&release], &[stable.as_ref()], u32::MAX)
+            .unwrap();
+        assert!(
+            commits.is_empty(),
+            "package unchanged since before the release should yield no commits, got {commits:?}"
+        );
     }
 
     #[test]
