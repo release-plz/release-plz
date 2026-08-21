@@ -27,7 +27,6 @@ pub fn are_packages_equal(
         local_package, registry_package
     );
     if !are_cargo_toml_equal(local_package, registry_package) {
-        debug!("Cargo.toml is different");
         return Ok(false);
     }
 
@@ -51,19 +50,20 @@ pub fn are_packages_equal(
         registry_package.join("Cargo.toml.orig"),
     )?;
 
-    let local_files = local_package_files
-        .iter()
-        .filter(|file| *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json");
+    let local_files = local_package_files.iter().filter(|file| {
+        *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json" && *file != "Cargo.lock"
+    });
 
     let registry_files = registry_package_files.iter().filter(|file| {
         *file != "Cargo.toml.orig"
             && *file != "Cargo.toml.orig.orig"
             && *file != ".cargo_vcs_info.json"
+            && *file != "Cargo.lock"
+            && *file != ".cargo-ok"
     });
 
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
-        debug!("cargo package list is different");
         return Ok(false);
     }
 
@@ -103,16 +103,16 @@ fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // If this crate was packaged locally (i.e. is inside target/package), we can list files
-    // directly from disk without invoking `cargo package`.
-    // At the moment, this only happens in the git_only flow.
-    // TODO: Do this always, not only if we are in target/package.
-    //       See https://github.com/release-plz/release-plz/issues/2130
+    // If Cargo.toml.orig (or its renamed variant Cargo.toml.orig.orig -- see
+    // `are_packages_equal`) is present, this package's on-disk contents already
+    // reflect exactly what `cargo package` would produce. This is true both for
+    // packages extracted from a registry, and for ones built locally via
+    // `cargo package` (e.g. in the git_only flow). In that case we can list files
+    // directly from disk instead of invoking `cargo package`, which is slower and
+    // can fail if the directory doesn't have full cargo metadata set up.
+    // See https://github.com/release-plz/release-plz/issues/2130
     info!("Getting packaged files for crate at {}", package);
-    if is_cargo_packaged_dir(package)
-        && (package.join("Cargo.toml.orig").exists()
-            || package.join("Cargo.toml.orig.orig").exists())
-    {
+    if package.join("Cargo.toml.orig").exists() || package.join("Cargo.toml.orig.orig").exists() {
         let list =
             list_packaged_files(package).context("cannot list packaged files from directory")?;
         debug!("Packaged files: {:?}", list);
@@ -140,13 +140,6 @@ fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow
     Ok(files)
 }
 
-fn is_cargo_packaged_dir(package: &Utf8Path) -> bool {
-    package.ancestors().any(|ancestor| {
-        ancestor.file_name() == Some("package")
-            && ancestor.parent().and_then(|parent| parent.file_name()) == Some("target")
-    })
-}
-
 fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
     let mut files = Vec::new();
     let mut dirs = vec![package.to_path_buf()];
@@ -161,6 +154,14 @@ fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
                 .with_context(|| format!("cannot read file type for {path:?}"))?;
 
             if file_type.is_dir() {
+                // Registry sources extracted via `git clone` (as some registries do) leave
+                // a full `.git` directory behind. `cargo package --list` never includes
+                // `.git`, so the disk-listing fast path must skip it too, or every file
+                // inside it would make the registry package look different from the
+                // local one for reasons unrelated to the actual packaged contents.
+                if path.file_name() == Some(".git") {
+                    continue;
+                }
                 dirs.push(path);
             } else {
                 let rel_path = path
@@ -277,4 +278,107 @@ fn read_package_metadata(
         .cloned()
         .context("cannot find package in Cargo.toml")?;
     Ok(package)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Registry-extracted packages (which don't live under `target/package`)
+    /// should use the fast, disk-listing path when `Cargo.toml.orig` is
+    /// present, instead of shelling out to `cargo package --list`.
+    /// Regression test for
+    /// <https://github.com/release-plz/release-plz/issues/2130>
+    #[test]
+    fn get_cargo_package_files_uses_disk_listing_when_cargo_toml_orig_present() {
+        let dir = tempfile::tempdir().expect("cannot create tempdir");
+        let package = Utf8Path::from_path(dir.path()).expect("non-utf8 tempdir path");
+
+        // Deliberately do NOT write a valid Cargo.toml manifest. If
+        // `get_cargo_package_files` fell through to invoking
+        // `cargo package --list`, it would fail here since there's no valid
+        // cargo manifest in this directory. The fact that it succeeds and
+        // returns exactly the files we wrote proves the disk-listing fast
+        // path was taken -- without this needing to be a real cargo project
+        // or to live under target/package.
+        fs::write(
+            package.join("Cargo.toml.orig"),
+            "this is not a real manifest",
+        )
+        .expect("cannot write Cargo.toml.orig");
+        fs::create_dir(package.join("src")).expect("cannot create src dir");
+        fs::write(package.join("src/lib.rs"), "").expect("cannot write lib.rs");
+
+        let mut files = get_cargo_package_files(package).expect("should use disk listing");
+        files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        assert_eq!(
+            files,
+            vec![
+                Utf8PathBuf::from("Cargo.toml.orig"),
+                Utf8PathBuf::from("src/lib.rs")
+            ]
+        );
+    }
+
+    /// Same as above, but for the `Cargo.toml.orig.orig` marker used while
+    /// `are_packages_equal` has temporarily renamed the registry package's
+    /// `Cargo.toml.orig` out of the way.
+    #[test]
+    fn get_cargo_package_files_uses_disk_listing_when_cargo_toml_orig_orig_present() {
+        let dir = tempfile::tempdir().expect("cannot create tempdir");
+        let package = Utf8Path::from_path(dir.path()).expect("non-utf8 tempdir path");
+
+        fs::write(
+            package.join("Cargo.toml.orig.orig"),
+            "this is not a real manifest",
+        )
+        .expect("cannot write Cargo.toml.orig.orig");
+
+        let files = get_cargo_package_files(package).expect("should use disk listing");
+        assert_eq!(files, vec![Utf8PathBuf::from("Cargo.toml.orig.orig")]);
+    }
+
+    /// Some registries (e.g. this environment's Gitea cargo registry) extract
+    /// packages via `git clone`, leaving a full `.git` directory inside the
+    /// extracted package. `cargo package --list` always ignores `.git`, so the
+    /// disk-listing fast path must ignore it too, or every file inside it would
+    /// make a registry-extracted package look different from the local one for
+    /// reasons unrelated to the actual packaged contents.
+    /// Regression test for <https://github.com/release-plz/release-plz/issues/2130>.
+    #[test]
+    fn get_cargo_package_files_ignores_nested_git_dir() {
+        let dir = tempfile::tempdir().expect("cannot create tempdir");
+        let package = Utf8Path::from_path(dir.path()).expect("non-utf8 tempdir path");
+
+        fs::write(
+            package.join("Cargo.toml.orig"),
+            "this is not a real manifest",
+        )
+        .expect("cannot write Cargo.toml.orig");
+        fs::create_dir(package.join("src")).expect("cannot create src dir");
+        fs::write(package.join("src/lib.rs"), "").expect("cannot write lib.rs");
+
+        // Simulate a nested `.git` directory left behind by a git-clone-based
+        // registry extraction, with content that would trip up the comparison
+        // if it weren't filtered out.
+        let git_objects = package.join(".git/objects");
+        let git_head = package.join(".git/HEAD");
+        let pack_file = package.join(".git/objects/pack-dummy");
+        fs::create_dir_all(&git_objects).expect("cannot create .git dir");
+        fs::write(&git_head, "ref: refs/heads/main").expect("cannot write .git/HEAD");
+        fs::write(&pack_file, "binary-ish content").expect("cannot write pack file");
+
+        let mut files = get_cargo_package_files(package).expect("should use disk listing");
+        files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        assert_eq!(
+            files,
+            vec![
+                Utf8PathBuf::from("Cargo.toml.orig"),
+                Utf8PathBuf::from("src/lib.rs")
+            ]
+        );
+    }
 }
