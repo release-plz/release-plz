@@ -13,8 +13,6 @@ pub use cloner_builder::*;
 pub use source::*;
 use tracing::warn;
 
-use std::collections::HashSet;
-
 use std::process::Command;
 
 use anyhow::{Context, bail};
@@ -76,7 +74,7 @@ impl Cloner {
         summary: &IndexSummary,
         dest_path: &Utf8Path,
     ) -> CargoResult<Package> {
-        let name = summary.as_summary().name();
+        let name = summary.package_id().name();
 
         let pkg = self.download_package(summary)?;
 
@@ -144,7 +142,7 @@ impl Cloner {
             Box::new(PathSource::new(&path, self.srcid, &self.config))
         } else {
             let map = SourceConfigMap::new(&self.config)?;
-            map.load(self.srcid, &HashSet::default())?
+            map.load(self.srcid)?
         };
 
         source.invalidate_cache();
@@ -215,7 +213,7 @@ async fn query_latest_package_summary(
     };
     Ok(summaries
         .into_iter()
-        .max_by(|a, b| a.as_summary().version().cmp(b.as_summary().version())))
+        .max_by_key(|summary| summary.package_id().version()))
 }
 
 fn none_or_query_err<T>(err: anyhow::Error) -> CargoResult<Option<T>> {
