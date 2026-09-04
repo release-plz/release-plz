@@ -146,9 +146,12 @@ fn new_url(git_host_url: &str) -> anyhow::Result<RepoUrl> {
         bail!("local file paths do not identify a git provider");
     }
 
-    match Url::parse(git_host_url) {
-        Ok(git_url) if git_url.has_host() => repo_url_from_url(&git_url),
-        _ => new_scp_url(git_host_url),
+    // Git requires `://` for a URL; otherwise a name such as `https` can be
+    // an SSH host in an SCP-style remote (`https:owner/repo.git`).
+    if git_host_url.contains("://") {
+        repo_url_from_url(&Url::parse(git_host_url)?)
+    } else {
+        new_scp_url(git_host_url)
     }
 }
 
@@ -185,7 +188,12 @@ fn repo_url_from_url(git_url: &Url) -> anyhow::Result<RepoUrl> {
     }
 
     let host = git_url.host_str().context("cannot determine host")?;
-    repo_url_from_parts(host, git_url.port(), git_url.scheme(), git_url.path())
+    let scheme = match git_url.scheme() {
+        // Git still accepts these legacy spellings for the SSH transport.
+        "git+ssh" | "ssh+git" => "ssh",
+        scheme => scheme,
+    };
+    repo_url_from_parts(host, git_url.port(), scheme, git_url.path())
 }
 
 fn repo_url_from_parts(
@@ -314,6 +322,33 @@ mod tests {
             assert_eq!(repo.name, "repo", "{url}");
             assert_eq!(repo.path, path, "{url}");
             assert_eq!(repo.full_host(), "https://host.example.com/owner/repo");
+        }
+    }
+
+    /// Git only treats a remote as a URL when it contains `://`.
+    /// A single colon means SCP-style syntax (`host:path`), which is always SSH,
+    /// so in `https:owner/repo.git` the word `https` is the SSH host, not a scheme.
+    #[test]
+    fn scp_hosts_can_match_url_schemes() {
+        for host in ["http", "https", "ftp"] {
+            let repo = RepoUrl::new(&format!("{host}:owner/repo.git")).unwrap();
+            assert_eq!(repo.scheme, "ssh");
+            assert_eq!(repo.host, host);
+            assert_eq!(repo.owner, "owner");
+            assert_eq!(repo.name, "repo");
+        }
+    }
+
+    #[test]
+    fn ssh_scheme_aliases_use_https_for_gitlab_api() {
+        for scheme in ["ssh", "git+ssh", "ssh+git"] {
+            let repo =
+                RepoUrl::new(&format!("{scheme}://git@host.example.com/owner/repo.git")).unwrap();
+            assert_eq!(repo.scheme, "ssh");
+            assert_eq!(
+                repo.gitlab_api_url(),
+                "https://host.example.com/api/v4/projects/owner%2Frepo"
+            );
         }
     }
 
