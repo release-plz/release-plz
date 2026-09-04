@@ -9,10 +9,10 @@ edition = "2024"
 [workspace.dependencies]
 anyhow = "1.0.99"
 assert_cmd = "2.0.17"
-base64 = "0.22.1"
+base64 = "0.23.0"
 camino = "1.1.12"
 cargo_metadata = "0.23.0"
-cargo = { version = "0.98.0" }
+cargo = { version = "0.99.0" }
 cargo-util-terminal = "0.1.0"
 chrono = { version = "0.4.42", default-features = false }
 clap = "4.5.47"
