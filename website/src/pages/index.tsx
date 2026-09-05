@@ -5,6 +5,7 @@ import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
 import Heading from "@theme/Heading";
 import HomepageFeatures from "@site/src/components/HomepageFeatures";
+import ProjectsCounter from "@site/src/components/ProjectsCounter";
 
 import styles from "./index.module.css";
 import type { Props as Tweet } from "../components/tweet";
@@ -65,6 +66,7 @@ export default function Home() {
     >
       <HomepageHeader />
       <main>
+        <ProjectsCounter />
         <HomepageFeatures />
       </main>
       <QuickStartSection />
