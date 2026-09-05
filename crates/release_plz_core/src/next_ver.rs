@@ -541,6 +541,7 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 mod tests {
     #[test]
     fn reconstruction_preserves_existing_package_named_worktree() {
+        // Create an initial commit so the worktrees have a branch target.
         let root = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(root.path().join("repo")).unwrap();
         let tree_id = repo.index().unwrap().write_tree().unwrap();
@@ -549,11 +550,14 @@ mod tests {
         let initial_commit = repo
             .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
             .unwrap();
+
+        // Simulate a user's worktree named after the package, with uncommitted work.
         let existing_path = root.path().join("mylib");
         let existing = repo.worktree("mylib", &existing_path, None).unwrap();
         let uncommitted_file = existing_path.join("notes.txt");
         fs_err::write(&uncommitted_file, "work in progress").unwrap();
 
+        // Reconstruction must create a separate worktree despite the name collision.
         let mut original = super::GitRepo::open(repo.path()).unwrap();
         let (temporary_repo, temporary) =
             super::get_temp_worktree_and_repo(&mut original, "mylib").unwrap();
@@ -561,11 +565,14 @@ mod tests {
         assert_ne!(temporary_path, existing_path);
         assert!(existing.validate().is_ok());
 
+        // Dropping the temporary worktree must clean up only its own resources.
         drop(temporary_repo);
         drop(temporary);
 
         assert!(!temporary_path.exists());
         assert_eq!(repo.worktrees().unwrap().len(), 1);
+
+        // The user's worktree, uncommitted file, and branch target must remain intact.
         assert!(existing.validate().is_ok());
         assert_eq!(
             fs_err::read_to_string(&uncommitted_file).unwrap(),
