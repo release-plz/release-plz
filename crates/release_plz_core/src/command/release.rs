@@ -582,8 +582,20 @@ async fn release_packages(
     repo: &Repo,
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
-    // Packages are already ordered by release order.
-    let packages = project.publishable_packages();
+    // Collect releasable packages: publishable ones + git_only packages (which
+    // may have `publish = false` in Cargo.toml but still create git tags/releases).
+    // Without this, monorepos whose ALL crates are `publish = false` get an empty
+    // list and the release command silently does nothing.
+    //
+    // Tracks: <https://github.com/release-plz/release-plz/issues/2595>
+    let git_only_names: Vec<String> = input
+        .metadata
+        .workspace_packages()
+        .iter()
+        .filter(|p| !input.is_publish_enabled(&p.name))
+        .map(|p| p.name.to_string())
+        .collect();
+    let packages = project.releasable_packages(&git_only_names);
     if packages.is_empty() {
         info!("nothing to release");
     }
