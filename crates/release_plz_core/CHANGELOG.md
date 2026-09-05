@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.37.0...release_plz_core-v0.37.1) - 2026-08-31
+
+### Other
+
+- *(deps)* update rust crate cargo to 0.99.0 ([#2997](https://github.com/release-plz/release-plz/pull/2997))
+
 ## [0.37.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.36.15...release_plz_core-v0.37.0) - 2026-07-13
 
 ### Added

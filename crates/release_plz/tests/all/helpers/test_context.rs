@@ -195,9 +195,13 @@ impl TestContext {
     }
 
     pub fn run_release_pr(&self) -> Assert {
+        self.run_release_pr_with_log(&log_level())
+    }
+
+    pub fn run_release_pr_with_log(&self, log: &str) -> Assert {
         super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
-            .env(RELEASE_PLZ_LOG, log_level())
+            .env(RELEASE_PLZ_LOG, log)
             .arg("release-pr")
             .arg("--verbose")
             .arg("--git-token")
