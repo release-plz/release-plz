@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">Configuration | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/config"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Configuration | Release-plz"><meta data-rh="true" name="description" content="This section describes how you can customize the behavior of release-plz"><meta data-rh="true" property="og:description" content="This section describes how you can customize the behavior of release-plz"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/config"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/config" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/config" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Configuration","item":"https://release-plz.dev/docs/config"}]}</script><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.0df16380.css">
-<script src="/assets/js/runtime~main.4df5f389.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.58985e06.js" defer="defer"></script>
 <script src="/assets/js/main.0088daae.js" defer="defer"></script>
 </head>
 <body>
@@ -194,7 +194,7 @@ Instead, new features for <code>0.x</code> should bump the version from <code>0.
 <p>The supported git releases are:</p>
 <ul>
 <li class=""><a href="https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository" target="_blank" rel="noopener noreferrer" class="">GitHub</a></li>
-<li class=""><a href="https://docs.gitea.io/en-us/" target="_blank" rel="noopener noreferrer" class="">Gitea</a></li>
+<li class=""><a href="https://docs.gitea.com/" target="_blank" rel="noopener noreferrer" class="">Gitea</a></li>
 <li class=""><a href="https://docs.gitlab.com/ee/user/project/releases/" target="_blank" rel="noopener noreferrer" class="">GitLab</a></li>
 </ul>
 <h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-git_release_name-field">The <code>git_release_name</code> field<a href="#the-git_release_name-field" class="hash-link" aria-label="Direct link to the-git_release_name-field" title="Direct link to the-git_release_name-field" translate="no">​</a></h4>
@@ -476,6 +476,8 @@ API (maybe in Gitea 1.22?).</p></div></div>
 <p>In <code>release-plz update</code> and <code>release-plz release-pr</code>, <code>release-plz</code> bumps the version and updates
 the changelog of the package only if at least one of the commits matches the <code>release_commits</code>
 regex.</p>
+<p>For packages in a <a href="#the-version_group-field" class=""><code>version_group</code></a>, a matching commit in any member
+allows all packages in the group to update, even if their own commits do not match.</p>
 <p>You can use this if you think it is too noisy to raise PRs on every commit.</p>
 <p>Examples:</p>
 <ul>
