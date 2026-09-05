@@ -24,6 +24,7 @@ use super::{
 };
 
 const CRATES_DIR: &str = "crates";
+const PR_BRANCH_PREFIX: &str = "PR_BRANCH_PREFIX";
 const RELEASE_PLZ_LOG: &str = "RELEASE_PLZ_LOG";
 
 /// It contains the universe in which release-plz runs.
@@ -212,6 +213,25 @@ impl TestContext {
             .assert()
     }
 
+    pub fn run_release_pr_with_prefix(&self, pr_branch_prefix: &str) -> Assert {
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
+            .current_dir(self.repo_dir())
+            .env(RELEASE_PLZ_LOG, log_level())
+            .env(PR_BRANCH_PREFIX, pr_branch_prefix)
+            .arg("release-pr")
+            .arg("--verbose")
+            .arg("--git-token")
+            .arg(&self.gitea.token)
+            .arg("--forge")
+            .arg("gitea")
+            .arg("--registry")
+            .arg(TEST_REGISTRY)
+            .arg("--output")
+            .arg("json")
+            .timeout(Duration::from_secs(300))
+            .assert()
+    }
+
     pub fn run_release(&self) -> Assert {
         let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
         super::cmd::release_plz_cmd(&self.cargo_target_dir())
@@ -242,6 +262,10 @@ impl TestContext {
             .opened_prs(DEFAULT_BRANCH_PREFIX)
             .await
             .unwrap()
+    }
+
+    pub async fn opened_prs_with_prefix(&self, prefix: &str) -> Vec<GitPr> {
+        self.git_client.opened_prs(prefix).await.unwrap()
     }
 
     pub fn write_release_plz_toml(&self, content: &str) {
