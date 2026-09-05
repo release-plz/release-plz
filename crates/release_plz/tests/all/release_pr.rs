@@ -844,10 +844,8 @@ async fn release_plz_updates_commit_message_when_version_changes() {
         context.push_all_changes(commit_message);
     };
 
-    // Release v0.1.0, so that the following runs compare against a released version.
-    context.run_release_pr().success();
-    context.merge_release_pr().await;
-    context.run_release().success();
+    // Publish v0.1.0, so that the following runs compare against a released version.
+    context.run_cargo_publish(&context.gitea.repo);
 
     write_lib_file("pub fn foo() {}", "fix: add lib");
     context.run_release_pr().success();
