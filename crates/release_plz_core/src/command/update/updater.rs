@@ -90,14 +90,16 @@ impl Updater<'_> {
 
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
-            let pkg_config = self.req.get_package_config(&p.name);
-            let group_has_release_commit = pkg_config
-                .version_group
-                .as_ref()
-                .is_some_and(|group| version_groups_with_release_commit.contains(group));
+            let group_has_release_commit = || {
+                self.req
+                    .get_package_config(&p.name)
+                    .version_group
+                    .as_ref()
+                    .is_some_and(|group| version_groups_with_release_commit.contains(group))
+            };
             if let Some(release_commits_regex) = self.req.release_commits()
                 && !diff.any_commit_matches(release_commits_regex)
-                && !group_has_release_commit
+                && !group_has_release_commit()
             {
                 info!("{}: no commit matches the `release_commits` regex", p.name);
                 // We need to update this package only if one of its dependencies has changed.
