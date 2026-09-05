@@ -837,12 +837,6 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_updates_commit_message_when_version_changes() {
     let context = TestContext::new().await;
-    // Make the version bump of a 0.x package deterministic, without cargo-semver-checks.
-    let config = r"
-    [workspace]
-    features_always_increment_minor = true
-    ";
-    context.write_release_plz_toml(config);
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
     let write_lib_file = |content: &str, commit_message: &str| {
@@ -862,8 +856,8 @@ async fn release_plz_updates_commit_message_when_version_changes() {
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
     let pr_number = opened_prs[0].number;
 
-    // A feature is merged while the release PR is open: the version becomes 0.2.0.
-    write_lib_file("pub fn bar() {}", "feat: edit lib");
+    // A breaking change is merged while the release PR is open: the version becomes 0.2.0.
+    write_lib_file("pub fn bar() {}", "feat!: edit lib");
     context.run_release_pr().success();
 
     let opened_prs = context.opened_release_prs().await;
