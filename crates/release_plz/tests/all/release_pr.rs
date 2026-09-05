@@ -1701,3 +1701,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         )
     );
 }
+
+async fn version_group_with_dependent_change(commit_message: &str) -> TestContext {
+    let dependency = "dependency";
+    let dependent = "dependent";
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(dependent)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{dependency}")]),
+        TestPackage::new(dependency).with_type(PackageType::Lib),
+    ])
+    .await;
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    let config = format!(
+        r#"
+[workspace]
+release_commits = "^feat"
+
+[[package]]
+name = "{dependency}"
+version_group = "a"
+
+[[package]]
+name = "{dependent}"
+version_group = "a"
+"#
+    );
+    context.write_release_plz_toml(&config);
+
+    let dependent_file = context.package_path(dependent).join("src").join("aa.rs");
+    fs_err::write(&dependent_file, "pub fn dependent() {}").unwrap();
+    context.push_all_changes(commit_message);
+
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_whole_version_group_with_matching_release_commits() {
+    let context = version_group_with_dependent_change("feat: update dependent").await;
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let pr_body = opened_prs[0].body.as_ref().unwrap();
+    assert!(
+        pr_body.contains("`dependency`: 0.1.0 -> 0.1.1"),
+        "expected `dependency` to be bumped alongside its version group"
+    );
+    assert!(
+        pr_body.contains("`dependent`: 0.1.0 -> 0.1.1"),
+        "expected `dependent` to be bumped"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_does_not_release_version_group_without_matching_release_commits() {
+    let context = version_group_with_dependent_change("chore: update dependent").await;
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert!(
+        opened_prs.is_empty(),
+        "expected no release PR since no commit matches `release_commits`"
+    );
+}
