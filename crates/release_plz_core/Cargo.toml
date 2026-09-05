@@ -1,6 +1,6 @@
 [package]
 name = "release_plz_core"
-version = "0.37.0"
+version = "0.37.1"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository = "https://github.com/release-plz/release-plz/tree/main/crates/release_plz_core"
@@ -29,7 +29,6 @@ chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
 git-cliff-core.workspace = true
-git-url-parse.workspace = true
 h2.workspace = true
 ignore.workspace = true
 itertools.workspace = true

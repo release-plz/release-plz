@@ -266,7 +266,7 @@ Instead, new features for `0.x` should bump the version from `0.x.y` to `0.x.(y+
 The supported git releases are:
 
 - [GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
-- [Gitea](https://docs.gitea.io/en-us/)
+- [Gitea](https://docs.gitea.com/)
 - [GitLab](https://docs.gitlab.com/ee/user/project/releases/)
 
 #### The `git_release_name` field
