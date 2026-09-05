@@ -697,6 +697,9 @@ In `release-plz update` and `release-plz release-pr`, `release-plz` bumps the ve
 the changelog of the package only if at least one of the commits matches the `release_commits`
 regex.
 
+For packages in a [`version_group`](#the-version_group-field), a matching commit in any member
+allows all packages in the group to update, even if their own commits do not match.
+
 You can use this if you think it is too noisy to raise PRs on every commit.
 
 Examples:
