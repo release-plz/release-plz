@@ -382,6 +382,10 @@ fn git_release(config: &PackageConfig) -> GitReleaseConfig {
         git_release = git_release.set_latest(false);
     }
 
+    if config.git_generate_release_notes == Some(true) {
+        git_release = git_release.set_generate_release_notes(true);
+    }
+
     git_release
 }
 
@@ -434,6 +438,9 @@ pub struct PackageConfig {
     /// # Git Tag Name
     /// Tera template of the git tag name created by release-plz.
     pub git_tag_name: Option<String>,
+    /// # Git Generate Release Notes
+    /// Generate release notes server-side
+    pub git_generate_release_notes: Option<bool>,
     /// # Publish
     /// If `false`, don't run `cargo publish`.
     pub publish: Option<bool>,
@@ -509,6 +516,9 @@ impl PackageConfig {
             git_release_latest: self.git_release_latest.or(default.git_release_latest),
             git_release_name: self.git_release_name.or(default.git_release_name),
             git_release_body: self.git_release_body.or(default.git_release_body),
+            git_generate_release_notes: self
+                .git_generate_release_notes
+                .or(default.git_generate_release_notes),
 
             publish: self.publish.or(default.publish),
             publish_allow_dirty: self.publish_allow_dirty.or(default.publish_allow_dirty),

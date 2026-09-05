@@ -106,6 +106,9 @@ pub struct CreateReleaseOption<'a> {
     /// Only supported by GitHub.
     #[serde(skip_serializing_if = "Option::is_none")]
     make_latest: Option<String>,
+    /// Only supported by GitHub.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generate_release_notes: Option<&'a bool>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -325,8 +328,12 @@ impl GitClient {
 
     /// Same as Gitea.
     pub async fn create_github_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
-        if release_info.latest.is_some() && self.forge == ForgeType::Gitea {
-            anyhow::bail!("Gitea does not support the `git_release_latest` option");
+        if (release_info.latest.is_some() || release_info.generate_release_notes.is_some())
+            && self.forge == ForgeType::Gitea
+        {
+            anyhow::bail!(
+                "Gitea does not support the `git_release_latest` and `generate_release_notes` options"
+            );
         }
         let create_release_options = CreateReleaseOption {
             tag_name: &release_info.git_tag,
@@ -335,6 +342,7 @@ impl GitClient {
             draft: &release_info.draft,
             prerelease: &release_info.pre_release,
             make_latest: release_info.latest.map(|l| l.to_string()),
+            generate_release_notes: release_info.generate_release_notes.as_ref(),
         };
         self.client
             .post(format!("{}/releases", self.repo_url()))

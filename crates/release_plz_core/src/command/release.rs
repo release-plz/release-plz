@@ -417,6 +417,7 @@ pub struct GitReleaseConfig {
     release_type: ReleaseType,
     name_template: Option<String>,
     body_template: Option<String>,
+    generate_release_notes: Option<bool>,
 }
 
 impl Default for GitReleaseConfig {
@@ -434,6 +435,7 @@ impl GitReleaseConfig {
             release_type: ReleaseType::default(),
             name_template: None,
             body_template: None,
+            generate_release_notes: None,
         }
     }
 
@@ -463,6 +465,11 @@ impl GitReleaseConfig {
 
     pub fn set_body_template(mut self, body_template: Option<String>) -> Self {
         self.body_template = body_template;
+        self
+    }
+
+    pub fn set_generate_release_notes(mut self, generate_release_notes: bool) -> Self {
+        self.generate_release_notes = Some(generate_release_notes);
         self
     }
 
@@ -1036,6 +1043,7 @@ async fn create_git_tag_and_release(
             draft: release_config.draft,
             latest: release_config.latest,
             pre_release: is_pre_release,
+            generate_release_notes: release_config.generate_release_notes,
         };
         git_client.create_release(&git_release_info).await?;
     }
@@ -1123,6 +1131,7 @@ pub struct GitReleaseInfo {
     pub latest: Option<bool>,
     pub draft: bool,
     pub pre_release: bool,
+    pub generate_release_notes: Option<bool>,
 }
 
 /// Return `Err` if the cargo registry token environment variable is set to an empty string in CI.
