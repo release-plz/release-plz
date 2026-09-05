@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.37.1...release_plz_core-v0.37.2) - 2026-09-05
+
+### Fixed
+
+- update packages in `version_group` when using `release_commits` setting ([#2936](https://github.com/release-plz/release-plz/pull/2936))
+- update release commit message when the version changes ([#2985](https://github.com/release-plz/release-plz/pull/2985))
+
+### Other
+
+- *(git-only)* reuse historical workspace packaging ([#2953](https://github.com/release-plz/release-plz/pull/2953))
+- remove git-url-parse-rs dependency ([#2934](https://github.com/release-plz/release-plz/pull/2934))
+
 ## [0.37.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.37.0...release_plz_core-v0.37.1) - 2026-08-31
 
 ### Other
