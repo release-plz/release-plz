@@ -25,52 +25,10 @@ use cargo_metadata::{
 use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
 use secrecy::SecretString;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, trace};
-
-struct ReconstructedWorkspaces<T> {
-    commit_indexes: BTreeMap<String, usize>,
-    resources: Vec<T>,
-}
-
-impl<T> Default for ReconstructedWorkspaces<T> {
-    fn default() -> Self {
-        Self {
-            commit_indexes: BTreeMap::new(),
-            resources: Vec::new(),
-        }
-    }
-}
-
-impl<T> ReconstructedWorkspaces<T> {
-    fn get(&self, commit: &str) -> Option<&T> {
-        self.commit_indexes
-            .get(commit)
-            .map(|index| &self.resources[*index])
-    }
-
-    fn try_insert_with<E>(
-        &mut self,
-        commit: String,
-        reconstruct: impl FnOnce() -> Result<T, E>,
-    ) -> Result<&T, E> {
-        if let Some(index) = self.commit_indexes.get(&commit) {
-            return Ok(&self.resources[*index]);
-        }
-
-        let resource = reconstruct()?;
-        let index = self.resources.len();
-        self.resources.push(resource);
-        self.commit_indexes.insert(commit, index);
-        Ok(&self.resources[index])
-    }
-
-    fn into_resources(self) -> Vec<T> {
-        self.resources
-    }
-}
 
 // Used to indicate that this is a dummy commit with no corresponding ID available.
 // It should be at least 7 characters long to avoid a panic in git-cliff
@@ -117,11 +75,6 @@ fn get_temp_worktree_and_repo(
     original_repo: &mut GitRepo,
     package_name: &str,
 ) -> anyhow::Result<(GitRepo, GitWorkTree)> {
-    // Clean up any existing worktree with this name
-    original_repo
-        .cleanup_worktree_if_exists(package_name)
-        .context("cleanup existing worktree")?;
-
     // make a worktree for the package
     let worktree = original_repo
         .temp_worktree(Some(package_name), package_name)
@@ -145,7 +98,7 @@ fn process_git_only_package(
     unreleased_project_repo: &mut GitRepo,
     input: &UpdateRequest,
     is_multi_package: bool,
-    reconstructed_workspaces: &mut ReconstructedWorkspaces<GitWorkTree>,
+    reconstructed_workspaces: &mut BTreeMap<String, GitWorkTree>,
 ) -> anyhow::Result<Option<RegistryPackage>> {
     // Get the release tag template, falling back to default based on project structure
     let template = input
@@ -181,26 +134,28 @@ fn process_git_only_package(
         .get_tag_commit(&release_tag)
         .context("get release tag commit")?;
 
-    let was_reconstructed = reconstructed_workspaces.get(&release_commit).is_some();
-    let worktree = reconstructed_workspaces.try_insert_with(release_commit.clone(), || {
-        let (mut repo, worktree) =
-            get_temp_worktree_and_repo(unreleased_project_repo, &package.name)
-                .context("get worktree and repo for package")?;
+    let worktree = match reconstructed_workspaces.entry(release_commit.clone()) {
+        Entry::Occupied(entry) => {
+            debug!(
+                "Reusing packaged workspace at commit {release_commit} for package {}",
+                package.name
+            );
+            entry.into_mut()
+        }
+        Entry::Vacant(entry) => {
+            let (mut repo, worktree) =
+                get_temp_worktree_and_repo(unreleased_project_repo, &package.name)
+                    .context("get worktree and repo for package")?;
 
-        repo.checkout_commit(&release_commit)
-            .context("checkout release commit for package")?;
+            repo.checkout_commit(&release_commit)
+                .context("checkout release commit for package")?;
 
-        // Package and verify the whole workspace so unpublished path dependencies are
-        // materialized in Cargo's temporary local registry.
-        run_cargo_package(&worktree).context("run cargo package")?;
-        Ok::<_, anyhow::Error>(worktree)
-    })?;
-    if was_reconstructed {
-        debug!(
-            "Reusing packaged workspace at commit {release_commit} for package {}",
-            package.name
-        );
-    }
+            // Package and verify the whole workspace so unpublished path dependencies are
+            // materialized in Cargo's temporary local registry.
+            run_cargo_package(&worktree).context("run cargo package")?;
+            entry.insert(worktree)
+        }
+    };
 
     // Metadata paths point into the cached worktree. Any error aborts collection and drops
     // all reconstructed workspaces, so an unusable artifact cannot be reused.
@@ -375,9 +330,9 @@ fn collect_git_only_packages(
     // NOTE: We need to prevent the worktrees from being dropped because their Drop
     // implementation cleans up the worktrees.
     // See the note on the custom worktree Drop impl for more details.
-    // All reconstruction inputs other than the resolved commit are fixed for this invocation:
-    // repository, manifest, Cargo configuration/environment, and package arguments.
-    let mut reconstructed_workspaces = ReconstructedWorkspaces::default();
+    // Packages released at the same commit share one reconstructed workspace: all other
+    // reconstruction inputs (repository, manifest, Cargo config) are fixed for this invocation.
+    let mut reconstructed_workspaces: BTreeMap<String, GitWorkTree> = BTreeMap::new();
 
     let mut unreleased_project_repo = GitRepo::open(
         input
@@ -398,7 +353,10 @@ fn collect_git_only_packages(
         }
     }
 
-    Ok((all_packages, reconstructed_workspaces.into_resources()))
+    Ok((
+        all_packages,
+        reconstructed_workspaces.into_values().collect(),
+    ))
 }
 
 /// Fetch packages from the registry and return their metadata.
@@ -581,106 +539,44 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
-    use super::ReconstructedWorkspaces;
-    use std::{cell::Cell, rc::Rc};
-
-    #[derive(Debug)]
-    struct TrackedResource {
-        id: usize,
-        drops: Rc<Cell<usize>>,
-    }
-
-    impl Drop for TrackedResource {
-        fn drop(&mut self) {
-            self.drops.set(self.drops.get() + 1);
-        }
-    }
-
     #[test]
-    fn reconstructs_shared_commit_once() {
-        let reconstructions = Cell::new(0);
-        let drops = Rc::new(Cell::new(0));
-        let mut workspaces = ReconstructedWorkspaces::default();
-
-        let first_id = workspaces
-            .try_insert_with("shared-commit".to_owned(), || {
-                reconstructions.set(reconstructions.get() + 1);
-                Ok::<_, ()>(TrackedResource {
-                    id: 1,
-                    drops: Rc::clone(&drops),
-                })
-            })
-            .unwrap()
-            .id;
-        let second_id = workspaces
-            .try_insert_with("shared-commit".to_owned(), || {
-                reconstructions.set(reconstructions.get() + 1);
-                Ok::<_, ()>(TrackedResource {
-                    id: 2,
-                    drops: Rc::clone(&drops),
-                })
-            })
-            .unwrap()
-            .id;
-
-        assert_eq!(reconstructions.get(), 1);
-        assert_eq!(first_id, second_id);
-        drop(workspaces);
-        assert_eq!(drops.get(), 1);
-    }
-
-    #[test]
-    fn reconstructs_different_commits_separately() {
-        let reconstructions = Cell::new(0);
-        let drops = Rc::new(Cell::new(0));
-        let mut workspaces = ReconstructedWorkspaces::default();
-
-        for commit in ["first-commit", "second-commit"] {
-            workspaces
-                .try_insert_with(commit.to_owned(), || {
-                    reconstructions.set(reconstructions.get() + 1);
-                    Ok::<_, ()>(TrackedResource {
-                        id: reconstructions.get(),
-                        drops: Rc::clone(&drops),
-                    })
-                })
-                .unwrap();
-        }
-
-        assert_eq!(reconstructions.get(), 2);
-        drop(workspaces);
-        assert_eq!(drops.get(), 2);
-    }
-
-    #[test]
-    fn failed_reconstruction_is_cleaned_up_and_not_cached() {
-        let attempts = Cell::new(0);
-        let drops = Rc::new(Cell::new(0));
-        let mut workspaces = ReconstructedWorkspaces::default();
-
-        let result = workspaces.try_insert_with("commit".to_owned(), || {
-            attempts.set(attempts.get() + 1);
-            let _partial_resource = TrackedResource {
-                id: 1,
-                drops: Rc::clone(&drops),
-            };
-            Err::<TrackedResource, _>("reconstruction failed")
-        });
-
-        assert_eq!(result.unwrap_err(), "reconstruction failed");
-        assert_eq!(drops.get(), 1);
-        workspaces
-            .try_insert_with("commit".to_owned(), || {
-                attempts.set(attempts.get() + 1);
-                Ok::<_, &str>(TrackedResource {
-                    id: 2,
-                    drops: Rc::clone(&drops),
-                })
-            })
+    fn reconstruction_preserves_existing_package_named_worktree() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(root.path().join("repo")).unwrap();
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("test", "test@example.com").unwrap();
+        let initial_commit = repo
+            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
             .unwrap();
+        let existing_path = root.path().join("mylib");
+        let existing = repo.worktree("mylib", &existing_path, None).unwrap();
+        let uncommitted_file = existing_path.join("notes.txt");
+        fs_err::write(&uncommitted_file, "work in progress").unwrap();
 
-        assert_eq!(attempts.get(), 2);
-        drop(workspaces);
-        assert_eq!(drops.get(), 2);
+        let mut original = super::GitRepo::open(repo.path()).unwrap();
+        let (temporary_repo, temporary) =
+            super::get_temp_worktree_and_repo(&mut original, "mylib").unwrap();
+        let temporary_path = temporary.path().to_path_buf();
+        assert_ne!(temporary_path, existing_path);
+        assert!(existing.validate().is_ok());
+
+        drop(temporary_repo);
+        drop(temporary);
+
+        assert!(!temporary_path.exists());
+        assert_eq!(repo.worktrees().unwrap().len(), 1);
+        assert!(existing.validate().is_ok());
+        assert_eq!(
+            fs_err::read_to_string(&uncommitted_file).unwrap(),
+            "work in progress"
+        );
+        assert_eq!(
+            repo.find_branch("mylib", git2::BranchType::Local)
+                .unwrap()
+                .get()
+                .target(),
+            Some(initial_commit)
+        );
     }
 }

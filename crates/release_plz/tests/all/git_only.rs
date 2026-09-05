@@ -922,7 +922,96 @@ publish = false
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_update_handles_workspace_path_dependencies() {
+async fn git_only_update_handles_workspace_path_dependencies_at_different_commits() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("mylib").with_type(PackageType::Lib),
+        TestPackage::new("mybin")
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec!["../mylib"]),
+    ])
+    .await;
+
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    context
+        .repo
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .unwrap();
+
+    // Release the binary at a later commit with different package contents, so
+    // each package must be compared against its own historical workspace.
+    let readme = context.package_path("mybin").join("README.md");
+    fs_err::write(&readme, "# Initial mybin release").unwrap();
+    context.push_all_changes("feat: prepare mybin release");
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
+
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update mybin readme");
+
+    let outcome = context
+        .run_release_pr_with_log("DEBUG,hyper=INFO")
+        .success();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert_eq!(
+        stderr
+            .matches("Run `cargo package --allow-dirty --workspace`")
+            .count(),
+        2,
+        "packages at different historical commits need separate workspace reconstructions\n{stderr}"
+    );
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
+
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `mybin`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/mybin-v0.1.0...mybin-v0.1.1) - {today}
+
+### Fixed
+
+- update mybin readme
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_packages_sharing_a_release_tag() {
+    // All packages are released together under a single workspace tag, so they
+    // are all resolved at the same historical commit.
+    // The unreleased internal libraries are path dependencies of the binary, so
+    // the whole workspace must be packaged at that commit.
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("mylib-a").with_type(PackageType::Lib),
         TestPackage::new("mylib-b").with_type(PackageType::Lib),

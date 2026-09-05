@@ -176,44 +176,6 @@ impl GitRepo {
         branch.delete().context("delete branch")?;
         Ok(())
     }
-
-    /// Clean up existing worktree and its branch if they exist
-    pub fn cleanup_worktree_if_exists(&mut self, name: &str) -> anyhow::Result<()> {
-        let trees: Vec<String> = self
-            .repo
-            .worktrees()
-            .context("get worktrees for repo")?
-            .iter()
-            .filter_map(|x| x.ok().flatten().map(ToString::to_string))
-            .collect();
-
-        if trees.contains(&name.to_string()) {
-            debug!("Worktree {name} already exists, cleaning it up");
-
-            // Find the worktree
-            let wt = match self.repo.find_worktree(name) {
-                Ok(wt) => wt,
-                Err(e) => {
-                    warn!("Error finding worktree {name} for cleanup: {e:?}");
-                    return Ok(());
-                }
-            };
-
-            // Prune the worktree
-            if let Err(e) = wt.prune(Some(
-                WorktreePruneOptions::new().working_tree(true).valid(true),
-            )) {
-                warn!("Error pruning worktree {name}: {e:?}");
-            }
-
-            // Delete the branch
-            if let Err(e) = self.delete_branch(name) {
-                warn!("Error deleting branch {name}: {e:?}");
-            }
-        }
-
-        Ok(())
-    }
 }
 
 /// We maintain a handle to the temp dir so it doesn't delete itself before the worktree is cleaned
