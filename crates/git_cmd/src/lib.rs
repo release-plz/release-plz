@@ -249,7 +249,7 @@ impl Repo {
         // `u32::MAX` means "no limit"; git's `--max-count` doesn't accept a value that large.
         let max_commits = (max_commits != u32::MAX).then(|| max_commits.to_string());
 
-        let mut git_args = vec!["log", "--format=%H"];
+        let mut git_args = vec!["log", "--topo-order", "--format=%H"];
         if let Some(max_commits) = &max_commits {
             git_args.push("--max-count");
             git_args.push(max_commits.as_str());

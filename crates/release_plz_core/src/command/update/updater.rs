@@ -680,7 +680,35 @@ impl Updater<'_> {
         commits_to_analyze: Vec<String>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
+        // Compare the final tree first: a change followed by a revert must not
+        // trigger a release. An equal tree on a merged branch, however, must not
+        // stop traversal of its siblings.
+        repository.checkout_head()?;
+        if let Some(registry_package) = registry_package
+            && self.check_package_equality(
+                repository,
+                package,
+                package_path,
+                registry_package.package.package_path()?,
+            )?
+        {
+            self.add_dependencies_update_if_any(
+                diff,
+                &registry_package.package,
+                package,
+                registry_package.package.package_path()?,
+            )?;
+            return Ok(());
+        }
+
+        let mut equal_boundaries: Vec<String> = Vec::new();
         for current_commit_hash in commits_to_analyze {
+            if equal_boundaries
+                .iter()
+                .any(|boundary| repository.is_ancestor(&current_commit_hash, boundary))
+            {
+                continue;
+            }
             // The info contained in `package` might be outdated after this checkout, because
             // commits could contain changes to Cargo.toml.
             repository.checkout(&current_commit_hash)?;
@@ -702,13 +730,10 @@ impl Updater<'_> {
                     registry_package_path,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    // The local package is identical to the registry one, so it was published
-                    // at this commit (e.g. later commits cancelled each other out). Everything
-                    // from here backwards is already released, so we stop.
-                    debug!(
-                        "next version calculated starting from commits after `{current_commit_hash}`"
-                    );
-                    break;
+                    // Exclude this snapshot and its ancestors, but keep walking
+                    // independent branches that can still contain unreleased work.
+                    equal_boundaries.push(current_commit_hash);
+                    continue;
                 }
                 // When version is already bumped, we still collect commits to update the
                 // changelog, but mark that version should not be bumped further.
@@ -735,6 +760,8 @@ impl Updater<'_> {
                 ));
             }
         }
+
+        repository.checkout_head()?;
 
         // No package files changed since the last release, but the workspace `Cargo.lock` or
         // `Cargo.toml` (i.e. the dependencies) might have. If so, we still add a commit.
@@ -1097,6 +1124,121 @@ fn get_repo_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Package equality on one branch cannot terminate the sibling traversal.
+    #[test]
+    fn equal_branch_snapshot_does_not_hide_sibling_changes() {
+        let local_dir = tempfile::tempdir().unwrap();
+        let registry_dir = tempfile::tempdir().unwrap();
+        let repo = Repo::init(&local_dir);
+        let registry_repo = Repo::init(&registry_dir);
+        let manifest =
+            "[package]\nname = \"history-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+        for root in [repo.directory(), registry_repo.directory()] {
+            fs_err::create_dir(root.join("src")).unwrap();
+            fs_err::write(root.join(CARGO_TOML), manifest).unwrap();
+            fs_err::write(root.join("src/lib.rs"), "pub fn base() {}\n").unwrap();
+            fs_err::write(root.join(".gitignore"), "/target\n").unwrap();
+        }
+        for root in [repo.directory(), registry_repo.directory()] {
+            cargo_utils::get_manifest_metadata(&root.join(CARGO_TOML)).unwrap();
+        }
+        repo.add_all_and_commit("base").unwrap();
+        registry_repo.add_all_and_commit("published base").unwrap();
+        let base = repo.current_commit_hash().unwrap();
+        let main_branch = repo.original_branch().to_string();
+
+        repo.git(&["checkout", "-b", "sibling"]).unwrap();
+        fs_err::write(
+            repo.directory().join("src/lib.rs"),
+            "pub fn temporary() {}\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("fix: temporary").unwrap();
+        let temporary = repo.current_commit_hash().unwrap();
+        fs_err::write(repo.directory().join("src/lib.rs"), "pub fn base() {}\n").unwrap();
+        repo.add_all_and_commit("revert: temporary").unwrap();
+        let equal = repo.current_commit_hash().unwrap();
+        fs_err::write(
+            repo.directory().join("src/branch.rs"),
+            "pub fn branch() {}\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("fix: branch").unwrap();
+        let branch = repo.current_commit_hash().unwrap();
+
+        repo.checkout(&main_branch).unwrap();
+        fs_err::write(
+            repo.directory().join("src/wanted.rs"),
+            "pub fn wanted() {}\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("fix: wanted sibling").unwrap();
+        let wanted = repo.current_commit_hash().unwrap();
+        repo.git(&["merge", "--no-ff", "sibling", "-m", "merge sibling"])
+            .unwrap();
+        let tip = repo.current_commit_hash().unwrap();
+
+        let metadata =
+            cargo_utils::get_manifest_metadata(&repo.directory().join(CARGO_TOML)).unwrap();
+        let package = metadata.root_package().unwrap().clone();
+        let request = UpdateRequest::new(metadata.clone()).unwrap();
+        let project = Project::new(
+            request.local_manifest(),
+            None,
+            &HashSet::new(),
+            &metadata,
+            &request,
+        )
+        .unwrap();
+        let updater = Updater {
+            project: &project,
+            req: &request,
+        };
+        let registry_metadata =
+            cargo_utils::get_manifest_metadata(&registry_repo.directory().join(CARGO_TOML))
+                .unwrap();
+        fs_err::write(registry_repo.directory().join("Cargo.toml.orig"), manifest).unwrap();
+        let published =
+            RegistryPackage::new(registry_metadata.root_package().unwrap().clone(), None);
+        let mut diff = Diff::new(true);
+        // A valid topological order which visits the equal branch before its sibling.
+        updater
+            .get_package_diff(
+                repo.directory(),
+                &package,
+                Some(&published),
+                &repo,
+                vec![
+                    tip,
+                    branch,
+                    equal,
+                    wanted.clone(),
+                    temporary.clone(),
+                    base.clone(),
+                ],
+                &mut diff,
+            )
+            .unwrap();
+        assert!(diff.commits.iter().any(|commit| commit.id == wanted));
+        assert!(!diff.commits.iter().any(|commit| commit.id == temporary));
+
+        // A final tree equal to the registry remains a no-op, even if history differs.
+        repo.git(&["read-tree", "--reset", "-u", &base]).unwrap();
+        repo.add_all_and_commit("revert all changes").unwrap();
+        let mut diff = Diff::new(true);
+        updater
+            .get_package_diff(
+                repo.directory(),
+                &package,
+                Some(&published),
+                &repo,
+                vec![repo.current_commit_hash().unwrap(), wanted],
+                &mut diff,
+            )
+            .unwrap();
+        assert!(diff.commits.is_empty());
+    }
 
     #[test]
     fn same_version_is_not_added_to_changelog() {
