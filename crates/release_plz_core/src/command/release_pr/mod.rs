@@ -20,6 +20,7 @@ use crate::{
 };
 
 use super::update_request::UpdateRequest;
+use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct ReleasePrRequest {
@@ -33,6 +34,8 @@ pub struct ReleasePrRequest {
     labels: Vec<String>,
     /// PR Branch Prefix
     branch_prefix: String,
+    /// If `true`, creates release PRs per package
+    pr_per_package: bool,
     pub update_request: UpdateRequest,
 }
 
@@ -44,6 +47,7 @@ impl ReleasePrRequest {
             draft: false,
             labels: vec![],
             branch_prefix: DEFAULT_BRANCH_PREFIX.to_string(),
+            pr_per_package: false,
             update_request,
         }
     }
@@ -71,6 +75,13 @@ impl ReleasePrRequest {
     pub fn with_branch_prefix(mut self, pr_branch_prefix: Option<String>) -> Self {
         if let Some(branch_prefix) = pr_branch_prefix {
             self.branch_prefix = branch_prefix;
+        }
+        self
+    }
+
+    pub fn with_pr_per_package(mut self, pr_per_package: Option<bool>) -> Self {
+        if let Some(pr_per_package) = pr_per_package {
+            self.pr_per_package = pr_per_package;
         }
         self
     }
@@ -119,22 +130,87 @@ pub struct PrPackageRelease {
 /// - [`None`] if release-plz didn't open any pr. This happens when all packages
 ///   are up-to-date.
 #[instrument(skip_all)]
-pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<ReleasePr>> {
+pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Vec<ReleasePr>>> {
     let manifest_dir = input.update_request.local_manifest_dir()?;
     let original_project_root = root_repo_path_from_manifest_dir(manifest_dir)?;
+
+    validate_labels(&input.labels)?;
+
+    let git_client = input
+        .update_request
+        .git_client()?
+        .context("can't find git client")?;
+
+    if input.pr_per_package {
+        // Each package gets its own fresh copy, scoped update, and PR.
+        // No shared update is required.
+        let mut prs: Vec<ReleasePr> = Vec::new();
+        let mut release_train_pr_numbers: HashSet<u64> = HashSet::new();
+
+        let all_packages =
+            publishable_packages_from_manifest(input.update_request.local_manifest())?;
+
+        for package in all_packages {
+            let pkg_tmp_parent = copy_to_temp_dir(&original_project_root)?;
+            let pkg_manifest_dir =
+                new_manifest_dir_path(&original_project_root, manifest_dir, pkg_tmp_parent.path())?;
+            let pkg_project_root = new_project_root(&original_project_root, pkg_tmp_parent.path())?;
+            let pkg_local_manifest = pkg_manifest_dir.join(CARGO_TOML);
+            let package_name = package.name.to_lowercase();
+
+            let pkg_update_request = input
+                .update_request
+                .clone()
+                .set_local_manifest(&pkg_local_manifest)
+                .context("can't find temporary project for package")?
+                .with_single_package(package_name.clone());
+
+            let (single_package_update, _pkg_tmp_repo) = update(&pkg_update_request)
+                .await
+                .context(format!("failed to update package '{}'", package.name))?;
+
+            if single_package_update.updates().is_empty() {
+                continue;
+            }
+
+            let pkg_repo = Repo::new(&pkg_project_root).context("create pkg repo")?;
+            if pkg_repo.is_clean().is_ok() {
+                continue;
+            }
+
+            let pr = open_or_update_release_pr(
+                &pkg_local_manifest,
+                &single_package_update,
+                &git_client,
+                &pkg_repo,
+                ReleasePrOptions {
+                    draft: input.draft,
+                    pr_name: input.pr_name_template.clone(),
+                    pr_body: input.pr_body_template.clone(),
+                    pr_labels: input.labels.clone(),
+                    pr_branch_prefix: format!("{}{}-", input.branch_prefix, package_name),
+                },
+                Some(&release_train_pr_numbers),
+            )
+            .await?;
+
+            release_train_pr_numbers.insert(pr.number);
+            prs.push(pr);
+        }
+        if prs.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(prs));
+    }
+
     let tmp_project_root_parent = copy_to_temp_dir(&original_project_root)?;
     let tmp_project_manifest_dir = new_manifest_dir_path(
         &original_project_root,
         manifest_dir,
         tmp_project_root_parent.path(),
     )?;
-
-    validate_labels(&input.labels)?;
     let tmp_project_root =
         new_project_root(&original_project_root, tmp_project_root_parent.path())?;
-
-    // NOTE: I was planning on using worktrees here too, but a bunch of the tests started failing
-    // so I went back to using full copies.
     let local_manifest = tmp_project_manifest_dir.join(CARGO_TOML);
     let new_update_request = input
         .update_request
@@ -144,35 +220,33 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     let (packages_to_update, _temp_repository) = update(&new_update_request)
         .await
         .context("failed to update packages")?;
-    let git_client = input
-        .update_request
-        .git_client()?
-        .context("can't find git client")?;
 
-    if !packages_to_update.updates().is_empty() {
-        let unreleased_package_worktree_repo =
-            Repo::new(&tmp_project_root).context("create new repo")?;
-        let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
-        if there_are_commits_to_push {
-            let pr = open_or_update_release_pr(
-                &local_manifest,
-                &packages_to_update,
-                &git_client,
-                &unreleased_package_worktree_repo,
-                ReleasePrOptions {
-                    draft: input.draft,
-                    pr_name: input.pr_name_template.clone(),
-                    pr_body: input.pr_body_template.clone(),
-                    pr_labels: input.labels.clone(),
-                    pr_branch_prefix: input.branch_prefix.clone(),
-                },
-            )
-            .await?;
-            return Ok(Some(pr));
-        }
+    if packages_to_update.updates().is_empty() {
+        return Ok(None);
     }
 
-    Ok(None)
+    let repo = Repo::new(&tmp_project_root).context("create new repo")?;
+    if repo.is_clean().is_ok() {
+        return Ok(None);
+    }
+
+    let pr = open_or_update_release_pr(
+        &local_manifest,
+        &packages_to_update,
+        &git_client,
+        &repo,
+        ReleasePrOptions {
+            draft: input.draft,
+            pr_name: input.pr_name_template.clone(),
+            pr_body: input.pr_body_template.clone(),
+            pr_labels: input.labels.clone(),
+            pr_branch_prefix: input.branch_prefix.clone(),
+        },
+        None,
+    )
+    .await?;
+
+    Ok(Some(vec![pr]))
 }
 
 struct ReleasePrOptions {
@@ -189,6 +263,7 @@ async fn open_or_update_release_pr(
     git_client: &GitClient,
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
+    release_train_pr_numbers: Option<&HashSet<u64>>,
 ) -> anyhow::Result<ReleasePr> {
     let mut opened_release_prs = git_client
         .opened_prs(&release_pr_options.pr_branch_prefix)
@@ -205,8 +280,15 @@ async fn open_or_update_release_pr(
             .context("cannot get opened release-plz prs")?;
     }
 
-    // Close all release-plz prs, except one.
-    let old_release_prs = opened_release_prs.iter().skip(1);
+    // Close all release-plz prs, except one
+    let old_release_prs = opened_release_prs
+        .iter()
+        .skip(1)
+        // And except if the prs are part of an existing release train of per-package releases
+        .filter(|pr| match release_train_pr_numbers {
+            Some(set) => !set.contains(&pr.number),
+            None => true,
+        });
     for pr in old_release_prs {
         git_client
             .close_pr(pr.number)
