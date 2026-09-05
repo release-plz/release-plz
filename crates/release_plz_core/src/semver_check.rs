@@ -44,6 +44,7 @@ impl SemverCheck {
 pub fn run_semver_check(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
+    features: &[String],
 ) -> anyhow::Result<SemverCheck> {
     let local_cargo_lock = cargo_lock(local_package);
     let registry_cargo_lock = cargo_lock(registry_package);
@@ -55,12 +56,20 @@ pub fn run_semver_check(
     let local_package_contained_target = local_target_dir.exists();
     let registry_package_contained_target = registry_target_dir.exists();
 
-    let output = Command::new("cargo-semver-checks")
-        .args(["semver-checks", "check-release"])
+    let mut cmd = Command::new("cargo-semver-checks");
+    cmd.args(["semver-checks", "check-release"])
         .arg("--manifest-path")
         .arg(local_package.join(CARGO_TOML))
         .arg("--baseline-root")
-        .arg(registry_package.join(CARGO_TOML))
+        .arg(registry_package.join(CARGO_TOML));
+
+    if !features.is_empty() {
+        cmd.arg("--only-explicit-features");
+        cmd.arg("--features");
+        cmd.arg(features.join(","));
+    }
+
+    let output = cmd
         .output()
         .with_context(|| format!("error while running cargo-semver-checks on {local_package:?}"))?;
 

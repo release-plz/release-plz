@@ -30,6 +30,9 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
+    /// Features to pass to cargo-semver-checks via `--features`.
+    /// When non-empty, `--only-explicit-features` is also passed.
+    pub semver_check_features: Vec<String>,
 }
 
 /// Package-specific config
@@ -69,6 +72,10 @@ impl PackageUpdateConfig {
     pub fn git_only(&self) -> Option<bool> {
         self.generic.git_only
     }
+
+    pub fn semver_check_features(&self) -> &[String] {
+        &self.generic.semver_check_features
+    }
 }
 
 impl Default for UpdateConfig {
@@ -84,6 +91,7 @@ impl Default for UpdateConfig {
             changelog_path: None,
             custom_minor_increment_regex: None,
             custom_major_increment_regex: None,
+            semver_check_features: vec![],
         }
     }
 }
