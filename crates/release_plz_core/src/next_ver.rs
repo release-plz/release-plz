@@ -1,4 +1,4 @@
-use crate::cargo::run_cargo;
+use crate::cargo::run_cargo_with_env;
 use crate::command::git::{GitRepo, GitWorkTree};
 use crate::registry_packages::{PackagesCollection, RegistryPackage};
 use crate::release_regex;
@@ -24,7 +24,8 @@ use cargo_metadata::{
 };
 use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
-use std::collections::BTreeMap;
+use secrecy::SecretString;
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, trace};
@@ -74,11 +75,6 @@ fn get_temp_worktree_and_repo(
     original_repo: &mut GitRepo,
     package_name: &str,
 ) -> anyhow::Result<(GitRepo, GitWorkTree)> {
-    // Clean up any existing worktree with this name
-    original_repo
-        .cleanup_worktree_if_exists(package_name)
-        .context("cleanup existing worktree")?;
-
     // make a worktree for the package
     let worktree = original_repo
         .temp_worktree(Some(package_name), package_name)
@@ -92,8 +88,8 @@ fn get_temp_worktree_and_repo(
     Ok((repo, worktree))
 }
 
-/// Process a single `git_only` package: find its release tag, checkout that commit,
-/// run `cargo package`, and return the package metadata.
+/// Process a single `git_only` package: find its release tag and commit, reconstruct
+/// the workspace if it hasn't already been reconstructed, and return the package metadata.
 ///
 /// Returns `None` if no release tag is found (package will be treated as initial release).
 #[instrument(skip_all, fields(package_name = %package.name))]
@@ -102,7 +98,8 @@ fn process_git_only_package(
     unreleased_project_repo: &mut GitRepo,
     input: &UpdateRequest,
     is_multi_package: bool,
-) -> anyhow::Result<Option<(RegistryPackage, GitWorkTree)>> {
+    reconstructed_workspaces: &mut BTreeMap<String, GitWorkTree>,
+) -> anyhow::Result<Option<RegistryPackage>> {
     // Get the release tag template, falling back to default based on project structure
     let template = input
         .get_package_tag_name(&package.name)
@@ -115,11 +112,7 @@ fn process_git_only_package(
         release_regex.to_string()
     );
 
-    // Get the temporary worktree and repo that we run cargo package in
-    let (mut repo, worktree) = get_temp_worktree_and_repo(unreleased_project_repo, &package.name)
-        .context("get worktree and repo for package")?;
-
-    let Some((release_tag, version)) = repo
+    let Some((release_tag, version)) = unreleased_project_repo
         .get_release_tag(&release_regex, &package.name)
         .context("get release tag")?
     else {
@@ -137,21 +130,36 @@ fn process_git_only_package(
     );
 
     // Get the commit associated with the release tag
-    let release_commit = repo
+    let release_commit = unreleased_project_repo
         .get_tag_commit(&release_tag)
         .context("get release tag commit")?;
 
-    // Checkout that commit in the worktree
-    repo.checkout_commit(&release_commit)
-        .context("checkout release commit for package")?;
+    let worktree = match reconstructed_workspaces.entry(release_commit.clone()) {
+        Entry::Occupied(entry) => {
+            debug!(
+                "Reusing packaged workspace at commit {release_commit} for package {}",
+                package.name
+            );
+            entry.into_mut()
+        }
+        Entry::Vacant(entry) => {
+            let (mut repo, worktree) =
+                get_temp_worktree_and_repo(unreleased_project_repo, &package.name)
+                    .context("get worktree and repo for package")?;
 
-    // Run cargo package so we have our finalized package.
-    // In git_only mode we always package the whole workspace to make sure
-    // local path dependencies are materialized as local tarballs.
-    run_cargo_package(&worktree).context("run cargo package")?;
+            repo.checkout_commit(&release_commit)
+                .context("checkout release commit for package")?;
 
-    // Get the package metadata
-    let single_package = get_cargo_package(&worktree, &package.name).with_context(|| {
+            // Package and verify the whole workspace so unpublished path dependencies are
+            // materialized in Cargo's temporary local registry.
+            run_cargo_package(&worktree).context("run cargo package")?;
+            entry.insert(worktree)
+        }
+    };
+
+    // Metadata paths point into the cached worktree. Any error aborts collection and drops
+    // all reconstructed workspaces, so an unusable artifact cannot be reused.
+    let single_package = get_cargo_package(worktree, &package.name).with_context(|| {
         format!(
             "get cargo package {} from worktree at {:?}",
             package.name,
@@ -160,14 +168,22 @@ fn process_git_only_package(
     })?;
 
     let registry_package = RegistryPackage::new(single_package, Some(release_commit));
-    Ok(Some((registry_package, worktree)))
+    Ok(Some(registry_package))
 }
 
 /// Run cargo package within a worktree
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let output = run_cargo(worktree_path, &["package", "--allow-dirty", "--workspace"])
-        .context("run cargo package in worktree")?;
+    let target_dir = worktree_path.join("target");
+    let output = run_cargo_with_env(
+        worktree_path,
+        &["package", "--allow-dirty", "--workspace"],
+        &[(
+            "CARGO_TARGET_DIR".to_owned(),
+            SecretString::from(target_dir.to_string()),
+        )],
+    )
+    .context("run cargo package in worktree")?;
 
     if !output.status.success() {
         anyhow::bail!("cargo package failed: {:?}", output.stderr);
@@ -180,10 +196,12 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
     let worktree_path = to_utf8_path(worktree.path())?;
     let manifest_path = worktree_path.join("Cargo.toml");
 
-    // Use current_dir so that CARGO_TARGET_DIR resolves correctly relative to worktree
+    // Keep artifacts inside the worktree even if the invocation configured a shared target dir.
+    let target_dir = worktree_path.join("target");
     let mut command = cargo_utils::cargo_metadata_command();
     let rust_package = command
         .current_dir(worktree_path.as_std_path())
+        .env("CARGO_TARGET_DIR", target_dir)
         .no_deps()
         .manifest_path(&manifest_path)
         .exec()
@@ -312,7 +330,9 @@ fn collect_git_only_packages(
     // NOTE: We need to prevent the worktrees from being dropped because their Drop
     // implementation cleans up the worktrees.
     // See the note on the custom worktree Drop impl for more details.
-    let mut worktrees = Vec::new();
+    // Packages released at the same commit share one reconstructed workspace: all other
+    // reconstruction inputs (repository, manifest, Cargo config) are fixed for this invocation.
+    let mut reconstructed_workspaces: BTreeMap<String, GitWorkTree> = BTreeMap::new();
 
     let mut unreleased_project_repo = GitRepo::open(
         input
@@ -322,18 +342,21 @@ fn collect_git_only_packages(
     .context("create unreleased repo for spinning worktrees")?;
 
     for package in git_only_packages {
-        if let Some((registry_package, worktree)) = process_git_only_package(
+        if let Some(registry_package) = process_git_only_package(
             package,
             &mut unreleased_project_repo,
             input,
             is_multi_package,
+            &mut reconstructed_workspaces,
         )? {
             all_packages.insert(registry_package.package.name.to_string(), registry_package);
-            worktrees.push(worktree);
         }
     }
 
-    Ok((all_packages, worktrees))
+    Ok((
+        all_packages,
+        reconstructed_workspaces.into_values().collect(),
+    ))
 }
 
 /// Fetch packages from the registry and return their metadata.
@@ -512,4 +535,55 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
         .get("path")
         .and_then(|i| i.as_str())
         .and_then(|relpath| dunce::canonicalize(package_dir.join(relpath)).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reconstruction_preserves_existing_package_named_worktree() {
+        // Create an initial commit so the worktrees have a branch target.
+        let root = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(root.path().join("repo")).unwrap();
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("test", "test@example.com").unwrap();
+        let initial_commit = repo
+            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+
+        // Simulate a user's worktree named after the package, with uncommitted work.
+        let existing_path = root.path().join("mylib");
+        let existing = repo.worktree("mylib", &existing_path, None).unwrap();
+        let uncommitted_file = existing_path.join("notes.txt");
+        fs_err::write(&uncommitted_file, "work in progress").unwrap();
+
+        // Reconstruction must create a separate worktree despite the name collision.
+        let mut original = super::GitRepo::open(repo.path()).unwrap();
+        let (temporary_repo, temporary) =
+            super::get_temp_worktree_and_repo(&mut original, "mylib").unwrap();
+        let temporary_path = temporary.path().to_path_buf();
+        assert_ne!(temporary_path, existing_path);
+        assert!(existing.validate().is_ok());
+
+        // Dropping the temporary worktree must clean up only its own resources.
+        drop(temporary_repo);
+        drop(temporary);
+
+        assert!(!temporary_path.exists());
+        assert_eq!(repo.worktrees().unwrap().len(), 1);
+
+        // The user's worktree, uncommitted file, and branch target must remain intact.
+        assert!(existing.validate().is_ok());
+        assert_eq!(
+            fs_err::read_to_string(&uncommitted_file).unwrap(),
+            "work in progress"
+        );
+        assert_eq!(
+            repo.find_branch("mylib", git2::BranchType::Local)
+                .unwrap()
+                .get()
+                .target(),
+            Some(initial_commit)
+        );
+    }
 }
