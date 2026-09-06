@@ -323,7 +323,7 @@
         },
         "git_generate_release_notes": {
           "title": "Git Generate Release Notes",
-          "description": "Generate release notes server-side",
+          "description": "Generate release notes on GitHub. Defaults to `false`.\nGenerated notes are appended to the configured release body.",
           "type": [
             "boolean",
             "null"
@@ -606,7 +606,7 @@
         },
         "git_generate_release_notes": {
           "title": "Git Generate Release Notes",
-          "description": "Generate release notes server-side",
+          "description": "Generate release notes on GitHub. Defaults to `false`.\nGenerated notes are appended to the configured release body.",
           "type": [
             "boolean",
             "null"

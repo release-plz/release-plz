@@ -439,7 +439,8 @@ pub struct PackageConfig {
     /// Tera template of the git tag name created by release-plz.
     pub git_tag_name: Option<String>,
     /// # Git Generate Release Notes
-    /// Generate release notes server-side
+    /// Generate release notes on GitHub. Defaults to `false`.
+    /// Generated notes are appended to the configured release body.
     pub git_generate_release_notes: Option<bool>,
     /// # Publish
     /// If `false`, don't run `cargo publish`.
@@ -576,6 +577,41 @@ impl From<ReleaseType> for release_plz_core::ReleaseType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_release_notes_respect_workspace_defaults_and_package_overrides() {
+        use release_plz_core::ReleaseConfig;
+
+        let config: Config = toml::from_str(
+            r#"
+            [workspace]
+            git_generate_release_notes = true
+
+            [[package]]
+            name = "inherited"
+
+            [[package]]
+            name = "disabled"
+            git_generate_release_notes = false
+            "#,
+        )
+        .unwrap();
+        let request = config
+            .fill_release_config(
+                false,
+                false,
+                ReleaseRequest::new(fake_package::metadata::fake_metadata()),
+            )
+            .unwrap();
+        let enabled = ReleaseConfig::from(PackageConfig::default())
+            .with_git_release(GitReleaseConfig::default().set_generate_release_notes(true));
+        assert_eq!(request.get_package_config("unconfigured"), enabled);
+        assert_eq!(request.get_package_config("inherited"), enabled);
+        assert_eq!(
+            request.get_package_config("disabled"),
+            ReleaseConfig::from(PackageConfig::default())
+        );
+    }
 
     const BASE_WORKSPACE_CONFIG: &str = r#"
         [workspace]

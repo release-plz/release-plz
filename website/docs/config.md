@@ -351,7 +351,7 @@ Supported values are:
 - If `true`, release-plz creates the git release as latest. *(Default)*.
 - If `false`, release-plz doesn't set the git release it creates as latest.
 
-*(GitHub only)*. Gitea doesn't support this feature.
+*(GitHub only)*. Gitea and GitLab do not support this feature.
 
 :::warning
 Drafts and prereleases cannot be set as latest.
@@ -382,9 +382,13 @@ Where:
 #### The `git_generate_release_notes` field
 
 - If `true`, release notes will be generated server-side.
-- If `false, release-plz won't rely on forge for generating release notes.
+- If `false`, release-plz the release body will only contain the [`git_release_body`](#the-git_release_body-field) without the generated notes. *(Default)*.
 
-*(GitHub only)*. Gitea doesn't support this feature.
+*(GitHub only)*. Gitea and GitLab do not support this feature.
+
+GitHub appends its generated notes after the body supplied by release-plz, including any
+[`git_release_body`](#the-git_release_body-field) template. Set `git_release_body = ""`
+to use only the generated notes.
 
 #### The `git_only` field
 
