@@ -584,9 +584,6 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
-        let head = repository
-            .current_commit_hash()
-            .context("can't get HEAD commit to calculate diff")?;
         let registry_package = registry_packages.get_registry_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
@@ -614,19 +611,11 @@ impl Updater<'_> {
                 );
             }
         }
-        // Collect the commits that touched the package since the last release, newest first.
-        // We bound the walk by the release commit(s) instead of walking commit by commit and
-        // stopping at the first already-released commit: with merge commits the latter can
-        // descend into a branch that forked before the release and rejoin already-released
-        // history, stopping early and dropping the commits that landed on the main line after
-        // the release (release-plz#2494).
-        let max_analyze_commits = if registry_package.is_none() {
-            match self.req.max_analyze_commits() {
-                0 => u32::MAX,
-                n => n,
-            }
-        } else {
-            u32::MAX
+        // Without a registry package there is no release boundary, so the walk is capped by
+        // `max_analyze_commits` (0 means unlimited).
+        let max_commits = match (registry_package, self.req.max_analyze_commits()) {
+            (None, n) if n > 0 => Some(n),
+            _ => None,
         };
         let release_boundaries: Vec<&str> = [
             tag_commit.as_deref(),
@@ -635,11 +624,13 @@ impl Updater<'_> {
         .into_iter()
         .flatten()
         .collect();
+        // See `commits_at_paths_since` for why the walk is bounded by the release commits
+        // instead of stopping at the first already-released commit (release-plz#2494).
         let commits_to_analyze = repository.commits_at_paths_since(
-            &head,
+            repository.original_branch(),
             &release_boundaries,
             &paths_to_check,
-            max_analyze_commits,
+            max_commits,
         )?;
 
         self.get_package_diff(
@@ -664,16 +655,35 @@ impl Updater<'_> {
         commits_to_analyze: Vec<String>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
-        // Compare the final tree first: a change followed by a revert must not
-        // trigger a release. An equal tree on a merged branch, however, must not
-        // stop traversal of its siblings.
-        if let Some(registry_package) = registry_package
-            && self.check_package_equality(
+        // Compare the final tree first: a change followed by a revert must not trigger a
+        // release, no matter what happened in between.
+        let is_head_equal_to_registry = match registry_package {
+            Some(registry_package) => self.check_package_equality(
                 repository,
                 package,
                 package_path,
                 registry_package.package.package_path()?,
-            )?
+            )?,
+            None => false,
+        };
+        if !is_head_equal_to_registry {
+            self.collect_commits(
+                package_path,
+                package,
+                registry_package,
+                repository,
+                commits_to_analyze,
+                diff,
+            )?;
+        }
+        repository
+            .checkout_head()
+            .context("can't checkout to head after calculating diff")?;
+
+        // No package files changed since the last release, but the workspace `Cargo.lock` or
+        // `Cargo.toml` (i.e. the dependencies) might have. If so, we still add a commit.
+        if diff.commits.is_empty()
+            && let Some(registry_package) = registry_package
         {
             self.add_dependencies_update_if_any(
                 diff,
@@ -681,41 +691,45 @@ impl Updater<'_> {
                 package,
                 registry_package.package.package_path()?,
             )?;
-            return Ok(());
         }
+        Ok(())
+    }
 
-        let mut equal_boundaries: Vec<String> = Vec::new();
+    /// Check out each commit in `commits_to_analyze` (newest first) and add to `diff` the
+    /// ones that changed the package with respect to the registry.
+    fn collect_commits(
+        &self,
+        package_path: &Utf8Path,
+        package: &Package,
+        registry_package: Option<&RegistryPackage>,
+        repository: &Repo,
+        commits_to_analyze: Vec<String>,
+        diff: &mut Diff,
+    ) -> anyhow::Result<()> {
+        // Commits where the package is equal to the registry one. Their ancestors are already
+        // released, but sibling branches can still contain unreleased work, so the walk goes
+        // on and only skips them.
+        let mut released_commits: Vec<String> = Vec::new();
         for current_commit_hash in commits_to_analyze {
-            if equal_boundaries
+            if released_commits
                 .iter()
-                .any(|boundary| repository.is_ancestor(&current_commit_hash, boundary))
+                .any(|released| repository.is_ancestor(&current_commit_hash, released))
             {
                 continue;
             }
             // The info contained in `package` might be outdated after this checkout, because
             // commits could contain changes to Cargo.toml.
             repository.checkout(&current_commit_hash)?;
-            let current_commit_message = repository.current_commit_message()?;
-
-            // Check if files changed in git commit belong to the current package.
-            // This is required because a package can contain another package in a subdirectory.
-            let are_changed_files_in_pkg = || {
-                self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
-            };
 
             if let Some(registry_package) = registry_package {
-                let registry_package_path = registry_package.package.package_path()?;
-
                 let are_packages_equal = self.check_package_equality(
                     repository,
                     package,
                     package_path,
-                    registry_package_path,
+                    registry_package.package.package_path()?,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    // Exclude this snapshot and its ancestors, but keep walking
-                    // independent branches that can still contain unreleased work.
-                    equal_boundaries.push(current_commit_hash);
+                    released_commits.push(current_commit_hash);
                     continue;
                 }
                 // When version is already bumped, we still collect commits to update the
@@ -727,39 +741,15 @@ impl Updater<'_> {
                     );
                     diff.set_version_unpublished(registry_package.package.version.clone());
                 }
-                if are_changed_files_in_pkg()? {
-                    debug!("packages contain different files");
-                    // The two packages are different, so this commit is not present in the
-                    // published package.
-                    diff.commits.push(Commit::new(
-                        current_commit_hash,
-                        current_commit_message.clone(),
-                    ));
-                }
-            } else if are_changed_files_in_pkg()? {
+            }
+            // Check if files changed in git commit belong to the current package.
+            // This is required because a package can contain another package in a subdirectory.
+            if self.are_changed_files_in_package(package_path, repository, &current_commit_hash)? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
-                    current_commit_message.clone(),
+                    repository.current_commit_message()?,
                 ));
             }
-        }
-
-        repository
-            .checkout_head()
-            .context("can't checkout to head after calculating diff")?;
-
-        // No package files changed since the last release, but the workspace `Cargo.lock` or
-        // `Cargo.toml` (i.e. the dependencies) might have. If so, we still add a commit.
-        if diff.commits.is_empty()
-            && let Some(registry_package) = registry_package
-        {
-            let registry_package_path = registry_package.package.package_path()?;
-            self.add_dependencies_update_if_any(
-                diff,
-                &registry_package.package,
-                package,
-                registry_package_path,
-            )?;
         }
         Ok(())
     }

@@ -234,33 +234,37 @@ impl Repo {
     /// used: a commit that isn't reachable from `head` (a newer release living on another
     /// branch or a hash missing from a shallow clone) isn't a point `head` was released at,
     /// and excluding it would wrongly drop the commits it shares with `head`.
-    /// At most `max_commits` are returned.
+    ///
+    /// `None` and `Some(u32::MAX)` mean unlimited; other values cap the number of commits.
     pub fn commits_at_paths_since(
         &self,
         head: &str,
         boundary_commits: &[&str],
         paths: &[&Path],
-        max_commits: u32,
+        max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
-        let excludes: Vec<String> = boundary_commits
-            .iter()
-            .filter(|commit| self.is_ancestor(commit, head))
-            .map(|commit| format!("^{commit}"))
-            .collect();
-        // `u32::MAX` means "no limit"; git's `--max-count` doesn't accept a value that large.
-        let max_commits = (max_commits != u32::MAX).then(|| max_commits.to_string());
-
-        let mut git_args = vec!["log", "--topo-order", "--format=%H"];
-        if let Some(max_commits) = &max_commits {
-            git_args.push("--max-count");
-            git_args.push(max_commits.as_str());
-        }
-        git_args.push(head);
-        git_args.extend(excludes.iter().map(String::as_str));
-        git_args.push("--");
-        for p in paths {
-            git_args.push(p.to_str().expect("invalid path"));
-        }
+        // Preserve the unlimited sentinel: Git cannot parse `u32::MAX` as `--max-count`.
+        let max_commits = max_commits.filter(|&n| n != u32::MAX);
+        let mut git_args = vec![
+            "log".to_string(),
+            "--topo-order".to_string(),
+            "--format=%H".to_string(),
+            head.to_string(),
+        ];
+        git_args.extend(max_commits.map(|n| format!("--max-count={n}")));
+        git_args.extend(
+            boundary_commits
+                .iter()
+                .filter(|commit| self.is_ancestor(commit, head))
+                .map(|commit| format!("^{commit}")),
+        );
+        git_args.push("--".to_string());
+        git_args.extend(
+            paths
+                .iter()
+                .map(|p| p.to_str().expect("invalid path").to_string()),
+        );
+        let git_args: Vec<&str> = git_args.iter().map(String::as_str).collect();
         let commit_list = self.git(&git_args)?;
         Ok(commit_list.lines().map(|c| c.to_string()).collect())
     }
@@ -569,7 +573,7 @@ mod tests {
             .unwrap();
 
         let commits = repo
-            .commits_at_paths_since("HEAD", &[&release], &[pkg.as_ref()], u32::MAX)
+            .commits_at_paths_since("HEAD", &[&release], &[pkg.as_ref()], None)
             .unwrap();
 
         // All three commits made after the release are collected, regardless of the branch
@@ -620,7 +624,7 @@ mod tests {
         let paths = [repo.directory().as_std_path()];
 
         let commits = repo
-            .commits_at_paths_since(&tip, &[&release], &paths, u32::MAX)
+            .commits_at_paths_since(&tip, &[&release], &paths, None)
             .unwrap();
         // Date ordering would visit the shared base before the older left commit.
         assert_eq!(commits.len(), 4);
@@ -629,9 +633,14 @@ mod tests {
         assert!(commits.contains(&left));
         assert!(commits.contains(&right));
 
+        let unlimited = repo
+            .commits_at_paths_since(&tip, &[&release], &paths, Some(u32::MAX))
+            .unwrap();
+        assert_eq!(unlimited, commits);
+
         for limit in [0, 1, 2] {
             let limited = repo
-                .commits_at_paths_since(&tip, &[&release], &paths, limit)
+                .commits_at_paths_since(&tip, &[&release], &paths, Some(limit))
                 .unwrap();
             assert_eq!(limited, commits[..limit as usize]);
         }
@@ -667,7 +676,7 @@ mod tests {
         let bogus = "0000000000000000000000000000000000000000";
         for boundary in [other.as_str(), bogus] {
             let commits = repo
-                .commits_at_paths_since("HEAD", &[boundary], &[file.as_ref()], u32::MAX)
+                .commits_at_paths_since("HEAD", &[boundary], &[file.as_ref()], None)
                 .unwrap();
             assert!(
                 commits.contains(&first) && commits.contains(&second),
@@ -706,7 +715,7 @@ mod tests {
         repo.checkout(&stable_commit).unwrap();
 
         let commits = repo
-            .commits_at_paths_since(&head, &[&release], &[stable.as_ref()], u32::MAX)
+            .commits_at_paths_since(&head, &[&release], &[stable.as_ref()], None)
             .unwrap();
         assert!(
             commits.is_empty(),
