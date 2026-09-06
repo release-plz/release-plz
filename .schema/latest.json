@@ -46,6 +46,7 @@
         "git_release_body": null,
         "git_release_draft": null,
         "git_release_enable": null,
+        "git_release_generate_notes": null,
         "git_release_latest": null,
         "git_release_name": null,
         "git_release_type": null,
@@ -352,6 +353,14 @@
             "null"
           ]
         },
+        "git_release_generate_notes": {
+          "title": "Git Release Generate Notes",
+          "description": "Generate release notes on GitHub. Defaults to `false`.\nGenerated notes are appended to the configured release body.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "git_release_latest": {
           "title": "Git Release Latest",
           "description": "If true, will set the git release as latest.",
@@ -622,6 +631,14 @@
         "git_release_enable": {
           "title": "Git Release Enable",
           "description": "Publish the GitHub/Gitea/GitLab release for the created git tag.\nEnabled by default.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "git_release_generate_notes": {
+          "title": "Git Release Generate Notes",
+          "description": "Generate release notes on GitHub. Defaults to `false`.\nGenerated notes are appended to the configured release body.",
           "type": [
             "boolean",
             "null"
