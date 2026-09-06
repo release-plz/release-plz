@@ -269,6 +269,12 @@ impl Repo {
         Ok(commit_list.lines().map(|c| c.to_string()).collect())
     }
 
+    /// The commit itself and all its ancestors, collected in one Git traversal.
+    pub fn ancestor_commits(&self, commit: &str) -> anyhow::Result<HashSet<String>> {
+        let commits = self.git(&["rev-list", commit])?;
+        Ok(commits.lines().map(str::to_owned).collect())
+    }
+
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         self.git(&["checkout", object])
@@ -632,6 +638,17 @@ mod tests {
         assert_eq!(commits.last(), Some(&base));
         assert!(commits.contains(&left));
         assert!(commits.contains(&right));
+
+        // An equal snapshot on the left must prune its ancestors without pruning its sibling.
+        let left_ancestors = repo.ancestor_commits(&left).unwrap();
+        assert!(left_ancestors.contains(&left));
+        assert!(left_ancestors.contains(&base));
+        assert!(left_ancestors.contains(&release));
+        assert!(!left_ancestors.contains(&right));
+        assert!(!left_ancestors.contains(&tip));
+        let merged_ancestors = repo.ancestor_commits(&tip).unwrap();
+        assert!(merged_ancestors.contains(&left));
+        assert!(merged_ancestors.contains(&right));
 
         let unlimited = repo
             .commits_at_paths_since(&tip, &[&release], &paths, Some(u32::MAX))

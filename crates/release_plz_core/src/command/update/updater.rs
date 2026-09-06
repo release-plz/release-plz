@@ -626,12 +626,14 @@ impl Updater<'_> {
         .collect();
         // See `commits_at_paths_since` for why the walk is bounded by the release commits
         // instead of stopping at the first already-released commit (release-plz#2494).
-        let commits_to_analyze = repository.commits_at_paths_since(
-            repository.original_branch(),
-            &release_boundaries,
-            &paths_to_check,
-            max_commits,
-        )?;
+        let commits_to_analyze = || {
+            repository.commits_at_paths_since(
+                repository.original_branch(),
+                &release_boundaries,
+                &paths_to_check,
+                max_commits,
+            )
+        };
 
         self.get_package_diff(
             &package_path,
@@ -652,11 +654,11 @@ impl Updater<'_> {
         package: &Package,
         registry_package: Option<&RegistryPackage>,
         repository: &Repo,
-        commits_to_analyze: Vec<String>,
+        commits_to_analyze: impl FnOnce() -> anyhow::Result<Vec<String>>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
         // Compare the final tree first: a change followed by a revert must not trigger a
-        // release, no matter what happened in between.
+        // release, no matter what happened in between. Collect history only if it differs.
         let is_head_equal_to_registry = match registry_package {
             Some(registry_package) => self.check_package_equality(
                 repository,
@@ -672,7 +674,7 @@ impl Updater<'_> {
                 package,
                 registry_package,
                 repository,
-                commits_to_analyze,
+                commits_to_analyze()?,
                 diff,
             )?;
         }
@@ -706,15 +708,12 @@ impl Updater<'_> {
         commits_to_analyze: Vec<String>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
-        // Commits where the package is equal to the registry one. Their ancestors are already
-        // released, but sibling branches can still contain unreleased work, so the walk goes
-        // on and only skips them.
-        let mut released_commits: Vec<String> = Vec::new();
+        // An equal snapshot and its ancestors are already released. Collect those ancestors
+        // in bulk so skipping old history does not require a Git process per commit.
+        // Sibling branches can still contain unreleased work and must be checked.
+        let mut released_commits = HashSet::new();
         for current_commit_hash in commits_to_analyze {
-            if released_commits
-                .iter()
-                .any(|released| repository.is_ancestor(&current_commit_hash, released))
-            {
+            if released_commits.contains(&current_commit_hash) {
                 continue;
             }
             // The info contained in `package` might be outdated after this checkout, because
@@ -729,7 +728,7 @@ impl Updater<'_> {
                     registry_package.package.package_path()?,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    released_commits.push(current_commit_hash);
+                    released_commits.extend(repository.ancestor_commits(&current_commit_hash)?);
                     continue;
                 }
                 // When version is already bumped, we still collect commits to update the
@@ -1184,14 +1183,16 @@ mod tests {
                 &package,
                 Some(&published),
                 &repo,
-                vec![
-                    tip,
-                    branch,
-                    equal,
-                    wanted.clone(),
-                    temporary.clone(),
-                    base.clone(),
-                ],
+                || {
+                    Ok(vec![
+                        tip,
+                        branch,
+                        equal,
+                        wanted.clone(),
+                        temporary.clone(),
+                        base.clone(),
+                    ])
+                },
                 &mut diff,
             )
             .unwrap();
@@ -1223,7 +1224,7 @@ mod tests {
                 &package,
                 Some(&published),
                 &repo,
-                vec![repo.current_commit_hash().unwrap(), wanted],
+                || panic!("an unchanged package must not collect Git history"),
                 &mut diff,
             )
             .unwrap();
