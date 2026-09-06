@@ -1223,6 +1223,21 @@ mod tests {
         assert!(diff.commits.iter().any(|commit| commit.id == wanted));
         assert!(!diff.commits.iter().any(|commit| commit.id == temporary));
 
+        // Exercise the actual Git walk too, both with a known publication commit
+        // and with package equality as the only release boundary.
+        for published_at in [None, Some(base.clone())] {
+            let registry = PackagesCollection::default().with_packages(
+                [(
+                    package.name.to_string(),
+                    RegistryPackage::new(published.package.clone(), published_at),
+                )]
+                .into(),
+            );
+            let diff = updater.get_diff(&package, &registry, &repo).unwrap();
+            assert!(diff.commits.iter().any(|commit| commit.id == wanted));
+            assert!(!diff.commits.iter().any(|commit| commit.id == temporary));
+        }
+
         // A final tree equal to the registry remains a no-op, even if history differs.
         repo.git(&["read-tree", "--reset", "-u", &base]).unwrap();
         repo.add_all_and_commit("revert all changes").unwrap();

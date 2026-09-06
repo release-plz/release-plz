@@ -218,7 +218,8 @@ impl Repo {
         Ok(())
     }
 
-    /// Hashes of the commits that modified `paths`, from newest (`HEAD`) to oldest,
+    /// Hashes of the commits that modified `paths`, in reverse topological order
+    /// (descendants before ancestors),
     /// excluding any commit reachable from one of `boundary_commits` (typically the git tag
     /// and/or the commit at which the last version was published).
     ///
@@ -231,9 +232,9 @@ impl Repo {
     /// `head` must be the branch tip the changelog is being computed for (not necessarily the
     /// currently checked-out commit). Only boundary commits that are ancestors of `head` are
     /// used: a commit that isn't reachable from `head` (a newer release living on another
-    /// branch, a hash missing from a shallow clone, or simply the tag of a package unchanged
-    /// since before `head`) isn't a point `head` was released at, and excluding it would
-    /// wrongly drop the commits it shares with `head`. At most `max_commits` are returned.
+    /// branch or a hash missing from a shallow clone) isn't a point `head` was released at,
+    /// and excluding it would wrongly drop the commits it shares with `head`.
+    /// At most `max_commits` are returned.
     pub fn commits_at_paths_since(
         &self,
         head: &str,
@@ -585,6 +586,54 @@ mod tests {
                 !commits.contains(released),
                 "released commit {released} should not be collected, got {commits:?}"
             );
+        }
+    }
+
+    #[test]
+    fn commits_at_paths_since_orders_descendants_before_ancestors_with_clock_skew() {
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let release = repo.current_commit_hash().unwrap();
+        let commit_file = |name: &str, date: &str| {
+            fs_err::write(repo.directory().join(name), name).unwrap();
+            repo.add(&[name]).unwrap();
+            let output = Command::new("git")
+                .current_dir(repo.directory())
+                .env("GIT_AUTHOR_DATE", date)
+                .env("GIT_COMMITTER_DATE", date)
+                .args(["commit", "-m", name])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            repo.current_commit_hash().unwrap()
+        };
+
+        let base = commit_file("base.rs", "2030-01-01T00:00:00Z");
+        repo.checkout_new_branch("left").unwrap();
+        let left = commit_file("left.rs", "2000-01-01T00:00:00Z");
+        repo.checkout(&base).unwrap();
+        repo.checkout_new_branch("right").unwrap();
+        let right = commit_file("right.rs", "2040-01-01T00:00:00Z");
+        repo.git(&["merge", "--no-ff", "left", "-m", "merge left"])
+            .unwrap();
+        let tip = repo.current_commit_hash().unwrap();
+        let paths = [repo.directory().as_std_path()];
+
+        let commits = repo
+            .commits_at_paths_since(&tip, &[&release], &paths, u32::MAX)
+            .unwrap();
+        // Date ordering would visit the shared base before the older left commit.
+        assert_eq!(commits.len(), 4);
+        assert_eq!(commits.first(), Some(&tip));
+        assert_eq!(commits.last(), Some(&base));
+        assert!(commits.contains(&left));
+        assert!(commits.contains(&right));
+
+        for limit in [0, 1, 2] {
+            let limited = repo
+                .commits_at_paths_since(&tip, &[&release], &paths, limit)
+                .unwrap();
+            assert_eq!(limited, commits[..limit as usize]);
         }
     }
 
