@@ -1233,12 +1233,14 @@ git_release_name = "{{ package }}-v{{ version }}"
 "#;
     context.write_release_plz_toml(config);
 
-    let tag_v0_1_0 = | package: &str | {
-    context
-        .repo
-        .tag(&format!("{package}-v0.1.0"), &format!("Release {package} v0.1.0"))
-        .unwrap();
-
+    let tag_v0_1_0 = |package: &str| {
+        context
+            .repo
+            .tag(
+                &format!("{package}-v0.1.0"),
+                &format!("Release {package} v0.1.0"),
+            )
+            .unwrap();
     };
     tag_v0_1_0("mylib");
     tag_v0_1_0("mybin");
