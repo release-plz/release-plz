@@ -382,7 +382,8 @@ Where:
 #### The `git_release_generate_notes` field
 
 - If `true`, release notes will be generated server-side.
-- If `false`, release-plz the release body will only contain the [`git_release_body`](#the-git_release_body-field) without the generated notes. *(Default)*.
+- If `false`, the release body will only contain the
+  [`git_release_body`](#the-git_release_body-field) without the generated notes. *(Default)*.
 
 *(GitHub only)*. Gitea and GitLab do not support this feature.
 
