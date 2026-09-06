@@ -1,5 +1,6 @@
 include_fragments = "full"
-accept = '100..=103, 200..=299, 429'
+# Don't fail on rate limits or server errors from external sites.
+accept = '100..=103, 200..=299, 429, 500..=599'
 
 remap = [
   # Workaround for https://github.com/lycheeverse/lychee/issues/1729
