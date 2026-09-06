@@ -84,7 +84,7 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
-  - [`git_generate_release_notes`](#the-git_generate_release_notes-field) — Generate release notes server-side.
+  - [`git_release_generate_notes`](#the-git_release_generate_notes-field) — Generate release notes server-side.
   - [`git_only`](#the-git_only-field) — Use git tags instead of cargo registry.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
@@ -124,7 +124,7 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field-package-section) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field-package-section) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field-package-section) — Customize git tag pattern.
-  - [`git_generate_release_notes`](#the-git_generate_release_notes-field-package-section) — Generate
+  - [`git_release_generate_notes`](#the-git_release_generate_notes-field-package-section) — Generate
     release notes server-side.
   - [`git_only`](#the-git_only-field-package-section) — Use git tags instead of cargo registry.
   - [`publish`](#the-publish-field-package-section) — Publish to cargo registry.
@@ -379,7 +379,7 @@ Where:
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
 
-#### The `git_generate_release_notes` field
+#### The `git_release_generate_notes` field
 
 - If `true`, release notes will be generated server-side.
 - If `false`, release-plz the release body will only contain the [`git_release_body`](#the-git_release_body-field) without the generated notes. *(Default)*.
@@ -870,9 +870,9 @@ Overrides the [`workspace.git_tag_enable`](#the-git_tag_enable-field) field.
 
 Overrides the [`workspace.git_tag_name`](#the-git_tag_name-field) field.
 
-#### The `git_generate_release_notes` field (`package` section)
+#### The `git_release_generate_notes` field (`package` section)
 
-Overrides the [`workspace.git_generate_release_notes`](#the-git_generate_release_notes-field) field.
+Overrides the [`workspace.git_release_generate_notes`](#the-git_release_generate_notes-field) field.
 
 #### The `git_only` field (`package` section)
 

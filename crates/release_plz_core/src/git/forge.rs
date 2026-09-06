@@ -321,7 +321,7 @@ impl GitClient {
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         anyhow::ensure!(
             release_info.generate_release_notes != Some(true) || self.forge == ForgeType::Github,
-            "The `git_generate_release_notes` option is only supported by GitHub"
+            "The `git_release_generate_notes` option is only supported by GitHub"
         );
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => self.create_github_release(release_info).await,
@@ -1267,7 +1267,7 @@ mod tests {
                 .create_release(&release_info(Some(true)))
                 .await
                 .unwrap_err();
-            assert!(error.to_string().contains("git_generate_release_notes"));
+            assert!(error.to_string().contains("git_release_generate_notes"));
         }
     }
 

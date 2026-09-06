@@ -215,7 +215,7 @@ impl ReleaseRequest {
                 !config.release
                     || !config.git_release.enabled
                     || config.git_release.generate_release_notes != Some(true),
-                "Package `{}`: the `git_generate_release_notes` option is only supported by GitHub",
+                "Package `{}`: the `git_release_generate_notes` option is only supported by GitHub",
                 package.name
             );
         }
@@ -1351,7 +1351,7 @@ mod tests {
                     GitReleaseConfig::default().set_generate_release_notes(true),
                 ));
             let error = release(&request).await.unwrap_err();
-            assert!(error.to_string().contains("git_generate_release_notes"));
+            assert!(error.to_string().contains("git_release_generate_notes"));
         }
     }
 
