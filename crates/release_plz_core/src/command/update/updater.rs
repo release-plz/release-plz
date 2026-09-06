@@ -584,7 +584,6 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
-        // The branch tip, captured before `checkout_last_commit_at_paths` moves `HEAD`.
         let head = repository
             .current_commit_hash()
             .context("can't get HEAD commit to calculate diff")?;
@@ -592,19 +591,6 @@ impl Updater<'_> {
         let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        repository
-            .checkout_last_commit_at_paths(&paths_to_check)
-            .map_err(|err| {
-                if err
-                    .to_string()
-                    .contains("Your local changes to the following files would be overwritten")
-                {
-                    err.context("The allow-dirty option can't be used in this case")
-                } else {
-                    err.context("Failed to retrieve the last commit of local repository.")
-                }
-            })?;
-
         let git_tag = self
             .project
             .git_tag(&package.name, &package.version.to_string())?;
@@ -665,12 +651,10 @@ impl Updater<'_> {
             &mut diff,
         )?;
 
-        repository
-            .checkout_head()
-            .context("can't checkout to head after calculating diff")?;
         Ok(diff)
     }
 
+    /// Requires the repository to be at its branch head and restores it after traversal.
     fn get_package_diff(
         &self,
         package_path: &Utf8Path,
@@ -683,7 +667,6 @@ impl Updater<'_> {
         // Compare the final tree first: a change followed by a revert must not
         // trigger a release. An equal tree on a merged branch, however, must not
         // stop traversal of its siblings.
-        repository.checkout_head()?;
         if let Some(registry_package) = registry_package
             && self.check_package_equality(
                 repository,
@@ -761,7 +744,9 @@ impl Updater<'_> {
             }
         }
 
-        repository.checkout_head()?;
+        repository
+            .checkout_head()
+            .context("can't checkout to head after calculating diff")?;
 
         // No package files changed since the last release, but the workspace `Cargo.lock` or
         // `Cargo.toml` (i.e. the dependencies) might have. If so, we still add a commit.
@@ -1130,8 +1115,8 @@ mod tests {
     fn equal_branch_snapshot_does_not_hide_sibling_changes() {
         let local_dir = tempfile::tempdir().unwrap();
         let registry_dir = tempfile::tempdir().unwrap();
-        let repo = Repo::init(&local_dir);
-        let registry_repo = Repo::init(&registry_dir);
+        let repo = Repo::init(dunce::canonicalize(local_dir.path()).unwrap());
+        let registry_repo = Repo::init(dunce::canonicalize(registry_dir.path()).unwrap());
         let manifest =
             "[package]\nname = \"history-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
         for root in [repo.directory(), registry_repo.directory()] {
