@@ -334,7 +334,7 @@ git_tag_name = "{{ package }}-v{{ version }}"
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/lib1-v0.1.0...lib1-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/lib1-v0.1.0...lib1-v0.1.1) - {today}
 
 ### Added
 
@@ -408,7 +408,7 @@ git_tag_name = "api-v{{ version }}"
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/api-v0.1.0...api-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/api-v0.1.0...api-v0.1.1) - {today}
 
 ### Added
 
@@ -609,7 +609,7 @@ git_tag_name = "{{ package }}-v{{ version }}"
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/pkg1-v0.1.0...pkg1-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/pkg1-v0.1.0...pkg1-v0.1.1) - {today}
 
 ### Added
 
@@ -620,7 +620,7 @@ git_tag_name = "{{ package }}-v{{ version }}"
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/pkg2-v0.1.0...pkg2-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/pkg2-v0.1.0...pkg2-v0.1.1) - {today}
 
 ### Added
 
@@ -822,7 +822,7 @@ publish = false
 
     // Verify no packages were published (since publish = false)
     let dest_dir = Utf8TempDir::new().unwrap();
-    let packages = context.download_package(dest_dir.path());
+    let packages = context.download_package(dest_dir.path()).await;
     assert!(packages.is_empty());
 }
 
@@ -922,7 +922,7 @@ publish = false
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_update_handles_workspace_path_dependencies() {
+async fn git_only_update_handles_workspace_path_dependencies_at_different_commits() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("mylib").with_type(PackageType::Lib),
         TestPackage::new("mybin")
@@ -942,16 +942,31 @@ publish = false
         .repo
         .tag("mylib-v0.1.0", "Release mylib v0.1.0")
         .unwrap();
+
+    // Release the binary at a later commit with different package contents, so
+    // each package must be compared against its own historical workspace.
+    let readme = context.package_path("mybin").join("README.md");
+    fs_err::write(&readme, "# Initial mybin release").unwrap();
+    context.push_all_changes("feat: prepare mybin release");
     context
         .repo
         .tag("mybin-v0.1.0", "Release mybin v0.1.0")
         .unwrap();
 
-    let readme = context.package_path("mybin").join("README.md");
     fs_err::write(&readme, "# Updated README").unwrap();
     context.push_all_changes("fix: update mybin readme");
 
-    context.run_release_pr().success();
+    let outcome = context
+        .run_release_pr_with_log("DEBUG,hyper=INFO")
+        .success();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert_eq!(
+        stderr
+            .matches("Run `cargo package --allow-dirty --workspace`")
+            .count(),
+        2,
+        "packages at different historical commits need separate workspace reconstructions\n{stderr}"
+    );
 
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
@@ -972,7 +987,7 @@ publish = false
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/mybin-v0.1.0...mybin-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/mybin-v0.1.0...mybin-v0.1.1) - {today}
 
 ### Fixed
 
@@ -987,6 +1002,158 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         )
         .trim(),
         pr_body.trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_packages_sharing_a_release_tag() {
+    // All packages are released together under a single workspace tag, so they
+    // are all resolved at the same historical commit.
+    // The unreleased internal libraries are path dependencies of the binary, so
+    // the whole workspace must be packaged at that commit.
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("mylib-a").with_type(PackageType::Lib),
+        TestPackage::new("mylib-b").with_type(PackageType::Lib),
+        TestPackage::new("mybin")
+            .with_type(PackageType::Bin)
+            .with_path_dependencies(vec!["../mylib-a", "../mylib-b"]),
+    ])
+    .await;
+
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+git_tag_name = "v{{ version }}"
+"#;
+    context.write_release_plz_toml(config);
+
+    context
+        .repo
+        .tag("v0.1.0", "Release workspace v0.1.0")
+        .unwrap();
+
+    let readme = context.package_path("mybin").join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update mybin readme");
+
+    let outcome = context
+        .run_release_pr_with_log("DEBUG,hyper=INFO")
+        .success();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert_eq!(
+        stderr
+            .matches("Run `cargo package --allow-dirty --workspace`")
+            .count(),
+        1,
+        "packages at one historical commit should share workspace reconstruction\n{stderr}"
+    );
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
+
+    let today = today();
+    let username = context.gitea.user.username();
+    let repo = &context.gitea.repo;
+    assert_eq!(
+        format!(
+            r"
+## 🤖 New release
+
+* `mybin`: 0.1.0 -> 0.1.1
+
+<details><summary><i><b>Changelog</b></i></summary><p>
+
+<blockquote>
+
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/v0.1.0...v0.1.1) - {today}
+
+### Fixed
+
+- update mybin readme
+</blockquote>
+
+
+</p></details>
+
+---
+This PR was generated with [release-plz](https://github.com/release-plz/release-plz/)."
+        )
+        .trim(),
+        pr_body.trim()
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_root_package_path_dependencies() {
+    use cargo_utils::{CARGO_TOML, LocalManifest};
+
+    let context = TestContext::new().await;
+
+    // Workspace layout for this scenario:
+    // - `.` is package `mybin` (root package, binary)
+    // - `crates/mylib` is package `mylib` (workspace member, library)
+    // - `mybin` depends on `mylib` via `path = "crates/mylib"`
+    // Convert root package to `mybin` and add a workspace member at `crates/mylib`.
+    let root_manifest_path = context.repo_dir().join(CARGO_TOML);
+    let mut root_manifest = LocalManifest::try_new(&root_manifest_path).unwrap();
+    root_manifest.data["package"]["name"] = "mybin".into();
+    root_manifest.data["workspace"]["resolver"] = "3".into();
+    let mut members = toml_edit::Array::new();
+    members.push(".");
+    members.push("crates/mylib");
+    root_manifest.data["workspace"]["members"] = toml_edit::Item::Value(members.into());
+    root_manifest.write().unwrap();
+
+    let mylib_dir = context.repo_dir().join("crates").join("mylib");
+    fs_err::create_dir_all(&mylib_dir).unwrap();
+    TestPackage::new("mylib")
+        .with_type(PackageType::Lib)
+        .cargo_init(&mylib_dir);
+
+    assert_cmd::Command::new("cargo")
+        .current_dir(context.repo_dir())
+        .args(["add", "--path", "crates/mylib"])
+        .assert()
+        .success();
+
+    context.run_cargo_check();
+    context.push_all_changes("chore: setup root mybin with crates/mylib path dependency");
+
+    let config = r#"
+[workspace]
+git_only = true
+publish = false
+"#;
+    context.write_release_plz_toml(config);
+
+    context
+        .repo
+        .tag("mylib-v0.1.0", "Release mylib v0.1.0")
+        .unwrap();
+    context
+        .repo
+        .tag("mybin-v0.1.0", "Release mybin v0.1.0")
+        .unwrap();
+
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update mybin readme");
+
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore(mybin): release v0.1.1");
+
+    let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
+    assert!(
+        pr_body.contains("`mybin`: 0.1.0 -> 0.1.1"),
+        "PR body should include mybin release entry"
     );
 }
 

@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.162](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.161...release-plz-v0.3.162) - 2026-09-05
+
+### Fixed
+
+- update packages in `version_group` when using `release_commits` setting ([#2936](https://github.com/release-plz/release-plz/pull/2936))
+- update release commit message when the version changes ([#2985](https://github.com/release-plz/release-plz/pull/2985))
+
+### Other
+
+- *(git-only)* reuse historical workspace packaging ([#2953](https://github.com/release-plz/release-plz/pull/2953))
+- remove git-url-parse-rs dependency ([#2934](https://github.com/release-plz/release-plz/pull/2934))
+
+## [0.3.161](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.160...release-plz-v0.3.161) - 2026-08-31
+
+### Fixed
+
+- fix clippy for rust 1.98 ([#2999](https://github.com/release-plz/release-plz/pull/2999))
+
+### Other
+
+- *(deps)* update rust crate cargo to 0.99.0 ([#2997](https://github.com/release-plz/release-plz/pull/2997))
+
+## [0.3.160](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.159...release-plz-v0.3.160) - 2026-07-13
+
+### Added
+
+- Github Enterprise Server support ([#2846](https://github.com/release-plz/release-plz/pull/2846))
+
+### Fixed
+
+- Parse 'footer' in commit parsers ([#2929](https://github.com/release-plz/release-plz/pull/2929))
+- fix clippy lint of rust 1.97 ([#2932](https://github.com/release-plz/release-plz/pull/2932))
+
+### Other
+
+- update to tera v2 ([#2914](https://github.com/release-plz/release-plz/pull/2914))
+
+## [0.3.159](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.158...release-plz-v0.3.159) - 2026-06-09
+
+### Fixed
+
+- *(set-version)* update Cargo.lock after version changes ([#2812](https://github.com/release-plz/release-plz/pull/2812))
+
+### Other
+
+- Bump Cargo to 0.97 ([#2869](https://github.com/release-plz/release-plz/pull/2869))
+- force cargo quiet to false ([#2889](https://github.com/release-plz/release-plz/pull/2889))
+- update to git2 0.21 ([#2872](https://github.com/release-plz/release-plz/pull/2872))
+
+## [0.3.158](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.157...release-plz-v0.3.158) - 2026-05-10
+
+### Other
+
+- update Cargo.toml dependencies
+- update dependencies ([#2831](https://github.com/release-plz/release-plz/pull/2831))
+
+## [0.3.157](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.156...release-plz-v0.3.157) - 2026-03-07
+
+### Fixed
+
+- *(git-only)* handle root-package workspace path dependencies ([#2655](https://github.com/release-plz/release-plz/pull/2655))
+
+## [0.3.156](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.155...release-plz-v0.3.156) - 2026-02-16
+
+### Other
+
+- update Cargo.toml dependencies
+- use cargo info to understand if package was published ([#2645](https://github.com/release-plz/release-plz/pull/2645))
+
+## [0.3.155](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.154...release-plz-v0.3.155) - 2026-02-05
+
+### Fixed
+
+- correctly recognize when crate already published ([#2649](https://github.com/release-plz/release-plz/pull/2649))
+- read cargo registry token from env var correctly ([#2647](https://github.com/release-plz/release-plz/pull/2647))
+
+### Other
+
+- use cargo env variable for registry token ([#2637](https://github.com/release-plz/release-plz/pull/2637))
+- update dependencies ([#2646](https://github.com/release-plz/release-plz/pull/2646))
+
 ## [0.3.154](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.153...release-plz-v0.3.154) - 2026-02-03
 
 ### Fixed

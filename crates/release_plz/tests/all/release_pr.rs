@@ -40,7 +40,7 @@ async fn release_plz_opens_pr_with_default_config() {
 
 <blockquote>
 
-## [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
+## [0.1.0](https://localhost:3000/{username}/{package}/releases/tag/v0.1.0) - {today}
 
 ### Other
 
@@ -103,7 +103,7 @@ async fn release_plz_opens_pr_without_breaking_changes() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
 
 ### Other
 
@@ -193,7 +193,7 @@ async fn release_plz_can_do_backport_prs() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
 
 ### Other
 
@@ -288,7 +288,7 @@ Failed in:
 
 <blockquote>
 
-## [0.2.0](https://localhost/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
+## [0.2.0](https://localhost:3000/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
 
 ### Other
 
@@ -359,7 +359,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
 
 ### Other
 
@@ -370,7 +370,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
 
 ### Other
 
@@ -381,7 +381,7 @@ async fn release_plz_updates_binary_when_library_changes() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
 
 ### Other
 
@@ -448,7 +448,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
 
 <blockquote>
 
-## [0.1.0](https://localhost/{username}/{repo}/releases/tag/{one}-v0.1.0) - {today}
+## [0.1.0](https://localhost:3000/{username}/{repo}/releases/tag/{one}-v0.1.0) - {today}
 
 ### Other
 
@@ -459,7 +459,7 @@ async fn release_plz_opens_pr_with_two_packages_and_default_config() {
 
 <blockquote>
 
-## [0.1.0](https://localhost/{username}/{repo}/releases/tag/{two}-v0.1.0) - {today}
+## [0.1.0](https://localhost:3000/{username}/{repo}/releases/tag/{two}-v0.1.0) - {today}
 
 ### Other
 
@@ -519,7 +519,7 @@ Changes:
         opened_prs[0].body.as_ref().unwrap().trim(),
         format!(
             r"
-### [0.1.0](https://localhost/{username}/{package}/releases/tag/v0.1.0) - {today}
+### [0.1.0](https://localhost:3000/{username}/{package}/releases/tag/v0.1.0) - {today}
 
 Package: {package} 0.1.0 -> 0.1.0
 
@@ -793,7 +793,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{package}/compare/v0.1.0...v0.1.1) - {today}
 
 ### Other
 
@@ -829,6 +829,52 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
     // Since the changelog is not updated, the PR is not created because there are no changes to do.
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 0);
+}
+
+/// When the version changes while a release PR is open, the commit of the release branch
+/// must be updated, too — not just the PR title.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_commit_message_when_version_changes() {
+    let context = TestContext::new().await;
+
+    let lib_file = context.repo_dir().join("src").join("lib.rs");
+    let write_lib_file = |content: &str, commit_message: &str| {
+        fs_err::write(&lib_file, content).unwrap();
+        context.push_all_changes(commit_message);
+    };
+
+    // Publish v0.1.0, so that the following runs compare against a released version.
+    context.run_cargo_publish(&context.gitea.repo);
+
+    write_lib_file("pub fn foo() {}", "fix: add lib");
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+    let pr_number = opened_prs[0].number;
+
+    // A breaking change is merged while the release PR is open: the version becomes 0.2.0.
+    write_lib_file("pub fn bar() {}", "feat!: edit lib");
+    context.run_release_pr().success();
+
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+    let updated_pr = &opened_prs[0];
+    // The PR is updated, not closed and reopened.
+    assert_eq!(updated_pr.number, pr_number);
+    assert_eq!(updated_pr.title, "chore: release v0.2.0");
+
+    // The commit of the release branch contains the new version, like the PR title.
+    context
+        .repo
+        .git(&["fetch", "origin", updated_pr.branch()])
+        .unwrap();
+    let commit_message = context
+        .repo
+        .git(&["log", "-1", "--format=%s", "FETCH_HEAD"])
+        .unwrap();
+    assert_eq!(commit_message.trim(), "chore: release v0.2.0");
 }
 
 #[tokio::test]
@@ -1013,7 +1059,7 @@ Failed in:
 
 <blockquote>
 
-## [0.2.0](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.2.0) - {today}
+## [0.2.0](https://localhost:3000/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.2.0) - {today}
 
 ### Other
 
@@ -1024,7 +1070,7 @@ Failed in:
 
 <blockquote>
 
-## [0.2.1](https://localhost/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.2.1) - {today}
+## [0.2.1](https://localhost:3000/{username}/{repo}/compare/{library2}-v0.2.0...{library2}-v0.2.1) - {today}
 
 ### Other
 
@@ -1035,7 +1081,7 @@ Failed in:
 
 <blockquote>
 
-## [0.3.1](https://localhost/{username}/{repo}/compare/{library3}-v0.3.0...{library3}-v0.3.1) - {today}
+## [0.3.1](https://localhost:3000/{username}/{repo}/compare/{library3}-v0.3.0...{library3}-v0.3.1) - {today}
 
 ### Other
 
@@ -1046,7 +1092,7 @@ Failed in:
 
 <blockquote>
 
-## [1.3.1](https://localhost/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.3.1) - {today}
+## [1.3.1](https://localhost:3000/{username}/{repo}/compare/{binary}-v1.3.0...{binary}-v1.3.1) - {today}
 
 ### Other
 
@@ -1207,7 +1253,7 @@ Failed in:
 
 <blockquote>
 
-## [0.2.0](https://localhost/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.2.0) - {today}
+## [0.2.0](https://localhost:3000/{username}/{repo}/compare/{library}-v0.1.0...{library}-v0.2.0) - {today}
 
 ### Other
 
@@ -1218,7 +1264,7 @@ Failed in:
 
 <blockquote>
 
-## [1.0.1](https://localhost/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.0.1) - {today}
+## [1.0.1](https://localhost:3000/{username}/{repo}/compare/{binary}-v1.0.0...{binary}-v1.0.1) - {today}
 
 ### Other
 
@@ -1471,7 +1517,7 @@ async fn release_plz_updates_binary_when_library_changes_commit_regex() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/{library1}-v0.1.0...{library1}-v0.1.1) - {today}
 
 ### Other
 
@@ -1482,7 +1528,7 @@ async fn release_plz_updates_binary_when_library_changes_commit_regex() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/{library2}-v0.1.0...{library2}-v0.1.1) - {today}
 
 ### Other
 
@@ -1493,7 +1539,7 @@ async fn release_plz_updates_binary_when_library_changes_commit_regex() {
 
 <blockquote>
 
-## [0.1.1](https://localhost/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
+## [0.1.1](https://localhost:3000/{username}/{repo}/compare/{binary}-v0.1.0...{binary}-v0.1.1) - {today}
 
 ### Other
 
@@ -1576,7 +1622,7 @@ async fn release_plz_updates_changelog_when_version_already_bumped() {
 
 <blockquote>
 
-## [0.2.0](https://localhost/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
+## [0.2.0](https://localhost:3000/{username}/{package}/compare/v0.1.0...v0.2.0) - {today}
 
 ### Added
 
@@ -1644,7 +1690,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0](https://localhost/{username}/{repo}/releases/tag/v0.1.0) - {today}
+## [0.1.0](https://localhost:3000/{username}/{repo}/releases/tag/v0.1.0) - {today}
 
 ### Other
 
@@ -1653,5 +1699,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial commit
 "
         )
+    );
+}
+
+async fn version_group_with_dependent_change(commit_message: &str) -> TestContext {
+    let dependency = "dependency";
+    let dependent = "dependent";
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(dependent)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{dependency}")]),
+        TestPackage::new(dependency).with_type(PackageType::Lib),
+    ])
+    .await;
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    let config = format!(
+        r#"
+[workspace]
+release_commits = "^feat"
+
+[[package]]
+name = "{dependency}"
+version_group = "a"
+
+[[package]]
+name = "{dependent}"
+version_group = "a"
+"#
+    );
+    context.write_release_plz_toml(&config);
+
+    let dependent_file = context.package_path(dependent).join("src").join("aa.rs");
+    fs_err::write(&dependent_file, "pub fn dependent() {}").unwrap();
+    context.push_all_changes(commit_message);
+
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_updates_whole_version_group_with_matching_release_commits() {
+    let context = version_group_with_dependent_change("feat: update dependent").await;
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert_eq!(opened_prs.len(), 1);
+
+    let pr_body = opened_prs[0].body.as_ref().unwrap();
+    assert!(
+        pr_body.contains("`dependency`: 0.1.0 -> 0.1.1"),
+        "expected `dependency` to be bumped alongside its version group"
+    );
+    assert!(
+        pr_body.contains("`dependent`: 0.1.0 -> 0.1.1"),
+        "expected `dependent` to be bumped"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_does_not_release_version_group_without_matching_release_commits() {
+    let context = version_group_with_dependent_change("chore: update dependent").await;
+
+    context.run_release_pr().success();
+    let opened_prs = context.opened_release_prs().await;
+    assert!(
+        opened_prs.is_empty(),
+        "expected no release PR since no commit matches `release_commits`"
     );
 }

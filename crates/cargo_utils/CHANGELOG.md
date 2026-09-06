@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.81](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.80...cargo_utils-v0.1.81) - 2026-09-05
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.80](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.79...cargo_utils-v0.1.80) - 2026-07-13
+
+### Fixed
+
+- fix clippy lint of rust 1.97 ([#2932](https://github.com/release-plz/release-plz/pull/2932))
+
+## [0.1.79](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.78...cargo_utils-v0.1.79) - 2026-06-09
+
+### Other
+
+- force cargo quiet to false ([#2889](https://github.com/release-plz/release-plz/pull/2889))
+
+## [0.1.78](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.77...cargo_utils-v0.1.78) - 2026-02-16
+
+### Other
+
+- use cargo info to understand if package was published ([#2645](https://github.com/release-plz/release-plz/pull/2645))
+
+## [0.1.77](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.76...cargo_utils-v0.1.77) - 2026-02-05
+
+### Fixed
+
+- read cargo registry token from env var correctly ([#2647](https://github.com/release-plz/release-plz/pull/2647))
+
 ## [0.1.76](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.75...cargo_utils-v0.1.76) - 2026-01-17
 
 ### Other

@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
@@ -30,7 +30,7 @@ jobs:
         run: git checkout main
 
       - name: Dump all links from ${{github.event.pull_request.base.ref}}
-        uses: lycheeverse/lychee-action@a8c4c7cb88f0c7386610c35eb25108e448569cb0 # v2.7.0
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: |
             --dump
@@ -58,7 +58,7 @@ jobs:
           fi
 
       - name: Check links
-        uses: lycheeverse/lychee-action@a8c4c7cb88f0c7386610c35eb25108e448569cb0 # v2.7.0
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         env:
           # set the GitHub token to avoid rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

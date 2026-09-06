@@ -120,7 +120,7 @@ impl TestContext {
         let root_cargo_toml = {
             let quoted_crates: Vec<String> = crates
                 .iter()
-                .map(|c| format!("\"{CRATES_DIR}/{}\"", &c.name))
+                .map(|c| format!("\"{CRATES_DIR}/{}\"", c.name))
                 .collect();
             let crates_list = quoted_crates.join(",");
             format!("[workspace]\nresolver = \"3\"\nmembers = [{crates_list}]\n")
@@ -173,7 +173,7 @@ impl TestContext {
         assert_cmd::Command::new("cargo")
             .current_dir(self.repo.directory())
             .env("CARGO_TARGET_DIR", self.cargo_target_dir())
-            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
+            .env(token_env_var, format!("Bearer {}", self.gitea.token))
             .arg("publish")
             .arg("-p")
             .arg(package_name)
@@ -195,9 +195,13 @@ impl TestContext {
     }
 
     pub fn run_release_pr(&self) -> Assert {
+        self.run_release_pr_with_log(&log_level())
+    }
+
+    pub fn run_release_pr_with_log(&self, log: &str) -> Assert {
         super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
-            .env(RELEASE_PLZ_LOG, log_level())
+            .env(RELEASE_PLZ_LOG, log)
             .arg("release-pr")
             .arg("--verbose")
             .arg("--git-token")
@@ -217,7 +221,7 @@ impl TestContext {
         super::cmd::release_plz_cmd(&self.cargo_target_dir())
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
-            .env(token_env_var, format!("Bearer {}", &self.gitea.token))
+            .env(token_env_var, format!("Bearer {}", self.gitea.token))
             .arg("release")
             .arg("--verbose")
             .arg("--git-token")
@@ -261,12 +265,13 @@ impl TestContext {
         fs_err::read_to_string(changelog_path).unwrap()
     }
 
-    pub fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
+    pub async fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
         let crate_name = &self.gitea.repo;
         release_plz_core::PackageDownloader::new([crate_name], dest_dir.as_str())
             .with_registry(TEST_REGISTRY.to_string())
             .with_cargo_cwd(self.repo_dir())
             .download()
+            .await
             .unwrap()
     }
 }

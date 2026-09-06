@@ -137,6 +137,58 @@ fn conventional_commit_with_matching_description_does_not_trigger_custom_regex()
 }
 
 #[test]
+fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
+    let commits = ["docs: update readme", "feat: make coffee"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("^docs$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 3, 0)
+    );
+}
+
+#[test]
+fn non_conventional_commit_with_no_increment_regex_does_not_increment_version() {
+    let commits = ["chore only: skip release"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("skip release")
+            .unwrap()
+            .increment(&version, commits),
+        version
+    );
+}
+
+#[test]
+fn no_increment_regex_does_not_match_conventional_commit_description() {
+    let commits = ["fix: skip release"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("skip release")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4)
+    );
+}
+
+#[test]
+fn no_increment_regex_skips_prerelease_increment() {
+    let commits = ["docs: update readme"];
+    let version = Version::parse("1.2.3-alpha.1").unwrap();
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("^docs$")
+            .unwrap()
+            .increment(&version, commits),
+        version
+    );
+}
+
+#[test]
 fn commit_with_scope() {
     let commits = ["feat(my_scope)!: this is a test commit"];
     let version = Version::new(1, 0, 0);

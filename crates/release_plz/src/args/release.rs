@@ -1,16 +1,16 @@
 use std::path::{Path, PathBuf};
 
-use clap::{
-    ValueEnum,
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
-};
-use release_plz_core::{GitForge, GitHub, GitLab, Gitea, ReleaseRequest};
+use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
+use release_plz_core::ReleaseRequest;
 use secrecy::SecretString;
 
 use crate::config::Config;
 
 use super::{
-    OutputType, config_path::ConfigPath, manifest_command::ManifestCommand,
+    OutputType,
+    config_path::ConfigPath,
+    git_forge::{GitForgeKind, git_forge},
+    manifest_command::ManifestCommand,
     repo_command::RepoCommand,
 };
 
@@ -59,9 +59,9 @@ pub struct Release {
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
     pub git_token: Option<String>,
 
-    /// Kind of git forge
-    #[arg(long, visible_alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
-    forge: ReleaseGitForgeKind,
+    /// Kind of git forge.
+    #[arg(long, visible_alias = "backend", value_enum)]
+    forge: Option<GitForgeKind>,
 
     /// Path to the release-plz config file.
     #[command(flatten)]
@@ -71,16 +71,6 @@ pub struct Release {
     /// released packages.
     #[arg(short, long, value_enum)]
     pub output: Option<OutputType>,
-}
-
-#[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReleaseGitForgeKind {
-    #[value(name = "github")]
-    Github,
-    #[value(name = "gitea")]
-    Gitea,
-    #[value(name = "gitlab")]
-    Gitlab,
 }
 
 impl Release {
@@ -93,15 +83,7 @@ impl Release {
             let git_token = SecretString::from(git_token.clone());
             let repo_url = self.get_repo_url(config)?;
             let release = release_plz_core::GitRelease {
-                forge: match self.forge {
-                    ReleaseGitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo_url, git_token)?),
-                    ReleaseGitForgeKind::Github => {
-                        GitForge::Github(GitHub::new(repo_url.owner, repo_url.name, git_token))
-                    }
-                    ReleaseGitForgeKind::Gitlab => {
-                        GitForge::Gitlab(GitLab::new(repo_url, git_token)?)
-                    }
-                },
+                forge: git_forge(repo_url, git_token, self.forge, "create release")?,
             };
             Some(release)
         } else {
@@ -210,7 +192,7 @@ mod tests {
             dry_run: false,
             repo_url: None,
             git_token: None,
-            forge: ReleaseGitForgeKind::Github,
+            forge: None,
             config: ConfigPath::default(),
             output: None,
         }

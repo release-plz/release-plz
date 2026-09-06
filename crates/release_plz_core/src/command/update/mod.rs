@@ -139,7 +139,10 @@ fn update_changelogs(
 }
 
 #[instrument(skip_all)]
-fn update_cargo_lock(root: &Utf8Path, update_all_dependencies: bool) -> anyhow::Result<()> {
+pub(crate) fn update_cargo_lock(
+    root: &Utf8Path,
+    update_all_dependencies: bool,
+) -> anyhow::Result<()> {
     let mut args = vec!["update"];
     if !update_all_dependencies {
         args.push("--workspace");
@@ -170,7 +173,7 @@ pub fn set_version(
     local_manifest.set_package_version(version);
     local_manifest
         .write()
-        .with_context(|| format!("cannot update manifest {:?}", &local_manifest.path))?;
+        .with_context(|| format!("cannot update manifest {:?}", local_manifest.path))?;
 
     let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
     update_dependencies(all_packages, version, &package_path, workspace_manifest)?;

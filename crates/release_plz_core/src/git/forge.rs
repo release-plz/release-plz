@@ -31,6 +31,14 @@ impl GitForge {
             Self::Gitlab(g) => g.default_headers(),
         }
     }
+
+    pub fn forge_type(&self) -> ForgeType {
+        match self {
+            Self::Github(_) => ForgeType::Github,
+            Self::Gitea(_) => ForgeType::Gitea,
+            Self::Gitlab(_) => ForgeType::Gitlab,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

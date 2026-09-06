@@ -35,19 +35,22 @@ impl GitRepo {
             .prefix(&prefix)
             .tempdir()
             .context("create temporary directory for worktree")?;
+        let random_suffix = temp_dir
+            .path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("get temporary worktree directory name")?;
+        let unique_name = format!("{name}-{random_suffix}");
 
         // Append "worktree" to get a path that doesn't exist yet (git worktree will create it)
         let temp_base = to_utf8_path(temp_dir.path())?;
         let path = temp_base.join("worktree");
         let path_std = path.as_std_path();
 
-        // Clean up existing worktree if it exists
-        self.cleanup_worktree_if_exists(name)?;
-
-        debug!("Creating worktree called {name} at {path}");
+        debug!("Creating worktree called {unique_name} at {path}");
         let wt = self
             .repo
-            .worktree(name, path_std, None)
+            .worktree(&unique_name, path_std, None)
             .with_context(|| format!("create worktree at {path}"))?;
         Ok(GitWorkTree {
             worktree: wt,
@@ -61,7 +64,7 @@ impl GitRepo {
             .tag_names(None)
             .context("get tags for repo")?
             .iter()
-            .filter_map(|x| x.map(ToString::to_string))
+            .filter_map(|x| x.ok().flatten().map(ToString::to_string))
             .collect();
         Ok(tags)
     }
@@ -173,44 +176,6 @@ impl GitRepo {
         branch.delete().context("delete branch")?;
         Ok(())
     }
-
-    /// Clean up existing worktree and its branch if they exist
-    pub fn cleanup_worktree_if_exists(&mut self, name: &str) -> anyhow::Result<()> {
-        let trees: Vec<String> = self
-            .repo
-            .worktrees()
-            .context("get worktrees for repo")?
-            .iter()
-            .filter_map(|x| x.map(ToString::to_string))
-            .collect();
-
-        if trees.contains(&name.to_string()) {
-            debug!("Worktree {name} already exists, cleaning it up");
-
-            // Find the worktree
-            let wt = match self.repo.find_worktree(name) {
-                Ok(wt) => wt,
-                Err(e) => {
-                    warn!("Error finding worktree {name} for cleanup: {e:?}");
-                    return Ok(());
-                }
-            };
-
-            // Prune the worktree
-            if let Err(e) = wt.prune(Some(
-                WorktreePruneOptions::new().working_tree(true).valid(true),
-            )) {
-                warn!("Error pruning worktree {name}: {e:?}");
-            }
-
-            // Delete the branch
-            if let Err(e) = self.delete_branch(name) {
-                warn!("Error deleting branch {name}: {e:?}");
-            }
-        }
-
-        Ok(())
-    }
 }
 
 /// We maintain a handle to the temp dir so it doesn't delete itself before the worktree is cleaned
@@ -262,8 +227,14 @@ impl Drop for GitWorkTree {
         }
 
         // go ahead and delete the branch now
-        if let Err(e) = repo.delete_branch(self.worktree.name().unwrap_or_default()) {
-            error!("Error deleting branch: {e:?}");
+        match self.worktree.name() {
+            Ok(Some(branch_name)) => {
+                if let Err(e) = repo.delete_branch(branch_name) {
+                    error!("Error deleting branch: {e:?}");
+                }
+            }
+            Ok(None) => warn!("Worktree has no valid UTF-8 name, cannot delete branch"),
+            Err(e) => warn!("Error getting worktree name for cleanup: {e:?}"),
         }
 
         // death to the trees!

@@ -83,6 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - &checkout
         name: Checkout repository
@@ -169,9 +170,11 @@ jobs:
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
-    # Used to push tags, and create releases.
     permissions:
+      # Push tags, and create releases.
       contents: write
+      # Detect the release PR and its commits.
+      pull-requests: read
     steps:
       - &checkout
         name: Checkout repository
@@ -203,10 +206,10 @@ jobs:
     name: Release-plz PR
     runs-on: ubuntu-latest
     permissions:
-      # Used to create and update pull requests.
-      pull-requests: write
-      # Used to push to the pull request branch.
+      # Push to the pull request branch.
       contents: write
+      # Create and update pull requests.
+      pull-requests: write
 
     # The concurrency block is explained below (after the code block).
     concurrency:

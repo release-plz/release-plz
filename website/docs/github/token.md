@@ -92,7 +92,7 @@ request and the commit itself.
 If you don't want release-plz to open release pull requests and commit with
 your account, consider creating a
 [machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#user-accounts).
-If your machine user needs a cool avatar, you can use the release-plz [logo](/img/robot_head.jpeg).
+If your machine user needs a cool avatar, you can use the release-plz [logo](https://release-plz.dev/img/robot_head.jpeg).
 :::
 
 Create the PAT, choosing one of the two types:
@@ -174,7 +174,7 @@ Here's how to use a GitHub App to generate a GitHub token:
    - If you use [protected tags](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/configuring-tag-protection-rules):
      Under `Repository permissions: Administration` select `Access: Read & write`.
    - (Optional) Under `Where can this GitHub App be installed?` select `Only on this account`.
-   - (Optional) Set the release-plz [logo](/img/robot_head.jpeg).
+   - (Optional) Set the release-plz [logo](https://release-plz.dev/img/robot_head.jpeg).
 
 2. Create a Private key from the App settings page and store it securely.
 

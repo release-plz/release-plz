@@ -1,5 +1,6 @@
-include_fragments = true
-accept = '100..=103, 200..=299, 429'
+include_fragments = "full"
+# Don't fail on rate limits or server errors from external sites.
+accept = '100..=103, 200..=299, 429, 500..=599'
 
 remap = [
   # Workaround for https://github.com/lycheeverse/lychee/issues/1729
@@ -15,4 +16,7 @@ exclude = [
   # Don't check pull request links to avoid being rate limited
   'https://github.com/release-plz/release-plz/pull/*',
   'https://github.com/release-plz/release-plz/issues/*',
+  # GitHub search returns 502 intermittently
+  'https://github.com/search*',
+  'https://wiki.alpinelinux.org/*'
 ]

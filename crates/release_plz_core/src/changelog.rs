@@ -167,6 +167,7 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         use_branch_tags: git_config.use_branch_tags,
         topo_order: git_config.topo_order,
         topo_order_commits: git_config.topo_order_commits,
+        processing_order: git_config.processing_order,
         sort_commits: if git_config.sort_commits.is_empty() {
             default_git_config.sort_commits
         } else {

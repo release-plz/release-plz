@@ -190,6 +190,13 @@
             "null"
           ]
         },
+        "footer": {
+          "description": "Regex for matching the commit footer.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "group": {
           "description": "Group of the commit.",
           "type": [

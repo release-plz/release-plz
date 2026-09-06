@@ -1,5 +1,4 @@
 mod cargo;
-mod cargo_hash_kind;
 mod cargo_vcs_info;
 mod changelog;
 mod changelog_filler;
@@ -33,7 +32,7 @@ mod version;
 pub use changelog::*;
 pub use command::*;
 pub use download::{PackageDownloader, read_package};
-pub use git::forge::{GitClient, GitForge, GitPr};
+pub use git::forge::{ForgeType, GitClient, GitForge, GitPr};
 pub use git::gitea_client::Gitea;
 pub use git::github_client::GitHub;
 pub use git::gitlab_client::GitLab;
