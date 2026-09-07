@@ -248,6 +248,14 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         input.cargo_metadata(),
         input,
     )?;
+    let is_shallow = git_cmd::git_in_dir(
+        local_project.root(),
+        &["rev-parse", "--is-shallow-repository"],
+    )?;
+    anyhow::ensure!(
+        is_shallow != "true",
+        "The git repository is shallow. Release-plz needs the full git history to determine changes. Run `git fetch --unshallow` or set `fetch-depth: 0` in actions/checkout."
+    );
     let updater = Updater {
         project: &local_project,
         req: input,
@@ -539,6 +547,118 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn shallow_workspace_requires_full_history_before_updating() {
+        use cargo_metadata::camino::Utf8Path;
+        use git_cmd::{Repo, git_in_dir};
+
+        let root = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(root.path()).unwrap();
+        let source = root.join("source");
+        fs_err::create_dir(&source).unwrap();
+        let source_repo = Repo::init(&source);
+        fs_err::write(
+            source.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\", \"three\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two", "three"] {
+            fs_err::create_dir_all(source.join(name).join("src")).unwrap();
+            fs_err::write(
+                source.join(name).join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+            )
+            .unwrap();
+            fs_err::write(source.join(name).join("src/lib.rs"), "// initial\n").unwrap();
+        }
+        cargo_utils::get_manifest_metadata(&source.join("Cargo.toml")).unwrap();
+        source_repo.add_all_and_commit("initial packages").unwrap();
+        for name in ["one", "two", "three"] {
+            source_repo
+                .tag(&format!("{name}-v0.1.0"), "release")
+                .unwrap();
+        }
+
+        // A local registry snapshot keeps the test independent of network services.
+        let registry = root.join("registry");
+        git_in_dir(root, &["clone", source.as_str(), registry.as_str()]).unwrap();
+        for name in ["one", "two", "three"] {
+            fs_err::copy(
+                registry.join(name).join("Cargo.toml"),
+                registry.join(name).join("Cargo.toml.orig"),
+            )
+            .unwrap();
+        }
+
+        for (name, message) in [
+            ("one", "feat: first feature"),
+            ("one", "feat: second feature"),
+            ("two", "fix: second package"),
+            ("three", "chore: unrelated latest change"),
+        ] {
+            fs_err::write(
+                source.join(name).join("src/lib.rs"),
+                format!("// {message}\n"),
+            )
+            .unwrap();
+            source_repo.add_all_and_commit(message).unwrap();
+        }
+
+        let checkout = root.join("checkout");
+        let source_url = url::Url::from_directory_path(&source).unwrap();
+        git_in_dir(
+            root,
+            &["clone", "--depth=1", source_url.as_str(), checkout.as_str()],
+        )
+        .unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&checkout.join("Cargo.toml")).unwrap();
+        let request = super::UpdateRequest::new(metadata)
+            .unwrap()
+            .with_registry_manifest_path(&registry.join("Cargo.toml"))
+            .unwrap()
+            .with_default_package_config(crate::UpdateConfig::default().with_semver_check(false));
+
+        let error = crate::update(&request).await.unwrap_err();
+        let error = format!("{error:#}");
+        assert!(error.contains("repository is shallow"), "{error}");
+        assert!(error.contains("git fetch --unshallow"), "{error}");
+        assert!(error.contains("fetch-depth: 0"), "{error}");
+        for name in ["one", "two", "three"] {
+            assert!(!checkout.join(name).join("CHANGELOG.md").exists());
+            assert_eq!(
+                fs_err::read_to_string(checkout.join(name).join("Cargo.toml")).unwrap(),
+                fs_err::read_to_string(source.join(name).join("Cargo.toml")).unwrap()
+            );
+        }
+
+        // Linked worktrees have a .git file, but share the clone's shallow history.
+        let worktree = root.join("worktree");
+        git_in_dir(
+            &checkout,
+            &["worktree", "add", "--detach", worktree.as_str(), "HEAD"],
+        )
+        .unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&worktree.join("Cargo.toml")).unwrap();
+        let worktree_request = super::UpdateRequest::new(metadata).unwrap();
+        let error = crate::update(&worktree_request).await.unwrap_err();
+        assert!(format!("{error:#}").contains("repository is shallow"));
+        git_in_dir(&checkout, &["worktree", "remove", worktree.as_str()]).unwrap();
+
+        // Following the diagnostic restores every relevant commit, and keeps the
+        // unrelated HEAD commit out of the first two packages' changelogs.
+        git_in_dir(&checkout, &["fetch", "--unshallow"]).unwrap();
+        crate::update(&request).await.unwrap();
+        let one = fs_err::read_to_string(checkout.join("one/CHANGELOG.md")).unwrap();
+        assert!(one.contains("first feature"), "{one}");
+        assert!(one.contains("second feature"), "{one}");
+        assert!(!one.contains("unrelated latest change"), "{one}");
+        let two = fs_err::read_to_string(checkout.join("two/CHANGELOG.md")).unwrap();
+        assert!(two.contains("second package"), "{two}");
+        assert!(!two.contains("unrelated latest change"), "{two}");
+        let three = fs_err::read_to_string(checkout.join("three/CHANGELOG.md")).unwrap();
+        assert!(three.contains("unrelated latest change"), "{three}");
+    }
+
     #[test]
     fn reconstruction_preserves_existing_package_named_worktree() {
         // Create an initial commit so the worktrees have a branch target.
