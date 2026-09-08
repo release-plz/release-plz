@@ -7,10 +7,10 @@ The check results are shown in the release Pull Request and in the output of the
 `release-plz update` command:
 
 - If the check is skipped, release-plz shows nothing. This happens when the package
-  doesn't contain a library.
+  or its previously released version doesn't contain a library.
 - If the check is successful, release-plz shows "(✓ API compatible changes)".
-- If the check failed, release-plz shows "(⚠️ API breaking changes)", with a report
-  of what went wrong.
+- If the check detects incompatibilities, release-plz shows "(⚠️ API breaking changes)",
+  with a report of what went wrong.
 
 Example:
 

@@ -283,7 +283,7 @@ impl Updater<'_> {
                             diff.add_commits(commits);
                         }
                     }
-                    if should_check_semver(p, package_config.semver_check())
+                    if should_check_semver(p, registry_package, package_config.semver_check())
                         && diff.should_update_version()
                     {
                         let registry_package_path = registry_package
@@ -895,8 +895,13 @@ impl Updater<'_> {
 
 /// Check if release-plz should check the semver compatibility of the package.
 /// - `run_semver_check` is true if the user wants to run the semver check.
-fn should_check_semver(package: &Package, run_semver_check: bool) -> bool {
-    if run_semver_check && contains_library(package) {
+fn should_check_semver(
+    package: &Package,
+    registry_package: &Package,
+    run_semver_check: bool,
+) -> bool {
+    // Adding a library to a binary-only package has no previous library API to compare.
+    if run_semver_check && contains_library(package) && contains_library(registry_package) {
         let is_cargo_semver_checks_installed = semver_check::is_cargo_semver_checks_installed();
         if !is_cargo_semver_checks_installed {
             warn!(
