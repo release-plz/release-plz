@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.163](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.162...release-plz-v0.3.163) - 2026-09-08
+
+### Added
+
+- add git_release_generate_notes option ([#3001](https://github.com/release-plz/release-plz/pull/3001))
+
+### Other
+
+- detect cargo-semver-checks failures ([#3021](https://github.com/release-plz/release-plz/pull/3021))
+- test overriding packages tags in git only ([#2650](https://github.com/release-plz/release-plz/pull/2650))
+- remove spammy log ([#3025](https://github.com/release-plz/release-plz/pull/3025))
+- update lockfile dependencies ([#3024](https://github.com/release-plz/release-plz/pull/3024))
+
 ## [0.3.162](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.161...release-plz-v0.3.162) - 2026-09-05
 
 ### Fixed
