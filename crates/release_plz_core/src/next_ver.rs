@@ -618,16 +618,22 @@ mod tests {
             .unwrap()
             .with_default_package_config(crate::UpdateConfig::default().with_semver_check(false));
 
+        // Git may convert line endings during clone, so compare the checkout
+        // against its own contents before the update.
+        let manifests_before = ["one", "two", "three"].map(|name| {
+            let manifest = checkout.join(name).join("Cargo.toml");
+            (name, fs_err::read_to_string(manifest).unwrap())
+        });
         let error = crate::update(&request).await.unwrap_err();
         let error = format!("{error:#}");
         assert!(error.contains("repository is shallow"), "{error}");
         assert!(error.contains("git fetch --unshallow"), "{error}");
         assert!(error.contains("fetch-depth: 0"), "{error}");
-        for name in ["one", "two", "three"] {
+        for (name, manifest_before) in manifests_before {
             assert!(!checkout.join(name).join("CHANGELOG.md").exists());
             assert_eq!(
                 fs_err::read_to_string(checkout.join(name).join("Cargo.toml")).unwrap(),
-                fs_err::read_to_string(source.join(name).join("Cargo.toml")).unwrap()
+                manifest_before
             );
         }
 
