@@ -4592,7 +4592,6 @@ dependencies = [
  "toml_edit",
  "tracing",
  "url",
- "urlencoding",
  "walkdir",
  "wiremock",
 ]

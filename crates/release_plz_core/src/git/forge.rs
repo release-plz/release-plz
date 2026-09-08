@@ -1022,12 +1022,12 @@ Please push your local commits and run release-plz again.\nResponse body: {body}
             ForgeType::Gitlab => format!(
                 "{}/repository/branches/{}",
                 self.repo_url(),
-                urlencoding::encode(branch_name)
+                crate::url_utils::encode_component(branch_name)
             ),
             ForgeType::Gitea => format!(
                 "{}/branches/{}",
                 self.repo_url(),
-                urlencoding::encode(branch_name)
+                crate::url_utils::encode_component(branch_name)
             ),
         };
         self.client

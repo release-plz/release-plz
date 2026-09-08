@@ -84,7 +84,7 @@ async fn get_github_actions_jwt(
         "{}{}audience={}",
         req_url,
         separator,
-        urlencoding::encode(audience)
+        crate::url_utils::encode_component(audience)
     );
 
     let resp = client
