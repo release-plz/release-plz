@@ -4,7 +4,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::{CARGO_TOML, get_manifest_metadata};
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::{cargo::run_cargo, fs_utils};
 use std::{
@@ -108,7 +108,7 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
     // At the moment, this only happens in the git_only flow.
     // TODO: Do this always, not only if we are in target/package.
     //       See https://github.com/release-plz/release-plz/issues/2130
-    info!("Getting packaged files for crate at {}", package);
+    debug!("Getting packaged files for crate at {}", package);
     if is_cargo_packaged_dir(package)
         && (package.join("Cargo.toml.orig").exists()
             || package.join("Cargo.toml.orig.orig").exists())
