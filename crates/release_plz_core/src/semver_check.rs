@@ -57,6 +57,7 @@ pub fn run_semver_check(
 
     let output = Command::new("cargo-semver-checks")
         .args(["semver-checks", "check-release"])
+        .args(["--color", "never"])
         // Only changes requiring a major bump are incompatible. Assume a minor
         // release so lints requiring a minor bump (e.g. adding #[must_use]) don't
         // also exit 100 and incorrectly trigger a breaking version bump.
@@ -93,21 +94,18 @@ fn parse_semver_check_output(output: &Output) -> anyhow::Result<SemverCheck> {
         // With --release-type minor, exit code 100 means deny-level lint
         // violations that require a major version bump.
         Some(100) => {
-            let stdout = strip_ansi_escapes::strip(&output.stdout);
-            let stdout = String::from_utf8(stdout)?.trim().to_string();
+            let stdout = std::str::from_utf8(&output.stdout)?.trim().to_string();
             if stdout.is_empty() {
                 anyhow::bail!("unknown source of semver incompatibility");
             }
             Ok(SemverCheck::Incompatible(stdout))
         }
         _ => {
-            let stdout = strip_ansi_escapes::strip(&output.stdout);
-            let stderr = strip_ansi_escapes::strip(&output.stderr);
             anyhow::bail!(
                 "cargo-semver-checks failed with {}\nstdout:\n{}\nstderr:\n{}",
                 output.status,
-                String::from_utf8_lossy(&stdout).trim(),
-                String::from_utf8_lossy(&stderr).trim(),
+                String::from_utf8_lossy(&output.stdout).trim(),
+                String::from_utf8_lossy(&output.stderr).trim(),
             );
         }
     }
