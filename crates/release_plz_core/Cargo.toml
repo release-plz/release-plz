@@ -46,7 +46,6 @@ url = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
-strip-ansi-escapes.workspace = true
 tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
 urlencoding.workspace = true
