@@ -4561,7 +4561,6 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "cargo",
- "cargo-util-terminal",
  "cargo_metadata",
  "cargo_utils",
  "chrono",
