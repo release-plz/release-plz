@@ -30,7 +30,6 @@ dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
 git-cliff-core.workspace = true
 ignore.workspace = true
-itertools.workspace = true
 parse-changelog.workspace = true
 rand.workspace = true
 rayon.workspace = true

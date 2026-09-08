@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use anyhow::Context;
 use cargo_metadata::{Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
-use itertools::Itertools;
 use tempfile::{TempDir, tempdir};
 
 use crate::{PackagePath, cargo_vcs_info, download, next_ver};
@@ -105,7 +104,7 @@ async fn download_packages_from_registry(
     registry: Option<&str>,
     directory: &str,
 ) -> anyhow::Result<Vec<Package>> {
-    let packages_grouped_by_registry = local_packages.iter().chunk_by(|p| {
+    fn package_registry<'a>(p: &'a Package, registry: Option<&'a str>) -> Option<&'a str> {
         // If registry is not provided, fallback to the Cargo.toml `publish` field.
         registry.or_else(|| {
             p.publish
@@ -114,11 +113,14 @@ async fn download_packages_from_registry(
                 .and_then(|p| p.first())
                 .map(|x| x.as_str())
         })
-    });
+    }
+    let packages_grouped_by_registry = local_packages
+        .chunk_by(|a, b| package_registry(a, registry) == package_registry(b, registry));
 
     let mut downloaders = Vec::new();
-    for (registry, packages) in &packages_grouped_by_registry {
-        let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
+    for packages in packages_grouped_by_registry {
+        let registry = package_registry(packages[0], registry);
+        let packages_names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
         let mut downloader = download::PackageDownloader::new(packages_names, directory);
         if let Some(registry) = registry {
             downloader = downloader.with_registry(registry.to_string());

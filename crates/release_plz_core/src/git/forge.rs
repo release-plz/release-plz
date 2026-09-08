@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 use crate::pr::Pr;
 use crate::response_ext::ResponseExt;
 use anyhow::Context;
-use itertools::Itertools;
 use reqwest::header::HeaderMap;
 use reqwest::{Response, StatusCode, Url};
 use reqwest_middleware::ClientBuilder;
@@ -630,7 +629,7 @@ impl GitClient {
         self.client
             .put(format!("{}/{}", self.pulls_url(), pr_number))
             .json(&json!({
-                "add_labels": labels.iter().join(",")
+                "add_labels": labels.join(",")
             }))
             .send()
             .await?

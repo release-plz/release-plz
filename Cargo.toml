@@ -26,7 +26,6 @@ git2 = "0.21.0"
 git-cliff-core = { version = "2.10.0", default-features = false }
 git-conventional = "1.0.0"
 ignore = "0.4.23"
-itertools = "0.15.0"
 parse-changelog = { version = "0.6.13", default-features = false }
 rayon = "1.11.0"
 rand = "0.10.0"
