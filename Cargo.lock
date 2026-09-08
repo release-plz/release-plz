@@ -4590,7 +4590,6 @@ dependencies = [
  "git-cliff-core",
  "git2",
  "git_cmd",
- "h2",
  "http",
  "ignore",
  "itertools",
