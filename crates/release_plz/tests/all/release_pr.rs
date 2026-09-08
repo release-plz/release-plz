@@ -123,6 +123,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_can_do_backport_prs() {
+    assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
 
     let crate_name = &context.gitea.repo;
@@ -164,7 +165,8 @@ async fn release_plz_can_do_backport_prs() {
     // Open a release PR for a backport
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 0));
 
-    // Non-breaking change
+    // Adding a library is non-breaking, but the binary-only baseline has no
+    // library API to compare with cargo-semver-checks.
     let lib_file = context.repo_dir().join("src").join("lib.rs");
     let write_lib_file = |content: &str, commit_message: &str| {
         fs_err::write(&lib_file, content).unwrap();
@@ -187,7 +189,7 @@ async fn release_plz_can_do_backport_prs() {
             r"
 ## 🤖 New release
 
-* `{package}`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `{package}`: 0.1.0 -> 0.1.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
@@ -836,6 +838,7 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_updates_commit_message_when_version_changes() {
+    assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");

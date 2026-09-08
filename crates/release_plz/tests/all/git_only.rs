@@ -381,7 +381,8 @@ git_tag_name = "api-v{{ version }}"
         .tag("core-v0.1.0", "Release core v0.1.0")
         .unwrap();
 
-    // Make changes to api package
+    // Add a library to the binary-only api package. There is no baseline library
+    // to check, so the PR must not claim that API compatibility was checked.
     let api_file = context.package_path("api").join("src").join("lib.rs");
     fs_err::write(&api_file, "pub fn api_updated() {}").unwrap();
     context.push_all_changes("feat: update api");
@@ -402,7 +403,7 @@ git_tag_name = "api-v{{ version }}"
             r"
 ## 🤖 New release
 
-* `api`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `api`: 0.1.0 -> 0.1.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
