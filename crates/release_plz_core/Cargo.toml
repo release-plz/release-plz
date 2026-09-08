@@ -48,7 +48,6 @@ toml_edit.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["fs", "macros"] }
 tera.workspace = true
-urlencoding.workspace = true
 git2.workspace = true
 
 [dev-dependencies]

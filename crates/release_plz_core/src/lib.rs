@@ -27,6 +27,7 @@ pub mod semver_check;
 mod tera;
 mod tmp_repo;
 mod toml_compare;
+mod url_utils;
 mod version;
 
 pub use changelog::*;

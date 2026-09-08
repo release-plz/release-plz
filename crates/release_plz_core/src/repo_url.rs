@@ -81,7 +81,8 @@ impl RepoUrl {
 
     pub fn gitlab_api_url(&self) -> String {
         let v4 = "api/v4/projects";
-        let prj_path = urlencoding::encode(self.path.strip_prefix('/').unwrap_or(&self.path));
+        let prj_path =
+            crate::url_utils::encode_component(self.path.strip_prefix('/').unwrap_or(&self.path));
         let scheme = if self.scheme == "ssh" {
             "https"
         } else {
