@@ -28,7 +28,9 @@ use crate::{
     changelog_parser,
     command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
-    fs_utils, lock_compare,
+    fs_utils,
+    git_history::ShallowHistory,
+    lock_compare,
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -574,6 +576,27 @@ impl Updater<'_> {
         registry_packages: &PackagesCollection,
         repository: &Repo,
     ) -> anyhow::Result<Diff> {
+        loop {
+            repository.checkout_head()?;
+            let history = ShallowHistory::new(repository)?;
+            if let Some(diff) =
+                self.get_diff_with_history(package, registry_packages, repository, &history)?
+            {
+                return Ok(diff);
+            }
+            history.deepen(repository)?;
+            // Deepening changes path-filtered history, including which commit
+            // last touched the package. Discard the partial result and restart.
+        }
+    }
+
+    fn get_diff_with_history(
+        &self,
+        package: &Package,
+        registry_packages: &PackagesCollection,
+        repository: &Repo,
+        history: &ShallowHistory,
+    ) -> anyhow::Result<Option<Diff>> {
         info!(
             "determining next version for {} {}",
             package.name, package.version
@@ -585,7 +608,6 @@ impl Updater<'_> {
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
         let registry_package = registry_packages.get_registry_package(&package.name);
-        let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         repository
@@ -624,13 +646,13 @@ impl Updater<'_> {
                 );
             }
         }
-        self.get_package_diff(
+        let diff = self.get_package_diff(
             &package_path,
             package,
             registry_package,
             repository,
             tag_commit.as_deref(),
-            &mut diff,
+            history,
         )?;
 
         repository
@@ -646,8 +668,9 @@ impl Updater<'_> {
         registry_package: Option<&RegistryPackage>,
         repository: &Repo,
         tag_commit: Option<&str>,
-        diff: &mut Diff,
-    ) -> anyhow::Result<()> {
+        history: &ShallowHistory,
+    ) -> anyhow::Result<Option<Diff>> {
+        let mut diff = Diff::new(registry_package.is_some());
         let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         let max_analyze_commits = if registry_package.is_none() {
@@ -659,7 +682,7 @@ impl Updater<'_> {
             u32::MAX
         };
 
-        for _ in 0..max_analyze_commits {
+        for analyzed in 0..max_analyze_commits {
             let current_commit_message = repository.current_commit_message()?;
             let current_commit_hash = repository.current_commit_hash()?;
 
@@ -699,7 +722,7 @@ impl Updater<'_> {
                         // workspace might have changed.
                         // If the dependencies changed, we add a commit to the diff.
                         self.add_dependencies_update_if_any(
-                            diff,
+                            &mut diff,
                             &registry_package.package,
                             package,
                             registry_package_path,
@@ -709,7 +732,23 @@ impl Updater<'_> {
                     // the package was published at this commit, so we will not count this commit
                     // as part of the release.
                     // We can process the next package.
-                    break;
+                    if history.is_complete_since(repository, &[&current_commit_hash])? {
+                        return Ok(Some(diff));
+                    }
+                    // A release can also include ancestry from merged branches
+                    // that is not reachable from this package's last changed commit.
+                    let mut baselines = vec![current_commit_hash.as_str()];
+                    for baseline in [tag_commit, registry_package.published_at_sha1()]
+                        .into_iter()
+                        .flatten()
+                    {
+                        if repository.is_ancestor(&current_commit_hash, baseline) {
+                            baselines.push(baseline);
+                        }
+                    }
+                    return Ok(history
+                        .is_complete_since(repository, &baselines)?
+                        .then_some(diff));
                 } else {
                     // When version is already bumped, we still collect commits to update the changelog,
                     // but mark that version should not be bumped further.
@@ -722,31 +761,47 @@ impl Updater<'_> {
                         );
                         diff.set_version_unpublished(registry_package.package.version.clone());
                     }
+                    if history.contains(&current_commit_hash) {
+                        return Ok(None);
+                    }
                     if are_changed_files_in_pkg()? {
                         debug!("packages contain different files");
                         // At this point of the git history, the two packages are different,
                         // which means that this commit is not present in the published package.
                         diff.commits.push(Commit::new(
-                            current_commit_hash,
+                            current_commit_hash.clone(),
                             current_commit_message.clone(),
                         ));
                     }
                 }
-            } else if are_changed_files_in_pkg()? {
-                diff.commits.push(Commit::new(
-                    current_commit_hash,
-                    current_commit_message.clone(),
-                ));
+            } else {
+                if history.contains(&current_commit_hash) {
+                    return Ok(None);
+                }
+                if are_changed_files_in_pkg()? {
+                    diff.commits.push(Commit::new(
+                        current_commit_hash.clone(),
+                        current_commit_message.clone(),
+                    ));
+                }
+            }
+            if analyzed + 1 == max_analyze_commits {
+                // Honor the intentional limit for first releases without
+                // fetching ancestry older than the last requested commit.
+                return Ok(history
+                    .is_complete_since(repository, &[&current_commit_hash])?
+                    .then_some(diff));
             }
             // Go back to the previous commit.
             // Keep in mind that the info contained in `package` might be outdated,
             // because commits could contain changes to Cargo.toml.
-            if let Err(_err) = repository.checkout_previous_commit_at_paths(&paths_to_check) {
+            let Some(previous) = repository.previous_commit_at_paths(&paths_to_check)? else {
                 debug!("there are no other commits");
-                break;
-            }
+                return Ok(history.is_complete_since(repository, &[])?.then_some(diff));
+            };
+            repository.checkout(&previous)?;
         }
-        Ok(())
+        Ok(Some(diff))
     }
 
     fn check_package_equality(

@@ -112,10 +112,22 @@ fn process_git_only_package(
         release_regex.to_string()
     );
 
-    let Some((release_tag, version)) = unreleased_project_repo
+    let mut release = unreleased_project_repo
         .get_release_tag(&release_regex, &package.name)
-        .context("get release tag")?
-    else {
+        .context("get release tag")?;
+    if release.is_none() {
+        let repo = git_cmd::Repo::new(input.local_manifest_dir()?)?;
+        if repo.git(&["rev-parse", "--is-shallow-repository"])? == "true" {
+            // Shallow clones can omit release tags. Resolve this before deciding
+            // that a git-only package has never been released.
+            repo.git(&["fetch", "--tags", "--no-recurse-submodules", repo.original_remote()])
+                .context("Failed to fetch release tags for the shallow repository. Fetch the release tags manually or set `fetch-depth: 0` in actions/checkout.")?;
+            release = unreleased_project_repo
+                .get_release_tag(&release_regex, &package.name)
+                .context("get fetched release tag")?;
+        }
+    }
+    let Some((release_tag, version)) = release else {
         info!(
             "No release tag found matching pattern `{release_regex}`. \
              Package {} will be treated as initial release.",
@@ -539,6 +551,297 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn shallow_workspace_fetches_only_when_history_is_needed() {
+        use cargo_metadata::camino::Utf8Path;
+        use git_cmd::{Repo, git_in_dir};
+
+        let root = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(root.path()).unwrap();
+        let source = root.join("source");
+        fs_err::create_dir(&source).unwrap();
+        let source_repo = Repo::init(&source);
+        // Leave enough older history that deepening one batch does not turn
+        // the checkout into a full clone.
+        for _ in 0..60 {
+            source_repo
+                .git(&["commit", "--allow-empty", "-m", "older history"])
+                .unwrap();
+        }
+        fs_err::write(
+            source.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\", \"three\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two", "three"] {
+            fs_err::create_dir_all(source.join(name).join("src")).unwrap();
+            fs_err::write(
+                source.join(name).join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+            )
+            .unwrap();
+            fs_err::write(source.join(name).join("src/lib.rs"), "// initial\n").unwrap();
+        }
+        cargo_utils::get_manifest_metadata(&source.join("Cargo.toml")).unwrap();
+        source_repo.add_all_and_commit("initial packages").unwrap();
+        for name in ["one", "two", "three"] {
+            source_repo
+                .tag(&format!("{name}-v0.1.0"), "release")
+                .unwrap();
+        }
+
+        // A local registry snapshot keeps the test independent of network services.
+        let registry = root.join("registry");
+        git_in_dir(root, &["clone", source.as_str(), registry.as_str()]).unwrap();
+        for name in ["one", "two", "three"] {
+            fs_err::copy(
+                registry.join(name).join("Cargo.toml"),
+                registry.join(name).join("Cargo.toml.orig"),
+            )
+            .unwrap();
+        }
+
+        for (name, message) in [
+            ("one", "feat: first feature"),
+            ("one", "feat: second feature"),
+            ("two", "fix: second package"),
+            ("three", "chore: unrelated latest change"),
+        ] {
+            fs_err::write(
+                source.join(name).join("src/lib.rs"),
+                format!("// {message}\n"),
+            )
+            .unwrap();
+            source_repo.add_all_and_commit(message).unwrap();
+        }
+
+        let checkout = root.join("checkout");
+        let source_url = url::Url::from_directory_path(&source).unwrap();
+        git_in_dir(
+            root,
+            &["clone", "--depth=1", source_url.as_str(), checkout.as_str()],
+        )
+        .unwrap();
+        let request_for = |directory: &Utf8Path| {
+            let metadata =
+                cargo_utils::get_manifest_metadata(&directory.join("Cargo.toml")).unwrap();
+            super::UpdateRequest::new(metadata)
+                .unwrap()
+                .with_registry_manifest_path(&registry.join("Cargo.toml"))
+                .unwrap()
+                .with_default_package_config(
+                    crate::UpdateConfig::default().with_semver_check(false),
+                )
+        };
+        let request = request_for(&checkout);
+
+        // A shallow clone containing the release baseline works even offline.
+        let sufficient = root.join("sufficient");
+        git_in_dir(
+            root,
+            &[
+                "clone",
+                "--depth=5",
+                source_url.as_str(),
+                sufficient.as_str(),
+            ],
+        )
+        .unwrap();
+        let missing_remote = root.join("missing-remote");
+        git_in_dir(
+            &sufficient,
+            &["remote", "set-url", "origin", missing_remote.as_str()],
+        )
+        .unwrap();
+        crate::update(&request_for(&sufficient)).await.unwrap();
+        assert_eq!(
+            git_in_dir(&sufficient, &["rev-parse", "--is-shallow-repository"]).unwrap(),
+            "true"
+        );
+
+        // First releases can intentionally limit analysis. Enough history for
+        // that limit also works offline, without requiring the repository root.
+        let unpublished = root.join("unpublished");
+        git_in_dir(
+            root,
+            &[
+                "clone",
+                "--depth=4",
+                source_url.as_str(),
+                unpublished.as_str(),
+            ],
+        )
+        .unwrap();
+        git_in_dir(
+            &unpublished,
+            &["remote", "set-url", "origin", missing_remote.as_str()],
+        )
+        .unwrap();
+        let empty_registry = root.join("empty-registry");
+        fs_err::create_dir(&empty_registry).unwrap();
+        let empty_manifest = empty_registry.join("Cargo.toml");
+        fs_err::write(&empty_manifest, "[workspace]\nmembers = []\n").unwrap();
+        let first_release = request_for(&unpublished)
+            .with_registry_manifest_path(&empty_manifest)
+            .unwrap()
+            .with_max_analyze_commits(Some(1));
+        crate::update(&first_release).await.unwrap();
+        let first_changelog = fs_err::read_to_string(unpublished.join("one/CHANGELOG.md")).unwrap();
+        assert!(
+            first_changelog.contains("second feature"),
+            "{first_changelog}"
+        );
+        assert!(
+            !first_changelog.contains("first feature"),
+            "{first_changelog}"
+        );
+
+        git_in_dir(
+            &checkout,
+            &["remote", "set-url", "origin", missing_remote.as_str()],
+        )
+        .unwrap();
+
+        // Git may convert line endings during clone, so compare the checkout
+        // against its own contents before the update.
+        let manifests_before = ["one", "two", "three"].map(|name| {
+            let manifest = checkout.join(name).join("Cargo.toml");
+            (name, fs_err::read_to_string(manifest).unwrap())
+        });
+        let error = crate::update(&request).await.unwrap_err();
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("Failed to deepen the shallow repository"),
+            "{error}"
+        );
+        assert!(error.contains("git fetch --unshallow"), "{error}");
+        assert!(error.contains("fetch-depth: 0"), "{error}");
+        for (name, manifest_before) in manifests_before {
+            assert!(!checkout.join(name).join("CHANGELOG.md").exists());
+            assert_eq!(
+                fs_err::read_to_string(checkout.join(name).join("Cargo.toml")).unwrap(),
+                manifest_before
+            );
+        }
+
+        // Restoring access is sufficient: update fetches the missing history in
+        // its temporary copy and keeps the user's checkout shallow.
+        git_in_dir(
+            &checkout,
+            &["remote", "set-url", "origin", source_url.as_str()],
+        )
+        .unwrap();
+        let (_, repository) = crate::update(&request).await.unwrap();
+        assert_eq!(
+            repository
+                .repo
+                .git(&["rev-parse", "--is-shallow-repository"])
+                .unwrap(),
+            "true"
+        );
+        assert_eq!(
+            git_in_dir(&checkout, &["rev-list", "--count", "HEAD"]).unwrap(),
+            "1"
+        );
+        let one = fs_err::read_to_string(checkout.join("one/CHANGELOG.md")).unwrap();
+        assert!(one.contains("first feature"), "{one}");
+        assert!(one.contains("second feature"), "{one}");
+        assert!(!one.contains("unrelated latest change"), "{one}");
+        let two = fs_err::read_to_string(checkout.join("two/CHANGELOG.md")).unwrap();
+        assert!(two.contains("second package"), "{two}");
+        assert!(!two.contains("unrelated latest change"), "{two}");
+        let three = fs_err::read_to_string(checkout.join("three/CHANGELOG.md")).unwrap();
+        assert!(three.contains("unrelated latest change"), "{three}");
+        for name in ["one", "two", "three"] {
+            assert_eq!(
+                fs_err::read_to_string(checkout.join(name).join("CHANGELOG.md")).unwrap(),
+                fs_err::read_to_string(sufficient.join(name).join("CHANGELOG.md")).unwrap(),
+            );
+        }
+
+        // Missing tags in git-only mode must not turn a published package into
+        // an initial release. Discover the tags before reconstructing baselines.
+        let git_only = root.join("git-only");
+        git_in_dir(
+            root,
+            &["clone", "--depth=1", source_url.as_str(), git_only.as_str()],
+        )
+        .unwrap();
+        assert!(
+            git_in_dir(&git_only, &["tag", "--list"])
+                .unwrap()
+                .is_empty()
+        );
+        let config = crate::UpdateConfig {
+            git_only: Some(true),
+            semver_check: false,
+            ..crate::UpdateConfig::default()
+        };
+        crate::update(&request_for(&git_only).with_default_package_config(config))
+            .await
+            .unwrap();
+        for name in ["one", "two", "three"] {
+            assert_eq!(
+                fs_err::read_to_string(checkout.join(name).join("CHANGELOG.md")).unwrap(),
+                fs_err::read_to_string(git_only.join(name).join("CHANGELOG.md")).unwrap(),
+            );
+        }
+
+        // The previous release may already include merged history older than
+        // the package's last change. Neither shallow parent needs deepening.
+        let merged_source = root.join("merged-source");
+        git_in_dir(root, &["clone", source.as_str(), merged_source.as_str()]).unwrap();
+        let merged_repo = Repo::new(&merged_source).unwrap();
+        merged_repo
+            .git(&["config", "user.name", "author_name"])
+            .unwrap();
+        merged_repo
+            .git(&["config", "user.email", "author@example.com"])
+            .unwrap();
+        merged_repo.disable_gpg_signing().unwrap();
+        merged_repo.git(&["reset", "--hard", "one-v0.1.0"]).unwrap();
+        let baseline = merged_repo.current_commit_hash().unwrap();
+        merged_repo.checkout_new_branch("old-side").unwrap();
+        merged_repo.git(&["reset", "--hard", "HEAD~1"]).unwrap();
+        fs_err::write(merged_source.join("side.txt"), "older side branch").unwrap();
+        merged_repo.add_all_and_commit("older side change").unwrap();
+        merged_repo.checkout_new_branch("release-line").unwrap();
+        merged_repo.git(&["reset", "--hard", &baseline]).unwrap();
+        merged_repo
+            .git(&[
+                "merge",
+                "--no-ff",
+                "old-side",
+                "-m",
+                "previous release merge",
+            ])
+            .unwrap();
+        for name in ["one", "two", "three"] {
+            merged_repo
+                .git(&["tag", "-f", &format!("{name}-v0.1.0")])
+                .unwrap();
+        }
+        fs_err::write(merged_source.join("one/src/lib.rs"), "// new feature\n").unwrap();
+        merged_repo
+            .add_all_and_commit("feat: after merged release")
+            .unwrap();
+        let merged = root.join("merged");
+        let merged_url = url::Url::from_directory_path(&merged_source).unwrap();
+        git_in_dir(
+            root,
+            &["clone", "--depth=3", merged_url.as_str(), merged.as_str()],
+        )
+        .unwrap();
+        git_in_dir(
+            &merged,
+            &["remote", "set-url", "origin", missing_remote.as_str()],
+        )
+        .unwrap();
+        crate::update(&request_for(&merged)).await.unwrap();
+        let changelog = fs_err::read_to_string(merged.join("one/CHANGELOG.md")).unwrap();
+        assert!(changelog.contains("after merged release"), "{changelog}");
+    }
+
     #[test]
     fn reconstruction_preserves_existing_package_named_worktree() {
         // Create an initial commit so the worktrees have a branch target.

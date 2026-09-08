@@ -207,13 +207,17 @@ impl Repo {
             .context("failed to get message of last commit")
     }
 
-    fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(2, paths)
+    /// Return the previous commit touching these paths, or `None` at the end
+    /// of the available history. Git failures are returned separately.
+    pub fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<Option<String>> {
+        self.nth_commit_at_paths_optional(2, paths)
             .context("failed to get message of previous commit")
     }
 
     pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let commit = self.previous_commit_at_paths(paths)?;
+        let commit = self
+            .previous_commit_at_paths(paths)?
+            .context("not enough commits")?;
         self.checkout(&commit)?;
         Ok(())
     }
@@ -249,6 +253,15 @@ impl Repo {
         )
     )]
     fn nth_commit_at_paths(&self, nth: usize, paths: &[&Path]) -> anyhow::Result<String> {
+        self.nth_commit_at_paths_optional(nth, paths)?
+            .context("not enough commits")
+    }
+
+    fn nth_commit_at_paths_optional(
+        &self,
+        nth: usize,
+        paths: &[&Path],
+    ) -> anyhow::Result<Option<String>> {
         let nth_str = nth.to_string();
 
         let git_args = {
@@ -262,11 +275,13 @@ impl Repo {
 
         let commit_list = self.git(&git_args)?;
         let mut commits = commit_list.lines();
-        let last_commit = commits.nth(nth - 1).context("not enough commits")?;
+        let Some(last_commit) = commits.nth(nth - 1) else {
+            return Ok(None);
+        };
 
         Span::current().record("nth_commit", last_commit);
         debug!("nth_commit found");
-        Ok(last_commit.to_string())
+        Ok(Some(last_commit.to_string()))
     }
 
     pub fn current_commit_message(&self) -> anyhow::Result<String> {
