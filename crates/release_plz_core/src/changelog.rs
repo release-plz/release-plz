@@ -164,6 +164,7 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         skip_tags: git_config.skip_tags,
         ignore_tags: git_config.ignore_tags,
         count_tags: git_config.count_tags,
+        limit_tags: git_config.limit_tags,
         use_branch_tags: git_config.use_branch_tags,
         topo_order: git_config.topo_order,
         topo_order_commits: git_config.topo_order_commits,
@@ -242,6 +243,7 @@ fn apply_defaults_to_changelog_config(
 
     ChangelogConfig {
         header: changelog.header.or(default_changelog_config.header),
+        header_marker: changelog.header_marker,
         body: if changelog.body.is_empty() {
             default_changelog_config.body
         } else {
@@ -250,6 +252,7 @@ fn apply_defaults_to_changelog_config(
         footer: changelog.footer.or(default_changelog_config.footer),
         trim: changelog.trim,
         render_always: changelog.render_always,
+        format: changelog.format,
         postprocessors: if changelog.postprocessors.is_empty() {
             default_changelog_config.postprocessors
         } else {
