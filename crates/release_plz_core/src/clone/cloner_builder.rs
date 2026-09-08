@@ -3,7 +3,6 @@
 use anyhow::Context;
 use cargo::{CargoResult, GlobalContext, util::homedir};
 use cargo_metadata::camino::Utf8PathBuf;
-use cargo_util_terminal::Shell;
 
 use crate::fs_utils::current_directory;
 
@@ -79,7 +78,11 @@ impl ClonerBuilder {
 fn new_cargo_config(cwd: Option<Utf8PathBuf>) -> anyhow::Result<GlobalContext> {
     match cwd {
         Some(cwd) => {
-            let shell = Shell::new();
+            #[expect(
+                clippy::default_trait_access,
+                reason = "Let Cargo infer the shell type without a direct cargo-util-terminal dependency"
+            )]
+            let shell = Default::default();
             let homedir = homedir(cwd.as_std_path()).context(
                 "Cargo couldn't find your home directory. \
                  This probably means that $HOME was not set.",
