@@ -91,7 +91,7 @@ async fn release_plz_opens_pr_without_breaking_changes() {
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    pretty_assertions::assert_eq!(
+    assert_eq!(
         pr_body,
         format!(
             r"
@@ -183,7 +183,7 @@ async fn release_plz_can_do_backport_prs() {
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    pretty_assertions::assert_eq!(
+    assert_eq!(
         pr_body,
         format!(
             r"
@@ -266,7 +266,7 @@ async fn release_plz_opens_pr_with_breaking_changes() {
         .filter(|line| !does_line_vary(line))
         .collect::<Vec<_>>()
         .join("\n");
-    pretty_assertions::assert_eq!(
+    assert_eq!(
         pr_body,
         format!(
             r"
@@ -783,7 +783,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
-    pretty_assertions::assert_eq!(
+    assert_eq!(
         pr_body,
         format!(
             r"
@@ -1613,7 +1613,7 @@ async fn release_plz_updates_changelog_when_version_already_bumped() {
     let pr_body = opened_prs[0].body.as_ref().unwrap().trim();
 
     // Verify the PR body contains the changelog with both commits.
-    pretty_assertions::assert_eq!(
+    assert_eq!(
         pr_body,
         format!(
             r"
