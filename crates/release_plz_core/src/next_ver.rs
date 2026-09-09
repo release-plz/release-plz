@@ -150,7 +150,7 @@ fn process_git_only_package(
             repo.checkout_commit(&release_commit)
                 .context("checkout release commit for package")?;
 
-            // Package and verify the whole workspace so unpublished path dependencies are
+            // Package the whole workspace so unpublished path dependencies are
             // materialized in Cargo's temporary local registry.
             run_cargo_package(&worktree).context("run cargo package")?;
             entry.insert(worktree)
@@ -175,9 +175,12 @@ fn process_git_only_package(
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
     let target_dir = worktree_path.join("target");
+    // Git-only version comparisons only need packaged files. Skip verification
+    // so historical build scripts cannot fail reconstruction or modify sources.
+    // unpack_cargo_package extracts the archive explicitly instead.
     let output = run_cargo_with_env(
         worktree_path,
-        &["package", "--allow-dirty", "--workspace"],
+        &["package", "--allow-dirty", "--workspace", "--no-verify"],
         &[(
             "CARGO_TARGET_DIR".to_owned(),
             SecretString::from(target_dir.to_string()),
@@ -213,10 +216,7 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .find(|x| x.name == package_name)
         .with_context(|| format!("Failed to find package {package_name:?}"))?;
 
-    let package_path = rust_package.target_directory.join(format!(
-        "package/{}-{}",
-        package_details.name, package_details.version
-    ));
+    let package_path = unpack_cargo_package(&rust_package.target_directory, package_details)?;
     debug!("package for {package_name} is at {package_path}");
 
     let single_package_manifest = package_path.join("Cargo.toml");
@@ -231,6 +231,22 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .clone();
 
     Ok(single_package)
+}
+
+/// Extract the `.crate` archive produced by `cargo package --no-verify` and return the
+/// directory of the unpacked package. Cargo itself only extracts it during verification.
+fn unpack_cargo_package(target_dir: &Utf8Path, package: &Package) -> anyhow::Result<Utf8PathBuf> {
+    let package_dir = target_dir.join("package");
+    let package_id = format!("{}-{}", package.name, package.version);
+    let archive_path = package_dir.join(format!("{package_id}.crate"));
+    let archive = fs_err::File::open(&archive_path)?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    // Match Cargo behavior: timestamps are unnecessary and unsupported on some filesystems.
+    archive.set_preserve_mtime(false);
+    archive
+        .unpack(&package_dir)
+        .with_context(|| format!("unpack package archive {archive_path}"))?;
+    Ok(package_dir.join(package_id))
 }
 
 /// Determine next version of packages.
@@ -539,6 +555,54 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn git_only_reconstructs_package_without_running_build_script() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::create_dir(root.path().join("src")).unwrap();
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            r#"[package]
+name = "non-verifiable"
+version = "0.1.0"
+edition = "2024"
+exclude = ["excluded.txt"]
+"#,
+        )
+        .unwrap();
+        fs_err::write(root.path().join("src/lib.rs"), "pub fn example() {}\n").unwrap();
+        fs_err::write(root.path().join("excluded.txt"), "not packaged").unwrap();
+        fs_err::write(
+            root.path().join("build.rs"),
+            r#"fn main() {
+    std::fs::write("generated.txt", "outside OUT_DIR").unwrap();
+}
+"#,
+        )
+        .unwrap();
+        repo.add_all_and_commit("initial package").unwrap();
+
+        let mut original = super::GitRepo::open(root.path()).unwrap();
+        let (_repo, worktree) =
+            super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
+        super::run_cargo_package(&worktree).unwrap();
+        let package = super::get_cargo_package(&worktree, "non-verifiable").unwrap();
+        let package_dir = package.manifest_path.parent().unwrap();
+
+        assert_eq!(package.version.to_string(), "0.1.0");
+        // The archive was unpacked. Compare with the checked out file so that
+        // line-ending conversion on Windows doesn't matter.
+        assert_eq!(
+            fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
+            fs_err::read_to_string(worktree.path().join("src/lib.rs")).unwrap()
+        );
+        assert!(package_dir.join("Cargo.toml.orig").is_file());
+        assert!(!package_dir.join("excluded.txt").exists());
+        // The build script never ran.
+        assert!(!package_dir.join("generated.txt").exists());
+        assert!(!worktree.path().join("generated.txt").exists());
+    }
+
     #[test]
     fn reconstruction_preserves_existing_package_named_worktree() {
         // Create an initial commit so the worktrees have a branch target.

@@ -8,6 +8,43 @@ use crate::helpers::{
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_non_verifiable_release() {
+    let context = TestContext::new().await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+"#,
+    );
+    fs_err::write(
+        context.repo_dir().join("build.rs"),
+        r#"fn main() {
+    std::fs::write("generated.txt", "outside OUT_DIR").unwrap();
+}
+"#,
+    )
+    .unwrap();
+    context.push_all_changes("chore: add build script");
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    fs_err::write(context.repo_dir().join("README.md"), "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+    context.run_update().success();
+
+    let metadata =
+        cargo_utils::get_manifest_metadata(&context.repo_dir().join("Cargo.toml")).unwrap();
+    assert_eq!(
+        metadata.root_package().unwrap().version.to_string(),
+        "0.1.1"
+    );
+    let changelog = fs_err::read_to_string(context.repo_dir().join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("update readme"));
+    assert!(!context.repo_dir().join("generated.txt").exists());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_with_default_tag_name() {
     let context = TestContext::new().await;
 
@@ -963,7 +1000,7 @@ publish = false
     let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert_eq!(
         stderr
-            .matches("Run `cargo package --allow-dirty --workspace`")
+            .matches("Run `cargo package --allow-dirty --workspace --no-verify`")
             .count(),
         2,
         "packages at different historical commits need separate workspace reconstructions\n{stderr}"
@@ -1045,7 +1082,7 @@ git_tag_name = "v{{ version }}"
     let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert_eq!(
         stderr
-            .matches("Run `cargo package --allow-dirty --workspace`")
+            .matches("Run `cargo package --allow-dirty --workspace --no-verify`")
             .count(),
         1,
         "packages at one historical commit should share workspace reconstruction\n{stderr}"
