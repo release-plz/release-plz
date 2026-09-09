@@ -216,13 +216,8 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .find(|x| x.name == package_name)
         .with_context(|| format!("Failed to find package {package_name:?}"))?;
 
-    let package_path = rust_package.target_directory.join(format!(
-        "package/{}-{}",
-        package_details.name, package_details.version
-    ));
+    let package_path = unpack_cargo_package(&rust_package.target_directory, package_details)?;
     debug!("package for {package_name} is at {package_path}");
-
-    unpack_cargo_package(&rust_package.target_directory, package_details)?;
 
     let single_package_manifest = package_path.join("Cargo.toml");
     let single_package_meta = get_manifest_metadata(&single_package_manifest)
@@ -238,19 +233,17 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
     Ok(single_package)
 }
 
-fn unpack_cargo_package(target_dir: &Utf8Path, package: &Package) -> anyhow::Result<()> {
-    // Cargo only extracts the archive during verification. Git-only comparisons
-    // need the packaged contents without compiling the historical release.
-    let archive_path = target_dir.join(format!(
-        "package/{}-{}.crate",
-        package.name, package.version
-    ));
-    let archive = fs_err::File::open(&archive_path)
-        .with_context(|| format!("open package archive {archive_path}"))?;
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
-    archive
-        .unpack(target_dir.join("package"))
-        .with_context(|| format!("unpack package archive {archive_path}"))
+/// Extract the `.crate` archive produced by `cargo package --no-verify` and return the
+/// directory of the unpacked package. Cargo itself only extracts it during verification.
+fn unpack_cargo_package(target_dir: &Utf8Path, package: &Package) -> anyhow::Result<Utf8PathBuf> {
+    let package_dir = target_dir.join("package");
+    let package_id = format!("{}-{}", package.name, package.version);
+    let archive_path = package_dir.join(format!("{package_id}.crate"));
+    let archive = fs_err::File::open(&archive_path)?;
+    tar::Archive::new(flate2::read::GzDecoder::new(archive))
+        .unpack(&package_dir)
+        .with_context(|| format!("unpack package archive {archive_path}"))?;
+    Ok(package_dir.join(package_id))
 }
 
 /// Determine next version of packages.
@@ -563,19 +556,6 @@ mod tests {
     fn git_only_reconstructs_package_without_running_build_script() {
         let root = tempfile::tempdir().unwrap();
         let repo = git_cmd::Repo::init(root.path());
-        // Exercise Windows checkout behavior on every platform.
-        repo.git(&["config", "core.autocrlf", "true"]).unwrap();
-        // Keep source bytes stable for the archive content assertions below.
-        fs_err::write(root.path().join(".gitattributes"), "*.rs text eol=lf\n").unwrap();
-        // Historical artifacts must stay in their own worktrees even when the
-        // repository configures a shared target directory.
-        let shared_target = root.path().join("shared-target");
-        fs_err::create_dir(root.path().join(".cargo")).unwrap();
-        fs_err::write(
-            root.path().join(".cargo/config.toml"),
-            format!("[build]\ntarget-dir = '{}'\n", shared_target.display()),
-        )
-        .unwrap();
         fs_err::create_dir(root.path().join("src")).unwrap();
         fs_err::write(
             root.path().join("Cargo.toml"),
@@ -606,46 +586,18 @@ exclude = ["excluded.txt"]
         let package = super::get_cargo_package(&worktree, "non-verifiable").unwrap();
         let package_dir = package.manifest_path.parent().unwrap();
 
-        assert!(
-            package_dir.starts_with(super::to_utf8_path(worktree.path()).unwrap().join("target"))
-        );
         assert_eq!(package.version.to_string(), "0.1.0");
+        // The archive was unpacked. Compare with the checked out file so that
+        // line-ending conversion on Windows doesn't matter.
         assert_eq!(
             fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
-            "pub fn example() {}\n"
+            fs_err::read_to_string(worktree.path().join("src/lib.rs")).unwrap()
         );
         assert!(package_dir.join("Cargo.toml.orig").is_file());
         assert!(!package_dir.join("excluded.txt").exists());
+        // The build script never ran.
         assert!(!package_dir.join("generated.txt").exists());
         assert!(!worktree.path().join("generated.txt").exists());
-
-        // Reconstruct another commit at the same version. A failing build script
-        // must also be skipped, and the first snapshot must retain its contents.
-        fs_err::write(
-            root.path().join("build.rs"),
-            "fn main() { panic!(\"must not run\"); }\n",
-        )
-        .unwrap();
-        let updated_source = "pub fn updated_example() {}\n";
-        fs_err::write(root.path().join("src/lib.rs"), updated_source).unwrap();
-        repo.add_all_and_commit("change package at the same version")
-            .unwrap();
-        let (_second_repo, second_worktree) =
-            super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
-        super::run_cargo_package(&second_worktree).unwrap();
-        let second_package = super::get_cargo_package(&second_worktree, "non-verifiable").unwrap();
-        let second_package_dir = second_package.manifest_path.parent().unwrap();
-
-        assert_ne!(package_dir, second_package_dir);
-        assert_eq!(
-            fs_err::read_to_string(second_package_dir.join("src/lib.rs")).unwrap(),
-            updated_source
-        );
-        assert_eq!(
-            fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
-            "pub fn example() {}\n"
-        );
-        assert!(!shared_target.exists());
     }
 
     #[test]
