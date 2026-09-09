@@ -556,6 +556,10 @@ mod tests {
     fn git_only_reconstructs_package_without_running_build_script() {
         let root = tempfile::tempdir().unwrap();
         let repo = git_cmd::Repo::init(root.path());
+        // Exercise Windows checkout behavior on every platform.
+        repo.git(&["config", "core.autocrlf", "true"]).unwrap();
+        // Keep source bytes stable for the archive content assertions below.
+        fs_err::write(root.path().join(".gitattributes"), "*.rs text eol=lf\n").unwrap();
         // Historical artifacts must stay in their own worktrees even when the
         // repository configures a shared target directory.
         let shared_target = root.path().join("shared-target");
