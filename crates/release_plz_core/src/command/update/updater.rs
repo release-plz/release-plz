@@ -1,6 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
+    iter,
     path::Path,
+    sync::{Mutex, Once},
     thread,
 };
 
@@ -18,7 +20,6 @@ use git_cliff_core::{
 };
 use git_cmd::Repo;
 use next_version::NextVersion as _;
-use std::sync::Once;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
@@ -302,16 +303,26 @@ impl Updater<'_> {
         };
 
         // Limit concurrent checks to the available CPUs, as each check runs a Cargo build.
-        let parallelism = thread::available_parallelism().map_or(1, usize::from);
-        let chunk_size = packages_diffs.len().div_ceil(parallelism).max(1);
+        let parallelism = thread::available_parallelism()
+            .map_or(1, usize::from)
+            .min(packages_diffs.len());
+        // Workers pull the next package from a shared queue, so a slow check
+        // doesn't leave other workers idle.
+        let queue = Mutex::new(packages_diffs.iter_mut());
+        let next_package = || queue.lock().unwrap().next();
         thread::scope(|scope| {
-            let handles: Vec<_> = packages_diffs
-                .chunks_mut(chunk_size)
-                .map(|chunk| scope.spawn(|| chunk.iter_mut().try_for_each(&check_semver)))
-                .collect();
-            handles
+            let spawn_worker = || {
+                scope.spawn(|| {
+                    while let Some(package_diff) = next_package() {
+                        check_semver(package_diff)?;
+                    }
+                    anyhow::Ok(())
+                })
+            };
+            let workers: Vec<_> = iter::repeat_with(spawn_worker).take(parallelism).collect();
+            workers
                 .into_iter()
-                .try_for_each(|handle| handle.join().expect("semver check thread panicked"))
+                .try_for_each(|worker| worker.join().expect("semver check thread panicked"))
         })?;
 
         Ok(packages_diffs)
