@@ -1079,7 +1079,6 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
             })?;
         self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
             .await
-            .with_context(|| format!("failed to create branch `{tag_name}`"))
     }
 
     async fn create_gitlab_tag(
