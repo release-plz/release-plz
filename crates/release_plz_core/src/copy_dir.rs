@@ -53,9 +53,13 @@ fn copy_directory(from: &Utf8Path, to: &Utf8PathBuf) -> Result<(), anyhow::Error
         .hidden(false)
         // Don't consider `.ignore` files.
         .ignore(false)
-        // Ignore the global `.gitignore` as it might cause issues.
-        // For example, if it contains `.git/`, we will fail in recognizing the git directory later.
+        // Don't apply gitignore rules: we want a faithful copy. Unanchored
+        // patterns (e.g. `tags`) otherwise match paths inside `.git` (e.g.
+        // `.git/refs/tags`) and silently drop them.
+        .git_ignore(false)
         .git_global(false)
+        .git_exclude(false)
+        .parents(false)
         .build();
     for entry in walker {
         let entry = entry.context("invalid entry")?;
@@ -130,6 +134,29 @@ mod tests {
         let file1_dest = temp2.path().join(subdir).join("file1");
         assert!(file1_dest.exists());
         assert_eq!(link_target, file1_dest);
+    }
+
+    #[test]
+    fn gitignored_names_inside_git_dir_are_copied() {
+        let temp = Utf8TempDir::new().unwrap();
+        let src = temp.path().join("repo");
+        fs_err::create_dir(&src).unwrap();
+        fs_err::write(src.join(".gitignore"), "tags\n").unwrap();
+        let git_tags = src.join(".git").join("refs").join("tags");
+        fs_err::create_dir_all(&git_tags).unwrap();
+        fs_err::write(git_tags.join("v1.0.0"), "deadbeef").unwrap();
+
+        let temp2 = Utf8TempDir::new().unwrap();
+        copy_dir(&src, temp2.path()).unwrap();
+
+        let copied_tag = temp2
+            .path()
+            .join("repo")
+            .join(".git")
+            .join("refs")
+            .join("tags")
+            .join("v1.0.0");
+        assert!(copied_tag.exists(), "{copied_tag:?} was not copied");
     }
 
     #[test]
