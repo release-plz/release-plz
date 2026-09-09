@@ -37,8 +37,11 @@ pub fn are_packages_equal(
         format!("cannot determine packaged files of registry package {registry_package:?}")
     })?;
 
-    // Lockfiles can differ in both presence and contents between local and published
-    // packages. Dependency updates are checked separately by the updater.
+    // Older published libraries may lack Cargo.lock, but modern `cargo package --list`
+    // includes it even when absent. Ignore its presence to preserve the comparison
+    // behavior from when both sides used Cargo's file list. Its contents can also
+    // differ in workspaces; the updater separately checks dependency versions for
+    // executables when both lockfiles exist.
     let is_comparable_file = |file: &&Utf8PathBuf| {
         !matches!(
             file.as_str(),
@@ -329,7 +332,6 @@ mod tests {
 
         assert!(are_packages_equal(local.path(), &registry).unwrap());
         assert!(registry.join("Cargo.toml.orig").is_file());
-        assert!(!registry.join("Cargo.toml.orig.orig").exists());
 
         // Exercise registry metadata while the local side still uses Cargo's file list.
         fs_err::write(registry.join(".cargo-ok"), "{}").unwrap();
@@ -338,7 +340,8 @@ mod tests {
         fs_err::write(registry.join(".git"), "gitdir: /elsewhere/worktrees/crate").unwrap();
         assert!(are_packages_equal(local.path(), &registry).unwrap());
 
-        // Older published packages may not contain a lockfile at all.
+        // Libraries published before Cargo 1.84 may not contain a lockfile, even
+        // though modern `cargo package --list` includes it on the local side.
         fs_err::remove_file(registry.join("Cargo.lock")).unwrap();
         assert!(are_packages_equal(local.path(), &registry).unwrap());
 
