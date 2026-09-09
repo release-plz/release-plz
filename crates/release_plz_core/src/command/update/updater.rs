@@ -302,18 +302,17 @@ impl Updater<'_> {
             Ok(())
         };
 
-        // Limit concurrent checks to the available CPUs, as each check runs a Cargo build.
+        // Worker count is capped at both the CPU count and the number of packages, so no idle threads are spawned.
         let parallelism = thread::available_parallelism()
             .map_or(1, usize::from)
             .min(packages_diffs.len());
         // Workers pull the next package from a shared queue, so a slow check
         // doesn't leave other workers idle.
         let queue = Mutex::new(packages_diffs.iter_mut());
-        let next_package = || queue.lock().unwrap().next();
         thread::scope(|scope| {
             let spawn_worker = || {
                 scope.spawn(|| {
-                    while let Some(package_diff) = next_package() {
+                    while let Some(package_diff) = queue.lock().unwrap().next() {
                         check_semver(package_diff)?;
                     }
                     anyhow::Ok(())
