@@ -150,7 +150,7 @@ fn process_git_only_package(
             repo.checkout_commit(&release_commit)
                 .context("checkout release commit for package")?;
 
-            // Package and verify the whole workspace so unpublished path dependencies are
+            // Package the whole workspace so unpublished path dependencies are
             // materialized in Cargo's temporary local registry.
             run_cargo_package(&worktree).context("run cargo package")?;
             entry.insert(worktree)
@@ -177,7 +177,7 @@ fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let target_dir = worktree_path.join("target");
     let output = run_cargo_with_env(
         worktree_path,
-        &["package", "--allow-dirty", "--workspace"],
+        &["package", "--allow-dirty", "--workspace", "--no-verify"],
         &[(
             "CARGO_TARGET_DIR".to_owned(),
             SecretString::from(target_dir.to_string()),
@@ -218,6 +218,19 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         package_details.name, package_details.version
     ));
     debug!("package for {package_name} is at {package_path}");
+
+    // Cargo only extracts the archive during verification. Git-only comparisons
+    // need the packaged contents without compiling the historical release.
+    let archive_path = rust_package.target_directory.join(format!(
+        "package/{}-{}.crate",
+        package_details.name, package_details.version
+    ));
+    let archive = fs_err::File::open(&archive_path)
+        .with_context(|| format!("open package archive {archive_path}"))?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    archive
+        .unpack(rust_package.target_directory.join("package"))
+        .with_context(|| format!("unpack package archive {archive_path}"))?;
 
     let single_package_manifest = package_path.join("Cargo.toml");
     let single_package_meta = get_manifest_metadata(&single_package_manifest)
@@ -539,6 +552,51 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn git_only_reconstructs_package_without_running_build_script() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::create_dir(root.path().join("src")).unwrap();
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            r#"[package]
+name = "non-verifiable"
+version = "0.1.0"
+edition = "2024"
+exclude = ["excluded.txt"]
+"#,
+        )
+        .unwrap();
+        fs_err::write(root.path().join("src/lib.rs"), "pub fn example() {}\n").unwrap();
+        fs_err::write(root.path().join("excluded.txt"), "not packaged").unwrap();
+        fs_err::write(
+            root.path().join("build.rs"),
+            r#"fn main() {
+    std::fs::write("generated.txt", "outside OUT_DIR").unwrap();
+}
+"#,
+        )
+        .unwrap();
+        repo.add_all_and_commit("initial package").unwrap();
+
+        let mut original = super::GitRepo::open(root.path()).unwrap();
+        let (_repo, worktree) =
+            super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
+        super::run_cargo_package(&worktree).unwrap();
+        let package = super::get_cargo_package(&worktree, "non-verifiable").unwrap();
+        let package_dir = package.manifest_path.parent().unwrap();
+
+        assert_eq!(package.version.to_string(), "0.1.0");
+        assert_eq!(
+            fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
+            "pub fn example() {}\n"
+        );
+        assert!(package_dir.join("Cargo.toml.orig").is_file());
+        assert!(!package_dir.join("excluded.txt").exists());
+        assert!(!package_dir.join("generated.txt").exists());
+        assert!(!worktree.path().join("generated.txt").exists());
+    }
+
     #[test]
     fn reconstruction_preserves_existing_package_named_worktree() {
         // Create an initial commit so the worktrees have a branch target.
