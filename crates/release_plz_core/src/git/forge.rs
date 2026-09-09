@@ -956,7 +956,7 @@ impl GitClient {
                     ". GitHub rejected the reference creation. \
 Check that the commit has been pushed to the remote repository, \
 the branch does not already exist, and the token's permissions and \
-repository rulesets or branch protection rules allow creating this branch. \
+repository rulesets or branch protection rules allow creating this ref. \
 Write permissions alone do not bypass repository rulesets. \
 If the commit hasn't been pushed to the remote repository yet, push it and run release-plz again.",
                 );
@@ -1079,6 +1079,7 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
             })?;
         self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
             .await
+            .with_context(|| format!("failed to create branch `{tag_name}`"))
     }
 
     async fn create_gitlab_tag(
