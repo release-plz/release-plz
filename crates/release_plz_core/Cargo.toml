@@ -54,6 +54,5 @@ test_logs = { path = "../test_logs" }
 fake_package = { path = "../fake_package" }
 
 expect-test.workspace = true
-fake.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 wiremock.workspace = true

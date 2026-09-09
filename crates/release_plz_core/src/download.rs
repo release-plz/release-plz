@@ -95,7 +95,7 @@ pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
 
 #[cfg(test)]
 mod tests {
-    use fake::Fake;
+    use std::{collections::hash_map::RandomState, hash::BuildHasher};
     use tempfile::tempdir;
 
     use super::*;
@@ -132,8 +132,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires network"]
     async fn downloading_non_existing_package_does_not_error() {
-        // Generate random string 15 characters long.
-        let package: String = 15.fake();
+        let package = format!(
+            "release-plz-nonexistent-{:016x}",
+            RandomState::new().hash_one(())
+        );
         let temp_dir = tempdir().unwrap();
         let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
         PackageDownloader::new([&package], directory)
