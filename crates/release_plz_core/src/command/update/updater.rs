@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
+    thread,
 };
 
 use anyhow::Context as _;
@@ -17,7 +18,6 @@ use git_cliff_core::{
 };
 use git_cmd::Repo;
 use next_version::NextVersion as _;
-use rayon::iter::{IntoParallelRefMutIterator as _, ParallelIterator as _};
 use std::sync::Once;
 use tracing::{debug, info, instrument, warn};
 
@@ -271,39 +271,48 @@ impl Updater<'_> {
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
-        let semver_check_result: anyhow::Result<()> =
-            packages_diffs.par_iter_mut().try_for_each(|(p, diff)| {
-                let registry_package = registry_packages.get_package(&p.name);
-                if let Some(registry_package) = registry_package {
-                    let package_path = get_package_path(p, repository, self.project.root())
-                        .context("can't retrieve package path")?;
-                    let package_config = self.req.get_package_config(&p.name);
-                    for pkg_to_include in &package_config.changelog_include {
-                        if let Some(commits) = packages_commits.get(pkg_to_include) {
-                            diff.add_commits(commits);
-                        }
-                    }
-                    if should_check_semver(p, registry_package, package_config.semver_check())
-                        && diff.should_update_version()
-                    {
-                        let registry_package_path = registry_package
-                            .package_path()
-                            .context("can't retrieve registry package path")?;
-                        // Log that we are checking semver only the first time.
-                        SEMVER_CHECK_LOG_ONCE.call_once(|| {
-                            tracing::info!(
-                                "Checking API compatibility with cargo-semver-checks..."
-                            );
-                        });
-                        let semver_check =
-                            semver_check::run_semver_check(&package_path, registry_package_path)
-                                .context("error while running cargo-semver-checks")?;
-                        diff.set_semver_check(semver_check);
+        let check_semver = |(p, diff): &mut (&Package, Diff)| -> anyhow::Result<()> {
+            let registry_package = registry_packages.get_package(&p.name);
+            if let Some(registry_package) = registry_package {
+                let package_path = get_package_path(p, repository, self.project.root())
+                    .context("can't retrieve package path")?;
+                let package_config = self.req.get_package_config(&p.name);
+                for pkg_to_include in &package_config.changelog_include {
+                    if let Some(commits) = packages_commits.get(pkg_to_include) {
+                        diff.add_commits(commits);
                     }
                 }
-                Ok(())
-            });
-        semver_check_result?;
+                if should_check_semver(p, registry_package, package_config.semver_check())
+                    && diff.should_update_version()
+                {
+                    let registry_package_path = registry_package
+                        .package_path()
+                        .context("can't retrieve registry package path")?;
+                    // Log that we are checking semver only the first time.
+                    SEMVER_CHECK_LOG_ONCE.call_once(|| {
+                        tracing::info!("Checking API compatibility with cargo-semver-checks...");
+                    });
+                    let semver_check =
+                        semver_check::run_semver_check(&package_path, registry_package_path)
+                            .context("error while running cargo-semver-checks")?;
+                    diff.set_semver_check(semver_check);
+                }
+            }
+            Ok(())
+        };
+
+        // Limit concurrent checks to the available CPUs, as each check runs a Cargo build.
+        let parallelism = thread::available_parallelism().map_or(1, usize::from);
+        let chunk_size = packages_diffs.len().div_ceil(parallelism).max(1);
+        thread::scope(|scope| {
+            let handles: Vec<_> = packages_diffs
+                .chunks_mut(chunk_size)
+                .map(|chunk| scope.spawn(|| chunk.iter_mut().try_for_each(&check_semver)))
+                .collect();
+            handles
+                .into_iter()
+                .try_for_each(|handle| handle.join().expect("semver check thread panicked"))
+        })?;
 
         Ok(packages_diffs)
     }
