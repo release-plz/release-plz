@@ -955,7 +955,7 @@ impl GitClient {
                 message.push_str(
                     ". GitHub rejected the reference creation. \
 Check that the commit has been pushed to the remote repository, \
-the branch does not already exist, and the token's permissions and \
+the ref does not already exist, and the token's permissions and \
 repository rulesets or branch protection rules allow creating this ref. \
 Write permissions alone do not bypass repository rulesets. \
 If the commit hasn't been pushed to the remote repository yet, push it and run release-plz again.",
