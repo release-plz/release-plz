@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    iter,
     path::Path,
     sync::{Mutex, Once},
     thread,
@@ -310,18 +309,24 @@ impl Updater<'_> {
         // doesn't leave other workers idle.
         let queue = Mutex::new(packages_diffs.iter_mut());
         thread::scope(|scope| {
-            let spawn_worker = || {
-                scope.spawn(|| {
-                    while let Some(package_diff) = queue.lock().unwrap().next() {
+            let mut workers = Vec::with_capacity(parallelism);
+            for _ in 0..parallelism {
+                workers.push(scope.spawn(|| {
+                    // Each worker repeatedly takes the next package from the shared queue until it’s empty.
+                    loop {
+                        // Release the queue lock before running the check.
+                        let Some(package_diff) = queue.lock().unwrap().next() else {
+                            break;
+                        };
                         check_semver(package_diff)?;
                     }
                     anyhow::Ok(())
-                })
-            };
-            let workers: Vec<_> = iter::repeat_with(spawn_worker).take(parallelism).collect();
-            workers
-                .into_iter()
-                .try_for_each(|worker| worker.join().expect("semver check thread panicked"))
+                }));
+            }
+            for worker in workers {
+                worker.join().expect("semver check thread panicked")?;
+            }
+            anyhow::Ok(())
         })?;
 
         Ok(packages_diffs)
