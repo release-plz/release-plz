@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.0...release_plz_core-v0.38.1) - 2026-09-09
+
+### Fixed
+
+- reconstruct git-only packages without verification ([#3039](https://github.com/release-plz/release-plz/pull/3039))
+
+### Other
+
+- remove the fake crate ([#3037](https://github.com/release-plz/release-plz/pull/3037))
+- remove rand dependency ([#3036](https://github.com/release-plz/release-plz/pull/3036))
+- remove rayon dependency ([#3035](https://github.com/release-plz/release-plz/pull/3035))
+- remove direct dependency urlencoding ([#3034](https://github.com/release-plz/release-plz/pull/3034))
+- remove the strip-ansi-escapes dependency ([#3033](https://github.com/release-plz/release-plz/pull/3033))
+- remove cargo-util-terminal direct dependency ([#3032](https://github.com/release-plz/release-plz/pull/3032))
+- remove itertools direct dependency ([#3030](https://github.com/release-plz/release-plz/pull/3030))
+- remove http direct dependency ([#3028](https://github.com/release-plz/release-plz/pull/3028))
+- remove unused h2 dependency in Cargo.toml ([#3026](https://github.com/release-plz/release-plz/pull/3026))
+
 ## [0.38.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.37.2...release_plz_core-v0.38.0) - 2026-09-08
 
 ### Added
