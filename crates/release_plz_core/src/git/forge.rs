@@ -948,25 +948,21 @@ impl GitClient {
             .send()
             .await?;
 
-        // GitHub returns 422 (Unprocessable Entity) when the provided commit SHA
-        // only exists locally (i.e. it has not been pushed to the remote).
-        if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-            // Try to capture the body for extra diagnostics.
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<failed to read response body>".to_string());
-            anyhow::bail!(
-                "failed to create ref {ref_name} with sha {sha}. \
-The commit {sha} likely hasn't been pushed to the remote repository yet. \
-Please push your local commits and run release-plz again.\nResponse body: {body}"
-            );
-        }
-
-        response
-            .successful_status()
-            .await
-            .with_context(|| format!("failed to create ref {ref_name} with sha {sha}"))?;
+        let status = response.status();
+        response.successful_status().await.with_context(|| {
+            let mut message = format!("failed to create ref {ref_name} with sha {sha}");
+            if status == StatusCode::UNPROCESSABLE_ENTITY {
+                message.push_str(
+                    ". GitHub rejected the reference creation. \
+Check that the commit has been pushed to the remote repository, \
+the ref does not already exist, and the token's permissions and \
+repository rulesets or branch protection rules allow creating this ref. \
+Write permissions alone do not bypass repository rulesets. \
+If the commit hasn't been pushed to the remote repository yet, push it and run release-plz again.",
+                );
+            }
+            message
+        })?;
         Ok(())
     }
 

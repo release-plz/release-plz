@@ -1041,7 +1041,8 @@ async fn create_git_tag_and_release(
             let sha = repo.current_commit_hash()?;
             git_client
                 .create_tag(release_info.git_tag, &message, &sha)
-                .await?;
+                .await
+                .with_context(|| format!("failed to create tag `{}`", release_info.git_tag))?;
         }
     }
 

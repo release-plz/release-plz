@@ -495,7 +495,10 @@ async fn github_create_release_branch(
     commit_message: &str,
 ) -> anyhow::Result<String> {
     let sha = repository.current_commit_hash()?;
-    client.create_branch(release_branch, &sha).await?;
+    client
+        .create_branch(release_branch, &sha)
+        .await
+        .with_context(|| format!("failed to create branch `{release_branch}`"))?;
     let sha = github_graphql::commit_changes(client, repository, commit_message, release_branch)
         .await
         .with_context(|| {
