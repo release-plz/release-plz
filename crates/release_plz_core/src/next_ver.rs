@@ -556,6 +556,15 @@ mod tests {
     fn git_only_reconstructs_package_without_running_build_script() {
         let root = tempfile::tempdir().unwrap();
         let repo = git_cmd::Repo::init(root.path());
+        // Historical artifacts must stay in their own worktrees even when the
+        // repository configures a shared target directory.
+        let shared_target = root.path().join("shared-target");
+        fs_err::create_dir(root.path().join(".cargo")).unwrap();
+        fs_err::write(
+            root.path().join(".cargo/config.toml"),
+            format!("[build]\ntarget-dir = '{}'\n", shared_target.display()),
+        )
+        .unwrap();
         fs_err::create_dir(root.path().join("src")).unwrap();
         fs_err::write(
             root.path().join("Cargo.toml"),
@@ -586,6 +595,9 @@ exclude = ["excluded.txt"]
         let package = super::get_cargo_package(&worktree, "non-verifiable").unwrap();
         let package_dir = package.manifest_path.parent().unwrap();
 
+        assert!(
+            package_dir.starts_with(super::to_utf8_path(worktree.path()).unwrap().join("target"))
+        );
         assert_eq!(package.version.to_string(), "0.1.0");
         assert_eq!(
             fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
@@ -595,6 +607,34 @@ exclude = ["excluded.txt"]
         assert!(!package_dir.join("excluded.txt").exists());
         assert!(!package_dir.join("generated.txt").exists());
         assert!(!worktree.path().join("generated.txt").exists());
+
+        // Reconstruct another commit at the same version. A failing build script
+        // must also be skipped, and the first snapshot must retain its contents.
+        fs_err::write(
+            root.path().join("build.rs"),
+            "fn main() { panic!(\"must not run\"); }\n",
+        )
+        .unwrap();
+        let updated_source = "pub fn updated_example() {}\n";
+        fs_err::write(root.path().join("src/lib.rs"), updated_source).unwrap();
+        repo.add_all_and_commit("change package at the same version")
+            .unwrap();
+        let (_second_repo, second_worktree) =
+            super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
+        super::run_cargo_package(&second_worktree).unwrap();
+        let second_package = super::get_cargo_package(&second_worktree, "non-verifiable").unwrap();
+        let second_package_dir = second_package.manifest_path.parent().unwrap();
+
+        assert_ne!(package_dir, second_package_dir);
+        assert_eq!(
+            fs_err::read_to_string(second_package_dir.join("src/lib.rs")).unwrap(),
+            updated_source
+        );
+        assert_eq!(
+            fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
+            "pub fn example() {}\n"
+        );
+        assert!(!shared_target.exists());
     }
 
     #[test]
