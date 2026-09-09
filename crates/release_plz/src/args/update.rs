@@ -78,7 +78,7 @@ pub struct Update {
     update_deps: bool,
 
     /// Path to the git-cliff configuration file.
-    /// If not provided, `dirs::config_dir()/git-cliff/cliff.toml` is used if present.
+    /// If not provided, git-cliff's user configuration file is used if present.
     #[arg(
         long,
         env = "GIT_CLIFF_CONFIG",
@@ -243,29 +243,24 @@ impl Update {
         config: &Config,
         pr_link: Option<&str>,
     ) -> anyhow::Result<GitCliffConfig> {
-        let default_config_path = dirs::config_dir()
-            .context("cannot get config dir")?
-            .join("git-cliff")
-            .join(git_cliff_core::DEFAULT_CONFIG);
-
         let path = match self.user_changelog_config(config) {
             Some(provided_path) => {
                 if provided_path.exists() {
-                    provided_path
+                    Some(provided_path.to_path_buf())
                 } else {
                     anyhow::bail!("cannot read {provided_path:?}")
                 }
             }
-            None => &default_config_path,
+            None => GitCliffConfig::retrieve_user_config_path(),
         };
 
         // Parse the configuration file.
-        let changelog_config = if path.exists() {
+        let changelog_config = if let Some(path) = path {
             anyhow::ensure!(
                 config.changelog.is_default(),
                 "specifying the `[changelog]` configuration has no effect if `changelog_config` path is specified"
             );
-            GitCliffConfig::load(path).context("failed to parse git-cliff config file")?
+            GitCliffConfig::load(&path).context("failed to parse git-cliff config file")?
         } else {
             changelog_config::to_git_cliff_config(config.changelog.clone(), pr_link)
                 .context("invalid `[changelog] config")?
