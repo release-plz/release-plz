@@ -240,7 +240,10 @@ fn unpack_cargo_package(target_dir: &Utf8Path, package: &Package) -> anyhow::Res
     let package_id = format!("{}-{}", package.name, package.version);
     let archive_path = package_dir.join(format!("{package_id}.crate"));
     let archive = fs_err::File::open(&archive_path)?;
-    tar::Archive::new(flate2::read::GzDecoder::new(archive))
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    // Match Cargo behavior: timestamps are unnecessary and unsupported on some filesystems.
+    archive.set_preserve_mtime(false);
+    archive
         .unpack(&package_dir)
         .with_context(|| format!("unpack package archive {archive_path}"))?;
     Ok(package_dir.join(package_id))
