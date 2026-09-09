@@ -1,3 +1,5 @@
+use std::hash::{BuildHasher, RandomState};
+
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::semver::Version;
 use cargo_utils::CARGO_TOML;
@@ -432,7 +434,9 @@ async fn github_force_push(
     commit_message: &str,
     repository: &Repo,
 ) -> anyhow::Result<()> {
-    let tmp_release_branch = format!("{branch}-tmp-{}", rand::random::<u32>());
+    // Use a randomized hash to make temporary branch name collisions unlikely.
+    let suffix = RandomState::new().hash_one(branch);
+    let tmp_release_branch = format!("{branch}-tmp-{suffix}");
     repository.checkout_new_branch(&tmp_release_branch)?;
 
     // Push the "Verified" commit in the temporary branch using
