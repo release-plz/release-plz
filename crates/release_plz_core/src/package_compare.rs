@@ -330,6 +330,17 @@ mod tests {
         assert!(registry.join("Cargo.toml.orig").is_file());
         assert!(!registry.join("Cargo.toml.orig.orig").exists());
 
+        // Exercise registry metadata while the local side still uses Cargo's file list.
+        fs_err::write(registry.join(".cargo-ok"), "{}").unwrap();
+        fs_err::write(registry.join("Cargo.lock"), "historical lockfile").unwrap();
+        fs_err::remove_dir_all(registry.join(".git")).unwrap();
+        fs_err::write(registry.join(".git"), "gitdir: /elsewhere/worktrees/crate").unwrap();
+        assert!(are_packages_equal(local.path(), &registry).unwrap());
+
+        // Older published packages may not contain a lockfile at all.
+        fs_err::remove_file(registry.join("Cargo.lock")).unwrap();
+        assert!(are_packages_equal(local.path(), &registry).unwrap());
+
         fs_err::write(registry.join("src/lib.rs"), "pub fn changed() {}\n").unwrap();
         assert!(!are_packages_equal(local.path(), &registry).unwrap());
         fs_err::copy(local.path().join("src/lib.rs"), registry.join("src/lib.rs")).unwrap();
