@@ -177,7 +177,7 @@ fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let target_dir = worktree_path.join("target");
     // Git-only version comparisons only need packaged files. Skip verification
     // so historical build scripts cannot fail reconstruction or modify sources.
-    // get_cargo_package extracts the archive explicitly instead.
+    // unpack_cargo_package extracts the archive explicitly instead.
     let output = run_cargo_with_env(
         worktree_path,
         &["package", "--allow-dirty", "--workspace", "--no-verify"],
@@ -222,18 +222,7 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
     ));
     debug!("package for {package_name} is at {package_path}");
 
-    // Cargo only extracts the archive during verification. Git-only comparisons
-    // need the packaged contents without compiling the historical release.
-    let archive_path = rust_package.target_directory.join(format!(
-        "package/{}-{}.crate",
-        package_details.name, package_details.version
-    ));
-    let archive = fs_err::File::open(&archive_path)
-        .with_context(|| format!("open package archive {archive_path}"))?;
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
-    archive
-        .unpack(rust_package.target_directory.join("package"))
-        .with_context(|| format!("unpack package archive {archive_path}"))?;
+    unpack_cargo_package(&rust_package.target_directory, package_details)?;
 
     let single_package_manifest = package_path.join("Cargo.toml");
     let single_package_meta = get_manifest_metadata(&single_package_manifest)
@@ -247,6 +236,21 @@ fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Resu
         .clone();
 
     Ok(single_package)
+}
+
+fn unpack_cargo_package(target_dir: &Utf8Path, package: &Package) -> anyhow::Result<()> {
+    // Cargo only extracts the archive during verification. Git-only comparisons
+    // need the packaged contents without compiling the historical release.
+    let archive_path = target_dir.join(format!(
+        "package/{}-{}.crate",
+        package.name, package.version
+    ));
+    let archive = fs_err::File::open(&archive_path)
+        .with_context(|| format!("open package archive {archive_path}"))?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    archive
+        .unpack(target_dir.join("package"))
+        .with_context(|| format!("unpack package archive {archive_path}"))
 }
 
 /// Determine next version of packages.
