@@ -175,6 +175,9 @@ fn process_git_only_package(
 fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
     let target_dir = worktree_path.join("target");
+    // Git-only version comparisons only need packaged files. Skip verification
+    // so historical build scripts cannot fail reconstruction or modify sources.
+    // get_cargo_package extracts the archive explicitly instead.
     let output = run_cargo_with_env(
         worktree_path,
         &["package", "--allow-dirty", "--workspace", "--no-verify"],
