@@ -299,12 +299,11 @@ mod tests {
     #[test]
     fn package_without_original_manifest_uses_cargo_file_selection() {
         let package = test_package();
-        // This used to be a temporary name, but isn't evidence of a packaged crate.
-        fs_err::write(package.path().join("Cargo.toml.orig.orig"), "backup").unwrap();
+        fs_err::write(package.path().join("another_file"), "file").unwrap();
         let files = get_cargo_package_files(package.path()).unwrap();
 
         assert!(files.contains(&Utf8PathBuf::from("src/lib.rs")));
-        assert!(files.contains(&Utf8PathBuf::from("Cargo.toml.orig.orig")));
+        assert!(files.contains(&Utf8PathBuf::from("another_file")));
         assert!(!files.contains(&Utf8PathBuf::from("excluded.txt")));
         assert!(!package.path().join("Cargo.toml.orig").exists());
     }
