@@ -37,13 +37,19 @@ pub fn are_packages_equal(
         format!("cannot determine packaged files of registry package {registry_package:?}")
     })?;
 
-    let local_files = local_package_files
-        .iter()
-        .filter(|file| *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json");
+    // Lockfiles can differ in both presence and contents between local and published
+    // packages. Dependency updates are checked separately by the updater.
+    let local_files = local_package_files.iter().filter(|file| {
+        *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json" && *file != "Cargo.lock"
+    });
 
-    let registry_files = registry_package_files
-        .iter()
-        .filter(|file| *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json");
+    let registry_files = registry_package_files.iter().filter(|file| {
+        *file != "Cargo.toml.orig"
+            && *file != ".cargo_vcs_info.json"
+            && *file != "Cargo.lock"
+            // Cargo creates this marker when extracting a registry package.
+            && *file != ".cargo-ok"
+    });
 
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
@@ -121,8 +127,9 @@ fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
             let entry = entry.with_context(|| format!("cannot read dir entry in {dir:?}"))?;
             let path = Utf8PathBuf::from_path_buf(entry.path())
                 .map_err(|path| anyhow::anyhow!("non-utf8 path in package: {path:?}"))?;
-            // Registry initialization adds Git metadata that isn't part of the package.
-            if path == package.join(".git") {
+            // Git metadata isn't part of the package, including nested repositories
+            // and worktrees whose `.git` entry is a file.
+            if path.file_name() == Some(".git") {
                 continue;
             }
             let file_type = entry
@@ -259,6 +266,7 @@ mod tests {
         let package = package.path();
         fs_err::create_dir_all(package.join("src/nested")).unwrap();
         fs_err::create_dir(package.join(".git")).unwrap();
+        fs_err::create_dir_all(package.join("src/nested/.git/objects")).unwrap();
         for file in [
             "Cargo.toml",
             "Cargo.toml.orig",
@@ -266,6 +274,8 @@ mod tests {
             "src/nested/lib.rs",
             "src/nested.rs",
             ".git/config",
+            "src/nested/.git/objects/metadata",
+            "src/.git",
         ] {
             // In particular, Cargo.toml is invalid, so invoking Cargo would fail.
             fs_err::write(package.join(file), "packaged content").unwrap();
@@ -329,6 +339,53 @@ mod tests {
         fs_err::remove_file(registry.join("extra.txt")).unwrap();
         fs_err::remove_file(registry.join(".hidden")).unwrap();
         assert!(!are_packages_equal(local.path(), &registry).unwrap());
+    }
+
+    #[test]
+    fn compare_packaged_files_ignores_extraction_marker() {
+        let local = test_package();
+        let registry = test_package();
+        // Use the disk-listing path on both sides to isolate comparison filtering.
+        for package in [&local, &registry] {
+            fs_err::copy(
+                package.path().join(CARGO_TOML),
+                package.path().join("Cargo.toml.orig"),
+            )
+            .unwrap();
+        }
+        fs_err::write(registry.path().join(".cargo-ok"), "{}").unwrap();
+
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        // A similarly named file inside the package is still compared.
+        fs_err::write(registry.path().join("src/.cargo-ok"), "content").unwrap();
+        assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+    }
+
+    #[test]
+    fn compare_packaged_files_ignores_lockfile_presence_and_contents() {
+        let local = test_package();
+        let registry = test_package();
+        for package in [&local, &registry] {
+            fs_err::copy(
+                package.path().join(CARGO_TOML),
+                package.path().join("Cargo.toml.orig"),
+            )
+            .unwrap();
+        }
+
+        fs_err::write(local.path().join("Cargo.lock"), "local lockfile").unwrap();
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        fs_err::write(registry.path().join("Cargo.lock"), "published lockfile").unwrap();
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        fs_err::remove_file(local.path().join("Cargo.lock")).unwrap();
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        // Nested lockfiles remain part of the packaged file list.
+        fs_err::write(registry.path().join("src/Cargo.lock"), "nested lockfile").unwrap();
+        assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
     }
 
     fn test_package() -> Utf8TempDir {
