@@ -39,17 +39,19 @@ pub fn are_packages_equal(
 
     // Lockfiles can differ in both presence and contents between local and published
     // packages. Dependency updates are checked separately by the updater.
-    let local_files = local_package_files.iter().filter(|file| {
-        *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json" && *file != "Cargo.lock"
-    });
+    let is_comparable_file = |file: &&Utf8PathBuf| {
+        !matches!(
+            file.as_str(),
+            "Cargo.toml.orig" | ".cargo_vcs_info.json" | "Cargo.lock"
+        )
+    };
+    let local_files = local_package_files.iter().filter(is_comparable_file);
 
-    let registry_files = registry_package_files.iter().filter(|file| {
-        *file != "Cargo.toml.orig"
-            && *file != ".cargo_vcs_info.json"
-            && *file != "Cargo.lock"
-            // Cargo creates this marker when extracting a registry package.
-            && *file != ".cargo-ok"
-    });
+    let registry_files = registry_package_files
+        .iter()
+        .filter(is_comparable_file)
+        // Cargo creates this marker when extracting a registry package.
+        .filter(|file| *file != ".cargo-ok");
 
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
