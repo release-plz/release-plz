@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::{io, path::Path, process::Command};
 
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
@@ -81,19 +81,25 @@ fn copy_directory(from: &Utf8Path, to: &Utf8Path) -> Result<(), anyhow::Error> {
 /// Ignore rules only apply to untracked files. The walker can skip whole ignored
 /// directories, so copy any missing tracked paths directly from the index.
 fn copy_tracked_files(from: &Utf8Path, to: &Utf8Path) -> anyhow::Result<()> {
-    let repo = match git2::Repository::open(from) {
-        Ok(repo) => repo,
-        // This helper also copies directories that aren't Git repositories.
-        Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(error).context("cannot open repository while copying tracked files");
-        }
-    };
-    let index = repo
-        .index()
-        .context("cannot read index while copying tracked files")?;
-    for entry in index.iter() {
-        let relative = std::str::from_utf8(&entry.path).context("non-UTF-8 tracked path")?;
+    // Only repository roots have their own index; plain directories and
+    // uninitialized submodules must not discover a parent repository instead.
+    if !from.join(".git").try_exists()? {
+        return Ok(());
+    }
+    // Git supports index extensions such as split and sparse indexes that
+    // libgit2 cannot read.
+    let output = Command::new("git")
+        .current_dir(from)
+        .args(["--git-dir=.git", "ls-files", "-z"])
+        .output()
+        .context("cannot list tracked files while copying directory")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "cannot list tracked files in {from}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let tracked_files = std::str::from_utf8(&output.stdout).context("non-UTF-8 tracked path")?;
+    for relative in tracked_files.split_terminator('\0') {
         let relative = Utf8Path::new(relative);
         // An ancestor replaced by a symlink makes this indexed path deleted.
         // symlink_metadata only avoids following symlinks at the final component.
@@ -201,6 +207,83 @@ mod tests {
     use crate::fs_utils::Utf8TempDir;
 
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn ignored_tracked_paths_preserve_whitespace() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        let paths = [" leading\tfile\n.txt", "trailing "];
+        for path in paths {
+            fs_err::write(repo_dir.join(path), "tracked contents").unwrap();
+        }
+        repo.add_all_and_commit("add tracked files").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "*\n").unwrap();
+        repo.git(&["add", "-f", ".gitignore"]).unwrap();
+        repo.commit("ignore files").unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        for path in paths {
+            assert_eq!(
+                fs_err::read_to_string(copied_dir.join(path)).unwrap(),
+                "tracked contents"
+            );
+        }
+        assert_eq!(
+            git_cmd::git_in_dir(&copied_dir, &["status", "--porcelain"]).unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn tracked_files_are_copied_with_split_and_sparse_indexes() {
+        for sparse in [false, true] {
+            let source = Utf8TempDir::new().unwrap();
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            fs_err::create_dir(repo_dir.join("examples")).unwrap();
+            fs_err::create_dir(repo_dir.join("excluded")).unwrap();
+            fs_err::write(repo_dir.join("examples/Cargo.lock"), "tracked lockfile").unwrap();
+            fs_err::write(repo_dir.join("excluded/tracked.txt"), "excluded contents").unwrap();
+            repo.add_all_and_commit("add tracked files").unwrap();
+            fs_err::write(repo_dir.join(".gitignore"), "examples/\n").unwrap();
+            repo.add_all_and_commit("ignore examples").unwrap();
+            if sparse {
+                repo.git(&[
+                    "sparse-checkout",
+                    "set",
+                    "--cone",
+                    "--sparse-index",
+                    "examples",
+                ])
+                .unwrap();
+                assert!(!repo_dir.join("excluded").exists());
+            } else {
+                repo.git(&["update-index", "--split-index"]).unwrap();
+            }
+            fs_err::write(repo_dir.join("examples/untracked"), "ignored").unwrap();
+            assert_eq!(repo.git(&["status", "--porcelain"]).unwrap(), "");
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            assert_eq!(
+                fs_err::read_to_string(copied_dir.join("examples/Cargo.lock")).unwrap(),
+                "tracked lockfile"
+            );
+            assert!(!copied_dir.join("examples/untracked").exists());
+            assert_eq!(copied_dir.join("excluded").exists(), !sparse);
+            assert_eq!(
+                git_cmd::git_in_dir(&copied_dir, &["status", "--porcelain"]).unwrap(),
+                ""
+            );
+        }
+    }
 
     #[cfg(unix)]
     #[test]
@@ -470,11 +553,8 @@ mod tests {
         let source = Utf8TempDir::new().unwrap();
         let repo_dir = source.path().join("repo");
         fs_err::create_dir(&repo_dir).unwrap();
-        fs_err::write(
-            repo_dir.join(".git"),
-            "gitdir: ../main/.git/worktrees/repo\n",
-        )
-        .unwrap();
+        let git_dir = source.path().join("git-metadata");
+        git_cmd::git_in_dir(&repo_dir, &["init", "--separate-git-dir", git_dir.as_str()]).unwrap();
         fs_err::write(repo_dir.join(".gitignore"), ".git\n").unwrap();
 
         let destination = Utf8TempDir::new().unwrap();
