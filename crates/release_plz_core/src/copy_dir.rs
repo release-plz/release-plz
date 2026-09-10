@@ -56,8 +56,19 @@ fn copy_directory(from: &Utf8Path, to: &Utf8PathBuf) -> Result<(), anyhow::Error
         // Ignore the global `.gitignore` as it might cause issues.
         // For example, if it contains `.git/`, we will fail in recognizing the git directory later.
         .git_global(false)
+        // Skip the root `.git` entry (depth 1) and its descendants;
+        // the separate walker below copies them without ignore filtering.
+        .filter_entry(|entry| entry.depth() != 1 || entry.file_name() != ".git")
         .build();
-    for entry in walker {
+    // Copy Git metadata without applying ignore rules: patterns such as `tags`
+    // must not exclude `.git/refs/tags`. `.git` can also be a worktree's gitdir file.
+    let git_path = from.join(".git");
+    let git_walker = (git_path.try_exists()? || git_path.is_symlink()).then(|| {
+        ignore::WalkBuilder::new(&git_path)
+            .standard_filters(false)
+            .build()
+    });
+    for entry in walker.chain(git_walker.into_iter().flatten()) {
         let entry = entry.context("invalid entry")?;
         let destination =
             destination_path(to, &entry, from).context("failed to determine destination path")?;
@@ -108,6 +119,78 @@ mod tests {
     use crate::fs_utils::Utf8TempDir;
 
     use super::*;
+
+    #[test]
+    fn git_metadata_is_copied_despite_ignore_rules() {
+        for patterns in [
+            "tags",
+            "tags\nlogs\nconfig\nindex\nobjects\ninfo\nhooks\ndescription\nrefs\nHEAD\npacked-refs",
+            ".git\ntags",
+        ] {
+            let source = Utf8TempDir::new().unwrap();
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+            repo.git(&["pack-refs", "--all"]).unwrap();
+            repo.tag_lightweight("v0.2.0").unwrap();
+            fs_err::write(repo_dir.join(".gitignore"), format!("{patterns}\ntarget\n")).unwrap();
+            fs_err::write(repo_dir.join("tags"), "ctags index").unwrap();
+            fs_err::create_dir(repo_dir.join("target")).unwrap();
+            fs_err::write(repo_dir.join("target/build-output"), "ignored").unwrap();
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+            assert_eq!(
+                copied_repo.get_all_tags(),
+                repo.get_all_tags(),
+                "{patterns}"
+            );
+            for tag in ["v0.1.0", "v0.2.0"] {
+                assert_eq!(copied_repo.get_tag_commit(tag), repo.get_tag_commit(tag));
+            }
+            // Every metadata file must survive, including the index, config and objects.
+            for entry in walkdir::WalkDir::new(repo_dir.join(".git")) {
+                let entry = entry.unwrap();
+                let relative = entry.path().strip_prefix(&repo_dir).unwrap();
+                let copied = copied_dir.join(Utf8Path::from_path(relative).unwrap());
+                if entry.file_type().is_dir() {
+                    assert!(copied.is_dir(), "missing {copied} with {patterns}");
+                } else {
+                    assert_eq!(
+                        fs_err::read(entry.path()).unwrap(),
+                        fs_err::read(copied).unwrap()
+                    );
+                }
+            }
+            assert!(copied_dir.join("README.md").exists());
+            assert!(copied_dir.join(".gitignore").exists());
+            assert!(!copied_dir.join("tags").exists());
+            assert!(!copied_dir.join("target").exists());
+        }
+    }
+
+    #[test]
+    fn git_file_is_copied_despite_ignore_rules() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        fs_err::write(
+            repo_dir.join(".git"),
+            "gitdir: ../main/.git/worktrees/repo\n",
+        )
+        .unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), ".git\n").unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        assert_eq!(
+            fs_err::read(destination.path().join("repo/.git")).unwrap(),
+            fs_err::read(repo_dir.join(".git")).unwrap()
+        );
+    }
 
     #[test]
     fn is_dir_copied_correctly() {
