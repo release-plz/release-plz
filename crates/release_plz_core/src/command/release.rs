@@ -615,7 +615,17 @@ async fn release_packages(
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
     // Packages are already ordered by release order.
-    let packages = project.publishable_packages();
+    let packages: Vec<_> = project
+        .workspace_packages()
+        .into_iter()
+        .filter(|package| {
+            package.is_publishable()
+                || !input
+                    .get_package_config(&package.name)
+                    .publish()
+                    .is_enabled()
+        })
+        .collect();
     if packages.is_empty() {
         info!("nothing to release");
     }

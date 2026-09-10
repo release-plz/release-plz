@@ -159,12 +159,14 @@ fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
 fn are_cargo_toml_equal(local_package: &Utf8Path, registry_package: &Utf8Path) -> bool {
     // When a package is published to a cargo registry, the original `Cargo.toml` file is stored as
     // `Cargo.toml.orig`
-    let cargo_orig = format!("{CARGO_TOML}.orig");
-    are_files_equal(
-        &local_package.join(CARGO_TOML),
-        &registry_package.join(cargo_orig),
-    )
-    .unwrap_or(false)
+    let original_manifest = registry_package.join("Cargo.toml.orig");
+    let released_manifest = if original_manifest.is_file() {
+        original_manifest
+    } else {
+        // Git-only releases retain their original workspace manifests.
+        registry_package.join(CARGO_TOML)
+    };
+    are_files_equal(&local_package.join(CARGO_TOML), &released_manifest).unwrap_or(false)
 }
 
 /// Returns true if the README file of the local package is the same as the one in the registry.
@@ -191,7 +193,19 @@ pub fn is_readme_updated(
     let local_package_readme_path = local_readme_override(&package, local_package_path);
     let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
-            let registry_package_readme_path = registry_package_path.join("README.md");
+            let registry_package_readme_path = if registry_package_path
+                .join("Cargo.toml.orig")
+                .is_file()
+            {
+                registry_package_path.join("README.md")
+            } else {
+                let released_package = read_package_metadata(package_name, registry_package_path)?;
+                let Some(path) = local_readme_override(&released_package, registry_package_path)?
+                else {
+                    return Ok(true);
+                };
+                path
+            };
             if !registry_package_readme_path.exists() {
                 return Ok(true);
             }
@@ -401,6 +415,30 @@ mod tests {
         // Nested lockfiles remain part of the packaged file list.
         fs_err::write(registry.path().join("src/Cargo.lock"), "nested lockfile").unwrap();
         assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+    }
+
+    #[test]
+    fn compare_source_packages_uses_cargo_file_selection() {
+        let local = test_package();
+        let released = test_package();
+        assert!(are_packages_equal(local.path(), released.path()).unwrap());
+
+        fs_err::write(released.path().join("excluded.txt"), "ignored change").unwrap();
+        assert!(are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::write(released.path().join("src/lib.rs"), "pub fn changed() {}\n").unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::copy(
+            local.path().join("src/lib.rs"),
+            released.path().join("src/lib.rs"),
+        )
+        .unwrap();
+        fs_err::write(released.path().join("extra.txt"), "new file").unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::remove_file(released.path().join("extra.txt")).unwrap();
+        fs_err::remove_file(released.path().join("src/lib.rs")).unwrap();
+        // Keep the target valid while testing a removed packaged file.
+        fs_err::write(released.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
     }
 
     fn test_package() -> Utf8TempDir {
