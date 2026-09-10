@@ -108,7 +108,7 @@ fn copy_tracked_files(
     // libgit2 cannot read.
     let output = Command::new("git")
         .current_dir(from)
-        .args(["--git-dir=.git", "ls-files", "-z"])
+        .args(["--git-dir=.git", "ls-files", "--stage", "-z"])
         .output()
         .context("cannot list tracked files while copying directory")?;
     anyhow::ensure!(
@@ -117,7 +117,10 @@ fn copy_tracked_files(
         String::from_utf8_lossy(&output.stderr)
     );
     let tracked_files = std::str::from_utf8(&output.stdout).context("non-UTF-8 tracked path")?;
-    for relative in tracked_files.split_terminator('\0') {
+    for entry in tracked_files.split_terminator('\0') {
+        let (index_metadata, relative) = entry
+            .split_once('\t')
+            .context("tracked entry has no path separator")?;
         let relative = Utf8Path::new(relative);
         // An ancestor replaced by a symlink makes this indexed path deleted.
         // symlink_metadata only avoids following symlinks at the final component.
@@ -145,6 +148,11 @@ fn copy_tracked_files(
         };
         let destination = to.join(relative);
         if metadata.is_dir() {
+            // A tracked file replaced by a directory is deleted; its ignored,
+            // untracked contents must not be copied by this fallback.
+            if !index_metadata.starts_with("160000 ") {
+                continue;
+            }
             // Gitlinks represent submodules, whose tracked files have their own index.
             if destination.try_exists()? {
                 copy_tracked_files(&source, &destination, root_from, root_to)?;
@@ -448,6 +456,37 @@ mod tests {
         assert_eq!(
             copied_repo.git(&["status", "--porcelain"]).unwrap(),
             repo.git(&["status", "--porcelain"]).unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignored_tracked_file_replaced_by_directory_preserves_deletion() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::write(repo_dir.join("generated"), "committed").unwrap();
+        repo.add_all_and_commit("add tracked file").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "generated\n").unwrap();
+        repo.add_all_and_commit("ignore generated file").unwrap();
+
+        fs_err::remove_file(repo_dir.join("generated")).unwrap();
+        fs_err::create_dir(repo_dir.join("generated")).unwrap();
+        fs_err::write(repo_dir.join("generated/untracked"), "ignored").unwrap();
+        let external_file = source.path().join("external");
+        fs_err::write(&external_file, "external contents").unwrap();
+        create_symlink(&external_file, repo_dir.join("generated/link")).unwrap();
+        let source_status = repo.git(&["status", "--porcelain"]).unwrap();
+        assert_eq!(source_status, "D generated");
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        assert!(!copied_dir.join("generated").exists());
+        assert_eq!(
+            git_cmd::git_in_dir(&copied_dir, &["status", "--porcelain"]).unwrap(),
+            source_status
         );
     }
 
