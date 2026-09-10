@@ -113,6 +113,9 @@ pub enum Command {
     /// For single package projects, you can omit `<package_name>@`.
     /// E.g. `release-plz set-version 1.2.3`.
     ///
+    /// In workspaces with `workspace.package.version`, omitting `<package_name>@` updates
+    /// the workspace version and the changelogs of all packages inheriting it.
+    ///
     /// Note that this command is meant to edit the versions of the packages of your workspace, not the
     /// version of your dependencies.
     SetVersion(SetVersion),
