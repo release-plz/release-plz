@@ -618,13 +618,7 @@ async fn release_packages(
     let packages: Vec<_> = project
         .workspace_packages()
         .into_iter()
-        .filter(|package| {
-            package.is_publishable()
-                || !input
-                    .get_package_config(&package.name)
-                    .publish()
-                    .is_enabled()
-        })
+        .filter(|package| package.is_publishable() || !input.is_publish_enabled(&package.name))
         .collect();
     if packages.is_empty() {
         info!("nothing to release");

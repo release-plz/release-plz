@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
-use cargo_metadata::camino::Utf8Path;
+use cargo_metadata::{DependencyKind, Metadata, camino::Utf8Path, semver::Version};
 use serde::Deserialize;
 use tracing::debug;
 
@@ -15,43 +15,48 @@ pub fn are_lock_dependencies_updated(
     registry_package: &Utf8Path,
 ) -> anyhow::Result<bool> {
     let registry_lock = &registry_package.join("Cargo.lock");
-    if !local_lock.exists() || !registry_lock.exists() {
+    let Some((local_lock, registry_lock)) = read_lockfiles(local_lock, registry_lock)? else {
         return Ok(false);
-    }
-    are_dependencies_updated(local_lock, registry_lock, None)
+    };
+    Ok(are_dependencies_updated(&local_lock, &registry_lock))
 }
 
 /// Compare only dependencies reachable from a package in a historical workspace lockfile.
 pub(crate) fn are_workspace_lock_dependencies_updated(
-    local_lock: &Utf8Path,
-    released_lock: &Utf8Path,
+    local_metadata: &Metadata,
+    released_metadata: &Metadata,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    if !local_lock.exists() || !released_lock.exists() {
+    let Some((mut local_lock, mut released_lock)) = read_lockfiles(
+        &local_metadata.workspace_root.join("Cargo.lock"),
+        &released_metadata.workspace_root.join("Cargo.lock"),
+    )?
+    else {
         return Ok(false);
-    }
-    are_dependencies_updated(local_lock, released_lock, Some(package_name))
+    };
+    local_lock.retain_package_dependencies(package_name, &local_metadata.packages);
+    released_lock.retain_package_dependencies(package_name, &released_metadata.packages);
+    Ok(are_dependencies_updated(&local_lock, &released_lock))
 }
 
-fn are_dependencies_updated(
+fn read_lockfiles(
     local_lock: &Utf8Path,
     registry_lock: &Utf8Path,
-    package_name: Option<&str>,
-) -> anyhow::Result<bool> {
-    let mut local_lock: Lockfile = read_lockfile(local_lock)
+) -> anyhow::Result<Option<(Lockfile, Lockfile)>> {
+    if !local_lock.exists() || !registry_lock.exists() {
+        return Ok(None);
+    }
+    let local_lock = read_lockfile(local_lock)
         .with_context(|| format!("failed to load lockfile of local package {local_lock:?}"))?;
-    let mut registry_lock = read_lockfile(registry_lock).with_context(|| {
+    let registry_lock = read_lockfile(registry_lock).with_context(|| {
         format!("failed to load lockfile of registry package {registry_lock:?}")
     })?;
-    if let Some(package_name) = package_name {
-        local_lock.retain_package_dependencies(package_name);
-        registry_lock.retain_package_dependencies(package_name);
-    }
+    Ok(Some((local_lock, registry_lock)))
+}
+
+fn are_dependencies_updated(local_lock: &Lockfile, registry_lock: &Lockfile) -> bool {
     let local_lock_packages = PackagesByName::new(&local_lock.packages);
-    Ok(are_dependencies_of_lockfiles_updated(
-        &registry_lock,
-        &local_lock_packages,
-    ))
+    are_dependencies_of_lockfiles_updated(registry_lock, &local_lock_packages)
 }
 
 fn read_lockfile(path: &Utf8Path) -> anyhow::Result<Lockfile> {
@@ -95,7 +100,11 @@ struct Lockfile {
 }
 
 impl Lockfile {
-    fn retain_package_dependencies(&mut self, package_name: &str) {
+    fn retain_package_dependencies(
+        &mut self,
+        package_name: &str,
+        workspace_packages: &[cargo_metadata::Package],
+    ) {
         // Cargo omits version/source from dependency IDs when the name is unambiguous.
         let mut pending: Vec<_> = self
             .packages
@@ -109,12 +118,22 @@ impl Lockfile {
             if !reachable.insert(index) {
                 continue;
             }
-            for dependency in &self.packages[index].dependencies {
+            let package = &self.packages[index];
+            let workspace_package = workspace_packages.iter().find(|p| {
+                package.source.is_none() && p.name == package.name && p.version == package.version
+            });
+            for dependency in &package.dependencies {
                 pending.extend(
                     self.packages
                         .iter()
                         .enumerate()
-                        .filter(|(_, p)| p.matches_dependency(dependency))
+                        .filter(|(_, p)| {
+                            p.matches_dependency(dependency)
+                                && (package.name == package_name
+                                    || workspace_package.is_none_or(|workspace_package| {
+                                        !p.is_dev_only_dependency(workspace_package)
+                                    }))
+                        })
                         .map(|(i, _)| i),
                 );
             }
@@ -131,17 +150,35 @@ impl Lockfile {
 #[derive(Deserialize, Debug)]
 struct Package {
     name: String,
-    version: String,
+    version: Version,
     source: Option<String>,
     #[serde(default)]
     dependencies: Vec<String>,
 }
 
 impl Package {
+    fn is_dev_only_dependency(&self, package: &cargo_metadata::Package) -> bool {
+        // Workspace lockfiles include each member's dev dependencies, but those
+        // are not built when that member is used as another package's dependency.
+        // Match versions too: a renamed dev dependency can use a different version
+        // of the same crate as a normal or build dependency.
+        let mut matching = package.dependencies.iter().filter(|dependency| {
+            dependency.name == self.name
+                && (dependency.req == cargo_metadata::semver::VersionReq::STAR
+                    || dependency.req.matches(&self.version))
+        });
+        matching
+            .clone()
+            .any(|d| d.kind == DependencyKind::Development)
+            && matching.all(|d| d.kind == DependencyKind::Development)
+    }
+
     fn matches_dependency(&self, dependency: &str) -> bool {
         let mut parts = dependency.splitn(3, ' ');
         parts.next() == Some(self.name.as_str())
-            && parts.next().is_none_or(|version| version == self.version)
+            && parts
+                .next()
+                .is_none_or(|version| version == self.version.to_string())
             && parts.next().is_none_or(|source| {
                 self.source.as_deref().is_some_and(|s| {
                     // Dependency IDs omit the precise revision of a Git source.
@@ -190,6 +227,124 @@ impl<'a> PackagesByName<'a> {
 mod tests {
     use super::*;
 
+    fn compare_workspace_locks(local: &Utf8Path, released: &Utf8Path, package: &str) -> bool {
+        let (mut local, mut released) = read_lockfiles(local, released).unwrap().unwrap();
+        local.retain_package_dependencies(package, &[]);
+        released.retain_package_dependencies(package, &[]);
+        are_dependencies_updated(&local, &released)
+    }
+
+    #[test]
+    fn workspace_lock_comparison_ignores_transitive_dev_dependencies() {
+        let local = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let released = crate::fs_utils::Utf8TempDir::new().unwrap();
+        for directory in [local.path(), released.path()] {
+            fs_err::write(
+                directory.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"binary\", \"library\"]\nresolver = \"2\"\n",
+            )
+            .unwrap();
+            for (name, dependencies) in [
+                (
+                    "binary",
+                    r#"
+[dependencies]
+library = { path = "../library" }
+[dev-dependencies]
+root-dev = "1"
+"#,
+                ),
+                (
+                    "library",
+                    r#"
+[dependencies]
+shared = "1"
+both = "1"
+[build-dependencies]
+builder = "1"
+[dev-dependencies]
+test-only = "1"
+both = "1"
+shared-test = { package = "shared", version = "2" }
+"#,
+                ),
+            ] {
+                let package = directory.join(name);
+                fs_err::create_dir_all(package.join("src")).unwrap();
+                fs_err::write(package.join("src/lib.rs"), "").unwrap();
+                fs_err::write(
+                    package.join("Cargo.toml"),
+                    format!(
+                        "[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n{dependencies}"
+                    ),
+                )
+                .unwrap();
+            }
+        }
+        // No dependency resolution or registry access is needed to read dependency kinds.
+        let local_metadata =
+            cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
+        let released_metadata =
+            cargo_utils::get_manifest_metadata(&released.path().join("Cargo.toml")).unwrap();
+        let mut lockfile = r#"
+version = 4
+[[package]]
+name = "binary"
+version = "0.1.0"
+dependencies = ["library", "root-dev"]
+[[package]]
+name = "library"
+version = "0.1.0"
+dependencies = ["shared 1.0.0", "shared 2.0.0", "both", "builder", "test-only"]
+"#
+        .to_string();
+        for (name, version) in [
+            ("shared", "1.0.0"),
+            ("shared", "2.0.0"),
+            ("both", "1.0.0"),
+            ("builder", "1.0.0"),
+            ("test-only", "1.0.0"),
+            ("root-dev", "1.0.0"),
+        ] {
+            lockfile.push_str(&format!(
+                "\n[[package]]\nname = {name:?}\nversion = {version:?}\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+            ));
+        }
+        fs_err::write(released.path().join("Cargo.lock"), &lockfile).unwrap();
+
+        for (name, version, should_update) in [
+            ("test-only", "1.0.0", false),
+            ("shared", "2.0.0", false),
+            ("shared", "1.0.0", true),
+            ("both", "1.0.0", true),
+            ("builder", "1.0.0", true),
+            ("root-dev", "1.0.0", true),
+        ] {
+            let mut updated_version = Version::parse(version).unwrap();
+            updated_version.patch += 1;
+            let changed = lockfile
+                .replace(
+                    &format!("name = {name:?}\nversion = {version:?}"),
+                    &format!("name = {name:?}\nversion = \"{updated_version}\""),
+                )
+                .replace(
+                    &format!("{name} {version}"),
+                    &format!("{name} {updated_version}"),
+                );
+            fs_err::write(local.path().join("Cargo.lock"), changed).unwrap();
+            assert_eq!(
+                are_workspace_lock_dependencies_updated(
+                    &local_metadata,
+                    &released_metadata,
+                    "binary"
+                )
+                .unwrap(),
+                should_update,
+                "updating {name} {version}"
+            );
+        }
+    }
+
     #[test]
     fn workspace_lock_comparison_follows_source_qualified_git_dependencies() {
         let directory = tempfile::tempdir().unwrap();
@@ -220,9 +375,9 @@ source = "git+https://example.com/one#1111111111111111111111111111111111111111"
 "#;
         fs_err::write(&released, lockfile).unwrap();
         fs_err::write(&local, lockfile).unwrap();
-        assert!(!are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
+        assert!(!compare_workspace_locks(&local, &released, "binary"));
         fs_err::write(&local, lockfile.replace("1.0.0", "1.0.1")).unwrap();
-        assert!(are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
+        assert!(compare_workspace_locks(&local, &released, "binary"));
     }
 
     #[test]
@@ -263,11 +418,11 @@ dependencies = ["shared 2.0.0"]
             ),
         )
         .unwrap();
-        assert!(!are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
-        assert!(are_workspace_lock_dependencies_updated(&local, &released, "unrelated").unwrap());
+        assert!(!compare_workspace_locks(&local, &released, "binary"));
+        assert!(compare_workspace_locks(&local, &released, "unrelated"));
 
         fs_err::write(&local, lockfile.replace("1.0.0", "1.0.1")).unwrap();
-        assert!(are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
-        assert!(!are_workspace_lock_dependencies_updated(&local, &released, "unrelated").unwrap());
+        assert!(compare_workspace_locks(&local, &released, "binary"));
+        assert!(!compare_workspace_locks(&local, &released, "unrelated"));
     }
 }

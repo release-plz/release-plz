@@ -816,13 +816,11 @@ impl Updater<'_> {
         };
         let are_lock_dependencies_updated = || {
             if self.req.should_use_git_only(&package.name) {
-                let released_lock =
-                    cargo_utils::get_manifest_metadata(&registry_package.manifest_path)?
-                        .workspace_root
-                        .join("Cargo.lock");
+                let released_metadata =
+                    cargo_utils::get_manifest_metadata(&registry_package.manifest_path)?;
                 lock_compare::are_workspace_lock_dependencies_updated(
-                    &self.project.cargo_lock_path(),
-                    &released_lock,
+                    self.req.cargo_metadata(),
+                    &released_metadata,
                     &package.name,
                 )
             } else {
