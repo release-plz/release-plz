@@ -169,8 +169,18 @@ fn copy_entry(
         })?;
     } else if file_type.is_file() {
         trace!("copying file {:?} to {:?}", source, destination);
-        fs_err::copy(source, destination)
-            .with_context(|| format!("cannot copy file {source:?} to {destination:?}"))?;
+        match fs_err::copy(source, destination) {
+            Ok(_) => {}
+            // Files such as Git's maintenance lock can disappear between the
+            // directory walk and the copy. Preserve that concurrent deletion.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                trace!("skipping file that disappeared while copying: {:?}", source);
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("cannot copy file {source:?} to {destination:?}"));
+            }
+        }
     }
     Ok(())
 }
@@ -332,6 +342,28 @@ mod tests {
             copied_repo.git(&["status", "--porcelain"]).unwrap(),
             repo.git(&["status", "--porcelain"]).unwrap()
         );
+    }
+
+    #[test]
+    fn file_deleted_during_copy_is_ignored() {
+        let source = Utf8TempDir::new().unwrap();
+        let source_file = source.path().join("transient.lock");
+        fs_err::write(&source_file, "lock").unwrap();
+        let file_type = fs_err::symlink_metadata(&source_file).unwrap().file_type();
+        fs_err::remove_file(&source_file).unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        let destination_file = destination.path().join("transient.lock");
+        copy_entry(
+            source.path(),
+            destination.path(),
+            &source_file,
+            &destination_file,
+            file_type,
+        )
+        .unwrap();
+
+        assert!(!destination_file.exists());
     }
 
     #[test]
