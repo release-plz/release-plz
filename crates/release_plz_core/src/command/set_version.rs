@@ -82,39 +82,8 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
         })
         .collect();
     let all_packages: Vec<&Package> = packages.values().collect();
-    let changes: Vec<_> = match &input.version_changes {
-        SetVersionSpec::Single(change) if workspace_manifest.get_workspace_version().is_some() => {
-            let mut changes = Vec::new();
-            for package in packages.values() {
-                let manifest = LocalManifest::try_new(&package.manifest_path)?;
-                if manifest.version_is_inherited() {
-                    changes.push((package, change));
-                }
-            }
-            // Keep version.workspace = true in the inheriting packages.
-            workspace_manifest.set_workspace_version(&change.version);
-            workspace_manifest
-                .write()
-                .context("can't update workspace version")?;
-            changes
-        }
-        SetVersionSpec::Single(change) => {
-            anyhow::ensure!(
-                packages.len() == 1,
-                "Your workspace contains multiple packages and no workspace version. Please specify which package you want to update."
-            );
-            vec![(packages.values().next().unwrap(), change)]
-        }
-        SetVersionSpec::Workspace(changes) => changes
-            .iter()
-            .map(|(name, change)| {
-                let package = packages
-                    .get(name)
-                    .with_context(|| format!("package {name} not found"))?;
-                Ok((package, change))
-            })
-            .collect::<anyhow::Result<_>>()?,
-    };
+    let changes =
+        prepare_version_changes(&input.version_changes, &packages, &mut workspace_manifest)?;
     let updating_workspace = matches!(input.version_changes, SetVersionSpec::Single(_))
         && workspace_manifest.get_workspace_version().is_some();
     let mut updated_changelogs = BTreeSet::new();
@@ -135,26 +104,93 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
                 &workspace_manifest.path,
             )?;
         }
-        let default_changelog_path = package_path.join(CHANGELOG_FILENAME);
-        let changelog_path = input
-            .changelog_paths
-            .get(package.name.as_str())
-            .or(change.changelog_path.as_ref())
-            .map_or(default_changelog_path.as_path(), |path| path.as_path());
-        if updating_workspace {
-            let resolved_path = crate::fs_utils::canonicalize_utf8(changelog_path)
-                .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
-            // Several packages can share a changelog, including through different relative paths.
-            if !updated_changelogs.insert(resolved_path) {
-                continue;
-            }
-        }
-        update_changelog(changelog_path, &package.version, &change.version)
-            .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
+        update_package_changelog(
+            input,
+            package,
+            change,
+            updating_workspace,
+            &mut updated_changelogs,
+        )?;
     }
     if cargo_lock.exists() {
         super::update::update_cargo_lock(&workspace_dir, false)?;
     }
+    Ok(())
+}
+
+fn prepare_version_changes<'a>(
+    version_changes: &'a SetVersionSpec,
+    packages: &'a BTreeMap<String, Package>,
+    workspace_manifest: &mut LocalManifest,
+) -> anyhow::Result<Vec<(&'a Package, &'a VersionChange)>> {
+    let changes = match version_changes {
+        SetVersionSpec::Single(change) if workspace_manifest.get_workspace_version().is_some() => {
+            set_workspace_version(workspace_manifest, packages, change)?
+        }
+        SetVersionSpec::Single(change) => {
+            anyhow::ensure!(
+                packages.len() == 1,
+                "Your workspace contains multiple packages and no workspace version. Please specify which package you want to update."
+            );
+            vec![(packages.values().next().unwrap(), change)]
+        }
+        SetVersionSpec::Workspace(changes) => changes
+            .iter()
+            .map(|(name, change)| {
+                let package = packages
+                    .get(name)
+                    .with_context(|| format!("package {name} not found"))?;
+                Ok((package, change))
+            })
+            .collect::<anyhow::Result<_>>()?,
+    };
+    Ok(changes)
+}
+
+fn set_workspace_version<'a>(
+    workspace_manifest: &mut LocalManifest,
+    packages: &'a BTreeMap<String, Package>,
+    change: &'a VersionChange,
+) -> anyhow::Result<Vec<(&'a Package, &'a VersionChange)>> {
+    let mut changes = Vec::new();
+    for package in packages.values() {
+        let manifest = LocalManifest::try_new(&package.manifest_path)?;
+        if manifest.version_is_inherited() {
+            changes.push((package, change));
+        }
+    }
+    // Keep version.workspace = true in the inheriting packages.
+    workspace_manifest.set_workspace_version(&change.version);
+    workspace_manifest
+        .write()
+        .context("can't update workspace version")?;
+    Ok(changes)
+}
+
+fn update_package_changelog(
+    input: &SetVersionRequest,
+    package: &Package,
+    change: &VersionChange,
+    updating_workspace: bool,
+    updated_changelogs: &mut BTreeSet<Utf8PathBuf>,
+) -> anyhow::Result<()> {
+    let package_path = package.package_path()?;
+    let default_changelog_path = package_path.join(CHANGELOG_FILENAME);
+    let changelog_path = input
+        .changelog_paths
+        .get(package.name.as_str())
+        .or(change.changelog_path.as_ref())
+        .map_or(default_changelog_path.as_path(), |path| path.as_path());
+    if updating_workspace {
+        let resolved_path = crate::fs_utils::canonicalize_utf8(changelog_path)
+            .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
+        // Several packages can share a changelog, including through different relative paths.
+        if !updated_changelogs.insert(resolved_path) {
+            return Ok(());
+        }
+    }
+    update_changelog(changelog_path, &package.version, &change.version)
+        .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
     Ok(())
 }
 
