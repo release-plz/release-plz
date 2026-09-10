@@ -98,7 +98,15 @@ fn copy_tracked_files(from: &Utf8Path, to: &Utf8PathBuf) -> anyhow::Result<()> {
         let metadata = match fs_err::symlink_metadata(&source) {
             Ok(metadata) => metadata,
             // Preserve working-tree deletions rather than restoring index contents.
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            // An ancestor replaced by a file also makes the tracked path absent.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                continue;
+            }
             Err(error) => return Err(error.into()),
         };
         let destination = to.join(relative);
@@ -255,6 +263,32 @@ mod tests {
         assert_eq!(
             fs_err::read_link(copied_dir.join("examples/link")).unwrap(),
             Path::new("missing")
+        );
+    }
+
+    #[test]
+    fn tracked_directory_replaced_by_file_is_copied() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::create_dir(repo_dir.join("examples")).unwrap();
+        fs_err::write(repo_dir.join("examples/tracked.txt"), "committed").unwrap();
+        repo.add_all_and_commit("add tracked file").unwrap();
+        fs_err::remove_dir_all(repo_dir.join("examples")).unwrap();
+        fs_err::write(repo_dir.join("examples"), "replacement").unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        assert_eq!(
+            fs_err::read_to_string(copied_dir.join("examples")).unwrap(),
+            "replacement"
+        );
+        assert_eq!(
+            copied_repo.git(&["status", "--porcelain"]).unwrap(),
+            repo.git(&["status", "--porcelain"]).unwrap()
         );
     }
 
