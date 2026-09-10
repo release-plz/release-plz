@@ -1400,6 +1400,93 @@ git_release_name = "{{ package }}-v{{ version }}"
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_releases_dependents_of_versionless_private_libraries_together() {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("support").with_type(PackageType::Lib),
+        TestPackage::new("wrapper")
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec!["../support"]),
+        TestPackage::new("app").with_path_dependencies(vec!["../wrapper"]),
+        TestPackage::new("unrelated"),
+    ])
+    .await;
+    let root_manifest_path = context.repo_dir().join("Cargo.toml");
+    let mut root = LocalManifest::try_new(&root_manifest_path).unwrap();
+    root.data["workspace"]["dependencies"]["wrapper"]["path"] = "crates/wrapper".into();
+    root.write().unwrap();
+    for name in ["support", "wrapper", "app", "unrelated"] {
+        let mut manifest =
+            LocalManifest::try_new(&context.package_path(name).join("Cargo.toml")).unwrap();
+        manifest.data["package"]["publish"] = false.into();
+        if name == "wrapper" {
+            manifest.data["dependencies"]["support"]["version"] = toml_edit::Item::None;
+        } else if name == "app" {
+            manifest.data["dependencies"]["wrapper"] = toml_edit::Item::None;
+            manifest.data["dependencies"]["wrapper"]["workspace"] = true.into();
+        }
+        manifest.write().unwrap();
+    }
+    context.run_cargo_check();
+    context.push_all_changes("chore: configure versionless private dependencies");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+"#,
+    );
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+
+    fs_err::write(
+        context.package_path("support").join("src/lib.rs"),
+        "pub fn fixed() {}\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update private library");
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_ref().unwrap();
+    for name in ["support", "wrapper", "app"] {
+        assert!(
+            body.contains(&format!("`{name}`: 0.1.0 -> 0.1.1")),
+            "{body}"
+        );
+    }
+    assert!(!body.contains("`unrelated`:"), "{body}");
+    context.merge_release_pr().await;
+
+    // Releasing dependents must not add version requirements to path-only dependencies.
+    let root = LocalManifest::try_new(&root_manifest_path).unwrap();
+    assert!(
+        root.data["workspace"]["dependencies"]["wrapper"]
+            .get("version")
+            .is_none()
+    );
+    for (package, dependency) in [("wrapper", "support"), ("app", "wrapper")] {
+        let manifest =
+            LocalManifest::try_new(&context.package_path(package).join("Cargo.toml")).unwrap();
+        assert!(
+            manifest.data["dependencies"][dependency]
+                .get("version")
+                .is_none()
+        );
+    }
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    for name in ["support", "wrapper", "app"] {
+        assert!(context.repo.tag_exists(&format!("{name}-v0.1.1")).unwrap());
+    }
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_root_package_with_versionless_dependency() {
     use cargo_utils::LocalManifest;
 

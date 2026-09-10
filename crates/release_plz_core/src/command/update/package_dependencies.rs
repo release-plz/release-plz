@@ -6,11 +6,13 @@ use crate::PackagePath as _;
 
 pub trait PackageDependencies {
     /// Returns the `updated_packages` which should be updated in the dependencies of the package.
+    /// Git-only releases also propagate changes through dependencies without version requirements.
     fn dependencies_to_update<'a>(
         &self,
         updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
+        include_versionless: bool,
     ) -> anyhow::Result<Vec<&'a Package>>;
 }
 
@@ -20,6 +22,7 @@ impl PackageDependencies for Package {
         updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
+        include_versionless: bool,
     ) -> anyhow::Result<Vec<&'a Package>> {
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
@@ -53,15 +56,14 @@ impl PackageDependencies for Package {
                         })
                     })
                 })
-                // Exclude path dependencies without `version`.
-                .filter(|(_toml_base_path, d)| d.contains_key("version"))
+                .filter(|(_toml_base_path, d)| include_versionless || d.contains_key("version"))
                 .filter(|(toml_base_path, d)| {
                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
                 })
                 .map(|(_, dep)| dep);
 
             for dep in matching_deps {
-                if should_update_dependency(dep, next_ver)? {
+                if !dep.contains_key("version") || should_update_dependency(dep, next_ver)? {
                     deps_to_update.push(p);
                 }
             }
@@ -82,7 +84,7 @@ fn is_workspace_dependency(d: &dyn TableLike) -> bool {
 fn should_update_dependency(dep: &dyn TableLike, next_ver: &Version) -> anyhow::Result<bool> {
     let old_req = dep
         .get("version")
-        .expect("filter ensures this")
+        .expect("versionless dependencies are handled by the caller")
         .as_str()
         .unwrap_or("*");
     let should_update_dep = cargo_utils::upgrade_requirement(old_req, next_ver)?.is_some();
