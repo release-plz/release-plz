@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.165](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.164...release-plz-v0.3.165) - 2026-09-10
+
+### Fixed
+
+- preserve git metadata when copying directories ([#3045](https://github.com/release-plz/release-plz/pull/3045))
+
+### Other
+
+- preserve tracked files when copying directories ([#3046](https://github.com/release-plz/release-plz/pull/3046))
+- list packaged crate files without invoking cargo ([#3044](https://github.com/release-plz/release-plz/pull/3044))
+- improve error message on 422 ([#3041](https://github.com/release-plz/release-plz/pull/3041))
+
 ## [0.3.164](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.163...release-plz-v0.3.164) - 2026-09-09
 
 ### Fixed
