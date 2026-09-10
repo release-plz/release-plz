@@ -423,6 +423,18 @@ mod tests {
         let released = test_package();
         assert!(are_packages_equal(local.path(), released.path()).unwrap());
 
+        // Source packages have no Cargo.toml.orig; manifest-only changes still count.
+        let manifest_path = released.path().join(CARGO_TOML);
+        let original_manifest = fs_err::read_to_string(&manifest_path).unwrap();
+        fs_err::write(
+            &manifest_path,
+            format!("{original_manifest}description = \"Updated description\"\n"),
+        )
+        .unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::write(&manifest_path, original_manifest).unwrap();
+        assert!(are_packages_equal(local.path(), released.path()).unwrap());
+
         fs_err::write(released.path().join("excluded.txt"), "ignored change").unwrap();
         assert!(are_packages_equal(local.path(), released.path()).unwrap());
         fs_err::write(released.path().join("src/lib.rs"), "pub fn changed() {}\n").unwrap();
