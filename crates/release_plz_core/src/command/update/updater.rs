@@ -704,7 +704,7 @@ impl Updater<'_> {
                     repository,
                     package,
                     package_path,
-                    registry_package_path,
+                    registry_package,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 let commit_too_old = || {
                     is_commit_too_old(
@@ -724,7 +724,7 @@ impl Updater<'_> {
                         // If the dependencies changed, we add a commit to the diff.
                         self.add_dependencies_update_if_any(
                             diff,
-                            &registry_package.package,
+                            registry_package,
                             package,
                             registry_package_path,
                         )?;
@@ -778,9 +778,15 @@ impl Updater<'_> {
         repository: &Repo,
         package: &Package,
         package_path: &Utf8Path,
-        registry_package_path: &Utf8Path,
+        registry_package: &RegistryPackage,
     ) -> anyhow::Result<bool> {
-        if crate::is_readme_updated(&package.name, package_path, registry_package_path)? {
+        let registry_package_path = registry_package.package.package_path()?;
+        if crate::package_compare::is_readme_updated_with_released_package(
+            &package.name,
+            package_path,
+            registry_package_path,
+            Some(&registry_package.package),
+        )? {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
@@ -804,23 +810,21 @@ impl Updater<'_> {
     fn add_dependencies_update_if_any(
         &self,
         diff: &mut Diff,
-        registry_package: &Package,
+        registry_package: &RegistryPackage,
         package: &Package,
         registry_package_path: &Utf8Path,
     ) -> anyhow::Result<()> {
         let are_toml_dependencies_updated = || {
             toml_compare::are_toml_dependencies_updated(
-                &registry_package.dependencies,
+                &registry_package.package.dependencies,
                 &package.dependencies,
             )
         };
         let are_lock_dependencies_updated = || {
-            if self.req.should_use_git_only(&package.name) {
-                let released_metadata =
-                    cargo_utils::get_manifest_metadata(&registry_package.manifest_path)?;
+            if let Some(released_metadata) = registry_package.workspace_metadata() {
                 lock_compare::are_workspace_lock_dependencies_updated(
                     self.req.cargo_metadata(),
-                    &released_metadata,
+                    released_metadata,
                     &package.name,
                 )
             } else {

@@ -182,6 +182,20 @@ pub fn is_readme_updated(
     local_package_path: &Utf8Path,
     registry_package_path: &Utf8Path,
 ) -> anyhow::Result<bool> {
+    is_readme_updated_with_released_package(
+        package_name,
+        local_package_path,
+        registry_package_path,
+        None,
+    )
+}
+
+pub(crate) fn is_readme_updated_with_released_package(
+    package_name: &str,
+    local_package_path: &Utf8Path,
+    registry_package_path: &Utf8Path,
+    released_package: Option<&Package>,
+) -> anyhow::Result<bool> {
     // Read again manifest metadata because the Cargo.toml might change on every commit.
     let package = match read_package_metadata(&local_package_path.join(CARGO_TOML), package_name) {
         Ok(package) => package,
@@ -202,10 +216,19 @@ pub fn is_readme_updated(
             {
                 registry_package_path.join("README.md")
             } else {
-                let released_package =
-                    read_package_metadata(&registry_package_path.join(CARGO_TOML), package_name)
+                let metadata;
+                let released_package = match released_package {
+                    Some(package) => package,
+                    None => {
+                        metadata = read_package_metadata(
+                            &registry_package_path.join(CARGO_TOML),
+                            package_name,
+                        )
                         .context("cannot read released package metadata for README comparison")?;
-                let Some(path) = local_readme_override(&released_package, registry_package_path)?
+                        &metadata
+                    }
+                };
+                let Some(path) = local_readme_override(released_package, registry_package_path)?
                 else {
                     return Ok(true);
                 };

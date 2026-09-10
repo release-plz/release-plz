@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context;
-use cargo_metadata::{Package, camino::Utf8Path};
+use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use tempfile::{TempDir, tempdir};
 
@@ -20,11 +20,26 @@ pub struct RegistryPackage {
     pub package: Package,
     /// The SHA1 hash of the commit when the package was published.
     sha1: Option<String>,
+    /// Immutable metadata shared by packages released from the same Git worktree.
+    workspace_metadata: Option<Arc<Metadata>>,
 }
 
 impl RegistryPackage {
     pub fn new(package: Package, sha1: Option<String>) -> Self {
-        Self { package, sha1 }
+        Self {
+            package,
+            sha1,
+            workspace_metadata: None,
+        }
+    }
+
+    pub(crate) fn with_workspace_metadata(mut self, metadata: Arc<Metadata>) -> Self {
+        self.workspace_metadata = Some(metadata);
+        self
+    }
+
+    pub(crate) fn workspace_metadata(&self) -> Option<&Metadata> {
+        self.workspace_metadata.as_deref()
     }
 
     pub fn published_at_sha1(&self) -> Option<&str> {
@@ -65,10 +80,7 @@ pub async fn get_registry_packages(
             None,
             next_ver::publishable_packages_from_manifest(manifest)?
                 .into_iter()
-                .map(|p| RegistryPackage {
-                    package: p,
-                    sha1: None,
-                })
+                .map(|p| RegistryPackage::new(p, None))
                 .collect(),
         ),
         None => {
@@ -173,7 +185,7 @@ fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<Reg
                 commit_init()?;
             }
         }
-        registry_packages.push(RegistryPackage { package: p, sha1 });
+        registry_packages.push(RegistryPackage::new(p, sha1));
     }
     Ok(registry_packages)
 }

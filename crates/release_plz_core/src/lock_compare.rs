@@ -34,8 +34,17 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
     else {
         return Ok(false);
     };
-    local_lock.retain_package_dependencies(package_name, &local_metadata.packages);
-    released_lock.retain_package_dependencies(package_name, &released_metadata.packages);
+    for (lock, metadata) in [
+        (&mut local_lock, local_metadata),
+        (&mut released_lock, released_metadata),
+    ] {
+        let package = metadata
+            .workspace_packages()
+            .into_iter()
+            .find(|p| p.name == package_name)
+            .with_context(|| format!("cannot find workspace package {package_name:?}"))?;
+        lock.retain_package_dependencies(package_name, &package.version, &metadata.packages);
+    }
     Ok(are_dependencies_updated(&local_lock, &released_lock))
 }
 
@@ -103,16 +112,15 @@ impl Lockfile {
     fn retain_package_dependencies(
         &mut self,
         package_name: &str,
+        package_version: &Version,
         workspace_packages: &[cargo_metadata::Package],
     ) {
-        // Cargo omits version/source from dependency IDs when the name is unambiguous.
-        let mut pending: Vec<_> = self
-            .packages
-            .iter()
-            .enumerate()
-            .filter(|(_, p)| p.name == package_name && p.source.is_none())
-            .map(|(i, _)| i)
-            .collect();
+        // An excluded path dependency can share a workspace member's name at a
+        // different version. Only the requested member is a traversal root.
+        let root = self.packages.iter().position(|p| {
+            p.name == package_name && p.version == *package_version && p.source.is_none()
+        });
+        let mut pending: Vec<_> = root.into_iter().collect();
         let mut reachable = HashSet::new();
         while let Some(index) = pending.pop() {
             if !reachable.insert(index) {
@@ -132,7 +140,7 @@ impl Lockfile {
                         // An ambiguous source-less ID therefore denotes the path package.
                         .min_by_key(|(_, p)| p.source.is_some())
                         .filter(|(_, p)| {
-                            package.name == package_name
+                            Some(index) == root
                                 || workspace_package.is_none_or(|workspace_package| {
                                     !p.is_dev_only_dependency(workspace_package)
                                 })
@@ -247,9 +255,79 @@ mod tests {
 
     fn compare_workspace_locks(local: &Utf8Path, released: &Utf8Path, package: &str) -> bool {
         let (mut local, mut released) = read_lockfiles(local, released).unwrap().unwrap();
-        local.retain_package_dependencies(package, &[]);
-        released.retain_package_dependencies(package, &[]);
+        for lock in [&mut local, &mut released] {
+            let version = lock
+                .packages
+                .iter()
+                .find(|p| p.name == package && p.source.is_none())
+                .unwrap()
+                .version
+                .clone();
+            lock.retain_package_dependencies(package, &version, &[]);
+        }
         are_dependencies_updated(&local, &released)
+    }
+
+    #[test]
+    fn workspace_lock_comparison_distinguishes_same_named_path_packages() {
+        let local = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let released = crate::fs_utils::Utf8TempDir::new().unwrap();
+        for (directory, dependency_version) in [(local.path(), "1.0.1"), (released.path(), "1.0.0")]
+        {
+            fs_err::write(
+                directory.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"app\", \"other\"]\nexclude = [\"older-app\"]\nresolver = \"2\"\n",
+            )
+            .unwrap();
+            for (path, name, version, dependencies) in [
+                ("app", "app", "0.1.0", ""),
+                (
+                    "other",
+                    "other",
+                    "0.1.0",
+                    "app = { path = \"../older-app\", version = \"1\" }",
+                ),
+                ("older-app", "app", dependency_version, ""),
+            ] {
+                let package = directory.join(path);
+                fs_err::create_dir_all(package.join("src")).unwrap();
+                fs_err::write(package.join("src/lib.rs"), "").unwrap();
+                fs_err::write(
+                    package.join("Cargo.toml"),
+                    format!("[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2021\"\n[dependencies]\n{dependencies}\n"),
+                )
+                .unwrap();
+            }
+            let output =
+                crate::cargo::run_cargo(directory, &["generate-lockfile", "--offline"]).unwrap();
+            assert!(output.status.success(), "{}", output.stderr);
+        }
+        let local_metadata =
+            cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
+        let released_metadata =
+            cargo_utils::get_manifest_metadata(&released.path().join("Cargo.toml")).unwrap();
+        assert!(
+            !are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "app")
+                .unwrap()
+        );
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "other")
+                .unwrap()
+        );
+
+        // Each side must use its own member version when identifying the root.
+        let manifest = local.path().join("app/Cargo.toml");
+        let contents = fs_err::read_to_string(&manifest).unwrap();
+        fs_err::write(&manifest, contents.replace("0.1.0", "0.1.1")).unwrap();
+        let output =
+            crate::cargo::run_cargo(local.path(), &["generate-lockfile", "--offline"]).unwrap();
+        assert!(output.status.success(), "{}", output.stderr);
+        let local_metadata =
+            cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "app")
+                .unwrap()
+        );
     }
 
     #[test]
@@ -529,14 +607,22 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                 "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}\n"
             ));
             let mut released: Lockfile = toml::from_str(&lockfile).unwrap();
-            released.retain_package_dependencies("binary", &metadata.packages);
+            released.retain_package_dependencies(
+                "binary",
+                &Version::new(1, 0, 0),
+                &metadata.packages,
+            );
             for (leaf, should_update) in [("dev-leaf", false), ("normal-leaf", true)] {
                 let changed = lockfile.replace(
                     &format!("name = {leaf:?}\nversion = \"1.0.0\""),
                     &format!("name = {leaf:?}\nversion = \"1.0.1\""),
                 );
                 let mut local: Lockfile = toml::from_str(&changed).unwrap();
-                local.retain_package_dependencies("binary", &metadata.packages);
+                local.retain_package_dependencies(
+                    "binary",
+                    &Version::new(1, 0, 0),
+                    &metadata.packages,
+                );
                 assert_eq!(
                     are_dependencies_updated(&local, &released),
                     should_update,

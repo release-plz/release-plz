@@ -24,6 +24,7 @@ use cargo_metadata::{
 use chrono::NaiveDate;
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
+use std::sync::Arc;
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, trace};
 
@@ -85,6 +86,37 @@ fn get_temp_worktree_and_repo(
     Ok((repo, worktree))
 }
 
+struct ReconstructedWorkspace {
+    worktree: GitWorkTree,
+    metadata: Arc<Metadata>,
+}
+
+impl ReconstructedWorkspace {
+    fn new(worktree: GitWorkTree) -> anyhow::Result<Self> {
+        let manifest = to_utf8_path(worktree.path())?.join("Cargo.toml");
+        let metadata = cargo_utils::get_manifest_metadata(&manifest)
+            .context("get cargo metadata for worktree")?;
+        Ok(Self {
+            worktree,
+            metadata: Arc::new(metadata),
+        })
+    }
+
+    fn package(&self, package_name: &str) -> anyhow::Result<Package> {
+        self.metadata
+            .workspace_packages()
+            .into_iter()
+            .find(|p| p.name == package_name)
+            .cloned()
+            .with_context(|| {
+                format!(
+                    "cannot find package {package_name:?} in worktree at {:?}",
+                    self.worktree.path()
+                )
+            })
+    }
+}
+
 /// Process a single `git_only` package: find its release tag and commit, reconstruct
 /// the workspace if it hasn't already been reconstructed, and return the package metadata.
 ///
@@ -95,7 +127,7 @@ fn process_git_only_package(
     unreleased_project_repo: &mut GitRepo,
     input: &UpdateRequest,
     is_multi_package: bool,
-    reconstructed_workspaces: &mut BTreeMap<String, GitWorkTree>,
+    reconstructed_workspaces: &mut BTreeMap<String, ReconstructedWorkspace>,
 ) -> anyhow::Result<Option<RegistryPackage>> {
     // Get the release tag template, falling back to default based on project structure
     let template = input
@@ -131,7 +163,7 @@ fn process_git_only_package(
         .get_tag_commit(&release_tag)
         .context("get release tag commit")?;
 
-    let worktree = match reconstructed_workspaces.entry(release_commit.clone()) {
+    let workspace = match reconstructed_workspaces.entry(release_commit.clone()) {
         Entry::Occupied(entry) => {
             debug!(
                 "Reusing workspace sources at commit {release_commit} for package {}",
@@ -150,29 +182,17 @@ fn process_git_only_package(
             // Keep the original manifests and path dependencies. Creating archives would
             // require registry versions even for dependencies that will never be published.
             debug!("Reconstructing workspace sources at commit {release_commit}");
-            entry.insert(worktree)
+            entry.insert(ReconstructedWorkspace::new(worktree)?)
         }
     };
 
     // Metadata paths point into the cached worktree. Any error aborts collection and drops
     // all reconstructed workspaces, so an unusable artifact cannot be reused.
-    let single_package = get_worktree_package(worktree, &package.name).with_context(|| {
-        format!(
-            "get cargo package {} from worktree at {:?}",
-            package.name,
-            worktree.path()
-        )
-    })?;
+    let single_package = workspace.package(&package.name)?;
 
-    let registry_package = RegistryPackage::new(single_package, Some(release_commit));
+    let registry_package = RegistryPackage::new(single_package, Some(release_commit))
+        .with_workspace_metadata(Arc::clone(&workspace.metadata));
     Ok(Some(registry_package))
-}
-
-/// Read package metadata directly from the tagged workspace without resolving dependencies.
-fn get_worktree_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
-    let worktree_path = to_utf8_path(worktree.path())?;
-    crate::cargo::read_package_metadata(&worktree_path.join("Cargo.toml"), package_name)
-        .context("get cargo metadata for worktree")
 }
 
 /// Determine next version of packages.
@@ -258,7 +278,10 @@ fn collect_git_only_packages(
     git_only_packages: Vec<&Package>,
     input: &UpdateRequest,
     is_multi_package: bool,
-) -> anyhow::Result<(BTreeMap<String, RegistryPackage>, Vec<GitWorkTree>)> {
+) -> anyhow::Result<(
+    BTreeMap<String, RegistryPackage>,
+    Vec<ReconstructedWorkspace>,
+)> {
     if git_only_packages.is_empty() {
         return Ok((BTreeMap::new(), Vec::new()));
     }
@@ -274,7 +297,7 @@ fn collect_git_only_packages(
     // See the note on the custom worktree Drop impl for more details.
     // Packages released at the same commit share one reconstructed workspace: all other
     // reconstruction inputs (repository, manifest, Cargo config) are fixed for this invocation.
-    let mut reconstructed_workspaces: BTreeMap<String, GitWorkTree> = BTreeMap::new();
+    let mut reconstructed_workspaces = BTreeMap::new();
 
     let mut unreleased_project_repo = GitRepo::open(
         input
@@ -482,6 +505,51 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 #[cfg(test)]
 mod tests {
     #[test]
+    fn git_only_packages_share_historical_workspace_metadata() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two"] {
+            let package = root.path().join(name);
+            fs_err::create_dir_all(package.join("src")).unwrap();
+            fs_err::write(package.join("src/lib.rs"), "").unwrap();
+            fs_err::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+            )
+            .unwrap();
+        }
+        repo.add_all_and_commit("initial workspace").unwrap();
+        for name in ["one", "two"] {
+            repo.tag(&format!("{name}-v0.1.0"), "initial release")
+                .unwrap();
+        }
+        let manifest = root.path().join("one/Cargo.toml");
+        let contents = fs_err::read_to_string(&manifest).unwrap();
+        fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
+        repo.add_all_and_commit("update current version").unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&root.path().join("Cargo.toml")).unwrap();
+        let request = super::UpdateRequest::new(metadata.clone()).unwrap();
+        let (packages, workspaces) =
+            super::collect_git_only_packages(metadata.workspace_packages(), &request, true)
+                .unwrap();
+        assert_eq!(workspaces.len(), 1);
+        let one = &packages["one"];
+        let two = &packages["two"];
+        assert!(std::ptr::eq(
+            one.workspace_metadata().unwrap(),
+            two.workspace_metadata().unwrap(),
+        ));
+        assert_eq!(one.package.version.to_string(), "0.1.0");
+        assert!(one.package.manifest_path.is_file());
+        assert!(two.package.manifest_path.is_file());
+    }
+
+    #[test]
     fn git_only_reconstructs_package_without_running_build_script() {
         let root = tempfile::tempdir().unwrap();
         let repo = git_cmd::Repo::init(root.path());
@@ -511,7 +579,9 @@ exclude = ["excluded.txt"]
         let mut original = super::GitRepo::open(root.path()).unwrap();
         let (_repo, worktree) =
             super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
-        let package = super::get_worktree_package(&worktree, "non-verifiable").unwrap();
+        let workspace = super::ReconstructedWorkspace::new(worktree).unwrap();
+        let package = workspace.package("non-verifiable").unwrap();
+        let worktree = &workspace.worktree;
         let package_dir = package.manifest_path.parent().unwrap();
 
         assert_eq!(package.version.to_string(), "0.1.0");
