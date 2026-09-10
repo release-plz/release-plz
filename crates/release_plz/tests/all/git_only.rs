@@ -1446,3 +1446,34 @@ semver_check = false
         .unwrap();
     assert_eq!(lib.version.to_string(), "0.1.0");
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_does_not_release_unrelated_binaries_for_workspace_lock_changes() {
+    let context = TestContext::new_workspace(&["bin-a", "bin-b"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+"#,
+    );
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    fs_err::write(
+        context.package_path("bin-a").join("src/main.rs"),
+        "fn main() { println!(\"fixed\"); }\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update bin-a");
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("bin-a-v0.1.1").unwrap());
+    assert!(!context.repo.tag_exists("bin-b-v0.1.1").unwrap());
+
+    // Releasing bin-a changes the shared lockfile, but bin-b does not depend on it.
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}

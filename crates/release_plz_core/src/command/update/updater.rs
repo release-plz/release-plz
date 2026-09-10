@@ -815,16 +815,22 @@ impl Updater<'_> {
             )
         };
         let are_lock_dependencies_updated = || {
-            let released_lock_dir = if self.req.should_use_git_only(&package.name) {
-                // Source packages share the lockfile at the historical workspace root.
-                cargo_utils::get_manifest_metadata(&registry_package.manifest_path)?.workspace_root
+            if self.req.should_use_git_only(&package.name) {
+                let released_lock =
+                    cargo_utils::get_manifest_metadata(&registry_package.manifest_path)?
+                        .workspace_root
+                        .join("Cargo.lock");
+                lock_compare::are_workspace_lock_dependencies_updated(
+                    &self.project.cargo_lock_path(),
+                    &released_lock,
+                    &package.name,
+                )
             } else {
-                registry_package_path.to_path_buf()
-            };
-            lock_compare::are_lock_dependencies_updated(
-                &self.project.cargo_lock_path(),
-                &released_lock_dir,
-            )
+                lock_compare::are_lock_dependencies_updated(
+                    &self.project.cargo_lock_path(),
+                    registry_package_path,
+                )
+            }
             .context("Can't check if Cargo.lock dependencies are up to date")
         };
         if are_toml_dependencies_updated() {

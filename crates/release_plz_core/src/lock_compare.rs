@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
@@ -18,18 +18,35 @@ pub fn are_lock_dependencies_updated(
     if !local_lock.exists() || !registry_lock.exists() {
         return Ok(false);
     }
-    are_dependencies_updated(local_lock, registry_lock)
+    are_dependencies_updated(local_lock, registry_lock, None)
+}
+
+/// Compare only dependencies reachable from a package in a historical workspace lockfile.
+pub(crate) fn are_workspace_lock_dependencies_updated(
+    local_lock: &Utf8Path,
+    released_lock: &Utf8Path,
+    package_name: &str,
+) -> anyhow::Result<bool> {
+    if !local_lock.exists() || !released_lock.exists() {
+        return Ok(false);
+    }
+    are_dependencies_updated(local_lock, released_lock, Some(package_name))
 }
 
 fn are_dependencies_updated(
     local_lock: &Utf8Path,
     registry_lock: &Utf8Path,
+    package_name: Option<&str>,
 ) -> anyhow::Result<bool> {
-    let local_lock: Lockfile = read_lockfile(local_lock)
+    let mut local_lock: Lockfile = read_lockfile(local_lock)
         .with_context(|| format!("failed to load lockfile of local package {local_lock:?}"))?;
-    let registry_lock = read_lockfile(registry_lock).with_context(|| {
+    let mut registry_lock = read_lockfile(registry_lock).with_context(|| {
         format!("failed to load lockfile of registry package {registry_lock:?}")
     })?;
+    if let Some(package_name) = package_name {
+        local_lock.retain_package_dependencies(package_name);
+        registry_lock.retain_package_dependencies(package_name);
+    }
     let local_lock_packages = PackagesByName::new(&local_lock.packages);
     Ok(are_dependencies_of_lockfiles_updated(
         &registry_lock,
@@ -77,10 +94,60 @@ struct Lockfile {
     packages: Vec<Package>,
 }
 
+impl Lockfile {
+    fn retain_package_dependencies(&mut self, package_name: &str) {
+        // Cargo omits version/source from dependency IDs when the name is unambiguous.
+        let mut pending: Vec<_> = self
+            .packages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.name == package_name && p.source.is_none())
+            .map(|(i, _)| i)
+            .collect();
+        let mut reachable = HashSet::new();
+        while let Some(index) = pending.pop() {
+            if !reachable.insert(index) {
+                continue;
+            }
+            for dependency in &self.packages[index].dependencies {
+                pending.extend(
+                    self.packages
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, p)| p.matches_dependency(dependency))
+                        .map(|(i, _)| i),
+                );
+            }
+        }
+        let mut index = 0;
+        self.packages.retain(|_| {
+            let keep = reachable.contains(&index);
+            index += 1;
+            keep
+        });
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct Package {
     name: String,
     version: String,
+    source: Option<String>,
+    #[serde(default)]
+    dependencies: Vec<String>,
+}
+
+impl Package {
+    fn matches_dependency(&self, dependency: &str) -> bool {
+        let mut parts = dependency.splitn(3, ' ');
+        parts.next() == Some(self.name.as_str())
+            && parts.next().is_none_or(|version| version == self.version)
+            && parts.next().is_none_or(|source| {
+                self.source
+                    .as_ref()
+                    .is_some_and(|s| source == format!("({s})"))
+            })
+    }
 }
 
 /// Packages grouped by name, to search faster.
@@ -110,5 +177,56 @@ impl<'a> PackagesByName<'a> {
             assert!(!p.is_empty());
             p.as_slice()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_lock_comparison_ignores_unrelated_packages() {
+        let directory = tempfile::tempdir().unwrap();
+        let directory = Utf8Path::from_path(directory.path()).unwrap();
+        let released = directory.join("released.lock");
+        let local = directory.join("local.lock");
+        let lockfile = r#"
+version = 4
+[[package]]
+name = "binary"
+version = "0.1.0"
+dependencies = ["library"]
+[[package]]
+name = "library"
+version = "0.1.0"
+dependencies = ["shared 1.0.0 (registry+https://example.com/index)"]
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "registry+https://example.com/index"
+[[package]]
+name = "shared"
+version = "2.0.0"
+source = "registry+https://example.com/index"
+[[package]]
+name = "unrelated"
+version = "0.1.0"
+dependencies = ["shared 2.0.0"]
+"#;
+        fs_err::write(&released, lockfile).unwrap();
+        fs_err::write(
+            &local,
+            lockfile.replace("2.0.0", "2.0.1").replace(
+                "name = \"unrelated\"\nversion = \"0.1.0\"",
+                "name = \"unrelated\"\nversion = \"0.1.1\"",
+            ),
+        )
+        .unwrap();
+        assert!(!are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
+        assert!(are_workspace_lock_dependencies_updated(&local, &released, "unrelated").unwrap());
+
+        fs_err::write(&local, lockfile.replace("1.0.0", "1.0.1")).unwrap();
+        assert!(are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
+        assert!(!are_workspace_lock_dependencies_updated(&local, &released, "unrelated").unwrap());
     }
 }
