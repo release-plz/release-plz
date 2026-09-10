@@ -150,13 +150,18 @@ fn set_version_updates_inherited_workspace_version() {
         workspace["workspace"]["dependencies"]["three"]["version"].as_str(),
         Some("=1.2.3")
     );
+    // Rewriting manifests normalizes CRLF line endings from Windows checkouts to LF.
     assert_eq!(
-        fs_err::read_to_string(one_dir.join(CARGO_TOML)).unwrap(),
-        one_manifest
+        fs_err::read_to_string(one_dir.join(CARGO_TOML))
+            .unwrap()
+            .replace("\r\n", "\n"),
+        one_manifest.replace("\r\n", "\n")
     );
     assert_eq!(
-        fs_err::read_to_string(three_dir.join(CARGO_TOML)).unwrap(),
-        three_manifest
+        fs_err::read_to_string(three_dir.join(CARGO_TOML))
+            .unwrap()
+            .replace("\r\n", "\n"),
+        three_manifest.replace("\r\n", "\n")
     );
     let two = read_manifest(&two_dir);
     assert_eq!(two["package"]["version"].as_str(), Some("0.2.0"));
