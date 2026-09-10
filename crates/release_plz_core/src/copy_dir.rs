@@ -94,6 +94,16 @@ fn copy_tracked_files(from: &Utf8Path, to: &Utf8Path) -> anyhow::Result<()> {
         .context("cannot read index while copying tracked files")?;
     for entry in index.iter() {
         let relative = std::str::from_utf8(&entry.path).context("non-UTF-8 tracked path")?;
+        let relative = Utf8Path::new(relative);
+        // An ancestor replaced by a symlink makes this indexed path deleted.
+        // symlink_metadata only avoids following symlinks at the final component.
+        if relative
+            .ancestors()
+            .skip(1)
+            .any(|ancestor| !ancestor.as_str().is_empty() && from.join(ancestor).is_symlink())
+        {
+            continue;
+        }
         let source = from.join(relative);
         let metadata = match fs_err::symlink_metadata(&source) {
             Ok(metadata) => metadata,
@@ -181,6 +191,38 @@ mod tests {
     use crate::fs_utils::Utf8TempDir;
 
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn ignored_symlink_ancestors_preserve_tracked_deletions() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::create_dir_all(repo_dir.join("examples/nested")).unwrap();
+        fs_err::write(repo_dir.join("examples/nested/tracked.txt"), "committed").unwrap();
+        repo.add_all_and_commit("add tracked file").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "examples\n").unwrap();
+        repo.add_all_and_commit("ignore examples").unwrap();
+
+        let external_dir = source.path().join("external");
+        fs_err::create_dir_all(external_dir.join("nested")).unwrap();
+        fs_err::write(external_dir.join("nested/tracked.txt"), "external contents").unwrap();
+        fs_err::remove_dir_all(repo_dir.join("examples")).unwrap();
+        create_symlink("../external", repo_dir.join("examples")).unwrap();
+        let source_status = repo.git(&["status", "--porcelain"]).unwrap();
+        assert_eq!(source_status, "D examples/nested/tracked.txt");
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        assert_eq!(
+            copied_repo.git(&["status", "--porcelain"]).unwrap(),
+            source_status
+        );
+        assert!(!copied_dir.join("examples").exists());
+    }
 
     #[test]
     fn tracked_files_are_copied_despite_ignore_rules() {
