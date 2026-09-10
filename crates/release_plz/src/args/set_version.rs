@@ -13,7 +13,8 @@ use super::{config_path::ConfigPath, manifest_command::ManifestCommand};
 
 #[derive(clap::Parser, Debug)]
 pub struct SetVersion {
-    /// New version of the package you want to update. Format: `<package_name>@<version-req>`.
+    /// New version to set: `<package_name>@<version>`.
+    /// Omit `<package_name>@` to set the workspace version or a single package's version.
     pub versions: Vec<String>,
     /// Path to the Cargo.toml of the project you want to update.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
@@ -28,8 +29,8 @@ pub struct SetVersion {
 
 impl SetVersion {
     fn parse_versions(self) -> anyhow::Result<SetVersionSpec> {
-        let is_single_package = self.versions.len() == 1 && !self.versions[0].contains('@');
-        if is_single_package {
+        let is_bare_version = self.versions.len() == 1 && !self.versions[0].contains('@');
+        if is_bare_version {
             let version = Version::parse(&self.versions[0])?;
             Ok(SetVersionSpec::Single(VersionChange::new(version)))
         } else {
