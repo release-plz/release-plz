@@ -136,77 +136,13 @@ fn set_version_updates_version_in_package() {
 
 #[test]
 fn set_version_updates_inherited_workspace_version() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-workspace");
+    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-inherited-workspace");
     let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-workspace");
+    let project_dir = dest_dir.path().join("set-version-inherited-workspace");
     let one_dir = project_dir.join("crates/one");
     let two_dir = project_dir.join("crates/two");
     let three_dir = project_dir.join("crates/three");
-    fs_err::create_dir_all(three_dir.join("src")).unwrap();
-    fs_err::write(three_dir.join("src/lib.rs"), "").unwrap();
-    fs_err::write(
-        project_dir.join(CARGO_TOML),
-        r#"[workspace]
-resolver = "3"
-members = ["crates/*"]
-
-[workspace.package]
-version = "0.1.0"
-
-[workspace.dependencies]
-three = { path = "crates/three", version = "=0.1.0" }
-"#,
-    )
-    .unwrap();
-    fs_err::write(
-        one_dir.join(CARGO_TOML),
-        r#"[package]
-name = "one"
-version.workspace = true
-edition = "2024"
-
-[dependencies]
-three.workspace = true
-"#,
-    )
-    .unwrap();
-    fs_err::write(
-        three_dir.join(CARGO_TOML),
-        r#"[package]
-name = "three"
-version = { workspace = true }
-edition = "2024"
-"#,
-    )
-    .unwrap();
-    fs_err::write(
-        two_dir.join(CARGO_TOML),
-        r#"[package]
-name = "two"
-version = "0.2.0"
-edition = "2024"
-
-[dependencies]
-one = { path = "../one", version = "=0.1.0" }
-"#,
-    )
-    .unwrap();
-    // Keep distinct custom paths for inheriting and independent packages.
-    fs_err::write(
-        project_dir.join("release-plz.toml"),
-        r#"[[package]]
-name = "one"
-changelog_path = "./CHANGELOG.md"
-
-[[package]]
-name = "two"
-changelog_path = "./crates/two/CHANGELOG.md"
-"#,
-    )
-    .unwrap();
-    let changelog = "# Changelog\n\n## [Unreleased]\n\n## [0.1.0](https://example.com/compare/v0.0.1...v0.1.0) - 2024-05-16\n\n- New feature\n\n## [0.0.1] - 2024-05-01\n\n- Initial release\n";
-    fs_err::write(project_dir.join(CHANGELOG_FILENAME), changelog).unwrap();
-    fs_err::write(three_dir.join(CHANGELOG_FILENAME), changelog).unwrap();
+    let changelog = fs_err::read_to_string(project_dir.join(CHANGELOG_FILENAME)).unwrap();
     let two_changelog = fs_err::read_to_string(two_dir.join(CHANGELOG_FILENAME)).unwrap();
     let one_manifest = fs_err::read_to_string(one_dir.join(CARGO_TOML)).unwrap();
     let three_manifest = fs_err::read_to_string(three_dir.join(CARGO_TOML)).unwrap();
@@ -257,20 +193,11 @@ changelog_path = "./crates/two/CHANGELOG.md"
 
 #[test]
 fn set_version_preserves_inheritance_for_single_package() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-package");
+    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-inherited-package");
     let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-package");
-    let manifest_path = project_dir.join(CARGO_TOML);
-    let manifest = fs_err::read_to_string(&manifest_path)
-        .unwrap()
-        .replace("version = \"0.1.0\"", "version.workspace = true");
-    fs_err::write(
-        &manifest_path,
-        format!("{manifest}\n[workspace.package]\nversion = \"0.1.0\"\n"),
-    )
-    .unwrap();
+    let project_dir = dest_dir.path().join("set-version-inherited-package");
     // Also support projects without a lockfile.
-    fs_err::remove_file(project_dir.join("Cargo.lock")).unwrap();
+    assert!(!project_dir.join("Cargo.lock").exists());
 
     run_set_version(&project_dir, "1.2.3");
 
@@ -292,9 +219,11 @@ fn set_version_preserves_inheritance_for_single_package() {
 
 #[test]
 fn set_version_requires_package_names_without_workspace_version() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-workspace");
+    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-without-workspace-version");
     let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-workspace");
+    let project_dir = dest_dir
+        .path()
+        .join("set-version-without-workspace-version");
     let original_manifest = fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap();
     let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
         .current_dir(&project_dir)
@@ -314,34 +243,11 @@ fn set_version_requires_package_names_without_workspace_version() {
 
 #[test]
 fn set_version_updates_shared_workspace_changelog_once() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-workspace");
+    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-shared-changelog");
     let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-workspace");
-    let mut workspace = read_manifest(&project_dir);
-    workspace["workspace"]["package"]["version"] = toml_edit::value("1.2.3");
-    fs_err::write(project_dir.join(CARGO_TOML), workspace.to_string()).unwrap();
-    for name in ["one", "two"] {
-        let package_dir = project_dir.join("crates").join(name);
-        let mut manifest = read_manifest(&package_dir);
-        manifest["package"]["version"] = toml_edit::Item::Table(toml_edit::Table::new());
-        manifest["package"]["version"]["workspace"] = toml_edit::value(true);
-        fs_err::write(package_dir.join(CARGO_TOML), manifest.to_string()).unwrap();
-    }
-    fs_err::write(
-        project_dir.join("release-plz.toml"),
-        r#"[[package]]
-name = "one"
-changelog_path = "./CHANGELOG.md"
-
-[[package]]
-name = "two"
-changelog_path = "crates/../CHANGELOG.md"
-"#,
-    )
-    .unwrap();
-    let changelog = "# Changelog\n\n## [1.2.3](https://example.com/releases/v1.2.3) - 2024-05-16\n\n- New feature\n";
+    let project_dir = dest_dir.path().join("set-version-shared-changelog");
     let changelog_path = project_dir.join(CHANGELOG_FILENAME);
-    fs_err::write(&changelog_path, changelog).unwrap();
+    let changelog = fs_err::read_to_string(&changelog_path).unwrap();
 
     run_set_version(&project_dir, "1.2.30");
 
