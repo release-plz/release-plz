@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Context;
 use cargo_metadata::{
@@ -117,6 +117,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
     };
     let updating_workspace = matches!(input.version_changes, SetVersionSpec::Single(_))
         && workspace_manifest.get_workspace_version().is_some();
+    let mut updated_changelogs = BTreeSet::new();
     for (package, change) in changes {
         let package_path = package.package_path()?;
         if updating_workspace {
@@ -140,6 +141,14 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
             .get(package.name.as_str())
             .or(change.changelog_path.as_ref())
             .map_or(default_changelog_path.as_path(), |path| path.as_path());
+        if updating_workspace {
+            let resolved_path = crate::fs_utils::canonicalize_utf8(changelog_path)
+                .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
+            // Several packages can share a changelog, including through different relative paths.
+            if !updated_changelogs.insert(resolved_path) {
+                continue;
+            }
+        }
         update_changelog(changelog_path, &package.version, &change.version)
             .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
     }

@@ -300,6 +300,45 @@ fn set_version_requires_package_names_without_workspace_version() {
     );
 }
 
+#[test]
+fn set_version_updates_shared_workspace_changelog_once() {
+    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-workspace");
+    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
+    let project_dir = dest_dir.path().join("set-version-in-workspace");
+    let mut workspace = read_manifest(&project_dir);
+    workspace["workspace"]["package"]["version"] = toml_edit::value("1.2.3");
+    fs_err::write(project_dir.join(CARGO_TOML), workspace.to_string()).unwrap();
+    for name in ["one", "two"] {
+        let package_dir = project_dir.join("crates").join(name);
+        let mut manifest = read_manifest(&package_dir);
+        manifest["package"]["version"] = toml_edit::Item::Table(toml_edit::Table::new());
+        manifest["package"]["version"]["workspace"] = toml_edit::value(true);
+        fs_err::write(package_dir.join(CARGO_TOML), manifest.to_string()).unwrap();
+    }
+    fs_err::write(
+        project_dir.join("release-plz.toml"),
+        r#"[[package]]
+name = "one"
+changelog_path = "./CHANGELOG.md"
+
+[[package]]
+name = "two"
+changelog_path = "crates/../CHANGELOG.md"
+"#,
+    )
+    .unwrap();
+    let changelog = "# Changelog\n\n## [1.2.3](https://example.com/releases/v1.2.3) - 2024-05-16\n\n- New feature\n";
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    fs_err::write(&changelog_path, changelog).unwrap();
+
+    run_set_version(&project_dir, "1.2.30");
+
+    assert_eq!(
+        fs_err::read_to_string(changelog_path).unwrap(),
+        changelog.replace("1.2.3", "1.2.30")
+    );
+}
+
 fn read_manifest(directory: &Utf8Path) -> toml_edit::DocumentMut {
     fs_err::read_to_string(directory.join(CARGO_TOML))
         .unwrap()
