@@ -46,7 +46,7 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
 
 /// `to` must exist.
 #[tracing::instrument]
-fn copy_directory(from: &Utf8Path, to: &Utf8PathBuf) -> Result<(), anyhow::Error> {
+fn copy_directory(from: &Utf8Path, to: &Utf8Path) -> Result<(), anyhow::Error> {
     let walker = ignore::WalkBuilder::new(from)
         // Read hidden files
         .hidden(false)
@@ -80,7 +80,7 @@ fn copy_directory(from: &Utf8Path, to: &Utf8PathBuf) -> Result<(), anyhow::Error
 
 /// Ignore rules only apply to untracked files. The walker can skip whole ignored
 /// directories, so copy any missing tracked paths directly from the index.
-fn copy_tracked_files(from: &Utf8Path, to: &Utf8PathBuf) -> anyhow::Result<()> {
+fn copy_tracked_files(from: &Utf8Path, to: &Utf8Path) -> anyhow::Result<()> {
     let repo = match git2::Repository::open(from) {
         Ok(repo) => repo,
         // This helper also copies directories that aren't Git repositories.
