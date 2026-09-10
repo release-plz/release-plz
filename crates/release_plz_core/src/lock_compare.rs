@@ -143,9 +143,15 @@ impl Package {
         parts.next() == Some(self.name.as_str())
             && parts.next().is_none_or(|version| version == self.version)
             && parts.next().is_none_or(|source| {
-                self.source
-                    .as_ref()
-                    .is_some_and(|s| source == format!("({s})"))
+                self.source.as_deref().is_some_and(|s| {
+                    // Dependency IDs omit the precise revision of a Git source.
+                    let s = if s.starts_with("git+") {
+                        s.split_once('#').map_or(s, |(url, _)| url)
+                    } else {
+                        s
+                    };
+                    source == format!("({s})")
+                })
             })
     }
 }
@@ -183,6 +189,41 @@ impl<'a> PackagesByName<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_lock_comparison_follows_source_qualified_git_dependencies() {
+        let directory = tempfile::tempdir().unwrap();
+        let directory = Utf8Path::from_path(directory.path()).unwrap();
+        let released = directory.join("released.lock");
+        let local = directory.join("local.lock");
+        // Cargo adds sources to dependency IDs when name and version are ambiguous,
+        // but only the package source records the precise Git revision.
+        let lockfile = r#"
+version = 4
+[[package]]
+name = "binary"
+version = "0.1.0"
+dependencies = ["shared 0.1.0 (git+https://example.com/one)", "shared 0.1.0 (git+https://example.com/two?branch=next)"]
+[[package]]
+name = "shared"
+version = "0.1.0"
+source = "git+https://example.com/one#1111111111111111111111111111111111111111"
+dependencies = ["leaf"]
+[[package]]
+name = "shared"
+version = "0.1.0"
+source = "git+https://example.com/two?branch=next#2222222222222222222222222222222222222222"
+[[package]]
+name = "leaf"
+version = "1.0.0"
+source = "git+https://example.com/one#1111111111111111111111111111111111111111"
+"#;
+        fs_err::write(&released, lockfile).unwrap();
+        fs_err::write(&local, lockfile).unwrap();
+        assert!(!are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
+        fs_err::write(&local, lockfile.replace("1.0.0", "1.0.1")).unwrap();
+        assert!(are_workspace_lock_dependencies_updated(&local, &released, "binary").unwrap());
+    }
 
     #[test]
     fn workspace_lock_comparison_ignores_unrelated_packages() {
