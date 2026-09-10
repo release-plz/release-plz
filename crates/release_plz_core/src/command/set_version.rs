@@ -82,10 +82,21 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
         })
         .collect();
     let all_packages: Vec<&Package> = packages.values().collect();
-    let changes =
-        prepare_version_changes(&input.version_changes, &packages, &mut workspace_manifest)?;
-    let updating_workspace = matches!(input.version_changes, SetVersionSpec::Single(_))
-        && workspace_manifest.get_workspace_version().is_some();
+    let workspace_version = match &input.version_changes {
+        SetVersionSpec::Single(change) if workspace_manifest.get_workspace_version().is_some() => {
+            Some(&change.version)
+        }
+        _ => None,
+    };
+    let updating_workspace = workspace_version.is_some();
+    let changes = prepare_version_changes(&input.version_changes, &packages, updating_workspace)?;
+    if let Some(version) = workspace_version {
+        // Keep version.workspace = true in the inheriting packages.
+        workspace_manifest.set_workspace_version(version);
+        workspace_manifest
+            .write()
+            .context("can't update workspace version")?;
+    }
     let mut updated_changelogs = BTreeSet::new();
     for (package, change) in changes {
         let package_path = package.package_path()?;
@@ -121,11 +132,18 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
 fn prepare_version_changes<'a>(
     version_changes: &'a SetVersionSpec,
     packages: &'a BTreeMap<String, Package>,
-    workspace_manifest: &mut LocalManifest,
+    updating_workspace: bool,
 ) -> anyhow::Result<Vec<(&'a Package, &'a VersionChange)>> {
     let changes = match version_changes {
-        SetVersionSpec::Single(change) if workspace_manifest.get_workspace_version().is_some() => {
-            set_workspace_version(workspace_manifest, packages, change)?
+        SetVersionSpec::Single(change) if updating_workspace => {
+            let mut changes = Vec::new();
+            for package in packages.values() {
+                let manifest = LocalManifest::try_new(&package.manifest_path)?;
+                if manifest.version_is_inherited() {
+                    changes.push((package, change));
+                }
+            }
+            changes
         }
         SetVersionSpec::Single(change) => {
             anyhow::ensure!(
@@ -144,26 +162,6 @@ fn prepare_version_changes<'a>(
             })
             .collect::<anyhow::Result<_>>()?,
     };
-    Ok(changes)
-}
-
-fn set_workspace_version<'a>(
-    workspace_manifest: &mut LocalManifest,
-    packages: &'a BTreeMap<String, Package>,
-    change: &'a VersionChange,
-) -> anyhow::Result<Vec<(&'a Package, &'a VersionChange)>> {
-    let mut changes = Vec::new();
-    for package in packages.values() {
-        let manifest = LocalManifest::try_new(&package.manifest_path)?;
-        if manifest.version_is_inherited() {
-            changes.push((package, change));
-        }
-    }
-    // Keep version.workspace = true in the inheriting packages.
-    workspace_manifest.set_workspace_version(&change.version);
-    workspace_manifest
-        .write()
-        .context("can't update workspace version")?;
     Ok(changes)
 }
 

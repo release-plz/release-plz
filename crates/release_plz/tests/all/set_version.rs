@@ -1,15 +1,12 @@
-use cargo_metadata::camino::Utf8Path;
+use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
-use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir};
+use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir, fs_utils::Utf8TempDir};
 
 use crate::helpers::test_context::run_set_version;
 
 #[test]
 fn set_version_updates_version_in_workspace() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-workspace");
-    assert!(fixture_dir.is_dir());
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-workspace");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     run_set_version(&project_dir, "one@0.1.1 two@0.3.0");
 
     let crates_dir = project_dir.join("crates");
@@ -88,10 +85,7 @@ fn set_version_updates_version_in_workspace() {
 
 #[test]
 fn set_version_updates_version_in_package() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-package");
-    assert!(fixture_dir.is_dir());
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-package");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
     // There's a single crate in this project, so we don't need to specify the package name.
     run_set_version(&project_dir, "0.1.1");
 
@@ -136,9 +130,7 @@ fn set_version_updates_version_in_package() {
 
 #[test]
 fn set_version_updates_inherited_workspace_version() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-inherited-workspace");
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-inherited-workspace");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-inherited-workspace");
     let one_dir = project_dir.join("crates/one");
     let two_dir = project_dir.join("crates/two");
     let three_dir = project_dir.join("crates/three");
@@ -193,9 +185,7 @@ fn set_version_updates_inherited_workspace_version() {
 
 #[test]
 fn set_version_preserves_inheritance_for_single_package() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-inherited-package");
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-inherited-package");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-inherited-package");
     // Also support projects without a lockfile.
     assert!(!project_dir.join("Cargo.lock").exists());
 
@@ -219,11 +209,7 @@ fn set_version_preserves_inheritance_for_single_package() {
 
 #[test]
 fn set_version_requires_package_names_without_workspace_version() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-without-workspace-version");
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir
-        .path()
-        .join("set-version-without-workspace-version");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-without-workspace-version");
     let original_manifest = fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap();
     let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
         .current_dir(&project_dir)
@@ -243,9 +229,7 @@ fn set_version_requires_package_names_without_workspace_version() {
 
 #[test]
 fn set_version_updates_shared_workspace_changelog_once() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-shared-changelog");
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-shared-changelog");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-shared-changelog");
     let changelog_path = project_dir.join(CHANGELOG_FILENAME);
     let changelog = fs_err::read_to_string(&changelog_path).unwrap();
 
@@ -255,6 +239,14 @@ fn set_version_updates_shared_workspace_changelog_once() {
         fs_err::read_to_string(changelog_path).unwrap(),
         changelog.replace("1.2.3", "1.2.30")
     );
+}
+
+// Keep the returned temporary directory alive for the duration of the test.
+fn copy_fixture(name: &str) -> (Utf8TempDir, Utf8PathBuf) {
+    let fixture_dir = Utf8Path::new("../../tests/fixtures").join(name);
+    let temp_dir = copy_to_temp_dir(&fixture_dir).unwrap();
+    let project_dir = temp_dir.path().join(name);
+    (temp_dir, project_dir)
 }
 
 fn read_manifest(directory: &Utf8Path) -> toml_edit::DocumentMut {
