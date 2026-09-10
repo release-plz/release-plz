@@ -9,6 +9,20 @@ use std::{
 use tracing::{debug, info};
 use url::Url;
 
+/// Read a workspace member without resolving its dependencies.
+pub(crate) fn read_package_metadata(
+    manifest_path: &Utf8Path,
+    package_name: &str,
+) -> anyhow::Result<Package> {
+    cargo_utils::get_manifest_metadata(manifest_path)
+        .with_context(|| format!("cannot read metadata from {manifest_path}"))?
+        .workspace_packages()
+        .into_iter()
+        .find(|package| package.name == package_name)
+        .cloned()
+        .with_context(|| format!("cannot find package {package_name:?} in {manifest_path}"))
+}
+
 pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.

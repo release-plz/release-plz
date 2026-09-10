@@ -160,13 +160,24 @@ impl Package {
     fn is_dev_only_dependency(&self, package: &cargo_metadata::Package) -> bool {
         // Workspace lockfiles include each member's dev dependencies, but those
         // are not built when that member is used as another package's dependency.
-        // Match versions too: a renamed dev dependency can use a different version
-        // of the same crate as a normal or build dependency.
-        let mut matching = package.dependencies.iter().filter(|dependency| {
+        // Renamed dependencies can use the same crate from different versions or
+        // sources, so match both before deciding which dependency kinds apply.
+        let matching = package.dependencies.iter().filter(|dependency| {
             dependency.name == self.name
                 && (dependency.req == cargo_metadata::semver::VersionReq::STAR
                     || dependency.req.matches(&self.version))
         });
+        let matches_source = |dependency: &cargo_metadata::Dependency| {
+            self.source.as_deref().map(source_without_revision)
+                == dependency
+                    .source
+                    .as_ref()
+                    .map(|source| source_without_revision(&source.repr))
+        };
+        // A patch can replace the declared source. If no source matches, only
+        // discard the dependency when every matching declaration is dev-only.
+        let has_source_match = matching.clone().any(matches_source);
+        let mut matching = matching.filter(|d| !has_source_match || matches_source(d));
         matching
             .clone()
             .any(|d| d.kind == DependencyKind::Development)
@@ -180,16 +191,20 @@ impl Package {
                 .next()
                 .is_none_or(|version| version == self.version.to_string())
             && parts.next().is_none_or(|source| {
-                self.source.as_deref().is_some_and(|s| {
-                    // Dependency IDs omit the precise revision of a Git source.
-                    let s = if s.starts_with("git+") {
-                        s.split_once('#').map_or(s, |(url, _)| url)
-                    } else {
-                        s
-                    };
-                    source == format!("({s})")
-                })
+                self.source
+                    .as_deref()
+                    .is_some_and(|s| source == format!("({})", source_without_revision(s)))
             })
+    }
+}
+
+fn source_without_revision(source: &str) -> &str {
+    // Metadata declarations and lockfile dependency IDs omit the resolved Git
+    // revision. Preserve query parameters identifying a branch, tag, or rev.
+    if source.starts_with("git+") {
+        source.split_once('#').map_or(source, |(url, _)| url)
+    } else {
+        source
     }
 }
 
@@ -241,7 +256,8 @@ mod tests {
         for directory in [local.path(), released.path()] {
             fs_err::write(
                 directory.join("Cargo.toml"),
-                "[workspace]\nmembers = [\"binary\", \"library\"]\nresolver = \"2\"\n",
+                "[workspace]\nmembers = [\"binary\", \"library\"]\nresolver = \"2\"\n\
+                 [patch.crates-io]\npatched-test = { git = \"https://example.com/patched-test\" }\n",
             )
             .unwrap();
             for (name, dependencies) in [
@@ -264,6 +280,7 @@ both = "1"
 builder = "1"
 [dev-dependencies]
 test-only = "1"
+patched-test = "1"
 both = "1"
 shared-test = { package = "shared", version = "2" }
 "#,
@@ -295,7 +312,11 @@ dependencies = ["library", "root-dev"]
 [[package]]
 name = "library"
 version = "0.1.0"
-dependencies = ["shared 1.0.0", "shared 2.0.0", "both", "builder", "test-only"]
+dependencies = ["shared 1.0.0", "shared 2.0.0", "both", "builder", "test-only", "patched-test"]
+[[package]]
+name = "patched-test"
+version = "1.0.0"
+source = "git+https://example.com/patched-test#0123456789abcdef"
 "#
         .to_string();
         for (name, version) in [
@@ -314,6 +335,8 @@ dependencies = ["shared 1.0.0", "shared 2.0.0", "both", "builder", "test-only"]
 
         for (name, version, should_update) in [
             ("test-only", "1.0.0", false),
+            // A registry dev dependency can resolve to a different source via [patch].
+            ("patched-test", "1.0.0", false),
             ("shared", "2.0.0", false),
             ("shared", "1.0.0", true),
             ("both", "1.0.0", true),
@@ -342,6 +365,111 @@ dependencies = ["shared 1.0.0", "shared 2.0.0", "both", "builder", "test-only"]
                 should_update,
                 "updating {name} {version}"
             );
+        }
+    }
+
+    #[test]
+    fn workspace_lock_comparison_distinguishes_dependency_sources() {
+        let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
+        fs_err::write(
+            directory.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"binary\", \"library\", \"shared\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["binary", "library", "shared"] {
+            let package = directory.path().join(name);
+            fs_err::create_dir_all(package.join("src")).unwrap();
+            fs_err::write(package.join("src/lib.rs"), "").unwrap();
+            fs_err::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = {name:?}\nversion = \"1.0.0\"\nedition = \"2021\"\n"),
+            )
+            .unwrap();
+        }
+        fs_err::write(
+            directory.path().join("binary/Cargo.toml"),
+            "[package]\nname = \"binary\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\
+             [dependencies]\nlibrary = { path = \"../library\" }\n",
+        )
+        .unwrap();
+        let path = "path = \"../shared\"";
+        let registry = "version = \"1\"";
+        let git = "git = \"https://example.com/shared\"";
+        let other_git = "git = \"https://example.com/other\"";
+        let branch = "git = \"https://example.com/shared\", branch = \"next\"";
+        for (normal, dev) in [
+            (git, other_git),
+            (git, branch),
+            (registry, git),
+            (git, registry),
+            (path, git),
+            (git, path),
+            (path, registry),
+            (registry, path),
+        ] {
+            fs_err::write(
+                directory.path().join("library/Cargo.toml"),
+                format!(
+                    "[package]\nname = \"library\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\
+                     [dependencies]\nshared = {{ {normal} }}\n\
+                     [dev-dependencies]\nshared-test = {{ package = \"shared\", {dev} }}\n"
+                ),
+            )
+            .unwrap();
+            // Read real dependency declarations without resolving or fetching them.
+            let metadata =
+                cargo_utils::get_manifest_metadata(&directory.path().join("Cargo.toml")).unwrap();
+            let library = metadata
+                .packages
+                .iter()
+                .find(|p| p.name == "library")
+                .unwrap();
+            let mut dependency_ids = Vec::new();
+            let mut lockfile = String::from(
+                "version = 4\n[[package]]\nname = \"binary\"\nversion = \"1.0.0\"\ndependencies = [\"library\"]\n",
+            );
+            for dependency in &library.dependencies {
+                let leaf = if dependency.kind == DependencyKind::Development {
+                    "dev-leaf"
+                } else {
+                    "normal-leaf"
+                };
+                let source = dependency.source.as_ref().map(|s| s.repr.as_str());
+                dependency_ids.push(source.map_or_else(
+                    || "shared 1.0.0".to_string(),
+                    |source| format!("shared 1.0.0 ({source})"),
+                ));
+                lockfile.push_str("[[package]]\nname = \"shared\"\nversion = \"1.0.0\"\n");
+                if let Some(source) = source {
+                    let precise = if source.starts_with("git+") {
+                        "#0123456789abcdef"
+                    } else {
+                        ""
+                    };
+                    lockfile.push_str(&format!("source = \"{source}{precise}\"\n"));
+                }
+                lockfile.push_str(&format!(
+                    "dependencies = [{leaf:?}]\n[[package]]\nname = {leaf:?}\nversion = \"1.0.0\"\n"
+                ));
+            }
+            lockfile.push_str(&format!(
+                "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}\n"
+            ));
+            let mut released: Lockfile = toml::from_str(&lockfile).unwrap();
+            released.retain_package_dependencies("binary", &metadata.packages);
+            for (leaf, should_update) in [("dev-leaf", false), ("normal-leaf", true)] {
+                let changed = lockfile.replace(
+                    &format!("name = {leaf:?}\nversion = \"1.0.0\""),
+                    &format!("name = {leaf:?}\nversion = \"1.0.1\""),
+                );
+                let mut local: Lockfile = toml::from_str(&changed).unwrap();
+                local.retain_package_dependencies("binary", &metadata.packages);
+                assert_eq!(
+                    are_dependencies_updated(&local, &released),
+                    should_update,
+                    "updating {leaf} with normal {normal} and dev {dev}"
+                );
+            }
         }
     }
 

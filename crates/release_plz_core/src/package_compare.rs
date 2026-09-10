@@ -3,10 +3,13 @@ use cargo_metadata::{
     Package,
     camino::{Utf8Path, Utf8PathBuf},
 };
-use cargo_utils::{CARGO_TOML, get_manifest_metadata};
+use cargo_utils::CARGO_TOML;
 use tracing::debug;
 
-use crate::{cargo::run_cargo, fs_utils};
+use crate::{
+    cargo::{read_package_metadata, run_cargo},
+    fs_utils,
+};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -180,7 +183,7 @@ pub fn is_readme_updated(
     registry_package_path: &Utf8Path,
 ) -> anyhow::Result<bool> {
     // Read again manifest metadata because the Cargo.toml might change on every commit.
-    let package = match read_package_metadata(package_name, local_package_path) {
+    let package = match read_package_metadata(&local_package_path.join(CARGO_TOML), package_name) {
         Ok(package) => package,
         Err(e) => {
             tracing::warn!(
@@ -199,7 +202,9 @@ pub fn is_readme_updated(
             {
                 registry_package_path.join("README.md")
             } else {
-                let released_package = read_package_metadata(package_name, registry_package_path)?;
+                let released_package =
+                    read_package_metadata(&registry_package_path.join(CARGO_TOML), package_name)
+                        .context("cannot read released package metadata for README comparison")?;
                 let Some(path) = local_readme_override(&released_package, registry_package_path)?
                 else {
                     return Ok(true);
@@ -258,20 +263,6 @@ fn file_hash(file: &Utf8Path) -> io::Result<u64> {
     buffer.hash(&mut hasher);
     let hash = hasher.finish();
     Ok(hash)
-}
-
-fn read_package_metadata(
-    package_name: &str,
-    local_package_path: &Utf8Path,
-) -> anyhow::Result<Package> {
-    let package = get_manifest_metadata(&local_package_path.join(CARGO_TOML))
-        .context("cannot read Cargo.toml")?
-        .workspace_packages()
-        .into_iter()
-        .find(|&p| *p.name == package_name)
-        .cloned()
-        .context("cannot find package in Cargo.toml")?;
-    Ok(package)
 }
 
 #[cfg(test)]

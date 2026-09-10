@@ -21,7 +21,6 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
@@ -172,14 +171,8 @@ fn process_git_only_package(
 /// Read package metadata directly from the tagged workspace without resolving dependencies.
 fn get_worktree_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
     let worktree_path = to_utf8_path(worktree.path())?;
-    let metadata = get_manifest_metadata(&worktree_path.join("Cargo.toml"))
-        .context("get cargo metadata for worktree")?;
-    metadata
-        .workspace_packages()
-        .into_iter()
-        .find(|p| p.name == package_name)
-        .cloned()
-        .with_context(|| format!("Failed to find package {package_name:?}"))
+    crate::cargo::read_package_metadata(&worktree_path.join("Cargo.toml"), package_name)
+        .context("get cargo metadata for worktree")
 }
 
 /// Determine next version of packages.
