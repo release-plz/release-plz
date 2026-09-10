@@ -181,14 +181,14 @@ fn copy_tracked_files(
 
 #[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
 fn copy_entry(
-    from: &Utf8Path,
-    to: &Utf8Path,
+    root_from: &Utf8Path,
+    root_to: &Utf8Path,
     source: &Utf8Path,
     destination: &Utf8Path,
     file_type: std::fs::FileType,
 ) -> anyhow::Result<()> {
     if file_type.is_dir() {
-        if destination != to {
+        if destination != root_to {
             trace!("creating directory {:?}", destination);
             fs_err::create_dir_all(destination)?;
         }
@@ -199,8 +199,8 @@ fn copy_entry(
         let original_link = if original_link.is_relative() {
             original_link
         } else {
-            let new_relative = strip_prefix(&original_link, from)?;
-            to.join(new_relative)
+            let new_relative = strip_prefix(&original_link, root_from)?;
+            root_to.join(new_relative)
         };
         create_symlink(&original_link, destination).with_context(|| {
             format!("cannot create symlink {original_link:?} -> {destination:?}")
