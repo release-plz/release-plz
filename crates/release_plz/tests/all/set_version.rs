@@ -53,7 +53,11 @@ fn set_version_updates_version_in_workspace() {
         ### Other
         - stuff in crate one
     "]]
-    .assert_eq(&fs_err::read_to_string(one_changelog).unwrap());
+    .assert_eq(
+        &fs_err::read_to_string(one_changelog)
+            .unwrap()
+            .replace("\r\n", "\n"),
+    );
 
     let two_changelog = two_dir.join(CHANGELOG_FILENAME);
     expect_test::expect![[r"
@@ -70,7 +74,11 @@ fn set_version_updates_version_in_workspace() {
         ### Other
         - stuff in crate two
     "]]
-    .assert_eq(&fs_err::read_to_string(two_changelog).unwrap());
+    .assert_eq(
+        &fs_err::read_to_string(two_changelog)
+            .unwrap()
+            .replace("\r\n", "\n"),
+    );
 
     let workspace_lock = project_dir.join("Cargo.lock");
     let workspace_lock = fs_err::read_to_string(workspace_lock).unwrap();
@@ -114,7 +122,11 @@ fn set_version_updates_version_in_package() {
         ### Other
         - stuff in crate
     "]]
-    .assert_eq(&fs_err::read_to_string(changelog).unwrap());
+    .assert_eq(
+        &fs_err::read_to_string(changelog)
+            .unwrap()
+            .replace("\r\n", "\n"),
+    );
 
     let lockfile = project_dir.join("Cargo.lock");
     let lockfile = fs_err::read_to_string(lockfile).unwrap();
