@@ -127,12 +127,15 @@ impl Lockfile {
                     self.packages
                         .iter()
                         .enumerate()
+                        .filter(|(_, p)| p.matches_dependency(dependency))
+                        // Cargo omits sources for unambiguous IDs and for path packages.
+                        // An ambiguous source-less ID therefore denotes the path package.
+                        .min_by_key(|(_, p)| p.source.is_some())
                         .filter(|(_, p)| {
-                            p.matches_dependency(dependency)
-                                && (package.name == package_name
-                                    || workspace_package.is_none_or(|workspace_package| {
-                                        !p.is_dev_only_dependency(workspace_package)
-                                    }))
+                            package.name == package_name
+                                || workspace_package.is_none_or(|workspace_package| {
+                                    !p.is_dev_only_dependency(workspace_package)
+                                })
                         })
                         .map(|(i, _)| i),
                 );
@@ -247,6 +250,76 @@ mod tests {
         local.retain_package_dependencies(package, &[]);
         released.retain_package_dependencies(package, &[]);
         are_dependencies_updated(&local, &released)
+    }
+
+    #[test]
+    fn workspace_lock_comparison_distinguishes_path_and_git_packages() {
+        let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let git_path = directory.path().join("dependency");
+        let workspace = directory.path().join("workspace");
+        fs_err::create_dir(&git_path).unwrap();
+        let git_repo = git_cmd::Repo::init(&git_path);
+        let git_url = url::Url::from_directory_path(&git_path).unwrap();
+        for (root, members) in [
+            (&git_path, &["shared", "leaf"][..]),
+            (&workspace, &["app", "other", "shared"][..]),
+        ] {
+            fs_err::create_dir_all(root).unwrap();
+            fs_err::write(
+                root.join("Cargo.toml"),
+                format!("[workspace]\nmembers = {members:?}\nresolver = \"2\"\n"),
+            )
+            .unwrap();
+            for name in members {
+                let package = root.join(name);
+                fs_err::create_dir_all(package.join("src")).unwrap();
+                fs_err::write(package.join("src/lib.rs"), "").unwrap();
+                let dependencies = match *name {
+                    "shared" if root == &git_path => "leaf = { path = \"../leaf\" }".into(),
+                    "app" => "shared = { path = \"../shared\" }".into(),
+                    "other" => format!("shared = {{ git = {:?} }}", git_url.as_str()),
+                    _ => String::new(),
+                };
+                fs_err::write(
+                    package.join("Cargo.toml"),
+                    format!(
+                        "[package]\nname = {name:?}\nversion = \"1.0.0\"\nedition = \"2021\"\n\
+                         [dependencies]\n{dependencies}\n"
+                    ),
+                )
+                .unwrap();
+            }
+        }
+        git_repo.add_all_and_commit("initial dependency").unwrap();
+        let run_cargo = |args: &[&str]| {
+            let output = crate::cargo::run_cargo(&workspace, args).unwrap();
+            assert!(output.status.success(), "{}", output.stderr);
+        };
+        // Let Cargo encode the ambiguous path/Git dependency IDs itself.
+        run_cargo(&["generate-lockfile"]);
+        let released_lock = directory.path().join("released.lock");
+        let local_lock = workspace.join("Cargo.lock");
+        fs_err::copy(&local_lock, &released_lock).unwrap();
+        assert!(!compare_workspace_locks(&local_lock, &released_lock, "app"));
+        assert!(!compare_workspace_locks(
+            &local_lock,
+            &released_lock,
+            "other"
+        ));
+
+        let leaf_manifest = git_path.join("leaf/Cargo.toml");
+        let manifest = fs_err::read_to_string(&leaf_manifest).unwrap();
+        fs_err::write(&leaf_manifest, manifest.replace("1.0.0", "1.0.1")).unwrap();
+        git_repo.add_all_and_commit("update Git leaf").unwrap();
+        run_cargo(&["update"]);
+
+        // Only `other` reaches the Git package and its updated transitive dependency.
+        assert!(!compare_workspace_locks(&local_lock, &released_lock, "app"));
+        assert!(compare_workspace_locks(
+            &local_lock,
+            &released_lock,
+            "other"
+        ));
     }
 
     #[test]
