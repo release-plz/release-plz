@@ -39,14 +39,21 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
         fs_err::create_dir_all(&to)?;
     }
 
-    copy_directory(from, &to)?;
+    copy_directory(from, &to, from, &to)?;
 
     Ok(())
 }
 
 /// `to` must exist.
+/// Keep the original copy roots when recursing so absolute symlinks can point
+/// outside a submodule while remaining inside the copied project.
 #[tracing::instrument]
-fn copy_directory(from: &Utf8Path, to: &Utf8Path) -> Result<(), anyhow::Error> {
+fn copy_directory(
+    from: &Utf8Path,
+    to: &Utf8Path,
+    root_from: &Utf8Path,
+    root_to: &Utf8Path,
+) -> Result<(), anyhow::Error> {
     let walker = ignore::WalkBuilder::new(from)
         // Read hidden files
         .hidden(false)
@@ -72,15 +79,26 @@ fn copy_directory(from: &Utf8Path, to: &Utf8Path) -> Result<(), anyhow::Error> {
         let destination =
             destination_path(to, &entry, from).context("failed to determine destination path")?;
         let file_type = entry.file_type().context("unknown file type")?;
-        copy_entry(from, to, entry.path().try_into()?, &destination, file_type)?;
+        copy_entry(
+            root_from,
+            root_to,
+            entry.path().try_into()?,
+            &destination,
+            file_type,
+        )?;
     }
-    copy_tracked_files(from, to)?;
+    copy_tracked_files(from, to, root_from, root_to)?;
     Ok(())
 }
 
 /// Ignore rules only apply to untracked files. The walker can skip whole ignored
 /// directories, so copy any missing tracked paths directly from the index.
-fn copy_tracked_files(from: &Utf8Path, to: &Utf8Path) -> anyhow::Result<()> {
+fn copy_tracked_files(
+    from: &Utf8Path,
+    to: &Utf8Path,
+    root_from: &Utf8Path,
+    root_to: &Utf8Path,
+) -> anyhow::Result<()> {
     // Only repository roots have their own index; plain directories and
     // uninitialized submodules must not discover a parent repository instead.
     if !from.join(".git").try_exists()? {
@@ -129,10 +147,10 @@ fn copy_tracked_files(from: &Utf8Path, to: &Utf8Path) -> anyhow::Result<()> {
         if metadata.is_dir() {
             // Gitlinks represent submodules, whose tracked files have their own index.
             if destination.try_exists()? {
-                copy_tracked_files(&source, &destination)?;
+                copy_tracked_files(&source, &destination, root_from, root_to)?;
             } else {
                 fs_err::create_dir_all(&destination)?;
-                copy_directory(&source, &destination)?;
+                copy_directory(&source, &destination, root_from, root_to)?;
             }
         } else {
             match fs_err::symlink_metadata(&destination) {
@@ -141,7 +159,13 @@ fn copy_tracked_files(from: &Utf8Path, to: &Utf8Path) -> anyhow::Result<()> {
                 Err(error) => return Err(error.into()),
             }
             fs_err::create_dir_all(destination.parent().context("tracked path has no parent")?)?;
-            copy_entry(from, to, &source, &destination, metadata.file_type())?;
+            copy_entry(
+                root_from,
+                root_to,
+                &source,
+                &destination,
+                metadata.file_type(),
+            )?;
         }
     }
     Ok(())
@@ -493,6 +517,58 @@ mod tests {
                 Path::new("missing")
             );
             assert!(!copied_dir.join("examples/target").exists());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn submodule_absolute_symlinks_preserve_outer_copy_root() {
+        for (repo_ignore, submodule_ignore) in [
+            ("", "link\n"),
+            ("examples/\n", "link\n"),
+            ("examples/\n", ""),
+        ] {
+            let source = Utf8TempDir::new().unwrap();
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            fs_err::write(repo_dir.join("shared"), "shared contents").unwrap();
+
+            let submodule_dir = source.path().join("submodule");
+            fs_err::create_dir(&submodule_dir).unwrap();
+            let submodule = git_cmd::Repo::init(&submodule_dir);
+            create_symlink(repo_dir.join("shared"), submodule_dir.join("link")).unwrap();
+            submodule
+                .add_all_and_commit("add absolute symlink")
+                .unwrap();
+            fs_err::write(submodule_dir.join(".gitignore"), submodule_ignore).unwrap();
+            submodule.add_all_and_commit("add ignore rules").unwrap();
+            repo.git(&[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                submodule_dir.as_str(),
+                "examples",
+            ])
+            .unwrap();
+            fs_err::write(repo_dir.join(".gitignore"), repo_ignore).unwrap();
+            repo.add_all_and_commit("add submodule and shared file")
+                .unwrap();
+            assert_eq!(repo.git(&["status", "--porcelain"]).unwrap(), "");
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            let copied_link = copied_dir.join("examples/link");
+            assert_eq!(
+                fs_err::read_link(&copied_link).unwrap(),
+                copied_dir.join("shared")
+            );
+            assert_eq!(
+                fs_err::read_to_string(copied_link).unwrap(),
+                "shared contents"
+            );
         }
     }
 
