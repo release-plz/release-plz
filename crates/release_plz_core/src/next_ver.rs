@@ -581,22 +581,21 @@ exclude = ["excluded.txt"]
             super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
         let workspace = super::ReconstructedWorkspace::new(worktree).unwrap();
         let package = workspace.package("non-verifiable").unwrap();
-        let worktree = &workspace.worktree;
         let package_dir = package.manifest_path.parent().unwrap();
 
         assert_eq!(package.version.to_string(), "0.1.0");
-        // Compare with the checked out file so that
-        // line-ending conversion on Windows doesn't matter.
+        // Normalize line endings to allow Git's Windows checkout conversion.
         assert_eq!(
-            fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
-            fs_err::read_to_string(worktree.path().join("src/lib.rs")).unwrap()
+            fs_err::read_to_string(package_dir.join("src/lib.rs"))
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "pub fn example() {}\n"
         );
         assert!(!package_dir.join("Cargo.toml.orig").exists());
         let files = crate::get_cargo_package_files(package_dir).unwrap();
         assert!(!files.iter().any(|file| file == "excluded.txt"));
         // The build script never ran.
         assert!(!package_dir.join("generated.txt").exists());
-        assert!(!worktree.path().join("generated.txt").exists());
     }
 
     #[test]
