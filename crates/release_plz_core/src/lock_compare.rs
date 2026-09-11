@@ -89,7 +89,7 @@ fn are_dependencies_of_lockfiles_updated(
         if let Some(local_packages) = local_lock.get(&registry_package.name) {
             let is_same_version = local_packages
                 .iter()
-                .any(|p| p.version == registry_package.version);
+                .any(|(_, p)| p.version == registry_package.version);
             if !is_same_version {
                 debug!(
                     "Version of package {} changed to version {:?}",
@@ -122,6 +122,7 @@ impl Lockfile {
         });
         let mut pending: Vec<_> = root.into_iter().collect();
         let mut reachable = HashSet::new();
+        let packages_by_name = PackagesByName::new(&self.packages);
         while let Some(index) = pending.pop() {
             if !reachable.insert(index) {
                 continue;
@@ -131,22 +132,17 @@ impl Lockfile {
                 package.source.is_none() && p.name == package.name && p.version == package.version
             });
             for dependency in &package.dependencies {
-                pending.extend(
-                    self.packages
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, p)| p.matches_dependency(dependency))
-                        // Cargo omits sources for unambiguous IDs and for path packages.
-                        // An ambiguous source-less ID therefore denotes the path package.
-                        .min_by_key(|(_, p)| p.source.is_some())
-                        .filter(|(_, p)| {
-                            Some(index) == root
-                                || workspace_package.is_none_or(|workspace_package| {
-                                    !p.is_dev_only_dependency(workspace_package)
-                                })
-                        })
-                        .map(|(i, _)| i),
-                );
+                let Some(dependency_index) = packages_by_name.dependency_index(dependency) else {
+                    continue;
+                };
+                let dependency = &self.packages[dependency_index];
+                if Some(index) == root
+                    || workspace_package.is_none_or(|workspace_package| {
+                        !dependency.is_dev_only_dependency(workspace_package)
+                    })
+                {
+                    pending.push(dependency_index);
+                }
             }
         }
         let mut index = 0;
@@ -195,16 +191,13 @@ impl Package {
             && matching.all(|d| d.kind == DependencyKind::Development)
     }
 
-    fn matches_dependency(&self, dependency: &str) -> bool {
-        let mut parts = dependency.splitn(3, ' ');
-        parts.next() == Some(self.name.as_str())
-            && parts
-                .next()
-                .is_none_or(|version| version == self.version.to_string())
-            && parts.next().is_none_or(|source| {
-                self.source
-                    .as_deref()
-                    .is_some_and(|s| source == format!("({})", source_without_revision(s)))
+    fn matches_dependency(&self, version: Option<&str>, source: Option<&str>) -> bool {
+        version.is_none_or(|version| version == self.version.to_string())
+            && source.is_none_or(|source| {
+                self.source.as_deref().is_some_and(|s| {
+                    source.strip_prefix('(').and_then(|s| s.strip_suffix(')'))
+                        == Some(source_without_revision(s))
+                })
             })
     }
 }
@@ -222,17 +215,17 @@ fn source_without_revision(source: &str) -> &str {
 /// Packages grouped by name, to search faster.
 /// Cargo.lock can contain multiple packages with the same name but different versions.
 struct PackagesByName<'a> {
-    packages: HashMap<&'a str, Vec<&'a Package>>,
+    packages: HashMap<&'a str, Vec<(usize, &'a Package)>>,
 }
 
 impl<'a> PackagesByName<'a> {
     fn new(packages: &'a [Package]) -> Self {
         let mut packages_by_name = HashMap::new();
-        for package in packages {
+        for (index, package) in packages.iter().enumerate() {
             packages_by_name
                 .entry(package.name.as_str())
                 .or_insert_with(Vec::new)
-                .push(package);
+                .push((index, package));
         }
         Self {
             packages: packages_by_name,
@@ -240,12 +233,27 @@ impl<'a> PackagesByName<'a> {
     }
 
     /// Get the packages with the given name.
-    fn get(&self, name: &str) -> Option<&[&Package]> {
+    fn get(&self, name: &str) -> Option<&[(usize, &'a Package)]> {
         self.packages.get(name).map(|p| {
             // If the entry exists, it contains at least one package.
             assert!(!p.is_empty());
             p.as_slice()
         })
+    }
+
+    /// Resolve an edge using only candidates with the same name.
+    fn dependency_index(&self, dependency: &str) -> Option<usize> {
+        let mut parts = dependency.splitn(3, ' ');
+        let name = parts.next()?;
+        let version = parts.next();
+        let source = parts.next();
+        self.get(name)?
+            .iter()
+            .filter(|(_, p)| p.matches_dependency(version, source))
+            // Cargo omits sources for unambiguous IDs and for path packages.
+            // An ambiguous source-less ID therefore denotes the path package.
+            .min_by_key(|(_, p)| p.source.is_some())
+            .map(|(index, _)| *index)
     }
 }
 

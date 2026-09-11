@@ -74,11 +74,26 @@ impl LocalManifest {
     }
 
     pub fn get_dependency_tables(&self) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
+        self.dependency_tables(true)
+    }
+
+    /// Get package dependency tables, including target-specific dependencies.
+    /// Workspace declarations are templates and are not dependencies of the root package.
+    pub fn get_package_dependency_tables(
+        &self,
+    ) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
+        self.dependency_tables(false)
+    }
+
+    fn dependency_tables(
+        &self,
+        include_workspace: bool,
+    ) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
         let root = self.data.as_table();
-        root.iter().flat_map(|(key, v)| {
+        root.iter().flat_map(move |(key, v)| {
             if DepTable::KINDS.iter().any(|kind| kind.kind_table() == key) {
                 v.as_table_like().into_iter().collect::<Vec<_>>()
-            } else if key == "workspace" {
+            } else if include_workspace && key == "workspace" {
                 v.as_table_like()
                     .unwrap()
                     .iter()
