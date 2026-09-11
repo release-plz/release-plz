@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.29](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.28...git_cmd-v0.6.29) - 2026-09-10
+
+### Other
+
+- preserve tracked files when copying directories ([#3046](https://github.com/release-plz/release-plz/pull/3046))
+
 ## [0.6.28](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.27...git_cmd-v0.6.28) - 2026-02-16
 
 ### Fixed

@@ -1,0 +1,4 @@
+[package]
+name = "three"
+version = { workspace = true }
+edition = "2024"

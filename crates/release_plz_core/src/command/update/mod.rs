@@ -202,7 +202,7 @@ pub fn set_version(
 /// pkg1 = { path = "../pkg1", version = "1.2.4" }
 /// ```
 ///
-fn update_dependencies(
+pub(super) fn update_dependencies(
     all_packages: &[&Package],
     version: &Version,
     package_path: &Utf8Path,

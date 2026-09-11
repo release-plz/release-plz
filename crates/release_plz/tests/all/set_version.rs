@@ -1,16 +1,12 @@
-use cargo_metadata::camino::Utf8Path;
+use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
-use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir};
+use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir, fs_utils::Utf8TempDir};
 
 use crate::helpers::test_context::run_set_version;
 
 #[test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 fn set_version_updates_version_in_workspace() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-workspace");
-    assert!(fixture_dir.is_dir());
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-workspace");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     run_set_version(&project_dir, "one@0.1.1 two@0.3.0");
 
     let crates_dir = project_dir.join("crates");
@@ -54,7 +50,11 @@ fn set_version_updates_version_in_workspace() {
         ### Other
         - stuff in crate one
     "]]
-    .assert_eq(&fs_err::read_to_string(one_changelog).unwrap());
+    .assert_eq(
+        &fs_err::read_to_string(one_changelog)
+            .unwrap()
+            .replace("\r\n", "\n"),
+    );
 
     let two_changelog = two_dir.join(CHANGELOG_FILENAME);
     expect_test::expect![[r"
@@ -71,7 +71,11 @@ fn set_version_updates_version_in_workspace() {
         ### Other
         - stuff in crate two
     "]]
-    .assert_eq(&fs_err::read_to_string(two_changelog).unwrap());
+    .assert_eq(
+        &fs_err::read_to_string(two_changelog)
+            .unwrap()
+            .replace("\r\n", "\n"),
+    );
 
     let workspace_lock = project_dir.join("Cargo.lock");
     let workspace_lock = fs_err::read_to_string(workspace_lock).unwrap();
@@ -80,12 +84,8 @@ fn set_version_updates_version_in_workspace() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 fn set_version_updates_version_in_package() {
-    let fixture_dir = Utf8Path::new("../../tests/fixtures/set-version-in-package");
-    assert!(fixture_dir.is_dir());
-    let dest_dir = copy_to_temp_dir(fixture_dir).unwrap();
-    let project_dir = dest_dir.path().join("set-version-in-package");
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
     // There's a single crate in this project, so we don't need to specify the package name.
     run_set_version(&project_dir, "0.1.1");
 
@@ -116,10 +116,147 @@ fn set_version_updates_version_in_package() {
         ### Other
         - stuff in crate
     "]]
-    .assert_eq(&fs_err::read_to_string(changelog).unwrap());
+    .assert_eq(
+        &fs_err::read_to_string(changelog)
+            .unwrap()
+            .replace("\r\n", "\n"),
+    );
 
     let lockfile = project_dir.join("Cargo.lock");
     let lockfile = fs_err::read_to_string(lockfile).unwrap();
     assert!(lockfile.contains("name = \"set-version-in-package\""));
     assert!(lockfile.contains("version = \"0.1.1\""));
+}
+
+#[test]
+fn set_version_updates_inherited_workspace_version() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-inherited-workspace");
+    let one_dir = project_dir.join("crates/one");
+    let two_dir = project_dir.join("crates/two");
+    let three_dir = project_dir.join("crates/three");
+    let changelog = fs_err::read_to_string(project_dir.join(CHANGELOG_FILENAME)).unwrap();
+    let two_changelog = fs_err::read_to_string(two_dir.join(CHANGELOG_FILENAME)).unwrap();
+    let one_manifest = fs_err::read_to_string(one_dir.join(CARGO_TOML)).unwrap();
+    let three_manifest = fs_err::read_to_string(three_dir.join(CARGO_TOML)).unwrap();
+
+    run_set_version(&project_dir, "1.2.3");
+
+    let workspace = read_manifest(&project_dir);
+    assert_eq!(
+        workspace["workspace"]["package"]["version"].as_str(),
+        Some("1.2.3")
+    );
+    assert_eq!(
+        workspace["workspace"]["dependencies"]["three"]["version"].as_str(),
+        Some("=1.2.3")
+    );
+    // Rewriting manifests normalizes CRLF line endings from Windows checkouts to LF.
+    assert_eq!(
+        fs_err::read_to_string(one_dir.join(CARGO_TOML))
+            .unwrap()
+            .replace("\r\n", "\n"),
+        one_manifest.replace("\r\n", "\n")
+    );
+    assert_eq!(
+        fs_err::read_to_string(three_dir.join(CARGO_TOML))
+            .unwrap()
+            .replace("\r\n", "\n"),
+        three_manifest.replace("\r\n", "\n")
+    );
+    let two = read_manifest(&two_dir);
+    assert_eq!(two["package"]["version"].as_str(), Some("0.2.0"));
+    assert_eq!(
+        two["dependencies"]["one"]["version"].as_str(),
+        Some("=1.2.3")
+    );
+    for path in [
+        project_dir.join(CHANGELOG_FILENAME),
+        three_dir.join(CHANGELOG_FILENAME),
+    ] {
+        assert_eq!(
+            fs_err::read_to_string(path).unwrap(),
+            changelog.replace("0.1.0", "1.2.3")
+        );
+    }
+    assert_eq!(
+        fs_err::read_to_string(two_dir.join(CHANGELOG_FILENAME)).unwrap(),
+        two_changelog
+    );
+    let lockfile = fs_err::read_to_string(project_dir.join("Cargo.lock")).unwrap();
+    for (name, version) in [("one", "1.2.3"), ("three", "1.2.3"), ("two", "0.2.0")] {
+        assert!(lockfile.contains(&format!("name = \"{name}\"\nversion = \"{version}\"")));
+    }
+}
+
+#[test]
+fn set_version_preserves_inheritance_for_single_package() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-inherited-package");
+    // Also support projects without a lockfile.
+    assert!(!project_dir.join("Cargo.lock").exists());
+
+    run_set_version(&project_dir, "1.2.3");
+
+    let manifest = read_manifest(&project_dir);
+    assert_eq!(
+        manifest["workspace"]["package"]["version"].as_str(),
+        Some("1.2.3")
+    );
+    assert_eq!(
+        manifest["package"]["version"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert!(
+        fs_err::read_to_string(project_dir.join(CHANGELOG_FILENAME))
+            .unwrap()
+            .contains("## [1.2.3]")
+    );
+}
+
+#[test]
+fn set_version_requires_package_names_without_workspace_version() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-without-workspace-version");
+    let original_manifest = fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap();
+    let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
+        .current_dir(&project_dir)
+        .args(["set-version", "1.2.3"])
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("Please specify which package you want to update"),
+        "{stderr}"
+    );
+    assert_eq!(
+        fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap(),
+        original_manifest
+    );
+}
+
+#[test]
+fn set_version_updates_shared_workspace_changelog_once() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-shared-changelog");
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let changelog = fs_err::read_to_string(&changelog_path).unwrap();
+
+    run_set_version(&project_dir, "1.2.30");
+
+    assert_eq!(
+        fs_err::read_to_string(changelog_path).unwrap(),
+        changelog.replace("1.2.3", "1.2.30")
+    );
+}
+
+// Keep the returned temporary directory alive for the duration of the test.
+fn copy_fixture(name: &str) -> (Utf8TempDir, Utf8PathBuf) {
+    let fixture_dir = Utf8Path::new("../../tests/fixtures").join(name);
+    let temp_dir = copy_to_temp_dir(&fixture_dir).unwrap();
+    let project_dir = temp_dir.path().join(name);
+    (temp_dir, project_dir)
+}
+
+fn read_manifest(directory: &Utf8Path) -> toml_edit::DocumentMut {
+    fs_err::read_to_string(directory.join(CARGO_TOML))
+        .unwrap()
+        .parse()
+        .unwrap()
 }

@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::{io, path::Path, process::Command};
 
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
@@ -39,15 +39,21 @@ pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow:
         fs_err::create_dir_all(&to)?;
     }
 
-    copy_directory(from, &to)?;
+    copy_directory(from, &to, from, &to)?;
 
     Ok(())
 }
 
 /// `to` must exist.
+/// Keep the original copy roots when recursing so absolute symlinks can point
+/// outside a submodule while remaining inside the copied project.
 #[tracing::instrument]
-#[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
-fn copy_directory(from: &Utf8Path, to: &Utf8PathBuf) -> Result<(), anyhow::Error> {
+fn copy_directory(
+    from: &Utf8Path,
+    to: &Utf8Path,
+    root_from: &Utf8Path,
+    root_to: &Utf8Path,
+) -> Result<(), anyhow::Error> {
     let walker = ignore::WalkBuilder::new(from)
         // Read hidden files
         .hidden(false)
@@ -73,31 +79,145 @@ fn copy_directory(from: &Utf8Path, to: &Utf8PathBuf) -> Result<(), anyhow::Error
         let destination =
             destination_path(to, &entry, from).context("failed to determine destination path")?;
         let file_type = entry.file_type().context("unknown file type")?;
-        if file_type.is_dir() {
-            if destination == *to {
+        copy_entry(
+            root_from,
+            root_to,
+            entry.path().try_into()?,
+            &destination,
+            file_type,
+        )?;
+    }
+    copy_tracked_files(from, to, root_from, root_to)?;
+    Ok(())
+}
+
+/// Ignore rules only apply to untracked files. The walker can skip whole ignored
+/// directories, so copy any missing tracked paths directly from the index.
+fn copy_tracked_files(
+    from: &Utf8Path,
+    to: &Utf8Path,
+    root_from: &Utf8Path,
+    root_to: &Utf8Path,
+) -> anyhow::Result<()> {
+    // Only repository roots have their own index; plain directories and
+    // uninitialized submodules must not discover a parent repository instead.
+    if !from.join(".git").try_exists()? {
+        return Ok(());
+    }
+    // Git supports index extensions such as split and sparse indexes that
+    // libgit2 cannot read.
+    let output = Command::new("git")
+        .current_dir(from)
+        .args(["--git-dir=.git", "ls-files", "--stage", "-z"])
+        .output()
+        .context("cannot list tracked files while copying directory")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "cannot list tracked files in {from}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let tracked_files = std::str::from_utf8(&output.stdout).context("non-UTF-8 tracked path")?;
+    for entry in tracked_files.split_terminator('\0') {
+        let (index_metadata, relative) = entry
+            .split_once('\t')
+            .context("tracked entry has no path separator")?;
+        let relative = Utf8Path::new(relative);
+        // An ancestor replaced by a symlink makes this indexed path deleted.
+        // symlink_metadata only avoids following symlinks at the final component.
+        if relative
+            .ancestors()
+            .skip(1)
+            .any(|ancestor| !ancestor.as_str().is_empty() && from.join(ancestor).is_symlink())
+        {
+            continue;
+        }
+        let source = from.join(relative);
+        let metadata = match fs_err::symlink_metadata(&source) {
+            Ok(metadata) => metadata,
+            // Preserve working-tree deletions rather than restoring index contents.
+            // An ancestor replaced by a file also makes the tracked path absent.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
                 continue;
             }
-            trace!("creating directory {:?}", destination);
-            fs_err::create_dir(&destination)?;
-        } else if file_type.is_symlink() {
-            let entry_utf8: &Utf8Path = entry.path().try_into()?;
-            let original_link = Utf8Path::read_link_utf8(entry_utf8)
-                .with_context(|| format!("cannot read link {:?}", entry.path()))?;
-            debug!("found symlink {:?} -> {:?}", entry.path(), original_link);
-            let original_link = if original_link.is_relative() {
-                original_link
+            Err(error) => return Err(error.into()),
+        };
+        let destination = to.join(relative);
+        if metadata.is_dir() {
+            // A tracked file replaced by a directory is deleted; its ignored,
+            // untracked contents must not be copied by this fallback.
+            if !index_metadata.starts_with("160000 ") {
+                continue;
+            }
+            // Gitlinks represent submodules, whose tracked files have their own index.
+            if destination.try_exists()? {
+                copy_tracked_files(&source, &destination, root_from, root_to)?;
             } else {
-                let new_relative = strip_prefix(&original_link, from)?;
-                to.join(new_relative)
-            };
-            create_symlink(&original_link, &destination).with_context(|| {
-                format!("cannot create symlink {original_link:?} -> {destination:?}")
-            })?;
-        } else if file_type.is_file() {
-            trace!("copying file {:?} to {:?}", entry.path(), &destination);
-            fs_err::copy(entry.path(), &destination).with_context(|| {
-                format!("cannot copy file {:?} to {destination:?}", entry.path())
-            })?;
+                fs_err::create_dir_all(&destination)?;
+                copy_directory(&source, &destination, root_from, root_to)?;
+            }
+        } else {
+            match fs_err::symlink_metadata(&destination) {
+                Ok(_) => continue,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            fs_err::create_dir_all(destination.parent().context("tracked path has no parent")?)?;
+            copy_entry(
+                root_from,
+                root_to,
+                &source,
+                &destination,
+                metadata.file_type(),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
+fn copy_entry(
+    root_from: &Utf8Path,
+    root_to: &Utf8Path,
+    source: &Utf8Path,
+    destination: &Utf8Path,
+    file_type: std::fs::FileType,
+) -> anyhow::Result<()> {
+    if file_type.is_dir() {
+        if destination != root_to {
+            trace!("creating directory {:?}", destination);
+            fs_err::create_dir_all(destination)?;
+        }
+    } else if file_type.is_symlink() {
+        let original_link = Utf8Path::read_link_utf8(source)
+            .with_context(|| format!("cannot read link {source:?}"))?;
+        debug!("found symlink {:?} -> {:?}", source, original_link);
+        let original_link = if original_link.is_relative() {
+            original_link
+        } else {
+            let new_relative = strip_prefix(&original_link, root_from)?;
+            root_to.join(new_relative)
+        };
+        create_symlink(&original_link, destination).with_context(|| {
+            format!("cannot create symlink {original_link:?} -> {destination:?}")
+        })?;
+    } else if file_type.is_file() {
+        trace!("copying file {:?} to {:?}", source, destination);
+        match fs_err::copy(source, destination) {
+            Ok(_) => {}
+            // Files such as Git's maintenance lock can disappear between the
+            // directory walk and the copy. Preserve that concurrent deletion.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                trace!("skipping file that disappeared while copying: {:?}", source);
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("cannot copy file {source:?} to {destination:?}"));
+            }
         }
     }
     Ok(())
@@ -119,6 +239,377 @@ mod tests {
     use crate::fs_utils::Utf8TempDir;
 
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn ignored_tracked_paths_preserve_whitespace() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        let paths = [" leading\tfile\n.txt", "trailing "];
+        for path in paths {
+            fs_err::write(repo_dir.join(path), "tracked contents").unwrap();
+        }
+        repo.add_all_and_commit("add tracked files").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "*\n").unwrap();
+        repo.git(&["add", "-f", ".gitignore"]).unwrap();
+        repo.commit("ignore files").unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        for path in paths {
+            assert_eq!(
+                fs_err::read_to_string(copied_dir.join(path)).unwrap(),
+                "tracked contents"
+            );
+        }
+        assert_eq!(
+            git_cmd::git_in_dir(&copied_dir, &["status", "--porcelain"]).unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn tracked_files_are_copied_with_split_and_sparse_indexes() {
+        for sparse in [false, true] {
+            let source = Utf8TempDir::new().unwrap();
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            fs_err::create_dir(repo_dir.join("examples")).unwrap();
+            fs_err::create_dir(repo_dir.join("excluded")).unwrap();
+            fs_err::write(repo_dir.join("examples/Cargo.lock"), "tracked lockfile").unwrap();
+            fs_err::write(repo_dir.join("excluded/tracked.txt"), "excluded contents").unwrap();
+            repo.add_all_and_commit("add tracked files").unwrap();
+            fs_err::write(repo_dir.join(".gitignore"), "examples/\n").unwrap();
+            repo.add_all_and_commit("ignore examples").unwrap();
+            if sparse {
+                repo.git(&[
+                    "sparse-checkout",
+                    "set",
+                    "--cone",
+                    "--sparse-index",
+                    "examples",
+                ])
+                .unwrap();
+                assert!(!repo_dir.join("excluded").exists());
+            } else {
+                repo.git(&["update-index", "--split-index"]).unwrap();
+            }
+            fs_err::write(repo_dir.join("examples/untracked"), "ignored").unwrap();
+            assert_eq!(repo.git(&["status", "--porcelain"]).unwrap(), "");
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            assert_eq!(
+                fs_err::read_to_string(copied_dir.join("examples/Cargo.lock")).unwrap(),
+                "tracked lockfile"
+            );
+            assert!(!copied_dir.join("examples/untracked").exists());
+            assert_eq!(copied_dir.join("excluded").exists(), !sparse);
+            assert_eq!(
+                git_cmd::git_in_dir(&copied_dir, &["status", "--porcelain"]).unwrap(),
+                ""
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignored_symlink_ancestors_preserve_tracked_deletions() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::create_dir_all(repo_dir.join("examples/nested")).unwrap();
+        fs_err::write(repo_dir.join("examples/nested/tracked.txt"), "committed").unwrap();
+        repo.add_all_and_commit("add tracked file").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "examples\n").unwrap();
+        repo.add_all_and_commit("ignore examples").unwrap();
+
+        let external_dir = source.path().join("external");
+        fs_err::create_dir_all(external_dir.join("nested")).unwrap();
+        fs_err::write(external_dir.join("nested/tracked.txt"), "external contents").unwrap();
+        fs_err::remove_dir_all(repo_dir.join("examples")).unwrap();
+        create_symlink("../external", repo_dir.join("examples")).unwrap();
+        let source_status = repo.git(&["status", "--porcelain"]).unwrap();
+        assert_eq!(source_status, "D examples/nested/tracked.txt");
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        assert_eq!(
+            copied_repo.git(&["status", "--porcelain"]).unwrap(),
+            source_status
+        );
+        assert!(!copied_dir.join("examples").exists());
+    }
+
+    #[test]
+    fn tracked_files_are_copied_despite_ignore_rules() {
+        for (ignore_file, pattern) in [
+            (".gitignore", "Cargo.lock"),
+            (".gitignore", "examples/"),
+            (".git/info/exclude", "examples/"),
+        ] {
+            let source = Utf8TempDir::new().unwrap();
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            fs_err::create_dir(repo_dir.join("examples")).unwrap();
+            for path in ["examples/Cargo.lock", "examples/space and [brackets].txt"] {
+                fs_err::write(repo_dir.join(path), "tracked contents").unwrap();
+            }
+            repo.add_all_and_commit("add tracked files").unwrap();
+            fs_err::write(repo_dir.join(ignore_file), format!("{pattern}\ntarget/\n")).unwrap();
+            if ignore_file == ".gitignore" {
+                repo.add_all_and_commit("ignore generated files").unwrap();
+            }
+            fs_err::create_dir(repo_dir.join("target")).unwrap();
+            fs_err::write(repo_dir.join("target/output"), "ignored").unwrap();
+            fs_err::create_dir(repo_dir.join("examples/untracked")).unwrap();
+            fs_err::write(repo_dir.join("examples/untracked/Cargo.lock"), "ignored").unwrap();
+            assert_eq!(repo.git(&["status", "--porcelain"]).unwrap(), "");
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+            assert_eq!(copied_repo.git(&["status", "--porcelain"]).unwrap(), "");
+            for path in ["examples/Cargo.lock", "examples/space and [brackets].txt"] {
+                assert_eq!(
+                    fs_err::read_to_string(copied_dir.join(path)).unwrap(),
+                    "tracked contents"
+                );
+            }
+            assert!(!copied_dir.join("target").exists());
+            assert!(!copied_dir.join("examples/untracked/Cargo.lock").exists());
+        }
+    }
+
+    #[test]
+    fn ignored_tracked_files_preserve_working_tree_changes() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::create_dir(repo_dir.join("examples")).unwrap();
+        fs_err::write(repo_dir.join("examples/Cargo.lock"), "committed").unwrap();
+        fs_err::write(repo_dir.join("examples/deleted"), "committed").unwrap();
+        create_symlink("missing", repo_dir.join("examples/link")).unwrap();
+        repo.add_all_and_commit("add tracked files").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "examples/\n").unwrap();
+        repo.add_all_and_commit("ignore examples").unwrap();
+        fs_err::write(repo_dir.join("examples/Cargo.lock"), "modified").unwrap();
+        fs_err::remove_file(repo_dir.join("examples/deleted")).unwrap();
+        fs_err::write(repo_dir.join("examples/staged"), "staged").unwrap();
+        repo.git(&["add", "-f", "examples/staged"]).unwrap();
+        fs_err::write(repo_dir.join("examples/staged"), "modified after staging").unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        assert_eq!(
+            copied_repo.git(&["status", "--porcelain"]).unwrap(),
+            repo.git(&["status", "--porcelain"]).unwrap()
+        );
+        assert_eq!(
+            fs_err::read_to_string(copied_dir.join("examples/Cargo.lock")).unwrap(),
+            "modified"
+        );
+        assert_eq!(
+            fs_err::read_to_string(copied_dir.join("examples/staged")).unwrap(),
+            "modified after staging"
+        );
+        assert!(!copied_dir.join("examples/deleted").exists());
+        assert_eq!(
+            fs_err::read_link(copied_dir.join("examples/link")).unwrap(),
+            Path::new("missing")
+        );
+    }
+
+    #[test]
+    fn tracked_directory_replaced_by_file_is_copied() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::create_dir(repo_dir.join("examples")).unwrap();
+        fs_err::write(repo_dir.join("examples/tracked.txt"), "committed").unwrap();
+        repo.add_all_and_commit("add tracked file").unwrap();
+        fs_err::remove_dir_all(repo_dir.join("examples")).unwrap();
+        fs_err::write(repo_dir.join("examples"), "replacement").unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        assert_eq!(
+            fs_err::read_to_string(copied_dir.join("examples")).unwrap(),
+            "replacement"
+        );
+        assert_eq!(
+            copied_repo.git(&["status", "--porcelain"]).unwrap(),
+            repo.git(&["status", "--porcelain"]).unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignored_tracked_file_replaced_by_directory_preserves_deletion() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        fs_err::write(repo_dir.join("generated"), "committed").unwrap();
+        repo.add_all_and_commit("add tracked file").unwrap();
+        fs_err::write(repo_dir.join(".gitignore"), "generated\n").unwrap();
+        repo.add_all_and_commit("ignore generated file").unwrap();
+
+        fs_err::remove_file(repo_dir.join("generated")).unwrap();
+        fs_err::create_dir(repo_dir.join("generated")).unwrap();
+        fs_err::write(repo_dir.join("generated/untracked"), "ignored").unwrap();
+        let external_file = source.path().join("external");
+        fs_err::write(&external_file, "external contents").unwrap();
+        create_symlink(&external_file, repo_dir.join("generated/link")).unwrap();
+        let source_status = repo.git(&["status", "--porcelain"]).unwrap();
+        assert_eq!(source_status, "D generated");
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        assert!(!copied_dir.join("generated").exists());
+        assert_eq!(
+            git_cmd::git_in_dir(&copied_dir, &["status", "--porcelain"]).unwrap(),
+            source_status
+        );
+    }
+
+    #[test]
+    fn file_deleted_during_copy_is_ignored() {
+        let source = Utf8TempDir::new().unwrap();
+        let source_file = source.path().join("transient.lock");
+        fs_err::write(&source_file, "lock").unwrap();
+        let file_type = fs_err::symlink_metadata(&source_file).unwrap().file_type();
+        fs_err::remove_file(&source_file).unwrap();
+
+        let destination = Utf8TempDir::new().unwrap();
+        let destination_file = destination.path().join("transient.lock");
+        copy_entry(
+            source.path(),
+            destination.path(),
+            &source_file,
+            &destination_file,
+            file_type,
+        )
+        .unwrap();
+
+        assert!(!destination_file.exists());
+    }
+
+    #[test]
+    fn ignored_tracked_submodule_files_are_copied() {
+        for pattern in ["", "examples/\n"] {
+            let source = Utf8TempDir::new().unwrap();
+            let submodule_dir = source.path().join("submodule");
+            fs_err::create_dir(&submodule_dir).unwrap();
+            let submodule = git_cmd::Repo::init(&submodule_dir);
+            fs_err::write(submodule_dir.join("Cargo.lock"), "tracked lockfile").unwrap();
+            create_symlink("missing", submodule_dir.join("link")).unwrap();
+            submodule.add_all_and_commit("add tracked files").unwrap();
+            fs_err::write(submodule_dir.join(".gitignore"), "Cargo.lock\ntarget/\n").unwrap();
+            submodule.add_all_and_commit("ignore build files").unwrap();
+
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            repo.git(&[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                submodule_dir.as_str(),
+                "examples",
+            ])
+            .unwrap();
+            fs_err::write(repo_dir.join(".gitignore"), pattern).unwrap();
+            repo.add_all_and_commit("add submodule").unwrap();
+            fs_err::create_dir(repo_dir.join("examples/target")).unwrap();
+            fs_err::write(repo_dir.join("examples/target/output"), "ignored").unwrap();
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+            assert_eq!(copied_repo.git(&["status", "--porcelain"]).unwrap(), "");
+            assert_eq!(
+                fs_err::read_to_string(copied_dir.join("examples/Cargo.lock")).unwrap(),
+                "tracked lockfile"
+            );
+            assert_eq!(
+                fs_err::read_link(copied_dir.join("examples/link")).unwrap(),
+                Path::new("missing")
+            );
+            assert!(!copied_dir.join("examples/target").exists());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn submodule_absolute_symlinks_preserve_outer_copy_root() {
+        for (repo_ignore, submodule_ignore) in [
+            ("", "link\n"),
+            ("examples/\n", "link\n"),
+            ("examples/\n", ""),
+        ] {
+            let source = Utf8TempDir::new().unwrap();
+            let repo_dir = source.path().join("repo");
+            fs_err::create_dir(&repo_dir).unwrap();
+            let repo = git_cmd::Repo::init(&repo_dir);
+            fs_err::write(repo_dir.join("shared"), "shared contents").unwrap();
+
+            let submodule_dir = source.path().join("submodule");
+            fs_err::create_dir(&submodule_dir).unwrap();
+            let submodule = git_cmd::Repo::init(&submodule_dir);
+            create_symlink(repo_dir.join("shared"), submodule_dir.join("link")).unwrap();
+            submodule
+                .add_all_and_commit("add absolute symlink")
+                .unwrap();
+            fs_err::write(submodule_dir.join(".gitignore"), submodule_ignore).unwrap();
+            submodule.add_all_and_commit("add ignore rules").unwrap();
+            repo.git(&[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                submodule_dir.as_str(),
+                "examples",
+            ])
+            .unwrap();
+            fs_err::write(repo_dir.join(".gitignore"), repo_ignore).unwrap();
+            repo.add_all_and_commit("add submodule and shared file")
+                .unwrap();
+            assert_eq!(repo.git(&["status", "--porcelain"]).unwrap(), "");
+
+            let destination = Utf8TempDir::new().unwrap();
+            copy_dir(&repo_dir, destination.path()).unwrap();
+            let copied_dir = destination.path().join("repo");
+            let copied_link = copied_dir.join("examples/link");
+            assert_eq!(
+                fs_err::read_link(&copied_link).unwrap(),
+                copied_dir.join("shared")
+            );
+            assert_eq!(
+                fs_err::read_to_string(copied_link).unwrap(),
+                "shared contents"
+            );
+        }
+    }
 
     #[test]
     fn git_metadata_is_copied_despite_ignore_rules() {
@@ -177,11 +668,8 @@ mod tests {
         let source = Utf8TempDir::new().unwrap();
         let repo_dir = source.path().join("repo");
         fs_err::create_dir(&repo_dir).unwrap();
-        fs_err::write(
-            repo_dir.join(".git"),
-            "gitdir: ../main/.git/worktrees/repo\n",
-        )
-        .unwrap();
+        let git_dir = source.path().join("git-metadata");
+        git_cmd::git_in_dir(&repo_dir, &["init", "--separate-git-dir", git_dir.as_str()]).unwrap();
         fs_err::write(repo_dir.join(".gitignore"), ".git\n").unwrap();
 
         let destination = Utf8TempDir::new().unwrap();
