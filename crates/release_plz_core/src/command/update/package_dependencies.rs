@@ -113,7 +113,7 @@ mod tests {
     use crate::test_utils::write_package;
 
     #[test]
-    fn workspace_declarations_only_update_packages_that_use_them() {
+    fn versionless_and_workspace_dependencies_to_update() {
         let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
         let root = directory.path();
         for (path, name, dependencies) in [
