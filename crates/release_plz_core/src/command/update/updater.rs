@@ -787,11 +787,11 @@ impl Updater<'_> {
         registry_package_files: &ReleasedPackageFiles,
     ) -> anyhow::Result<bool> {
         let registry_package_path = registry_package.package.package_path()?;
-        if crate::package_compare::is_readme_updated_with_released_package(
+        if crate::package_compare::is_readme_updated(
             &package.name,
             package_path,
             registry_package_path,
-            Some(&registry_package.package),
+            &registry_package.package,
         )? {
             debug!("{}: README updated", package.name);
             return Ok(false);
