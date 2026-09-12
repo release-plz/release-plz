@@ -1395,7 +1395,6 @@ mod tests {
                     })
                     .with_default_package_config(
                         ReleaseConfig::default()
-                            .with_publish(PublishConfig::enabled(!git_only))
                             .with_git_only(git_only)
                             .with_git_release(
                                 GitReleaseConfig::default().set_generate_release_notes(true),
