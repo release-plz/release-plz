@@ -440,6 +440,48 @@ mod tests {
     }
 
     #[test]
+    fn single_package_does_not_change_default_tag_template() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        git_cmd::Repo::init(root.path());
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two"] {
+            let package = root.path().join(name);
+            fs_err::create_dir_all(package.join("src")).unwrap();
+            fs_err::write(package.join("src/lib.rs"), "").unwrap();
+            fs_err::write(
+                package.join("Cargo.toml"),
+                format!("[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+            )
+            .unwrap();
+        }
+        let manifest = root.path().join("Cargo.toml");
+        let workspace =
+            get_project(&manifest, None, &HashSet::default(), true, None, None).expect("Should ok");
+        assert_eq!(workspace.workspace_packages().len(), 2);
+        assert!(workspace.contains_multiple_packages());
+        assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+
+        // Narrowing the packages with `--package` must keep the tag names that the
+        // whole workspace creates, otherwise the release tags could not be found.
+        let narrowed = get_project(
+            &manifest,
+            Some("one"),
+            &HashSet::default(),
+            true,
+            None,
+            None,
+        )
+        .expect("Should ok");
+        assert_eq!(narrowed.workspace_packages().len(), 1);
+        assert!(narrowed.contains_multiple_packages());
+        assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+    }
+
+    #[test]
     fn project_tag_template_none() {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
         let project = get_project(local_manifest, None, &HashSet::default(), true, None, None)
