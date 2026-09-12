@@ -189,11 +189,11 @@ impl Package {
         });
         let source = self.source.as_deref().map(normalized_source);
         let matches_source = |dependency: &cargo_metadata::Dependency| {
-            source
+            source.as_deref()
                 == dependency
                     .source
                     .as_ref()
-                    .map(|source| normalized_source(&source.repr))
+                    .map(|source| source.repr.as_str())
         };
         // A patch can replace the declared source. If no source matches, only
         // discard the dependency when every matching declaration is dev-only.
@@ -219,13 +219,14 @@ impl Package {
     }
 }
 
-/// Rewrite a source into a form that can be compared across Cargo's two spellings of it.
+/// Decode a lockfile source to match Cargo metadata's already-decoded spelling.
 fn normalized_source(source: &str) -> String {
     let source = source_without_revision(source);
     // Cargo percent-encodes Git query parameters when it writes a lockfile
     // (`?branch=feature%2Fx`, see `encodable_source_id`) but leaves them decoded in
     // `cargo metadata` output (`?branch=feature/x`, see `impl Serialize for SourceId`).
-    // Decode both so that a branch, tag or rev needing escaping still matches.
+    // Only decode lockfile sources: decoding metadata again would turn a literal
+    // '+' into a space or interpret a literal percent escape in a Git reference.
     match source.split_once('?') {
         Some((base, query)) => {
             let query: Vec<String> = url::form_urlencoded::parse(query.as_bytes())
@@ -596,6 +597,92 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
     }
 
     #[test]
+    fn workspace_lock_comparison_ignores_git_dev_dependency_with_plus_in_branch() {
+        let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let git_path = directory.path().join("git-dependency");
+        fs_err::create_dir_all(git_path.join("src")).unwrap();
+        let git_repo = git_cmd::Repo::init(&git_path);
+        fs_err::create_dir_all(git_path.join("leaf/src")).unwrap();
+        fs_err::write(git_path.join("src/lib.rs"), "").unwrap();
+        fs_err::write(git_path.join("leaf/src/lib.rs"), "").unwrap();
+        fs_err::write(
+            git_path.join("Cargo.toml"),
+            "[package]\nname = \"shared\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\
+             [dependencies]\ndev-leaf = { path = \"leaf\" }\n",
+        )
+        .unwrap();
+        let leaf_manifest = git_path.join("leaf/Cargo.toml");
+        let leaf = "[package]\nname = \"dev-leaf\"\nversion = \"1.0.0\"\nedition = \"2021\"\n";
+        fs_err::write(&leaf_manifest, leaf).unwrap();
+        git_repo.add_all_and_commit("initial dependency").unwrap();
+        git_cmd::git_in_dir(&git_path, &["checkout", "-b", "feature+next"]).unwrap();
+        let git_url = url::Url::from_directory_path(&git_path).unwrap();
+
+        let local = directory.path().join("local");
+        let released = directory.path().join("released");
+        for root in [&local, &released] {
+            fs_err::create_dir_all(root).unwrap();
+            fs_err::write(
+                root.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"binary\", \"library\", \"shared\"]\nresolver = \"2\"\n",
+            )
+            .unwrap();
+            for (name, dependencies) in [
+                (
+                    "binary",
+                    "[dependencies]\nlibrary = { path = \"../library\" }\n".to_owned(),
+                ),
+                (
+                    "library",
+                    format!(
+                        "[dependencies]\nshared = {{ path = \"../shared\" }}\n[dev-dependencies]\nshared-test = {{ package = \"shared\", git = {:?}, branch = \"feature+next\" }}\n",
+                        git_url.as_str()
+                    ),
+                ),
+                ("shared", String::new()),
+            ] {
+                let package = root.join(name);
+                fs_err::create_dir_all(package.join("src")).unwrap();
+                fs_err::write(package.join("src/lib.rs"), "").unwrap();
+                fs_err::write(
+                    package.join("Cargo.toml"),
+                    format!("[package]\nname = {name:?}\nversion = \"1.0.0\"\nedition = \"2021\"\n{dependencies}"),
+                )
+                .unwrap();
+            }
+        }
+        let run_cargo = |args: &[&str]| {
+            let output = crate::cargo::run_cargo(&local, args).unwrap();
+            assert!(output.status.success(), "{}", output.stderr);
+        };
+        run_cargo(&["generate-lockfile"]);
+        fs_err::copy(local.join("Cargo.lock"), released.join("Cargo.lock")).unwrap();
+        fs_err::write(&leaf_manifest, leaf.replace("1.0.0", "1.0.1")).unwrap();
+        git_repo
+            .add_all_and_commit("update dev dependency")
+            .unwrap();
+        run_cargo(&["update"]);
+
+        let local_metadata = cargo_utils::get_manifest_metadata(&local.join("Cargo.toml")).unwrap();
+        let released_metadata =
+            cargo_utils::get_manifest_metadata(&released.join("Cargo.toml")).unwrap();
+        assert!(
+            fs_err::read_to_string(local.join("Cargo.lock"))
+                .unwrap()
+                .contains("feature%2Bnext")
+        );
+        assert!(
+            !are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "binary")
+                .unwrap()
+        );
+        // The same update must still count for the package declaring the dev dependency.
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "library")
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn workspace_lock_comparison_distinguishes_dependency_sources() {
         let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
         fs_err::write(
@@ -626,12 +713,15 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
         let branch = "git = \"https://example.com/shared\", branch = \"next\"";
         // A branch name that Cargo percent-encodes in the lockfile but not in metadata.
         let escaped_branch = "git = \"https://example.com/shared\", branch = \"feature/next\"";
+        let plus_branch = "git = \"https://example.com/shared\", branch = \"feature+next\"";
         for (normal, dev) in [
             (git, other_git),
             (git, branch),
             (git, escaped_branch),
             (escaped_branch, git),
             (escaped_branch, branch),
+            (git, plus_branch),
+            (plus_branch, git),
             (registry, git),
             (git, registry),
             (path, git),
