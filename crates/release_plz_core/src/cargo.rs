@@ -14,13 +14,9 @@ pub(crate) fn read_package_metadata(
     manifest_path: &Utf8Path,
     package_name: &str,
 ) -> anyhow::Result<Package> {
-    cargo_utils::get_manifest_metadata(manifest_path)
-        .with_context(|| format!("cannot read metadata from {manifest_path}"))?
-        .workspace_packages()
-        .into_iter()
-        .find(|package| package.name == package_name)
-        .cloned()
-        .with_context(|| format!("cannot find package {package_name:?} in {manifest_path}"))
+    let metadata = cargo_utils::get_manifest_metadata(manifest_path)
+        .with_context(|| format!("cannot read metadata from {manifest_path}"))?;
+    cargo_utils::workspace_package(&metadata, package_name).cloned()
 }
 
 pub struct CargoRegistry {

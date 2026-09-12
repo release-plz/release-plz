@@ -38,11 +38,7 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
         (&mut local_lock, local_metadata),
         (&mut released_lock, released_metadata),
     ] {
-        let package = metadata
-            .workspace_packages()
-            .into_iter()
-            .find(|p| p.name == package_name)
-            .with_context(|| format!("cannot find workspace package {package_name:?}"))?;
+        let package = cargo_utils::workspace_package(metadata, package_name)?;
         lock.retain_package_dependencies(package_name, &package.version, &metadata.packages)
             .with_context(|| {
                 format!(

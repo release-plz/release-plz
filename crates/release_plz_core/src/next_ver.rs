@@ -103,17 +103,9 @@ impl ReconstructedWorkspace {
     }
 
     fn package(&self, package_name: &str) -> anyhow::Result<Package> {
-        self.metadata
-            .workspace_packages()
-            .into_iter()
-            .find(|p| p.name == package_name)
+        cargo_utils::workspace_package(&self.metadata, package_name)
             .cloned()
-            .with_context(|| {
-                format!(
-                    "cannot find package {package_name:?} in worktree at {:?}",
-                    self.worktree.path()
-                )
-            })
+            .with_context(|| format!("in worktree at {:?}", self.worktree.path()))
     }
 }
 
