@@ -23,6 +23,7 @@ use crate::{
     cargo::{CargoRegistry, CmdOutput, is_published, run_cargo_with_env, wait_until_published},
     changelog_parser,
     git::forge::GitClient,
+    next_ver::is_example_package,
     pr_parser::{Pr, prs_from_text},
 };
 
@@ -159,7 +160,7 @@ impl ReleaseRequest {
     /// When publishing is disabled, a `publish = false` package is still tagged and gets a
     /// Git release. Example packages are never released.
     fn is_releasable(&self, package: &Package) -> bool {
-        !package.is_example()
+        !is_example_package(package)
             && (package.is_publishable() || !self.is_publish_enabled(&package.name))
     }
 
