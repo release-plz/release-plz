@@ -410,8 +410,8 @@ When `git_only` is enabled:
   they don't need a cargo registry.
 
 :::warning
-`git_only` and `publish` cannot both be `true` for the same package: in git-only mode,
-`publish` defaults to skipped.
+In git-only mode `cargo publish` is skipped, so `publish` doesn't need to be set.
+Setting `publish = true` together with `git_only = true` is an error.
 :::
 
 Example:

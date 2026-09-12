@@ -147,8 +147,8 @@ impl Config {
 fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
     if git_only == Some(true) && publish == Some(true) {
         anyhow::bail!(
-            "Config options 'git_only' and 'publish' are mutually exclusive. \
-            When git_only is enabled, publish must be explicitly set to false."
+            "Config options 'git_only' and 'publish' are mutually exclusive: \
+            git-only packages are never published, so remove `publish = true`."
         );
     }
     Ok(())
