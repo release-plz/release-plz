@@ -1,8 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
-use cargo::core::{PackageId, Workspace};
-use cargo_metadata::{DependencyKind, Metadata, camino::Utf8Path, semver::Version};
+use cargo::{
+    core::{
+        PackageId, Workspace,
+        dependency::{DepKind, Patch},
+    },
+    util::CanonicalUrl,
+};
+use cargo_metadata::{Metadata, camino::Utf8Path, semver::Version};
 use serde::Deserialize;
 use tracing::debug;
 
@@ -51,6 +57,11 @@ fn workspace_lock_dependencies(
     let resolve = cargo::ops::load_pkg_lockfile(&workspace)
         .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
         .with_context(|| format!("workspace lockfile {lock_path:?} is missing"))?;
+    let patches = workspace
+        .root_patch()?
+        .into_iter()
+        .map(|(url, patches)| Ok((CanonicalUrl::new(&url)?, patches)))
+        .collect::<anyhow::Result<HashMap<_, _>>>()?;
     let package = cargo_utils::workspace_package(metadata, package_name)?;
     let root = resolve
         .iter()
@@ -67,17 +78,13 @@ fn workspace_lock_dependencies(
         if !reachable.insert(id) {
             continue;
         }
-        let workspace_package = metadata.packages.iter().find(|p| {
-            id.source_id().is_path()
-                && p.name.as_str() == id.name().as_str()
-                && &p.version == id.version()
-        });
+        let workspace_package = workspace.members().find(|p| p.package_id() == id);
         for (dependency, _) in resolve.deps(id) {
-            // A loaded lockfile has no dependency kinds. Workspace metadata tells
+            // A loaded lockfile has no dependency kinds. Workspace manifests tell
             // us which edges belong only to a dependency's tests.
             if id == root
                 || workspace_package
-                    .is_none_or(|package| !is_dev_only_dependency(dependency, package))
+                    .is_none_or(|package| !is_dev_only_dependency(dependency, package, &patches))
             {
                 pending.push(dependency);
             }
@@ -94,41 +101,25 @@ fn workspace_lock_dependencies(
     })
 }
 
-fn is_dev_only_dependency(id: PackageId, package: &cargo_metadata::Package) -> bool {
-    let matching = package.dependencies.iter().filter(|dependency| {
-        dependency.name == id.name().as_str()
-            && (dependency.req == cargo_metadata::semver::VersionReq::STAR
-                || dependency.req.matches(id.version()))
-    });
-    // Cargo decodes the lockfile's source and renders the same unescaped spelling
-    // used by metadata, preserving literal '+' and '%' in Git references.
-    let path = id.source_id().local_path();
-    let source = path
-        .is_none()
-        .then(|| id.source_id().without_precise().as_url().to_string());
-    let matches_source = |dependency: &cargo_metadata::Dependency| {
-        if let Some(path) = &path {
-            // Path sources all have `source = None` in metadata. Distinguish their
-            // directories so an unrelated dev dependency cannot hide a patched one.
-            dependency
-                .path
-                .as_ref()
-                .is_some_and(|dependency_path| dependency_path.as_std_path() == path)
-        } else {
-            source.as_deref()
-                == dependency
-                    .source
-                    .as_ref()
-                    .map(|source| source.repr.as_str())
-        }
-    };
-    // A patch can replace the declared source. If no source matches, only
-    // discard the dependency when every matching declaration is dev-only.
-    let has_source_match = matching.clone().any(matches_source);
-    let mut matching = matching
-        .filter(|d| !has_source_match || matches_source(d))
+fn is_dev_only_dependency(
+    id: PackageId,
+    package: &cargo::core::Package,
+    patches: &HashMap<CanonicalUrl, Vec<Patch>>,
+) -> bool {
+    let mut matching = package
+        .dependencies()
+        .iter()
+        .filter(|dependency| {
+            dependency.matches_id(id)
+                // A patched normal/build declaration can resolve to the same package
+                // as a dev declaration with a directly matching source. Include both.
+                || (dependency.matches_ignoring_source(id)
+                    && patches
+                        .get(dependency.source_id().canonical_url())
+                        .is_some_and(|patches| patches.iter().any(|patch| patch.dep.matches_id(id))))
+        })
         .peekable();
-    matching.peek().is_some() && matching.all(|d| d.kind == DependencyKind::Development)
+    matching.peek().is_some() && matching.all(|d| d.kind() == DepKind::Development)
 }
 
 fn read_lockfiles(
@@ -192,6 +183,7 @@ struct Package {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cargo_metadata::DependencyKind;
 
     /// Spell a source the way Cargo writes it into a lockfile: `encodable_source_id`
     /// percent-encodes the Git query parameters, while `cargo metadata` leaves them decoded.
@@ -576,18 +568,33 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
             let metadata = cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
             workspace_lock_dependencies(&metadata, "binary").unwrap()
         };
-        let released = read_dependencies();
-        for (leaf, should_update) in [("normal-leaf", true), ("dev-leaf", false)] {
-            let manifest = root.join(leaf).join("Cargo.toml");
-            let original = fs_err::read_to_string(&manifest).unwrap();
-            fs_err::write(&manifest, original.replace("1.0.0", "1.0.1")).unwrap();
-            let local = read_dependencies();
-            assert_eq!(
-                are_dependencies_updated(&local, &released),
-                should_update,
-                "updating {leaf}"
-            );
-            fs_err::write(manifest, original).unwrap();
+        for dependency_kind in ["dependencies", "build-dependencies"] {
+            // A dev declaration may resolve to the patched runtime package itself,
+            // or to a distinct package with the same name. Preserve only runtime edges.
+            for dev_path in ["shared", "test-shared"] {
+                fs_err::write(
+                    root.join("library/Cargo.toml"),
+                    format!(
+                        "[package]\nname = \"library\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+                         [{dependency_kind}]\nshared = \"1.0\"\n\
+                         [dev-dependencies]\nshared-test = {{ package = \"shared\", path = \"../{dev_path}\" }}\n"
+                    ),
+                )
+                .unwrap();
+                let released = read_dependencies();
+                for (leaf, should_update) in [("normal-leaf", true), ("dev-leaf", false)] {
+                    let manifest = root.join(leaf).join("Cargo.toml");
+                    let original = fs_err::read_to_string(&manifest).unwrap();
+                    fs_err::write(&manifest, original.replace("1.0.0", "1.0.1")).unwrap();
+                    let local = read_dependencies();
+                    assert_eq!(
+                        are_dependencies_updated(&local, &released),
+                        should_update,
+                        "updating {leaf} with {dependency_kind} and dev path {dev_path}"
+                    );
+                    fs_err::write(manifest, original).unwrap();
+                }
+            }
         }
     }
 
