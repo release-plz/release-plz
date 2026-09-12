@@ -40,7 +40,7 @@ impl DepTable {
     }
 
     /// The type of dependencies stored in this table.
-    pub fn kind(&self) -> DepKind {
+    pub(crate) fn kind(&self) -> DepKind {
         self.kind
     }
 

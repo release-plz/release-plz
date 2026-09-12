@@ -28,15 +28,15 @@ pub struct RegistryPackage {
 /// The workspace of a git-only package, reconstructed at the commit it was released from.
 #[derive(Debug)]
 pub(crate) struct ReleasedWorkspace {
-    pub metadata: Metadata,
+    pub(crate) metadata: Metadata,
     /// The `Cargo.lock` committed at the release, if any.
     ///
     /// Captured as soon as the workspace is reconstructed: cargo commands that run in the
     /// worktree afterwards (e.g. `cargo package --list`) can re-resolve a stale lockfile and
     /// rewrite it on disk.
-    pub lockfile: Option<String>,
+    pub(crate) lockfile: Option<String>,
     /// The commit the workspace was reconstructed from.
-    pub commit: String,
+    pub(crate) commit: String,
 }
 
 impl ReleasedWorkspace {

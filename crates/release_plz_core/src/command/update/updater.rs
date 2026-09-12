@@ -674,7 +674,7 @@ impl Updater<'_> {
             u32::MAX
         };
         // The released package doesn't change while we walk the local history.
-        let registry_package_files = ReleasedPackageFiles::default();
+        let released_package_files = ReleasedPackageFiles::default();
 
         for _ in 0..max_analyze_commits {
             let current_commit_message = repository.current_commit_message()?;
@@ -699,7 +699,7 @@ impl Updater<'_> {
                     package_path,
                     registry_package,
                     registry_package_path,
-                    &registry_package_files,
+                    &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 let commit_too_old = || {
                     is_commit_too_old(
@@ -775,7 +775,7 @@ impl Updater<'_> {
         package_path: &Utf8Path,
         registry_package: &RegistryPackage,
         registry_package_path: &Utf8Path,
-        registry_package_files: &ReleasedPackageFiles,
+        released_package_files: &ReleasedPackageFiles,
     ) -> anyhow::Result<bool> {
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
@@ -793,7 +793,7 @@ impl Updater<'_> {
         let are_packages_equal = crate::package_compare::are_packages_equal_cached(
             package_path,
             registry_package_path,
-            registry_package_files,
+            released_package_files,
         )
         .context("cannot compare packages")?;
         if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
