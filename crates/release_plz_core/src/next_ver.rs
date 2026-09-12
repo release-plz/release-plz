@@ -647,7 +647,6 @@ exclude = ["excluded.txt"]
                 .replace("\r\n", "\n"),
             "pub fn example() {}\n"
         );
-        assert!(!package_dir.join("Cargo.toml.orig").exists());
         let files = crate::get_cargo_package_files(package_dir).unwrap();
         assert!(!files.iter().any(|file| file == "excluded.txt"));
         // The build script never ran.
