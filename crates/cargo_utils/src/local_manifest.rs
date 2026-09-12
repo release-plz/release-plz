@@ -76,23 +76,16 @@ impl LocalManifest {
     /// Iterate over every dependency table of the manifest, including the
     /// `[workspace.dependencies]` templates.
     pub fn get_dependency_tables(&self) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
-        self.get_package_dependency_tables()
+        self.get_package_dependency_tables_with_kind()
+            .map(|(_, table)| table)
             .chain(self.get_workspace_dependency_table())
     }
 
-    /// Get the dependency tables of the package itself, including target-specific ones.
+    /// Get the dependency tables of the package itself, including target-specific ones,
+    /// with the kind of dependencies each table declares (e.g. [`DepKind::Development`]
+    /// for `[dev-dependencies]` and `[target.'cfg(..)'.dev-dependencies]`).
     /// `[workspace.dependencies]` entries are templates, not dependencies of this package,
     /// so they are left out.
-    pub fn get_package_dependency_tables(
-        &self,
-    ) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
-        self.get_package_dependency_tables_with_kind()
-            .map(|(_, table)| table)
-    }
-
-    /// Same as [`Self::get_package_dependency_tables`], but also yield the kind of
-    /// dependencies each table declares (e.g. [`DepKind::Development`] for
-    /// `[dev-dependencies]` and `[target.'cfg(..)'.dev-dependencies]`).
     pub fn get_package_dependency_tables_with_kind(
         &self,
     ) -> impl Iterator<Item = (DepKind, &dyn toml_edit::TableLike)> + '_ {
@@ -128,10 +121,7 @@ impl LocalManifest {
     ) -> impl Iterator<Item = &mut dyn toml_edit::TableLike> + '_ {
         let root = self.data.as_table_mut();
         root.iter_mut().flat_map(|(k, v)| {
-            if DepTable::KINDS
-                .iter()
-                .any(|kind| kind.kind_table() == k.get())
-            {
+            if dependency_table_kind(k.get()).is_some() {
                 v.as_table_like_mut().into_iter().collect::<Vec<_>>()
             } else if k == "workspace" {
                 v.as_table_like_mut()
@@ -152,10 +142,7 @@ impl LocalManifest {
                     .flat_map(|(_, v)| {
                         v.as_table_like_mut().into_iter().flat_map(|v| {
                             v.iter_mut().filter_map(|(k, v)| {
-                                if DepTable::KINDS
-                                    .iter()
-                                    .any(|kind| kind.kind_table() == k.get())
-                                {
+                                if dependency_table_kind(k.get()).is_some() {
                                     v.as_table_like_mut()
                                 } else {
                                     None
