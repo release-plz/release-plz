@@ -258,7 +258,9 @@ pub(crate) fn is_readme_updated_with_released_package(
 }
 
 /// Whether the local README differs from `released_readme`.
-/// A missing README on either side counts as unchanged.
+///
+/// Without a local README there is nothing to release, so it counts as unchanged.
+/// A local README that is missing on the released side counts as updated.
 fn compare_readme(
     package_name: &str,
     local_package_path: &Utf8Path,
