@@ -43,7 +43,13 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
             .into_iter()
             .find(|p| p.name == package_name)
             .with_context(|| format!("cannot find workspace package {package_name:?}"))?;
-        lock.retain_package_dependencies(package_name, &package.version, &metadata.packages);
+        lock.retain_package_dependencies(package_name, &package.version, &metadata.packages)
+            .with_context(|| {
+                format!(
+                    "cannot scope lockfile {:?} to package {package_name:?}",
+                    metadata.workspace_root.join("Cargo.lock")
+                )
+            })?;
     }
     Ok(are_dependencies_updated(&local_lock, &released_lock))
 }
@@ -114,13 +120,23 @@ impl Lockfile {
         package_name: &str,
         package_version: &Version,
         workspace_packages: &[cargo_metadata::Package],
-    ) {
+    ) -> anyhow::Result<()> {
         // An excluded path dependency can share a workspace member's name at a
         // different version. Only the requested member is a traversal root.
-        let root = self.packages.iter().position(|p| {
-            p.name == package_name && p.version == *package_version && p.source.is_none()
-        });
-        let mut pending: Vec<_> = root.into_iter().collect();
+        // A missing root means the lockfile is stale with respect to the manifest:
+        // silently retaining nothing would report every dependency as unchanged.
+        let root = self
+            .packages
+            .iter()
+            .position(|p| {
+                p.name == package_name && p.version == *package_version && p.source.is_none()
+            })
+            .with_context(|| {
+                format!(
+                    "cannot find package {package_name:?} {package_version} in the lockfile.                      Hint: run `cargo check` to update the lockfile and commit it."
+                )
+            })?;
+        let mut pending = vec![root];
         let mut reachable = HashSet::new();
         let packages_by_name = PackagesByName::new(&self.packages);
         while let Some(index) = pending.pop() {
@@ -136,7 +152,7 @@ impl Lockfile {
                     continue;
                 };
                 let dependency = &self.packages[dependency_index];
-                if Some(index) == root
+                if index == root
                     || workspace_package.is_none_or(|workspace_package| {
                         !dependency.is_dev_only_dependency(workspace_package)
                     })
@@ -151,6 +167,7 @@ impl Lockfile {
             index += 1;
             keep
         });
+        Ok(())
     }
 }
 
@@ -271,9 +288,28 @@ mod tests {
                 .unwrap()
                 .version
                 .clone();
-            lock.retain_package_dependencies(package, &version, &[]);
+            lock.retain_package_dependencies(package, &version, &[])
+                .unwrap();
         }
         are_dependencies_updated(&local, &released)
+    }
+
+    #[test]
+    fn workspace_lock_comparison_fails_on_stale_lockfile() {
+        // The manifest says 0.2.0, but the committed lockfile still has 0.1.0.
+        // Reporting "no dependency updates" here would silently skip a release.
+        let mut lock: Lockfile = toml::from_str(
+            "[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"dep\"]\n\
+             [[package]]\nname = \"dep\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let error = lock
+            .retain_package_dependencies("app", &Version::new(0, 2, 0), &[])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("cannot find package \"app\" 0.2.0"), "{error}");
+        // The lockfile is left untouched, so no caller can mistake it for an empty graph.
+        assert_eq!(lock.packages.len(), 2);
     }
 
     #[test]
@@ -615,22 +651,22 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                 "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}\n"
             ));
             let mut released: Lockfile = toml::from_str(&lockfile).unwrap();
-            released.retain_package_dependencies(
-                "binary",
-                &Version::new(1, 0, 0),
-                &metadata.packages,
-            );
+            released
+                .retain_package_dependencies("binary", &Version::new(1, 0, 0), &metadata.packages)
+                .unwrap();
             for (leaf, should_update) in [("dev-leaf", false), ("normal-leaf", true)] {
                 let changed = lockfile.replace(
                     &format!("name = {leaf:?}\nversion = \"1.0.0\""),
                     &format!("name = {leaf:?}\nversion = \"1.0.1\""),
                 );
                 let mut local: Lockfile = toml::from_str(&changed).unwrap();
-                local.retain_package_dependencies(
-                    "binary",
-                    &Version::new(1, 0, 0),
-                    &metadata.packages,
-                );
+                local
+                    .retain_package_dependencies(
+                        "binary",
+                        &Version::new(1, 0, 0),
+                        &metadata.packages,
+                    )
+                    .unwrap();
                 assert_eq!(
                     are_dependencies_updated(&local, &released),
                     should_update,
