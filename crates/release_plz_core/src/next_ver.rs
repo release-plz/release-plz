@@ -87,7 +87,9 @@ fn get_temp_worktree_and_repo(
 }
 
 struct ReconstructedWorkspace {
-    worktree: GitWorkTree,
+    /// Kept alive because the metadata paths point into the worktree, which is
+    /// cleaned up on drop.
+    _worktree: GitWorkTree,
     released: Arc<ReleasedWorkspace>,
 }
 
@@ -104,15 +106,13 @@ impl ReconstructedWorkspace {
         // Snapshot the committed lockfile before any other cargo command runs in the worktree.
         let released = ReleasedWorkspace::new(metadata, commit)?;
         Ok(Self {
-            worktree,
+            _worktree: worktree,
             released: Arc::new(released),
         })
     }
 
     fn package(&self, package_name: &str) -> anyhow::Result<Package> {
-        cargo_utils::workspace_package(&self.released.metadata, package_name)
-            .cloned()
-            .with_context(|| format!("in worktree at {:?}", self.worktree.path()))
+        cargo_utils::workspace_package(&self.released.metadata, package_name).cloned()
     }
 }
 
