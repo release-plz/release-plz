@@ -102,14 +102,25 @@ fn is_dev_only_dependency(id: PackageId, package: &cargo_metadata::Package) -> b
     });
     // Cargo decodes the lockfile's source and renders the same unescaped spelling
     // used by metadata, preserving literal '+' and '%' in Git references.
-    let source =
-        (!id.source_id().is_path()).then(|| id.source_id().without_precise().as_url().to_string());
+    let path = id.source_id().local_path();
+    let source = path
+        .is_none()
+        .then(|| id.source_id().without_precise().as_url().to_string());
     let matches_source = |dependency: &cargo_metadata::Dependency| {
-        source.as_deref()
-            == dependency
-                .source
+        if let Some(path) = &path {
+            // Path sources all have `source = None` in metadata. Distinguish their
+            // directories so an unrelated dev dependency cannot hide a patched one.
+            dependency
+                .path
                 .as_ref()
-                .map(|source| source.repr.as_str())
+                .is_some_and(|dependency_path| dependency_path.as_std_path() == path)
+        } else {
+            source.as_deref()
+                == dependency
+                    .source
+                    .as_ref()
+                    .map(|source| source.repr.as_str())
+        }
     };
     // A patch can replace the declared source. If no source matches, only
     // discard the dependency when every matching declaration is dev-only.
@@ -504,6 +515,79 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                 should_update,
                 "updating {name} {version}"
             );
+        }
+    }
+
+    #[test]
+    fn workspace_lock_comparison_preserves_patched_path_dependencies() {
+        let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let root = directory.path();
+        fs_err::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"binary\", \"library\", \"shared\", \"normal-leaf\", \"dev-leaf\"]\n\
+             exclude = [\"test-shared\"]\nresolver = \"2\"\n\
+             [patch.crates-io]\nshared = { path = \"shared\" }\n",
+        )
+        .unwrap();
+        for (path, name, version, dependencies) in [
+            (
+                "binary",
+                "binary",
+                "0.1.0",
+                "[dependencies]\nlibrary = { path = \"../library\" }\n",
+            ),
+            (
+                "library",
+                "library",
+                "0.1.0",
+                "[dependencies]\nshared = \"1.0\"\n\
+                 [dev-dependencies]\nshared-test = { package = \"shared\", path = \"../test-shared\" }\n",
+            ),
+            (
+                "shared",
+                "shared",
+                "1.0.0",
+                "[dependencies]\nnormal-leaf = { path = \"../normal-leaf\" }\n",
+            ),
+            (
+                "test-shared",
+                "shared",
+                "2.0.0",
+                "[workspace]\n[dependencies]\ndev-leaf = { path = \"../dev-leaf\" }\n",
+            ),
+            ("normal-leaf", "normal-leaf", "1.0.0", ""),
+            ("dev-leaf", "dev-leaf", "1.0.0", ""),
+        ] {
+            let package = root.join(path);
+            fs_err::create_dir_all(package.join("src")).unwrap();
+            fs_err::write(package.join("src/lib.rs"), "").unwrap();
+            fs_err::write(
+                package.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2021\"\n{dependencies}"
+                ),
+            )
+            .unwrap();
+        }
+        let read_dependencies = || {
+            let output =
+                crate::cargo::run_cargo(root, &["generate-lockfile", "--offline"]).unwrap();
+            assert!(output.status.success(), "{}", output.stderr);
+            let metadata = cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
+            workspace_lock_dependencies(&metadata, "binary").unwrap()
+        };
+        let released = read_dependencies();
+        for (leaf, should_update) in [("normal-leaf", true), ("dev-leaf", false)] {
+            let manifest = root.join(leaf).join("Cargo.toml");
+            let original = fs_err::read_to_string(&manifest).unwrap();
+            fs_err::write(&manifest, original.replace("1.0.0", "1.0.1")).unwrap();
+            let local = read_dependencies();
+            assert_eq!(
+                are_dependencies_updated(&local, &released),
+                should_update,
+                "updating {leaf}"
+            );
+            fs_err::write(manifest, original).unwrap();
         }
     }
 
