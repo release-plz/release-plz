@@ -73,38 +73,23 @@ impl LocalManifest {
         fs_err::write(&self.path, new_contents_bytes).context("Failed to write updated Cargo.toml")
     }
 
+    /// Iterate over every dependency table of the manifest, including the
+    /// `[workspace.dependencies]` templates.
     pub fn get_dependency_tables(&self) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
-        self.dependency_tables(true)
+        self.get_package_dependency_tables()
+            .chain(self.get_workspace_dependency_table())
     }
 
-    /// Get package dependency tables, including target-specific dependencies.
-    /// Workspace declarations are templates and are not dependencies of the root package.
+    /// Get the dependency tables of the package itself, including target-specific ones.
+    /// `[workspace.dependencies]` entries are templates, not dependencies of this package,
+    /// so they are left out.
     pub fn get_package_dependency_tables(
         &self,
     ) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
-        self.dependency_tables(false)
-    }
-
-    fn dependency_tables(
-        &self,
-        include_workspace: bool,
-    ) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
         let root = self.data.as_table();
-        root.iter().flat_map(move |(key, v)| {
+        root.iter().flat_map(|(key, v)| {
             if DepTable::KINDS.iter().any(|kind| kind.kind_table() == key) {
                 v.as_table_like().into_iter().collect::<Vec<_>>()
-            } else if include_workspace && key == "workspace" {
-                v.as_table_like()
-                    .unwrap()
-                    .iter()
-                    .filter_map(|(k, v)| {
-                        if k == "dependencies" {
-                            v.as_table_like()
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
             } else if key == "target" {
                 v.as_table_like()
                     .unwrap()
