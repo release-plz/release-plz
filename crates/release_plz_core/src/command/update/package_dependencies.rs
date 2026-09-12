@@ -33,13 +33,8 @@ impl PackageDependencies for Package {
         for (p, next_ver) in updated_packages {
             let canonical_path = p.canonical_path()?;
             // Find the dependencies that have the same path as the updated package.
-            // Dev dependencies are included on purpose, and this is deliberately
-            // different from `lock_compare`, which skips them. Here the question is
-            // "does this package need a release because something it declares was
-            // updated": rewriting the version requirement of a dev dependency changes
-            // the package, so a versioned dev dependency on a bumped package is such
-            // a change. A versionless dev dependency has nothing to rewrite and, like
-            // in `lock_compare`, is not part of what the package ships, so it is not.
+            // Dev dependencies are included on purpose: `should_update_dependency`
+            // decides which of them count.
             let matching_deps = package_manifest
                 .get_package_dependency_tables_with_kind()
                 .flat_map(|(kind, t)| {
