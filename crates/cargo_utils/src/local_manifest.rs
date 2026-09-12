@@ -11,7 +11,7 @@ use cargo_metadata::{
 };
 use semver::Version;
 
-use crate::{CARGO_TOML, DepTable, Manifest, to_utf8_pathbuf};
+use crate::{CARGO_TOML, DepKind, DepTable, Manifest, to_utf8_pathbuf};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum FeatureStatus {
@@ -73,22 +73,28 @@ impl LocalManifest {
         fs_err::write(&self.path, new_contents_bytes).context("Failed to write updated Cargo.toml")
     }
 
+    /// Iterate over every dependency table of the manifest, including the
+    /// `[workspace.dependencies]` templates.
     pub fn get_dependency_tables(&self) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
+        self.get_package_dependency_tables()
+            .map(|(_, table)| table)
+            .chain(self.get_workspace_dependency_table())
+    }
+
+    /// Get the dependency tables of the package itself, including target-specific ones,
+    /// with the kind of dependencies each table declares (e.g. [`DepKind::Development`]
+    /// for `[dev-dependencies]` and `[target.'cfg(..)'.dev-dependencies]`).
+    /// `[workspace.dependencies]` entries are templates, not dependencies of this package,
+    /// so they are left out.
+    pub fn get_package_dependency_tables(
+        &self,
+    ) -> impl Iterator<Item = (DepKind, &dyn toml_edit::TableLike)> + '_ {
         let root = self.data.as_table();
         root.iter().flat_map(|(key, v)| {
-            if DepTable::KINDS.iter().any(|kind| kind.kind_table() == key) {
-                v.as_table_like().into_iter().collect::<Vec<_>>()
-            } else if key == "workspace" {
+            if let Some(kind) = dependency_table_kind(key) {
                 v.as_table_like()
-                    .unwrap()
-                    .iter()
-                    .filter_map(|(k, v)| {
-                        if k == "dependencies" {
-                            v.as_table_like()
-                        } else {
-                            None
-                        }
-                    })
+                    .map(|table| (kind, table))
+                    .into_iter()
                     .collect::<Vec<_>>()
             } else if key == "target" {
                 v.as_table_like()
@@ -97,11 +103,8 @@ impl LocalManifest {
                     .flat_map(|(_, v)| {
                         v.as_table_like().into_iter().flat_map(|v| {
                             v.iter().filter_map(|(k, v)| {
-                                if DepTable::KINDS.iter().any(|kind| kind.kind_table() == k) {
-                                    v.as_table_like()
-                                } else {
-                                    None
-                                }
+                                let kind = dependency_table_kind(k)?;
+                                v.as_table_like().map(|table| (kind, table))
                             })
                         })
                     })
@@ -118,10 +121,7 @@ impl LocalManifest {
     ) -> impl Iterator<Item = &mut dyn toml_edit::TableLike> + '_ {
         let root = self.data.as_table_mut();
         root.iter_mut().flat_map(|(k, v)| {
-            if DepTable::KINDS
-                .iter()
-                .any(|kind| kind.kind_table() == k.get())
-            {
+            if dependency_table_kind(k.get()).is_some() {
                 v.as_table_like_mut().into_iter().collect::<Vec<_>>()
             } else if k == "workspace" {
                 v.as_table_like_mut()
@@ -142,10 +142,7 @@ impl LocalManifest {
                     .flat_map(|(_, v)| {
                         v.as_table_like_mut().into_iter().flat_map(|v| {
                             v.iter_mut().filter_map(|(k, v)| {
-                                if DepTable::KINDS
-                                    .iter()
-                                    .any(|kind| kind.kind_table() == k.get())
-                                {
+                                if dependency_table_kind(k.get()).is_some() {
                                     v.as_table_like_mut()
                                 } else {
                                     None
@@ -320,4 +317,12 @@ pub fn canonical_local_manifest(local_manifest: &Path) -> anyhow::Result<Utf8Pat
     }
     let local_manifest = to_utf8_pathbuf(local_manifest)?;
     Ok(local_manifest)
+}
+
+/// The kind of dependencies declared by a table named `key`, if it is a dependency table.
+fn dependency_table_kind(key: &str) -> Option<DepKind> {
+    DepTable::KINDS
+        .iter()
+        .find(|table| table.kind_table() == key)
+        .map(DepTable::kind)
 }
