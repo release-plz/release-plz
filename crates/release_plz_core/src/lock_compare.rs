@@ -79,14 +79,16 @@ fn workspace_lock_dependencies(
             continue;
         }
         let workspace_package = workspace.members().find(|p| p.package_id() == id);
-        for (dependency, _) in resolve.deps(id) {
+        for (dependency, _) in resolve.deps_not_replaced(id) {
             // A loaded lockfile has no dependency kinds. Workspace manifests tell
-            // us which edges belong only to a dependency's tests.
+            // us which edges belong only to a dependency's tests. Classify the
+            // original edge before following `[replace]`, so its declared source
+            // is not confused with a dev alias pointing at the replacement.
             if id == root
                 || workspace_package
                     .is_none_or(|package| !is_dev_only_dependency(dependency, package, &patches))
             {
-                pending.push(dependency);
+                pending.push(resolve.replacement(dependency).unwrap_or(dependency));
             }
         }
     }
@@ -595,6 +597,92 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                     fs_err::write(manifest, original).unwrap();
                 }
             }
+        }
+    }
+
+    #[test]
+    fn workspace_lock_comparison_preserves_replaced_path_dependencies() {
+        // Cargo records the original registry edge and its replacement separately.
+        let lockfile = r#"
+version = 4
+[[package]]
+name = "app"
+version = "1.0.0"
+dependencies = ["library"]
+[[package]]
+name = "library"
+version = "1.0.0"
+dependencies = ["shared 1.0.0", "shared 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)"]
+[[package]]
+name = "shared"
+version = "1.0.0"
+dependencies = ["leaf"]
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+replace = "shared 1.0.0"
+[[package]]
+name = "leaf"
+version = "1.0.0"
+"#;
+        let updated_lockfile = lockfile.replace(
+            "name = \"leaf\"\nversion = \"1.0.0\"",
+            "name = \"leaf\"\nversion = \"1.0.1\"",
+        );
+        for (kind, should_update) in [
+            ("dependencies", true),
+            ("build-dependencies", true),
+            ("dev-dependencies", false),
+        ] {
+            let read_dependencies = |lockfile: &str| {
+                let (directory, metadata) = workspace_for_lock(lockfile);
+                let root = directory.path();
+                let leaf = cargo_utils::workspace_package(&metadata, "leaf").unwrap();
+                let dev_table = if kind == "dev-dependencies" {
+                    ""
+                } else {
+                    "[dev-dependencies]\n"
+                };
+                for (manifest, declarations) in [
+                    (
+                        "Cargo.toml",
+                        "[replace]\n\"shared:1.0.0\" = { path = \"shared-1.0.0\" }\n".to_owned(),
+                    ),
+                    (
+                        "app-1.0.0/Cargo.toml",
+                        "[dependencies]\nlibrary = { path = \"../library-1.0.0\" }\n".to_owned(),
+                    ),
+                    (
+                        "library-1.0.0/Cargo.toml",
+                        format!(
+                            "[{kind}]\nshared = \"=1.0.0\"\n\
+                             {dev_table}shared-test = {{ package = \"shared\", path = \"../shared-1.0.0\" }}\n"
+                        ),
+                    ),
+                    (
+                        "shared-1.0.0/Cargo.toml",
+                        format!(
+                            "[dependencies]\nleaf = {{ path = \"../leaf-{}\" }}\n",
+                            leaf.version
+                        ),
+                    ),
+                ] {
+                    let manifest = root.join(manifest);
+                    let contents = fs_err::read_to_string(&manifest).unwrap();
+                    fs_err::write(manifest, format!("{contents}{declarations}")).unwrap();
+                }
+                let metadata =
+                    cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
+                workspace_lock_dependencies(&metadata, "app").unwrap()
+            };
+            let released = read_dependencies(lockfile);
+            let local = read_dependencies(&updated_lockfile);
+            assert_eq!(
+                are_dependencies_updated(&local, &released),
+                should_update,
+                "updating a replacement's dependency through {kind}"
+            );
         }
     }
 
