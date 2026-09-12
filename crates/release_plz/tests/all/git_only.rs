@@ -1331,6 +1331,15 @@ git_release_name = "{{ package }}-v{{ version }}"
     let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
     assert!(pr_body.contains("`mybin`: 0.1.0 -> 0.1.1"));
     assert!(pr_body.contains("update mybin readme"));
+
+    // The merged `[[package]]` override carries `publish = true` for mybin, which has
+    // `publish = false` in its manifest. Git-only packages are never published, so
+    // `release` must not reject that and must tag mybin.
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("mybin-v0.1.1").unwrap());
 }
 
 /// A workspace whose packages inherit `publish = false`, the README and a path-only
