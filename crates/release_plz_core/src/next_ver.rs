@@ -452,14 +452,16 @@ pub trait Publishable {
 impl Publishable for Package {
     /// Return true if the package can be published to at least one register (e.g. crates.io).
     fn is_publishable(&self) -> bool {
-        // `publish.is_empty()` is:
-        // - true: when `publish` in Cargo.toml is `[]` or `false`.
-        // - false: when the package can be published only to certain registries.
-        //          E.g. when `publish` in Cargo.toml is `["my-reg"]` or `true`.
-        // When `publish` is missing, the package can be published anywhere, unless it's
-        // an example.
-        let res =
-            !is_unpublished_example(self) && self.publish.as_ref().is_none_or(|p| !p.is_empty());
+        let res = if let Some(publish) = &self.publish {
+            // `publish.is_empty()` is:
+            // - true: when `publish` in Cargo.toml is `[]` or `false`.
+            // - false: when the package can be published only to certain registries.
+            //          E.g. when `publish` in Cargo.toml is `["my-reg"]` or `true`.
+            !publish.is_empty()
+        } else {
+            // If it's not an example, the package can be published anywhere
+            !is_example_package(self)
+        };
         trace!("package {} is publishable: {res}", self.name);
         res
     }
@@ -479,7 +481,7 @@ pub(crate) fn takes_part_in_release(package: &Package, git_only: bool) -> bool {
 /// An example-only package that doesn't set `publish` is not a crate anyone depends on,
 /// so it never takes part in a release, not even in git-only mode.
 /// Setting `publish` explicitly opts the package in.
-pub(crate) fn is_unpublished_example(package: &Package) -> bool {
+fn is_unpublished_example(package: &Package) -> bool {
     package.publish.is_none() && is_example_package(package)
 }
 
