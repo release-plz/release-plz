@@ -1480,6 +1480,58 @@ mod tests {
         assert_eq!(non_overriden_maybe_registry_index, None);
     }
 
+    fn package_with(publish: Option<&[String]>, target_kinds: &[&str]) -> Package {
+        let targets: Vec<_> = target_kinds
+            .iter()
+            .map(|kind| {
+                serde_json::json!({
+                    "name": "t", "kind": [kind], "crate_types": [kind],
+                    "src_path": "/src/lib.rs", "edition": "2021", "doctest": false,
+                    "test": true, "doc": true,
+                })
+            })
+            .collect();
+        serde_json::from_value(serde_json::json!({
+            "name": "pkg", "version": "0.1.0", "id": "pkg", "publish": publish,
+            "dependencies": [], "features": {}, "targets": targets,
+            "manifest_path": "pkg/Cargo.toml",
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn only_packages_that_can_be_released_are_released() {
+        let publishable = package_with(None, &["lib"]);
+        // `publish = false` / `publish = []` in Cargo.toml.
+        let unpublishable = package_with(Some(&[]), &["lib"]);
+        // A package whose only targets are examples is not a crate anyone depends on.
+        let example = package_with(None, &["example"]);
+
+        for (publish_enabled, expected) in [
+            // Publishing on: only the package that can actually be published.
+            (true, vec!["publishable"]),
+            // Publishing off: `publish = false` packages are still tagged and get a
+            // Git release, but example packages are still never released.
+            (false, vec!["publishable", "unpublishable"]),
+        ] {
+            let request =
+                ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
+                    publish: PublishConfig::enabled(publish_enabled),
+                    ..Default::default()
+                });
+            let released: Vec<_> = [
+                ("publishable", &publishable),
+                ("unpublishable", &unpublishable),
+                ("example", &example),
+            ]
+            .into_iter()
+            .filter(|(_, package)| request.is_releasable(package))
+            .map(|(name, _)| name)
+            .collect();
+            assert_eq!(released, expected, "publish enabled: {publish_enabled}");
+        }
+    }
+
     #[test]
     fn check_publish_fields_works() {
         // fake_metadata() has `publish = false` in the Cargo.toml
