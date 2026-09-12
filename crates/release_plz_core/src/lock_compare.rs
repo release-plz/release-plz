@@ -191,12 +191,13 @@ impl Package {
                 && (dependency.req == cargo_metadata::semver::VersionReq::STAR
                     || dependency.req.matches(&self.version))
         });
+        let source = self.source.as_deref().map(normalized_source);
         let matches_source = |dependency: &cargo_metadata::Dependency| {
-            self.source.as_deref().map(source_without_revision)
+            source
                 == dependency
                     .source
                     .as_ref()
-                    .map(|source| source_without_revision(&source.repr))
+                    .map(|source| normalized_source(&source.repr))
         };
         // A patch can replace the declared source. If no source matches, only
         // discard the dependency when every matching declaration is dev-only.
@@ -212,10 +213,31 @@ impl Package {
         version.is_none_or(|version| version == self.version.to_string())
             && source.is_none_or(|source| {
                 self.source.as_deref().is_some_and(|s| {
-                    source.strip_prefix('(').and_then(|s| s.strip_suffix(')'))
-                        == Some(source_without_revision(s))
+                    source
+                        .strip_prefix('(')
+                        .and_then(|s| s.strip_suffix(')'))
+                        .map(normalized_source)
+                        == Some(normalized_source(s))
                 })
             })
+    }
+}
+
+/// Rewrite a source into a form that can be compared across Cargo's two spellings of it.
+fn normalized_source(source: &str) -> String {
+    let source = source_without_revision(source);
+    // Cargo percent-encodes Git query parameters when it writes a lockfile
+    // (`?branch=feature%2Fx`, see `encodable_source_id`) but leaves them decoded in
+    // `cargo metadata` output (`?branch=feature/x`, see `impl Serialize for SourceId`).
+    // Decode both so that a branch, tag or rev needing escaping still matches.
+    match source.split_once('?') {
+        Some((base, query)) => {
+            let query: Vec<String> = url::form_urlencoded::parse(query.as_bytes())
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect();
+            format!("{base}?{}", query.join("&"))
+        }
+        None => source.to_owned(),
     }
 }
 
@@ -277,6 +299,17 @@ impl<'a> PackagesByName<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Spell a source the way Cargo writes it into a lockfile: `encodable_source_id`
+    /// percent-encodes the Git query parameters, while `cargo metadata` leaves them decoded.
+    fn encoded_source(source: &str) -> String {
+        match source.split_once('?') {
+            Some((base, query)) => {
+                format!("{base}?{}", query.replace('+', "%2B").replace('/', "%2F"))
+            }
+            None => source.to_owned(),
+        }
+    }
 
     fn compare_workspace_locks(local: &Utf8Path, released: &Utf8Path, package: &str) -> bool {
         let (mut local, mut released) = read_lockfiles(local, released).unwrap().unwrap();
@@ -592,9 +625,14 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
         let git = "git = \"https://example.com/shared\"";
         let other_git = "git = \"https://example.com/other\"";
         let branch = "git = \"https://example.com/shared\", branch = \"next\"";
+        // A branch name that Cargo percent-encodes in the lockfile but not in metadata.
+        let escaped_branch = "git = \"https://example.com/shared\", branch = \"feature/next\"";
         for (normal, dev) in [
             (git, other_git),
             (git, branch),
+            (git, escaped_branch),
+            (escaped_branch, git),
+            (escaped_branch, branch),
             (registry, git),
             (git, registry),
             (path, git),
@@ -630,9 +668,11 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                     "normal-leaf"
                 };
                 let source = dependency.source.as_ref().map(|s| s.repr.as_str());
+                // Cargo writes dependency IDs with the same encoding it uses for the
+                // package's own `source`, minus the resolved revision.
                 dependency_ids.push(source.map_or_else(
                     || "shared 1.0.0".to_string(),
-                    |source| format!("shared 1.0.0 ({source})"),
+                    |source| format!("shared 1.0.0 ({})", encoded_source(source)),
                 ));
                 lockfile.push_str("[[package]]\nname = \"shared\"\nversion = \"1.0.0\"\n");
                 if let Some(source) = source {
@@ -641,7 +681,10 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                     } else {
                         ""
                     };
-                    lockfile.push_str(&format!("source = \"{source}{precise}\"\n"));
+                    lockfile.push_str(&format!(
+                        "source = \"{}{precise}\"\n",
+                        encoded_source(source)
+                    ));
                 }
                 lockfile.push_str(&format!(
                     "dependencies = [{leaf:?}]\n[[package]]\nname = {leaf:?}\nversion = \"1.0.0\"\n"
