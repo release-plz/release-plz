@@ -791,7 +791,6 @@ impl Updater<'_> {
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
             package_path,
-            registry_package_path,
             &registry_package.package,
         )? {
             debug!("{}: README updated", package.name);

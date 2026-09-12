@@ -8,6 +8,7 @@ use secrecy::SecretString;
 use tracing::debug;
 
 use crate::{
+    PackagePath as _,
     cargo::{read_package_metadata, run_cargo_with_env},
     fs_utils,
 };
@@ -232,33 +233,36 @@ pub fn is_readme_updated(
     local_package_path: &Utf8Path,
     registry_package_path: &Utf8Path,
 ) -> anyhow::Result<bool> {
-    compare_readme(package_name, local_package_path, || {
-        Ok(Some(registry_package_path.join("README.md")))
-    })
+    compare_readme(
+        package_name,
+        local_package_path,
+        Some(registry_package_path.join("README.md")),
+    )
 }
 
 /// Compare READMEs using the available metadata for a released source workspace.
 pub(crate) fn is_readme_updated_with_released_package(
     package_name: &str,
     local_package_path: &Utf8Path,
-    registry_package_path: &Utf8Path,
     released_package: &Package,
 ) -> anyhow::Result<bool> {
-    compare_readme(package_name, local_package_path, || {
-        if is_extracted_registry_package(registry_package_path) {
-            Ok(Some(registry_package_path.join("README.md")))
-        } else {
-            // Unpackaged sources keep their original README path, which can point
-            // outside the package directory.
-            local_readme_override(released_package, registry_package_path)
-        }
-    })
+    let released_package_path = released_package.package_path()?;
+    let released_readme = if is_extracted_registry_package(released_package_path) {
+        Some(released_package_path.join("README.md"))
+    } else {
+        // Unpackaged sources keep their original README path, which can point
+        // outside the package directory.
+        local_readme_override(released_package, released_package_path)?
+    };
+    compare_readme(package_name, local_package_path, released_readme)
 }
 
+/// Whether the local README differs from `released_readme`.
+/// A missing README on either side counts as unchanged.
 fn compare_readme(
     package_name: &str,
     local_package_path: &Utf8Path,
-    released_readme: impl FnOnce() -> anyhow::Result<Option<Utf8PathBuf>>,
+    released_readme: Option<Utf8PathBuf>,
 ) -> anyhow::Result<bool> {
     // Read again manifest metadata because the Cargo.toml might change on every commit.
     let package = match read_package_metadata(&local_package_path.join(CARGO_TOML), package_name) {
@@ -274,7 +278,7 @@ fn compare_readme(
     let local_package_readme_path = local_readme_override(&package, local_package_path);
     let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
-            let Some(registry_package_readme_path) = released_readme()? else {
+            let Some(registry_package_readme_path) = released_readme else {
                 return Ok(true);
             };
             if !registry_package_readme_path.exists() {
