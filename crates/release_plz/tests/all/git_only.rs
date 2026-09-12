@@ -1195,7 +1195,8 @@ publish = false
     );
 }
 
-/// With `git_only = true` and no explicit `publish` key, a `publish = false` crate
+/// With `git_only = true` and `publish` unset in release-plz.toml,
+/// a crate with `publish = false` in Cargo.toml
 /// goes through the `release-pr` -> `release` round trip: `release-pr` bumps it and
 /// `release` tags it without running `cargo publish`, which would refuse to publish it.
 #[tokio::test]
