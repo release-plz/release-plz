@@ -153,6 +153,16 @@ impl ReleaseRequest {
         config.publish.enabled
     }
 
+    /// Return true if the package takes part in a release.
+    ///
+    /// A package is skipped only when it can't be published but we were asked to publish it.
+    /// When publishing is disabled, a `publish = false` package is still tagged and gets a
+    /// Git release. Example packages are never released.
+    fn is_releasable(&self, package: &Package) -> bool {
+        !package.is_example()
+            && (package.is_publishable() || !self.is_publish_enabled(&package.name))
+    }
+
     fn is_git_release_enabled(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
         config.git_release.enabled
@@ -618,7 +628,7 @@ async fn release_packages(
     let packages: Vec<_> = project
         .workspace_packages()
         .into_iter()
-        .filter(|package| package.is_publishable() || !input.is_publish_enabled(&package.name))
+        .filter(|package| input.is_releasable(package))
         .collect();
     if packages.is_empty() {
         info!("nothing to release");

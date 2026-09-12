@@ -442,6 +442,12 @@ pub fn publishable_packages_from_manifest(
 
 pub trait Publishable {
     fn is_publishable(&self) -> bool;
+    /// Return true if the package only contains example targets.
+    ///
+    /// Such a package is never released, not even when publishing is disabled:
+    /// unlike `publish = false`, it isn't a deliberate "release without publishing"
+    /// choice, it just isn't a crate anybody depends on.
+    fn is_example(&self) -> bool;
 }
 
 impl Publishable for Package {
@@ -455,18 +461,15 @@ impl Publishable for Package {
             !publish.is_empty()
         } else {
             // If it's not an example, the package can be published anywhere
-            !is_example_package(self)
+            !self.is_example()
         };
         trace!("package {} is publishable: {res}", self.name);
         res
     }
-}
 
-fn is_example_package(package: &Package) -> bool {
-    package
-        .targets
-        .iter()
-        .all(|t| t.kind == [TargetKind::Example])
+    fn is_example(&self) -> bool {
+        self.targets.iter().all(|t| t.kind == [TargetKind::Example])
+    }
 }
 
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
