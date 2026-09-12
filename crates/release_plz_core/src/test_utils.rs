@@ -4,9 +4,9 @@ use cargo_metadata::camino::Utf8Path;
 use cargo_utils::CARGO_TOML;
 
 /// The manifest written by [`write_package`]: a `[package]` table with `name`,
-/// `version` and `edition = "2021"`, followed by `extra_toml`.
+/// `version` and `edition = "2024"`, followed by `extra_toml`.
 pub(crate) fn package_manifest(name: &str, version: &str, extra_toml: &str) -> String {
-    format!("[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2021\"\n{extra_toml}")
+    format!("[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2024\"\n{extra_toml}")
 }
 
 /// Write a minimal library package to `dir`: an empty `src/lib.rs` and the manifest
