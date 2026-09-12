@@ -510,22 +510,20 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::{package_manifest, write_package};
+
     #[test]
     fn git_only_reconstruction_uses_historical_cargo_config() {
         let root = crate::fs_utils::Utf8TempDir::new().unwrap();
         let repo = git_cmd::Repo::init(root.path());
-        fs_err::create_dir(root.path().join("src")).unwrap();
         fs_err::create_dir(root.path().join(".cargo")).unwrap();
-        fs_err::write(root.path().join("src/lib.rs"), "").unwrap();
         let manifest = root.path().join("Cargo.toml");
-        let package = "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
-        fs_err::write(
-            &manifest,
-            format!(
-                "{package}[dependencies]\ndep = {{ version = \"1\", registry = \"historical\" }}\n"
-            ),
-        )
-        .unwrap();
+        write_package(
+            root.path(),
+            "app",
+            "0.1.0",
+            "[dependencies]\ndep = { version = \"1\", registry = \"historical\" }\n",
+        );
         let config = root.path().join(".cargo/config.toml");
         fs_err::write(
             &config,
@@ -536,7 +534,7 @@ mod tests {
         repo.tag("v0.1.0", "initial release").unwrap();
 
         // The current checkout no longer knows the registry used by the old release.
-        fs_err::write(&manifest, package).unwrap();
+        fs_err::write(&manifest, package_manifest("app", "0.1.0", "")).unwrap();
         fs_err::remove_file(config).unwrap();
         repo.add_all_and_commit("remove obsolete registry dependency")
             .unwrap();
@@ -558,14 +556,7 @@ mod tests {
         )
         .unwrap();
         for name in ["one", "two"] {
-            let package = root.path().join(name);
-            fs_err::create_dir_all(package.join("src")).unwrap();
-            fs_err::write(package.join("src/lib.rs"), "").unwrap();
-            fs_err::write(
-                package.join("Cargo.toml"),
-                format!("[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
-            )
-            .unwrap();
+            write_package(&root.path().join(name), name, "0.1.0", "");
         }
         let lockfile = "version = 4\n\n[[package]]\nname = \"one\"\nversion = \"0.1.0\"\n\n\
              [[package]]\nname = \"two\"\nversion = \"0.1.0\"\n";

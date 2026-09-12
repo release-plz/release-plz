@@ -447,14 +447,7 @@ mod tests {
         )
         .unwrap();
         for name in ["one", "two"] {
-            let package = root.path().join(name);
-            fs_err::create_dir_all(package.join("src")).unwrap();
-            fs_err::write(package.join("src/lib.rs"), "").unwrap();
-            fs_err::write(
-                package.join("Cargo.toml"),
-                format!("[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
-            )
-            .unwrap();
+            crate::test_utils::write_package(&root.path().join(name), name, "0.1.0", "");
         }
         let manifest = root.path().join("Cargo.toml");
         let workspace =

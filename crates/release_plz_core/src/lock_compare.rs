@@ -244,6 +244,7 @@ struct Package {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{generate_lockfile, package_manifest, run_cargo_ok, write_package};
     use cargo_metadata::DependencyKind;
 
     /// Spell a source the way Cargo writes it into a lockfile: `encodable_source_id`
@@ -269,14 +270,7 @@ mod tests {
             let name = package["name"].as_str().unwrap();
             let version = package["version"].as_str().unwrap();
             let member = format!("{name}-{version}");
-            let path = directory.path().join(&member);
-            fs_err::create_dir_all(path.join("src")).unwrap();
-            fs_err::write(path.join("src/lib.rs"), "").unwrap();
-            fs_err::write(
-                path.join("Cargo.toml"),
-                format!("[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2021\"\n"),
-            )
-            .unwrap();
+            write_package(&directory.path().join(&member), name, version, "");
             members.push(member);
         }
         let manifest = directory.path().join("Cargo.toml");
@@ -396,18 +390,14 @@ mod tests {
                 ),
                 ("older-app", "app", dependency_version, ""),
             ] {
-                let package = directory.join(path);
-                fs_err::create_dir_all(package.join("src")).unwrap();
-                fs_err::write(package.join("src/lib.rs"), "").unwrap();
-                fs_err::write(
-                    package.join("Cargo.toml"),
-                    format!("[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2021\"\n[dependencies]\n{dependencies}\n"),
-                )
-                .unwrap();
+                write_package(
+                    &directory.join(path),
+                    name,
+                    version,
+                    &format!("[dependencies]\n{dependencies}\n"),
+                );
             }
-            let output =
-                crate::cargo::run_cargo(directory, &["generate-lockfile", "--offline"]).unwrap();
-            assert!(output.status.success(), "{}", output.stderr);
+            generate_lockfile(directory);
         }
         let local_metadata =
             cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
@@ -425,9 +415,7 @@ mod tests {
         let manifest = local.path().join("app/Cargo.toml");
         let contents = fs_err::read_to_string(&manifest).unwrap();
         fs_err::write(&manifest, contents.replace("0.1.0", "0.1.1")).unwrap();
-        let output =
-            crate::cargo::run_cargo(local.path(), &["generate-lockfile", "--offline"]).unwrap();
-        assert!(output.status.success(), "{}", output.stderr);
+        generate_lockfile(local.path());
         let local_metadata =
             cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
         assert!(
@@ -454,32 +442,23 @@ mod tests {
             )
             .unwrap();
             for name in members {
-                let package = root.join(name);
-                fs_err::create_dir_all(package.join("src")).unwrap();
-                fs_err::write(package.join("src/lib.rs"), "").unwrap();
                 let dependencies = match *name {
                     "shared" if root == &git_path => "leaf = { path = \"../leaf\" }".into(),
                     "app" => "shared = { path = \"../shared\" }".into(),
                     "other" => format!("shared = {{ git = {:?} }}", git_url.as_str()),
                     _ => String::new(),
                 };
-                fs_err::write(
-                    package.join("Cargo.toml"),
-                    format!(
-                        "[package]\nname = {name:?}\nversion = \"1.0.0\"\nedition = \"2021\"\n\
-                         [dependencies]\n{dependencies}\n"
-                    ),
-                )
-                .unwrap();
+                write_package(
+                    &root.join(name),
+                    name,
+                    "1.0.0",
+                    &format!("[dependencies]\n{dependencies}\n"),
+                );
             }
         }
         git_repo.add_all_and_commit("initial dependency").unwrap();
-        let run_cargo = |args: &[&str]| {
-            let output = crate::cargo::run_cargo(&workspace, args).unwrap();
-            assert!(output.status.success(), "{}", output.stderr);
-        };
         // Let Cargo encode the ambiguous path/Git dependency IDs itself.
-        run_cargo(&["generate-lockfile"]);
+        run_cargo_ok(&workspace, &["generate-lockfile"]);
         let released_lock = directory.path().join("released.lock");
         let local_lock = workspace.join("Cargo.lock");
         fs_err::copy(&local_lock, &released_lock).unwrap();
@@ -494,7 +473,7 @@ mod tests {
         let manifest = fs_err::read_to_string(&leaf_manifest).unwrap();
         fs_err::write(&leaf_manifest, manifest.replace("1.0.0", "1.0.1")).unwrap();
         git_repo.add_all_and_commit("update Git leaf").unwrap();
-        run_cargo(&["update"]);
+        run_cargo_ok(&workspace, &["update"]);
 
         // Only `other` reaches the Git package and its updated transitive dependency.
         assert!(!compare_workspace_locks(&local_lock, &released_lock, "app"));
@@ -542,16 +521,7 @@ shared-test = { package = "shared", version = "2" }
 "#,
                 ),
             ] {
-                let package = directory.join(name);
-                fs_err::create_dir_all(package.join("src")).unwrap();
-                fs_err::write(package.join("src/lib.rs"), "").unwrap();
-                fs_err::write(
-                    package.join("Cargo.toml"),
-                    format!(
-                        "[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n{dependencies}"
-                    ),
-                )
-                .unwrap();
+                write_package(&directory.join(name), name, "0.1.0", dependencies);
             }
         }
         // No dependency resolution or registry access is needed to read dependency kinds.
@@ -661,21 +631,10 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
             ("normal-leaf", "normal-leaf", "1.0.0", ""),
             ("dev-leaf", "dev-leaf", "1.0.0", ""),
         ] {
-            let package = root.join(path);
-            fs_err::create_dir_all(package.join("src")).unwrap();
-            fs_err::write(package.join("src/lib.rs"), "").unwrap();
-            fs_err::write(
-                package.join("Cargo.toml"),
-                format!(
-                    "[package]\nname = {name:?}\nversion = {version:?}\nedition = \"2021\"\n{dependencies}"
-                ),
-            )
-            .unwrap();
+            write_package(&root.join(path), name, version, dependencies);
         }
         let read_dependencies = || {
-            let output =
-                crate::cargo::run_cargo(root, &["generate-lockfile", "--offline"]).unwrap();
-            assert!(output.status.success(), "{}", output.stderr);
+            generate_lockfile(root);
             let metadata = cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
             workspace_lock_dependencies(&metadata, "binary")
                 .unwrap()
@@ -687,10 +646,13 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
             for dev_path in ["shared", "test-shared"] {
                 fs_err::write(
                     root.join("library/Cargo.toml"),
-                    format!(
-                        "[package]\nname = \"library\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
-                         [{dependency_kind}]\nshared = \"1.0\"\n\
-                         [dev-dependencies]\nshared-test = {{ package = \"shared\", path = \"../{dev_path}\" }}\n"
+                    package_manifest(
+                        "library",
+                        "0.1.0",
+                        &format!(
+                            "[{dependency_kind}]\nshared = \"1.0\"\n\
+                             [dev-dependencies]\nshared-test = {{ package = \"shared\", path = \"../{dev_path}\" }}\n"
+                        ),
                     ),
                 )
                 .unwrap();
@@ -803,20 +765,17 @@ version = "1.0.0"
     fn workspace_lock_comparison_ignores_git_dev_dependency_with_plus_in_branch() {
         let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
         let git_path = directory.path().join("git-dependency");
-        fs_err::create_dir_all(git_path.join("src")).unwrap();
+        fs_err::create_dir_all(&git_path).unwrap();
         let git_repo = git_cmd::Repo::init(&git_path);
-        fs_err::create_dir_all(git_path.join("leaf/src")).unwrap();
-        fs_err::write(git_path.join("src/lib.rs"), "").unwrap();
-        fs_err::write(git_path.join("leaf/src/lib.rs"), "").unwrap();
-        fs_err::write(
-            git_path.join("Cargo.toml"),
-            "[package]\nname = \"shared\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\
-             [dependencies]\ndev-leaf = { path = \"leaf\" }\n",
-        )
-        .unwrap();
+        write_package(
+            &git_path,
+            "shared",
+            "1.0.0",
+            "[dependencies]\ndev-leaf = { path = \"leaf\" }\n",
+        );
         let leaf_manifest = git_path.join("leaf/Cargo.toml");
-        let leaf = "[package]\nname = \"dev-leaf\"\nversion = \"1.0.0\"\nedition = \"2021\"\n";
-        fs_err::write(&leaf_manifest, leaf).unwrap();
+        let leaf = package_manifest("dev-leaf", "1.0.0", "");
+        write_package(&git_path.join("leaf"), "dev-leaf", "1.0.0", "");
         git_repo.add_all_and_commit("initial dependency").unwrap();
         git_cmd::git_in_dir(&git_path, &["checkout", "-b", "feature+next"]).unwrap();
         let git_url = url::Url::from_directory_path(&git_path).unwrap();
@@ -844,27 +803,16 @@ version = "1.0.0"
                 ),
                 ("shared", String::new()),
             ] {
-                let package = root.join(name);
-                fs_err::create_dir_all(package.join("src")).unwrap();
-                fs_err::write(package.join("src/lib.rs"), "").unwrap();
-                fs_err::write(
-                    package.join("Cargo.toml"),
-                    format!("[package]\nname = {name:?}\nversion = \"1.0.0\"\nedition = \"2021\"\n{dependencies}"),
-                )
-                .unwrap();
+                write_package(&root.join(name), name, "1.0.0", &dependencies);
             }
         }
-        let run_cargo = |args: &[&str]| {
-            let output = crate::cargo::run_cargo(&local, args).unwrap();
-            assert!(output.status.success(), "{}", output.stderr);
-        };
-        run_cargo(&["generate-lockfile"]);
+        run_cargo_ok(&local, &["generate-lockfile"]);
         fs_err::copy(local.join("Cargo.lock"), released.join("Cargo.lock")).unwrap();
         fs_err::write(&leaf_manifest, leaf.replace("1.0.0", "1.0.1")).unwrap();
         git_repo
             .add_all_and_commit("update dev dependency")
             .unwrap();
-        run_cargo(&["update"]);
+        run_cargo_ok(&local, &["update"]);
 
         let local_metadata = cargo_utils::get_manifest_metadata(&local.join("Cargo.toml")).unwrap();
         let released_metadata =
@@ -893,19 +841,15 @@ version = "1.0.0"
         )
         .unwrap();
         for name in ["binary", "library", "shared"] {
-            let package = directory.path().join(name);
-            fs_err::create_dir_all(package.join("src")).unwrap();
-            fs_err::write(package.join("src/lib.rs"), "").unwrap();
-            fs_err::write(
-                package.join("Cargo.toml"),
-                format!("[package]\nname = {name:?}\nversion = \"1.0.0\"\nedition = \"2021\"\n"),
-            )
-            .unwrap();
+            write_package(&directory.path().join(name), name, "1.0.0", "");
         }
         fs_err::write(
             directory.path().join("binary/Cargo.toml"),
-            "[package]\nname = \"binary\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\
-             [dependencies]\nlibrary = { path = \"../library\" }\n",
+            package_manifest(
+                "binary",
+                "1.0.0",
+                "[dependencies]\nlibrary = { path = \"../library\" }\n",
+            ),
         )
         .unwrap();
         let path = "path = \"../shared\"";
@@ -933,10 +877,13 @@ version = "1.0.0"
         ] {
             fs_err::write(
                 directory.path().join("library/Cargo.toml"),
-                format!(
-                    "[package]\nname = \"library\"\nversion = \"1.0.0\"\nedition = \"2021\"\n\
-                     [dependencies]\nshared = {{ {normal} }}\n\
-                     [dev-dependencies]\nshared-test = {{ package = \"shared\", {dev} }}\n"
+                package_manifest(
+                    "library",
+                    "1.0.0",
+                    &format!(
+                        "[dependencies]\nshared = {{ {normal} }}\n\
+                         [dev-dependencies]\nshared-test = {{ package = \"shared\", {dev} }}\n"
+                    ),
                 ),
             )
             .unwrap();

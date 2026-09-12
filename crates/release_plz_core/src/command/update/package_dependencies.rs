@@ -115,6 +115,7 @@ fn should_update_dependency(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::write_package;
 
     #[test]
     fn workspace_declarations_only_update_packages_that_use_them() {
@@ -129,16 +130,7 @@ mod tests {
                 "[dependencies]\nshared.workspace = true\n",
             ),
         ] {
-            let package = root.join(path);
-            fs_err::create_dir_all(package.join("src")).unwrap();
-            fs_err::write(package.join("src/lib.rs"), "").unwrap();
-            fs_err::write(
-                package.join("Cargo.toml"),
-                format!(
-                    "[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n{dependencies}"
-                ),
-            )
-            .unwrap();
+            write_package(&root.join(path), name, "0.1.0", dependencies);
         }
         let manifest_path = root.join("Cargo.toml");
         let package_manifest = fs_err::read_to_string(&manifest_path).unwrap();
