@@ -1195,6 +1195,10 @@ publish = false
     );
 }
 
+/// With `git_only = true` and `publish` unset in release-plz.toml,
+/// a crate with `publish = false` in Cargo.toml
+/// goes through the `release-pr` -> `release` round trip: `release-pr` bumps it and
+/// `release` tags it without running `cargo publish`, which would refuse to publish it.
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_processes_packages_with_publish_false_in_manifest() {
@@ -1209,7 +1213,8 @@ async fn git_only_processes_packages_with_publish_false_in_manifest() {
     cargo_toml.write().unwrap();
     context.push_all_changes("chore: set publish = false");
 
-    // Configure git_only = true in release-plz config
+    // Configure git_only = true in release-plz config.
+    // `publish` is not set: git-only mode must skip `cargo publish` on its own.
     let config = r#"
 [workspace]
 git_only = true
@@ -1231,6 +1236,13 @@ git_only = true
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+
+    // Release must tag the crate without running `cargo publish`.
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("v0.1.1").unwrap());
 }
 
 #[tokio::test]
@@ -1294,4 +1306,13 @@ git_release_name = "{{ package }}-v{{ version }}"
     let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
     assert!(pr_body.contains("`mybin`: 0.1.0 -> 0.1.1"));
     assert!(pr_body.contains("update mybin readme"));
+
+    // The merged `[[package]]` override carries `publish = true` for mybin, which has
+    // `publish = false` in its manifest. Git-only packages are never published, so
+    // `release` must not reject that and must tag mybin.
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("mybin-v0.1.1").unwrap());
 }

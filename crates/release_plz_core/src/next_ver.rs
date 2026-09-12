@@ -275,7 +275,10 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         .iter()
         .partition(|p| input.should_use_git_only(&p.name));
 
-    let is_multi_package = local_project.publishable_packages().len() > 1;
+    // Use the project's own answer: `Project` computes it before `--package` narrows
+    // the package set, and it is what the release command uses to create the tags we
+    // are about to look for.
+    let is_multi_package = local_project.contains_multiple_packages();
 
     // Process git_only packages (version determined from git tags).
     // Worktrees must be kept alive until we're done with the packages.
@@ -513,6 +516,25 @@ impl Publishable for Package {
     }
 }
 
+/// Whether the package takes part in a release.
+///
+/// This is the single rule shared by `release-plz update` and `release-plz release`, so
+/// that the packages bumped by one are exactly the packages tagged by the other:
+/// a package is released when it can be published to a registry, or when it is in
+/// `git_only` mode (its versions are tracked with git tags, so a `publish = false`
+/// package is tagged and gets a Git release).
+pub(crate) fn takes_part_in_release(package: &Package, git_only: bool) -> bool {
+    package.is_publishable() || (git_only && !is_unpublished_example(package))
+}
+
+/// An example-only package that doesn't set `publish` is not a crate anyone depends on,
+/// so it never takes part in a release, not even in git-only mode.
+/// Setting `publish` explicitly opts the package in.
+fn is_unpublished_example(package: &Package) -> bool {
+    package.publish.is_none() && is_example_package(package)
+}
+
+/// Whether all the targets of the package are examples.
 fn is_example_package(package: &Package) -> bool {
     package
         .targets
@@ -555,6 +577,38 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    use fake_package::FakePackage;
+
+    #[test]
+    fn packages_taking_part_in_a_release() {
+        let lib = FakePackage::new("pkg").with_targets(&["lib"]);
+        let private_lib = lib.clone().unpublishable();
+        let example = FakePackage::new("pkg").with_targets(&["example"]);
+        let published_example = example.clone().with_publish(Some(vec!["my-reg".into()]));
+
+        // (name, package, released in registry mode, released in git-only mode)
+        for (name, package, registry, git_only) in [
+            ("lib", lib, true, true),
+            ("private lib", private_lib, false, true),
+            // Without `publish`, an example-only package is never a release candidate.
+            ("example", example, false, false),
+            // With `publish`, the user asked for it to be published (see the FAQ).
+            ("published example", published_example, true, true),
+        ] {
+            let package = cargo_metadata::Package::from(package);
+            assert_eq!(
+                super::takes_part_in_release(&package, false),
+                registry,
+                "{name} in registry mode"
+            );
+            assert_eq!(
+                super::takes_part_in_release(&package, true),
+                git_only,
+                "{name} in git-only mode"
+            );
+        }
+    }
+
     #[test]
     fn git_only_reconstructs_package_without_running_build_script() {
         let root = tempfile::tempdir().unwrap();

@@ -29,6 +29,7 @@ use crate::{
     command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
     fs_utils, lock_compare,
+    next_ver::takes_part_in_release,
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -332,25 +333,13 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
+    /// See [`takes_part_in_release`].
     fn packages_to_process(&self) -> Vec<&Package> {
-        // Collect packages that are either publishable or git-only, with de-duplication, order is important.
-        let mut packages_to_process: Vec<&Package> = Vec::new();
-        let mut package_names: HashSet<String> = HashSet::new();
-
-        // Add publishable packages
-        for p in self.project.publishable_packages() {
-            if package_names.insert(p.name.to_string()) {
-                packages_to_process.push(p);
-            }
-        }
-
-        // Add git-only packages, not already added
-        for p in self.project.workspace_packages() {
-            if self.req.should_use_git_only(&p.name) && package_names.insert(p.name.to_string()) {
-                packages_to_process.push(p);
-            }
-        }
-        packages_to_process
+        self.project
+            .workspace_packages()
+            .into_iter()
+            .filter(|p| takes_part_in_release(p, self.req.should_use_git_only(&p.name)))
+            .collect()
     }
 
     async fn fill_commits<'a>(
