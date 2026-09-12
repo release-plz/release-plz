@@ -34,7 +34,10 @@ pub struct Project {
     manifest_dir: Utf8PathBuf,
     /// The project contains more than one public package.
     /// Not affected by `single_package` option.
-    contains_multiple_pub_packages: bool,
+    /// Whether the project has more than one release-enabled package.
+    /// Computed before `--package` narrows the set, so that asking for a single
+    /// package doesn't change the tag names of a workspace.
+    contains_multiple_packages: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -77,7 +80,7 @@ impl Project {
             "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
         );
 
-        let contains_multiple_pub_packages = packages.len() > 1;
+        let contains_multiple_packages = packages.len() > 1;
 
         if let Some(pac) = single_package {
             packages.retain(|p| *p.name == pac);
@@ -98,7 +101,7 @@ impl Project {
             release_metadata,
             root,
             manifest_dir,
-            contains_multiple_pub_packages,
+            contains_multiple_packages,
         })
     }
 
@@ -117,6 +120,13 @@ impl Project {
     /// Get all packages, including non-publishable.
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
+    }
+
+    /// Whether the project has more than one release-enabled package.
+    /// This decides the default tag name template, so the update and release
+    /// commands must answer it the same way.
+    pub fn contains_multiple_packages(&self) -> bool {
+        self.contains_multiple_packages
     }
 
     /// Copy this project in a temporary repository and return the repository.
@@ -162,8 +172,8 @@ impl Project {
             ),
         };
 
-        let template = template
-            .unwrap_or_else(|| default_tag_name_template(self.contains_multiple_pub_packages));
+        let template =
+            template.unwrap_or_else(|| default_tag_name_template(self.contains_multiple_packages));
 
         let context = tera_context(package_name, version);
         crate::tera::render_template(&template, &context, template_name)
