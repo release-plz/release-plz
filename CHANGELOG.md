@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.166](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.165...release-plz-v0.3.166) - 2026-09-12
+
+### Added
+
+- *(set-version)* support workspace package versions ([#3047](https://github.com/release-plz/release-plz/pull/3047))
+
 ## [0.3.165](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.164...release-plz-v0.3.165) - 2026-09-10
 
 ### Fixed
