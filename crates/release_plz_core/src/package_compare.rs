@@ -221,16 +221,40 @@ fn are_cargo_toml_equal(local_package: &Utf8Path, registry_package: &Utf8Path) -
     are_files_equal(&local_package.join(CARGO_TOML), &released_manifest).unwrap_or(false)
 }
 
-/// Returns true if the README file of the local package is the same as the one in the registry.
-/// Returns false if:
-/// - the README is the same
-/// - the local package doesn't have a `readme` field in the `Cargo.toml`.
-/// - the package doesn't have a README at all.
-pub(crate) fn is_readme_updated(
+/// Check whether the local README differs from an extracted registry package's README.
+/// Returns false if the local package has no README.
+pub fn is_readme_updated(
+    package_name: &str,
+    local_package_path: &Utf8Path,
+    registry_package_path: &Utf8Path,
+) -> anyhow::Result<bool> {
+    compare_readme(package_name, local_package_path, || {
+        Ok(Some(registry_package_path.join("README.md")))
+    })
+}
+
+/// Compare READMEs using the available metadata for a released source workspace.
+pub(crate) fn is_readme_updated_with_released_package(
     package_name: &str,
     local_package_path: &Utf8Path,
     registry_package_path: &Utf8Path,
     released_package: &Package,
+) -> anyhow::Result<bool> {
+    compare_readme(package_name, local_package_path, || {
+        if is_extracted_registry_package(registry_package_path) {
+            Ok(Some(registry_package_path.join("README.md")))
+        } else {
+            // Unpackaged sources keep their original README path, which can point
+            // outside the package directory.
+            local_readme_override(released_package, registry_package_path)
+        }
+    })
+}
+
+fn compare_readme(
+    package_name: &str,
+    local_package_path: &Utf8Path,
+    released_readme: impl FnOnce() -> anyhow::Result<Option<Utf8PathBuf>>,
 ) -> anyhow::Result<bool> {
     // Read again manifest metadata because the Cargo.toml might change on every commit.
     let package = match read_package_metadata(&local_package_path.join(CARGO_TOML), package_name) {
@@ -246,19 +270,9 @@ pub(crate) fn is_readme_updated(
     let local_package_readme_path = local_readme_override(&package, local_package_path);
     let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
-            let registry_package_readme_path =
-                if is_extracted_registry_package(registry_package_path) {
-                    registry_package_path.join("README.md")
-                } else {
-                    // A released package that was never packaged keeps its original manifest,
-                    // so its `readme` field can point outside the package directory.
-                    let Some(path) =
-                        local_readme_override(released_package, registry_package_path)?
-                    else {
-                        return Ok(true);
-                    };
-                    path
-                };
+            let Some(registry_package_readme_path) = released_readme()? else {
+                return Ok(true);
+            };
             if !registry_package_readme_path.exists() {
                 return Ok(true);
             }

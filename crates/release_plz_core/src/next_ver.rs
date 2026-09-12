@@ -447,7 +447,9 @@ pub trait Publishable {
     /// Such a package is never released, not even when publishing is disabled:
     /// unlike `publish = false`, it isn't a deliberate "release without publishing"
     /// choice, it just isn't a crate anybody depends on.
-    fn is_example(&self) -> bool;
+    fn is_example(&self) -> bool {
+        false
+    }
 }
 
 impl Publishable for Package {
