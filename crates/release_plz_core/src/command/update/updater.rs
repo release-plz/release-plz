@@ -709,6 +709,7 @@ impl Updater<'_> {
                     package,
                     package_path,
                     registry_package,
+                    registry_package_path,
                     &registry_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 let commit_too_old = || {
@@ -784,9 +785,9 @@ impl Updater<'_> {
         package: &Package,
         package_path: &Utf8Path,
         registry_package: &RegistryPackage,
+        registry_package_path: &Utf8Path,
         registry_package_files: &ReleasedPackageFiles,
     ) -> anyhow::Result<bool> {
-        let registry_package_path = registry_package.package.package_path()?;
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
             package_path,
