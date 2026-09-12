@@ -222,7 +222,6 @@ mod tests {
         }
     }
 
-    /// Give hand-written lockfile fixtures real path packages for Cargo's decoder.
     /// The lockfile entries reachable from `package`, which must be in the lockfile.
     fn lock_dependencies(metadata: &Metadata, package: &str) -> Lockfile {
         workspace_lock_dependencies(
@@ -233,6 +232,7 @@ mod tests {
         .unwrap()
     }
 
+    /// Give hand-written lockfile fixtures real path packages for Cargo's decoder.
     fn workspace_for_lock(lockfile: &str) -> (crate::fs_utils::Utf8TempDir, Metadata) {
         let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
         let value: toml::Value = toml::from_str(lockfile).unwrap();
