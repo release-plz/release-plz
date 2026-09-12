@@ -1327,7 +1327,7 @@ mod tests {
     use std::ffi::OsStr;
     use std::sync::{LazyLock, Mutex};
 
-    use fake_package::metadata::fake_metadata;
+    use fake_package::{FakePackage, metadata::fake_metadata};
 
     use super::*;
 
@@ -1518,32 +1518,17 @@ mod tests {
         assert_eq!(non_overriden_maybe_registry_index, None);
     }
 
-    fn package_with(publish: Option<&[String]>, target_kinds: &[&str]) -> Package {
-        let targets: Vec<_> = target_kinds
-            .iter()
-            .map(|kind| {
-                serde_json::json!({
-                    "name": "t", "kind": [kind], "crate_types": [kind],
-                    "src_path": "/src/lib.rs", "edition": "2021", "doctest": false,
-                    "test": true, "doc": true,
-                })
-            })
-            .collect();
-        serde_json::from_value(serde_json::json!({
-            "name": "pkg", "version": "0.1.0", "id": "pkg", "publish": publish,
-            "dependencies": [], "features": {}, "targets": targets,
-            "manifest_path": "pkg/Cargo.toml",
-        }))
-        .unwrap()
-    }
-
     #[test]
     fn only_packages_that_can_be_released_are_released() {
-        let publishable = package_with(None, &["lib"]);
+        let publishable = Package::from(FakePackage::new("pkg").with_targets(&["lib"]));
         // `publish = false` / `publish = []` in Cargo.toml.
-        let unpublishable = package_with(Some(&[]), &["lib"]);
+        let unpublishable = Package::from(
+            FakePackage::new("pkg")
+                .with_publish(Some(vec![]))
+                .with_targets(&["lib"]),
+        );
         // A package whose only targets are examples is not a crate anyone depends on.
-        let example = package_with(None, &["example"]);
+        let example = Package::from(FakePackage::new("pkg").with_targets(&["example"]));
 
         for (publish_enabled, git_only, expected) in [
             // Registry mode: only the package that can actually be published.
