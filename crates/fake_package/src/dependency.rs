@@ -4,6 +4,7 @@ use cargo_metadata::{Dependency, DependencyKind};
 pub struct FakeDependency {
     name: String,
     kind: DependencyKind,
+    req: String,
 }
 
 impl FakeDependency {
@@ -11,6 +12,7 @@ impl FakeDependency {
         Self {
             name: name.into(),
             kind: DependencyKind::Normal,
+            req: "0.1.0".to_string(),
         }
     }
 
@@ -20,13 +22,23 @@ impl FakeDependency {
             ..self
         }
     }
+
+    /// Create a dev-dependency without a version requirement (path-only).
+    /// These are stripped from the published manifest by cargo.
+    pub fn unversioned_dev(self) -> Self {
+        Self {
+            kind: DependencyKind::Development,
+            req: "*".to_string(),
+            ..self
+        }
+    }
 }
 
 impl From<FakeDependency> for Dependency {
     fn from(dep: FakeDependency) -> Self {
         serde_json::from_value(serde_json::json!({
             "name": dep.name,
-            "req": "0.1.0",
+            "req": dep.req,
             "kind": dep.kind,
             "optional": false,
             "uses_default_features": true,
