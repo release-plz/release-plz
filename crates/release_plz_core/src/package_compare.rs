@@ -22,6 +22,10 @@ use std::{
 /// so its presence tells an extracted registry package from a plain source tree.
 pub(crate) const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
 
+/// Cargo records the packaged commit under this name when it packages a crate
+/// from a Git checkout.
+pub(crate) const CARGO_VCS_INFO: &str = ".cargo_vcs_info.json";
+
 /// Return true if `package` is an extracted registry package rather than a source tree.
 ///
 /// The two are compared differently: an extracted package already contains exactly
@@ -94,7 +98,7 @@ pub(crate) fn are_packages_equal_cached(
     let is_comparable_file = |file: &&Utf8PathBuf| {
         !matches!(
             file.as_str(),
-            CARGO_TOML_ORIG | ".cargo_vcs_info.json" | "Cargo.lock"
+            CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock"
         )
     };
     let local_files = local_package_files.iter().filter(is_comparable_file);

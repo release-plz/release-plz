@@ -5,7 +5,7 @@ use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use tempfile::{TempDir, tempdir};
 
-use crate::{PackagePath, cargo_vcs_info, download, next_ver};
+use crate::{PackagePath, cargo_vcs_info, download, next_ver, package_compare::CARGO_VCS_INFO};
 
 #[derive(Debug, Default)]
 pub struct PackagesCollection {
@@ -189,7 +189,7 @@ fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<Reg
     let mut registry_packages = vec![];
     for p in packages {
         let package_path = p.package_path().unwrap();
-        let cargo_vcs_info_path = package_path.join(".cargo_vcs_info.json");
+        let cargo_vcs_info_path = package_path.join(CARGO_VCS_INFO);
         // cargo_vcs_info is only present if `cargo publish` wasn't used with
         // the `--allow-dirty` flag inside a git repo.
         let sha1 = if cargo_vcs_info_path.exists() {
