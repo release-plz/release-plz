@@ -37,6 +37,8 @@ jobs:
       - name: Build website
         run: npm run build
         working-directory: ./website
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy to release-plz.dev
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
