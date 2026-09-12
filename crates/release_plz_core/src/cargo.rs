@@ -1,5 +1,9 @@
 use anyhow::Context;
-use cargo_metadata::{Package, camino::Utf8Path};
+use cargo::{GlobalContext, util::homedir};
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
@@ -17,6 +21,25 @@ pub(crate) fn read_package_metadata(
     let metadata = cargo_utils::get_manifest_metadata(manifest_path)
         .with_context(|| format!("cannot read metadata from {manifest_path}"))?;
     cargo_utils::workspace_package(&metadata, package_name).cloned()
+}
+
+/// Create a Cargo context rooted at the workspace whose configuration is needed.
+pub(crate) fn new_cargo_config(cwd: Option<Utf8PathBuf>) -> anyhow::Result<GlobalContext> {
+    match cwd {
+        Some(cwd) => {
+            #[expect(
+                clippy::default_trait_access,
+                reason = "Let Cargo infer the shell type without a direct cargo-util-terminal dependency"
+            )]
+            let shell = Default::default();
+            let homedir = homedir(cwd.as_std_path()).context(
+                "Cargo couldn't find your home directory. \
+                 This probably means that $HOME was not set.",
+            )?;
+            Ok(GlobalContext::new(shell, cwd.into_std_path_buf(), homedir))
+        }
+        None => GlobalContext::default(),
+    }
 }
 
 pub struct CargoRegistry {
