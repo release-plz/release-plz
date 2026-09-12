@@ -24,9 +24,14 @@ pub fn are_lock_dependencies_updated(
     registry_package: &Utf8Path,
 ) -> anyhow::Result<bool> {
     let registry_lock = &registry_package.join("Cargo.lock");
-    let Some((local_lock, registry_lock)) = read_lockfiles(local_lock, registry_lock)? else {
+    if !local_lock.exists() || !registry_lock.exists() {
         return Ok(false);
-    };
+    }
+    let local_lock = read_lockfile(local_lock)
+        .with_context(|| format!("failed to load lockfile of local package {local_lock:?}"))?;
+    let registry_lock = read_lockfile(registry_lock).with_context(|| {
+        format!("failed to load lockfile of registry package {registry_lock:?}")
+    })?;
     Ok(are_dependencies_updated(&local_lock, &registry_lock))
 }
 
@@ -155,21 +160,6 @@ fn is_dev_only_dependency(
         })
         .peekable();
     matching.peek().is_some() && matching.all(|d| d.kind() == DepKind::Development)
-}
-
-fn read_lockfiles(
-    local_lock: &Utf8Path,
-    registry_lock: &Utf8Path,
-) -> anyhow::Result<Option<(Lockfile, Lockfile)>> {
-    if !local_lock.exists() || !registry_lock.exists() {
-        return Ok(None);
-    }
-    let local_lock = read_lockfile(local_lock)
-        .with_context(|| format!("failed to load lockfile of local package {local_lock:?}"))?;
-    let registry_lock = read_lockfile(registry_lock).with_context(|| {
-        format!("failed to load lockfile of registry package {registry_lock:?}")
-    })?;
-    Ok(Some((local_lock, registry_lock)))
 }
 
 fn read_lockfile(path: &Utf8Path) -> anyhow::Result<Lockfile> {
