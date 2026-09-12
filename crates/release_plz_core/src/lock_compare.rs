@@ -108,7 +108,11 @@ fn workspace_lock_dependencies(
     let lock_path = metadata.workspace_root.join("Cargo.lock");
     let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
     let manifest = metadata.workspace_root.join("Cargo.toml");
-    let workspace = Workspace::new(manifest.as_std_path(), &config)?;
+    let workspace = Workspace::new(manifest.as_std_path(), &config).with_context(|| {
+        format!(
+            "cannot load workspace manifest {manifest:?} with the Cargo library bundled in release-plz"
+        )
+    })?;
     // This only decodes the committed lockfile. It does not resolve dependencies,
     // fetch registry/Git sources, or rewrite the historical workspace.
     let resolve = cargo::ops::load_pkg_lockfile(&workspace)
