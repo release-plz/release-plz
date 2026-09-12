@@ -23,7 +23,7 @@ use crate::{
     cargo::{CargoRegistry, CmdOutput, is_published, run_cargo_with_env, wait_until_published},
     changelog_parser,
     git::forge::GitClient,
-    next_ver::is_example_package,
+    next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
 
@@ -161,13 +161,10 @@ impl ReleaseRequest {
 
     /// Return true if the package takes part in a release.
     ///
-    /// This mirrors the set of packages that `release-plz update` manages: a package is
-    /// released when it can be published to a registry, or when it is in `git_only` mode
-    /// (its versions are tracked with git tags, so a `publish = false` package is tagged
-    /// and gets a Git release). Example packages are never released.
+    /// This is the same rule `release-plz update` uses to decide which packages it
+    /// bumps, so that every bumped package is tagged. See [`takes_part_in_release`].
     fn is_releasable(&self, package: &Package) -> bool {
-        !is_example_package(package)
-            && (package.is_publishable() || self.is_git_only(&package.name))
+        takes_part_in_release(package, self.is_git_only(&package.name))
     }
 
     fn is_git_release_enabled(&self, package: &str) -> bool {
@@ -1527,21 +1524,35 @@ mod tests {
                 .with_publish(Some(vec![]))
                 .with_targets(&["lib"]),
         );
-        // A package whose only targets are examples is not a crate anyone depends on.
+        // A package whose only targets are examples is not a crate anyone depends on,
+        // unless the user explicitly sets `publish` to opt it in (see the FAQ).
         let example = Package::from(FakePackage::new("pkg").with_targets(&["example"]));
+        let published_example = Package::from(
+            FakePackage::new("pkg")
+                .with_targets(&["example"])
+                .with_publish(Some(vec!["my-reg".into()])),
+        );
 
         for (publish_enabled, git_only, expected) in [
-            // Registry mode: only the package that can actually be published.
-            (true, false, vec!["publishable"]),
+            // Registry mode: only the packages that can actually be published.
+            (true, false, vec!["publishable", "published example"]),
             // `publish = false` in release-plz config without git-only mode: release-plz still
             // uses the registry to detect releases, so a `publish = false` package is not
             // tagged (it would never be bumped by `release-plz update`).
-            (false, false, vec!["publishable"]),
+            (false, false, vec!["publishable", "published example"]),
             // Git-only mode: `publish = false` packages are tagged and get a Git release,
-            // but example packages are still never released.
-            (false, true, vec!["publishable", "unpublishable"]),
+            // but the example without `publish` is still never released.
+            (
+                false,
+                true,
+                vec!["publishable", "unpublishable", "published example"],
+            ),
             // The publish flag doesn't matter once git-only mode is on.
-            (true, true, vec!["publishable", "unpublishable"]),
+            (
+                true,
+                true,
+                vec!["publishable", "unpublishable", "published example"],
+            ),
         ] {
             let request =
                 ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
@@ -1553,6 +1564,7 @@ mod tests {
                 ("publishable", &publishable),
                 ("unpublishable", &unpublishable),
                 ("example", &example),
+                ("published example", &published_example),
             ]
             .into_iter()
             .filter(|(_, package)| request.is_releasable(package))

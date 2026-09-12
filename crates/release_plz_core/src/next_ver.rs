@@ -452,23 +452,39 @@ pub trait Publishable {
 impl Publishable for Package {
     /// Return true if the package can be published to at least one register (e.g. crates.io).
     fn is_publishable(&self) -> bool {
-        let res = if let Some(publish) = &self.publish {
-            // `publish.is_empty()` is:
-            // - true: when `publish` in Cargo.toml is `[]` or `false`.
-            // - false: when the package can be published only to certain registries.
-            //          E.g. when `publish` in Cargo.toml is `["my-reg"]` or `true`.
-            !publish.is_empty()
-        } else {
-            // If it's not an example, the package can be published anywhere
-            !is_example_package(self)
-        };
+        // `publish.is_empty()` is:
+        // - true: when `publish` in Cargo.toml is `[]` or `false`.
+        // - false: when the package can be published only to certain registries.
+        //          E.g. when `publish` in Cargo.toml is `["my-reg"]` or `true`.
+        // When `publish` is missing, the package can be published anywhere, unless it's
+        // an example.
+        let res =
+            !is_unpublished_example(self) && self.publish.as_ref().is_none_or(|p| !p.is_empty());
         trace!("package {} is publishable: {res}", self.name);
         res
     }
 }
 
-/// Packages containing only examples are excluded even when publishing is disabled.
-pub(crate) fn is_example_package(package: &Package) -> bool {
+/// Whether the package takes part in a release.
+///
+/// This is the single rule shared by `release-plz update` and `release-plz release`, so
+/// that the packages bumped by one are exactly the packages tagged by the other:
+/// a package is released when it can be published to a registry, or when it is in
+/// `git_only` mode (its versions are tracked with git tags, so a `publish = false`
+/// package is tagged and gets a Git release).
+pub(crate) fn takes_part_in_release(package: &Package, git_only: bool) -> bool {
+    package.is_publishable() || (git_only && !is_unpublished_example(package))
+}
+
+/// An example-only package that doesn't set `publish` is not a crate anyone depends on,
+/// so it never takes part in a release, not even in git-only mode.
+/// Setting `publish` explicitly opts the package in.
+pub(crate) fn is_unpublished_example(package: &Package) -> bool {
+    package.publish.is_none() && is_example_package(package)
+}
+
+/// Whether all the targets of the package are examples.
+fn is_example_package(package: &Package) -> bool {
     package
         .targets
         .iter()
@@ -511,6 +527,38 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 #[cfg(test)]
 mod tests {
     use crate::test_utils::{package_manifest, write_package};
+    use fake_package::FakePackage;
+
+    #[test]
+    fn packages_taking_part_in_a_release() {
+        let lib = FakePackage::new("pkg").with_targets(&["lib"]);
+        // `publish = false` / `publish = []` in Cargo.toml.
+        let private_lib = lib.clone().with_publish(Some(vec![]));
+        let example = FakePackage::new("pkg").with_targets(&["example"]);
+        let published_example = example.clone().with_publish(Some(vec!["my-reg".into()]));
+
+        // (package, released in registry mode, released in git-only mode)
+        for (name, package, registry, git_only) in [
+            ("lib", lib, true, true),
+            ("private lib", private_lib, false, true),
+            // Without `publish`, an example-only package is never a release candidate.
+            ("example", example, false, false),
+            // With `publish`, the user asked for it to be published (see the FAQ).
+            ("published example", published_example, true, true),
+        ] {
+            let package = cargo_metadata::Package::from(package);
+            assert_eq!(
+                super::takes_part_in_release(&package, false),
+                registry,
+                "{name} in registry mode"
+            );
+            assert_eq!(
+                super::takes_part_in_release(&package, true),
+                git_only,
+                "{name} in git-only mode"
+            );
+        }
+    }
 
     #[test]
     fn git_only_reconstruction_uses_historical_cargo_config() {
