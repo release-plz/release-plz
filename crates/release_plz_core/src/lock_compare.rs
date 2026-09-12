@@ -233,6 +233,16 @@ mod tests {
     }
 
     /// Give hand-written lockfile fixtures real path packages for Cargo's decoder.
+    /// The lockfile entries reachable from `package`, which must be in the lockfile.
+    fn lock_dependencies(metadata: &Metadata, package: &str) -> Lockfile {
+        workspace_lock_dependencies(
+            metadata,
+            cargo_utils::workspace_package(metadata, package).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+    }
+
     fn workspace_for_lock(lockfile: &str) -> (crate::fs_utils::Utf8TempDir, Metadata) {
         let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
         let value: toml::Value = toml::from_str(lockfile).unwrap();
@@ -612,12 +622,7 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
         let read_dependencies = || {
             generate_lockfile(root);
             let metadata = cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
-            workspace_lock_dependencies(
-                &metadata,
-                cargo_utils::workspace_package(&metadata, "binary").unwrap(),
-            )
-            .unwrap()
-            .unwrap()
+            lock_dependencies(&metadata, "binary")
         };
         for dependency_kind in ["dependencies", "build-dependencies"] {
             // A dev declaration may resolve to the patched runtime package itself,
@@ -726,12 +731,7 @@ version = "1.0.0"
                 }
                 let metadata =
                     cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
-                workspace_lock_dependencies(
-                    &metadata,
-                    cargo_utils::workspace_package(&metadata, "app").unwrap(),
-                )
-                .unwrap()
-                .unwrap()
+                lock_dependencies(&metadata, "app")
             };
             let released = read_dependencies(lockfile);
             let local = read_dependencies(&updated_lockfile);
@@ -914,24 +914,14 @@ version = "1.0.0"
                 "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}\n"
             ));
             fs_err::write(directory.path().join("Cargo.lock"), &lockfile).unwrap();
-            let released = workspace_lock_dependencies(
-                &metadata,
-                cargo_utils::workspace_package(&metadata, "binary").unwrap(),
-            )
-            .unwrap()
-            .unwrap();
+            let released = lock_dependencies(&metadata, "binary");
             for (leaf, should_update) in [("dev-leaf", false), ("normal-leaf", true)] {
                 let changed = lockfile.replace(
                     &format!("name = {leaf:?}\nversion = \"1.0.0\""),
                     &format!("name = {leaf:?}\nversion = \"1.0.1\""),
                 );
                 fs_err::write(directory.path().join("Cargo.lock"), changed).unwrap();
-                let local = workspace_lock_dependencies(
-                    &metadata,
-                    cargo_utils::workspace_package(&metadata, "binary").unwrap(),
-                )
-                .unwrap()
-                .unwrap();
+                let local = lock_dependencies(&metadata, "binary");
                 assert_eq!(
                     are_dependencies_updated(&local, &released),
                     should_update,
