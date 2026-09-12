@@ -20,8 +20,38 @@ pub struct RegistryPackage {
     pub package: Package,
     /// The SHA1 hash of the commit when the package was published.
     sha1: Option<String>,
-    /// Immutable metadata shared by packages released from the same Git worktree.
-    workspace_metadata: Option<Arc<Metadata>>,
+    /// Immutable workspace shared by packages released from the same Git worktree.
+    released_workspace: Option<Arc<ReleasedWorkspace>>,
+}
+
+/// The workspace of a git-only package, reconstructed at the commit it was released from.
+#[derive(Debug)]
+pub(crate) struct ReleasedWorkspace {
+    pub metadata: Metadata,
+    /// The `Cargo.lock` committed at the release, if any.
+    ///
+    /// Captured as soon as the workspace is reconstructed: cargo commands that run in the
+    /// worktree afterwards (e.g. `cargo package --list`) can re-resolve a stale lockfile and
+    /// rewrite it on disk.
+    pub lockfile: Option<String>,
+    /// The commit the workspace was reconstructed from.
+    pub commit: String,
+}
+
+impl ReleasedWorkspace {
+    pub(crate) fn new(metadata: Metadata, commit: String) -> anyhow::Result<Self> {
+        let lock_path = metadata.workspace_root.join("Cargo.lock");
+        let lockfile = lock_path
+            .exists()
+            .then(|| fs_err::read_to_string(&lock_path))
+            .transpose()
+            .with_context(|| format!("cannot read lockfile committed at {commit}"))?;
+        Ok(Self {
+            metadata,
+            lockfile,
+            commit,
+        })
+    }
 }
 
 impl RegistryPackage {
@@ -29,17 +59,17 @@ impl RegistryPackage {
         Self {
             package,
             sha1,
-            workspace_metadata: None,
+            released_workspace: None,
         }
     }
 
-    pub(crate) fn with_workspace_metadata(mut self, metadata: Arc<Metadata>) -> Self {
-        self.workspace_metadata = Some(metadata);
+    pub(crate) fn with_released_workspace(mut self, workspace: Arc<ReleasedWorkspace>) -> Self {
+        self.released_workspace = Some(workspace);
         self
     }
 
-    pub(crate) fn workspace_metadata(&self) -> Option<&Metadata> {
-        self.workspace_metadata.as_deref()
+    pub(crate) fn released_workspace(&self) -> Option<&ReleasedWorkspace> {
+        self.released_workspace.as_deref()
     }
 
     pub fn published_at_sha1(&self) -> Option<&str> {

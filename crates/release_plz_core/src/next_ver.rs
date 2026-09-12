@@ -1,5 +1,5 @@
 use crate::command::git::{GitRepo, GitWorkTree};
-use crate::registry_packages::{PackagesCollection, RegistryPackage};
+use crate::registry_packages::{PackagesCollection, RegistryPackage, ReleasedWorkspace};
 use crate::release_regex;
 use crate::tera::default_tag_name_template;
 use crate::tmp_repo::TempRepo;
@@ -88,11 +88,11 @@ fn get_temp_worktree_and_repo(
 
 struct ReconstructedWorkspace {
     worktree: GitWorkTree,
-    metadata: Arc<Metadata>,
+    workspace: Arc<ReleasedWorkspace>,
 }
 
 impl ReconstructedWorkspace {
-    fn new(worktree: GitWorkTree) -> anyhow::Result<Self> {
+    fn new(worktree: GitWorkTree, commit: String) -> anyhow::Result<Self> {
         let manifest = to_utf8_path(worktree.path())?.join("Cargo.toml");
         // Cargo discovers configuration from its working directory, not --manifest-path.
         let metadata = cargo_utils::cargo_metadata_command()
@@ -101,14 +101,16 @@ impl ReconstructedWorkspace {
             .manifest_path(&manifest)
             .exec()
             .context("get cargo metadata for worktree")?;
+        // Snapshot the committed lockfile before any other cargo command runs in the worktree.
+        let workspace = ReleasedWorkspace::new(metadata, commit)?;
         Ok(Self {
             worktree,
-            metadata: Arc::new(metadata),
+            workspace: Arc::new(workspace),
         })
     }
 
     fn package(&self, package_name: &str) -> anyhow::Result<Package> {
-        cargo_utils::workspace_package(&self.metadata, package_name)
+        cargo_utils::workspace_package(&self.workspace.metadata, package_name)
             .cloned()
             .with_context(|| format!("in worktree at {:?}", self.worktree.path()))
     }
@@ -179,7 +181,10 @@ fn process_git_only_package(
             // Keep the original manifests and path dependencies. Creating archives would
             // require registry versions even for dependencies that will never be published.
             debug!("Reconstructing workspace sources at commit {release_commit}");
-            entry.insert(ReconstructedWorkspace::new(worktree)?)
+            entry.insert(ReconstructedWorkspace::new(
+                worktree,
+                release_commit.clone(),
+            )?)
         }
     };
 
@@ -188,7 +193,7 @@ fn process_git_only_package(
     let single_package = workspace.package(&package.name)?;
 
     let registry_package = RegistryPackage::new(single_package, Some(release_commit))
-        .with_workspace_metadata(Arc::clone(&workspace.metadata));
+        .with_released_workspace(Arc::clone(&workspace.workspace));
     Ok(Some(registry_package))
 }
 
@@ -562,11 +567,15 @@ mod tests {
             )
             .unwrap();
         }
+        let lockfile = "version = 4\n\n[[package]]\nname = \"one\"\nversion = \"0.1.0\"\n\n\
+             [[package]]\nname = \"two\"\nversion = \"0.1.0\"\n";
+        fs_err::write(root.path().join("Cargo.lock"), lockfile).unwrap();
         repo.add_all_and_commit("initial workspace").unwrap();
         for name in ["one", "two"] {
             repo.tag(&format!("{name}-v0.1.0"), "initial release")
                 .unwrap();
         }
+        let release_commit = repo.current_commit_hash().unwrap();
         let manifest = root.path().join("one/Cargo.toml");
         let contents = fs_err::read_to_string(&manifest).unwrap();
         fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
@@ -583,6 +592,17 @@ mod tests {
         assert_eq!(one.package.version.to_string(), "0.1.0");
         assert!(one.package.manifest_path.is_file());
         assert!(two.package.manifest_path.is_file());
+        let released = one.released_workspace().unwrap();
+        assert!(std::ptr::eq(released, two.released_workspace().unwrap()));
+        assert_eq!(released.commit, release_commit);
+        // The lockfile committed at the release is captured with the workspace.
+        assert_eq!(
+            released
+                .lockfile
+                .as_deref()
+                .map(|l| l.replace("\r\n", "\n")),
+            Some(lockfile.to_owned())
+        );
     }
 
     #[test]
@@ -615,7 +635,7 @@ exclude = ["excluded.txt"]
         let mut original = super::GitRepo::open(root.path()).unwrap();
         let (_repo, worktree) =
             super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
-        let workspace = super::ReconstructedWorkspace::new(worktree).unwrap();
+        let workspace = super::ReconstructedWorkspace::new(worktree, "HEAD".into()).unwrap();
         let package = workspace.package("non-verifiable").unwrap();
         let package_dir = package.manifest_path.parent().unwrap();
 

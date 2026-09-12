@@ -10,7 +10,9 @@ use cargo::{
 };
 use cargo_metadata::{Metadata, camino::Utf8Path, semver::Version};
 use serde::Deserialize;
-use tracing::debug;
+use tracing::{debug, warn};
+
+use crate::registry_packages::ReleasedWorkspace;
 
 /// Compare the dependencies present in the `Cargo.lock` of the registry package and the local one.
 /// Check if the dependencies of the registry package were updated.
@@ -29,25 +31,80 @@ pub fn are_lock_dependencies_updated(
 }
 
 /// Compare only dependencies reachable from a package in a historical workspace lockfile.
+///
+/// The local lockfile is read from disk (the updater reverts it after `cargo package`).
+/// The released side is decoded from the lockfile committed at the release.
 pub(crate) fn are_workspace_lock_dependencies_updated(
     local_metadata: &Metadata,
-    released_metadata: &Metadata,
+    released_workspace: &ReleasedWorkspace,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    if !local_metadata.workspace_root.join("Cargo.lock").exists()
-        || !released_metadata.workspace_root.join("Cargo.lock").exists()
-    {
+    let Some(released_lockfile) = &released_workspace.lockfile else {
+        return Ok(false);
+    };
+    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
         return Ok(false);
     }
     let local = workspace_lock_dependencies(local_metadata, package_name)?;
-    let released = workspace_lock_dependencies(released_metadata, package_name)?;
+    // The user can fix the local lockfile.
+    let local = local.with_context(|| {
+        let package = cargo_utils::workspace_package(local_metadata, package_name)
+            .map(|p| p.version.to_string())
+            .unwrap_or_default();
+        format!(
+            "cannot find package {package_name:?} {package} in lockfile {:?}. Hint: run `cargo check` to update the lockfile and commit it.",
+            local_metadata.workspace_root.join("Cargo.lock")
+        )
+    })?;
+    restore_released_lockfile(released_workspace, released_lockfile)?;
+    let Some(released) = workspace_lock_dependencies(&released_workspace.metadata, package_name)?
+    else {
+        // History can't be rewritten: don't fail, assume the dependencies changed.
+        warn!(
+            "package {package_name} is not in the Cargo.lock committed at {}: \
+             the lockfile was stale when the package was released. \
+             Assuming its dependencies changed.",
+            released_workspace.commit
+        );
+        return Ok(true);
+    };
     Ok(are_dependencies_updated(&local, &released))
 }
 
+/// Cargo only decodes lockfiles from disk, so make sure the released workspace still
+/// contains the lockfile committed at the release.
+///
+/// `cargo package --list`, which runs in the reconstructed worktree while comparing the
+/// package contents, re-resolves a stale `Cargo.lock` and rewrites it on disk.
+/// We must compare what was committed at the tag, not cargo's fresh resolution.
+fn restore_released_lockfile(
+    released_workspace: &ReleasedWorkspace,
+    released_lockfile: &str,
+) -> anyhow::Result<()> {
+    let lock_path = released_workspace
+        .metadata
+        .workspace_root
+        .join("Cargo.lock");
+    let on_disk = fs_err::read_to_string(&lock_path).ok();
+    if on_disk.as_deref() != Some(released_lockfile) {
+        debug!(
+            "restoring lockfile committed at {}",
+            released_workspace.commit
+        );
+        fs_err::write(&lock_path, released_lockfile)
+            .with_context(|| format!("cannot restore released lockfile {lock_path:?}"))?;
+    }
+    Ok(())
+}
+
+/// Collect the dependencies reachable from `package_name` in the workspace lockfile.
+///
+/// Returns `None` when the lockfile is stale, i.e. it doesn't contain the package at
+/// the version declared in its manifest.
 fn workspace_lock_dependencies(
     metadata: &Metadata,
     package_name: &str,
-) -> anyhow::Result<Lockfile> {
+) -> anyhow::Result<Option<Lockfile>> {
     let lock_path = metadata.workspace_root.join("Cargo.lock");
     let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
     let manifest = metadata.workspace_root.join("Cargo.toml");
@@ -63,15 +120,13 @@ fn workspace_lock_dependencies(
         .map(|(url, patches)| Ok((CanonicalUrl::new(&url)?, patches)))
         .collect::<anyhow::Result<HashMap<_, _>>>()?;
     let package = cargo_utils::workspace_package(metadata, package_name)?;
-    let root = resolve
-        .iter()
-        .find(|id| id.name().as_str() == package_name
+    let Some(root) = resolve.iter().find(|id| {
+        id.name().as_str() == package_name
             && id.version() == &package.version
-            && id.source_id().is_path())
-        .with_context(|| format!(
-            "cannot find package {package_name:?} {} in lockfile {lock_path:?}. Hint: run `cargo check` to update the lockfile and commit it.",
-            package.version
-        ))?;
+            && id.source_id().is_path()
+    }) else {
+        return Ok(None);
+    };
     let mut pending = vec![root];
     let mut reachable = HashSet::new();
     while let Some(id) = pending.pop() {
@@ -92,7 +147,7 @@ fn workspace_lock_dependencies(
             }
         }
     }
-    Ok(Lockfile {
+    Ok(Some(Lockfile {
         packages: reachable
             .into_iter()
             .map(|id| Package {
@@ -100,7 +155,7 @@ fn workspace_lock_dependencies(
                 version: id.version().clone(),
             })
             .collect(),
-    })
+    }))
 }
 
 fn is_dev_only_dependency(
@@ -231,33 +286,88 @@ mod tests {
         (directory, metadata)
     }
 
+    /// Snapshot the lockfile of a workspace the way the reconstruction does.
+    fn released_workspace(metadata: Metadata) -> ReleasedWorkspace {
+        ReleasedWorkspace::new(metadata, "release-commit".into()).unwrap()
+    }
+
     fn compare_workspace_locks(local: &Utf8Path, released: &Utf8Path, package: &str) -> bool {
         let (_local, local_metadata) = workspace_for_lock(&fs_err::read_to_string(local).unwrap());
         let (_released, released_metadata) =
             workspace_for_lock(&fs_err::read_to_string(released).unwrap());
-        are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, package)
-            .unwrap()
+        let released = released_workspace(released_metadata);
+        are_workspace_lock_dependencies_updated(&local_metadata, &released, package).unwrap()
     }
 
-    #[test]
-    fn workspace_lock_comparison_fails_on_stale_lockfile() {
-        let lockfile = "version = 4\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"dep\"]\n\
+    const STALE_LOCKFILE: &str = "version = 4\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"dep\"]\n\
              [[package]]\nname = \"dep\"\nversion = \"1.0.0\"\n";
-        let (directory, _) = workspace_for_lock(lockfile);
+
+    /// A workspace whose manifest version is ahead of the committed lockfile.
+    fn stale_workspace() -> (crate::fs_utils::Utf8TempDir, Metadata) {
+        let (directory, _) = workspace_for_lock(STALE_LOCKFILE);
         let manifest = directory.path().join("app-0.1.0/Cargo.toml");
         let contents = fs_err::read_to_string(&manifest).unwrap();
         fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
         let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
-        let error = workspace_lock_dependencies(&metadata, "app")
+        (directory, metadata)
+    }
+
+    #[test]
+    fn workspace_lock_comparison_fails_on_stale_lockfile() {
+        let (directory, local_metadata) = stale_workspace();
+        let (_released, released_metadata) = workspace_for_lock(STALE_LOCKFILE);
+        let released = released_workspace(released_metadata);
+        // The user can fix the local lockfile, so this is an error with a hint.
+        let error = are_workspace_lock_dependencies_updated(&local_metadata, &released, "app")
             .unwrap_err()
             .to_string();
         assert!(
             error.contains("cannot find package \"app\" 0.2.0"),
             "{error}"
         );
+        assert!(error.contains("cargo check"), "{error}");
         assert_eq!(
             fs_err::read_to_string(directory.path().join("Cargo.lock")).unwrap(),
-            lockfile
+            STALE_LOCKFILE
+        );
+    }
+
+    #[test]
+    fn workspace_lock_comparison_treats_stale_released_lockfile_as_updated() {
+        let (_local, local_metadata) = workspace_for_lock(STALE_LOCKFILE);
+        let (_released, released_metadata) = stale_workspace();
+        let released = released_workspace(released_metadata);
+        // History can't be rewritten: assume the dependencies changed instead of failing.
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
+        );
+    }
+
+    #[test]
+    fn workspace_lock_comparison_uses_lockfile_committed_at_release() {
+        let committed = STALE_LOCKFILE;
+        let re_resolved = committed.replace("1.0.0", "1.0.1");
+        let (_local, local_metadata) = workspace_for_lock(&re_resolved);
+        let (released_dir, released_metadata) = workspace_for_lock(committed);
+        let released = released_workspace(released_metadata);
+        assert_eq!(released.lockfile.as_deref(), Some(committed));
+        // Simulate `cargo package --list` re-resolving the released lockfile on disk
+        // after the snapshot was taken.
+        let released_lock = released_dir.path().join("Cargo.lock");
+        fs_err::write(&released_lock, &re_resolved).unwrap();
+        // Comparing against the re-resolved lockfile would report no change.
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
+        );
+        assert_eq!(fs_err::read_to_string(&released_lock).unwrap(), committed);
+
+        // Without a lockfile at the release there is nothing to compare.
+        let released = ReleasedWorkspace {
+            lockfile: None,
+            ..released
+        };
+        assert!(
+            !are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
         );
     }
 
@@ -297,15 +407,14 @@ mod tests {
         }
         let local_metadata =
             cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
-        let released_metadata =
-            cargo_utils::get_manifest_metadata(&released.path().join("Cargo.toml")).unwrap();
-        assert!(
-            !are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "app")
-                .unwrap()
+        let released = released_workspace(
+            cargo_utils::get_manifest_metadata(&released.path().join("Cargo.toml")).unwrap(),
         );
         assert!(
-            are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "other")
-                .unwrap()
+            !are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
+        );
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "other").unwrap()
         );
 
         // Each side must use its own member version when identifying the root.
@@ -318,8 +427,7 @@ mod tests {
         let local_metadata =
             cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
         assert!(
-            are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "app")
-                .unwrap()
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
         );
     }
 
@@ -476,6 +584,7 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
             ));
         }
         fs_err::write(released.path().join("Cargo.lock"), &lockfile).unwrap();
+        let released = released_workspace(released_metadata);
 
         for (name, version, should_update) in [
             ("test-only", "1.0.0", false),
@@ -500,12 +609,8 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                 );
             fs_err::write(local.path().join("Cargo.lock"), changed).unwrap();
             assert_eq!(
-                are_workspace_lock_dependencies_updated(
-                    &local_metadata,
-                    &released_metadata,
-                    "binary"
-                )
-                .unwrap(),
+                are_workspace_lock_dependencies_updated(&local_metadata, &released, "binary")
+                    .unwrap(),
                 should_update,
                 "updating {name} {version}"
             );
@@ -568,7 +673,9 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
                 crate::cargo::run_cargo(root, &["generate-lockfile", "--offline"]).unwrap();
             assert!(output.status.success(), "{}", output.stderr);
             let metadata = cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
-            workspace_lock_dependencies(&metadata, "binary").unwrap()
+            workspace_lock_dependencies(&metadata, "binary")
+                .unwrap()
+                .unwrap()
         };
         for dependency_kind in ["dependencies", "build-dependencies"] {
             // A dev declaration may resolve to the patched runtime package itself,
@@ -674,7 +781,9 @@ version = "1.0.0"
                 }
                 let metadata =
                     cargo_utils::get_manifest_metadata(&root.join("Cargo.toml")).unwrap();
-                workspace_lock_dependencies(&metadata, "app").unwrap()
+                workspace_lock_dependencies(&metadata, "app")
+                    .unwrap()
+                    .unwrap()
             };
             let released = read_dependencies(lockfile);
             let local = read_dependencies(&updated_lockfile);
@@ -761,14 +870,13 @@ version = "1.0.0"
                 .unwrap()
                 .contains("feature%2Bnext")
         );
+        let released = released_workspace(released_metadata);
         assert!(
-            !are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "binary")
-                .unwrap()
+            !are_workspace_lock_dependencies_updated(&local_metadata, &released, "binary").unwrap()
         );
         // The same update must still count for the package declaring the dev dependency.
         assert!(
-            are_workspace_lock_dependencies_updated(&local_metadata, &released_metadata, "library")
-                .unwrap()
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "library").unwrap()
         );
     }
 
@@ -873,14 +981,18 @@ version = "1.0.0"
                 "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}\n"
             ));
             fs_err::write(directory.path().join("Cargo.lock"), &lockfile).unwrap();
-            let released = workspace_lock_dependencies(&metadata, "binary").unwrap();
+            let released = workspace_lock_dependencies(&metadata, "binary")
+                .unwrap()
+                .unwrap();
             for (leaf, should_update) in [("dev-leaf", false), ("normal-leaf", true)] {
                 let changed = lockfile.replace(
                     &format!("name = {leaf:?}\nversion = \"1.0.0\""),
                     &format!("name = {leaf:?}\nversion = \"1.0.1\""),
                 );
                 fs_err::write(directory.path().join("Cargo.lock"), changed).unwrap();
-                let local = workspace_lock_dependencies(&metadata, "binary").unwrap();
+                let local = workspace_lock_dependencies(&metadata, "binary")
+                    .unwrap()
+                    .unwrap();
                 assert_eq!(
                     are_dependencies_updated(&local, &released),
                     should_update,

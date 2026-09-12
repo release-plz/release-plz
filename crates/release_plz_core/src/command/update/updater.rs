@@ -831,10 +831,10 @@ impl Updater<'_> {
             )
         };
         let are_lock_dependencies_updated = || {
-            if let Some(released_metadata) = registry_package.workspace_metadata() {
+            if let Some(released_workspace) = registry_package.released_workspace() {
                 lock_compare::are_workspace_lock_dependencies_updated(
                     self.req.cargo_metadata(),
-                    released_metadata,
+                    released_workspace,
                     &package.name,
                 )
             } else {
