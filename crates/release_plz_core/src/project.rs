@@ -123,7 +123,7 @@ impl Project {
     /// Whether the project has more than one release-enabled package.
     /// This decides the default tag name template, so the update and release
     /// commands must answer it the same way.
-    pub fn contains_multiple_packages(&self) -> bool {
+    pub(crate) fn contains_multiple_packages(&self) -> bool {
         self.contains_multiple_packages
     }
 
