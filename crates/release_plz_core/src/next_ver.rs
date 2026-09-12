@@ -1,4 +1,3 @@
-use crate::cargo::run_cargo_with_env;
 use crate::command::git::{GitRepo, GitWorkTree};
 use crate::registry_packages::{PackagesCollection, RegistryPackage, ReleasedWorkspace};
 use crate::release_regex;
@@ -22,9 +21,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_utils::get_manifest_metadata;
 use chrono::NaiveDate;
-use secrecy::SecretString;
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -92,7 +89,7 @@ fn get_temp_worktree_and_repo(
 struct ReconstructedWorkspace {
     /// Kept alive because the metadata paths point into the worktree, which is
     /// cleaned up on drop.
-    worktree: GitWorkTree,
+    _worktree: GitWorkTree,
     released: Arc<ReleasedWorkspace>,
 }
 
@@ -109,13 +106,13 @@ impl ReconstructedWorkspace {
         // Snapshot the committed lockfile before any other cargo command runs in the worktree.
         let released = ReleasedWorkspace::new(metadata, commit)?;
         Ok(Self {
-            worktree,
+            _worktree: worktree,
             released: Arc::new(released),
         })
     }
 
     fn package(&self, package_name: &str) -> anyhow::Result<Package> {
-        get_cargo_package(&self.worktree, package_name)
+        cargo_utils::workspace_package(&self.released.metadata, package_name).cloned()
     }
 }
 
@@ -181,11 +178,13 @@ fn process_git_only_package(
             repo.checkout_commit(&release_commit)
                 .context("checkout release commit for package")?;
 
-            // Snapshot the historical lockfile before cargo package can rewrite it.
+            // Keep the original manifests and path dependencies. Creating archives would
+            // require registry versions even for dependencies that will never be published.
             debug!("Reconstructing workspace sources at commit {release_commit}");
-            let workspace = ReconstructedWorkspace::new(worktree, release_commit.clone())?;
-            run_cargo_package(&workspace.worktree).context("run cargo package")?;
-            entry.insert(workspace)
+            entry.insert(ReconstructedWorkspace::new(
+                worktree,
+                release_commit.clone(),
+            )?)
         }
     };
 
@@ -196,84 +195,6 @@ fn process_git_only_package(
     let registry_package = RegistryPackage::new(single_package, Some(release_commit))
         .with_released_workspace(Arc::clone(&workspace.released));
     Ok(Some(registry_package))
-}
-
-/// Run cargo package within a worktree
-fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
-    let worktree_path = to_utf8_path(worktree.path())?;
-    let target_dir = worktree_path.join("target");
-    // Git-only version comparisons only need packaged files. Skip verification
-    // so historical build scripts cannot fail reconstruction or modify sources.
-    // unpack_cargo_package extracts the archive explicitly instead.
-    let output = run_cargo_with_env(
-        worktree_path,
-        &["package", "--allow-dirty", "--workspace", "--no-verify"],
-        &[(
-            "CARGO_TARGET_DIR".to_owned(),
-            SecretString::from(target_dir.to_string()),
-        )],
-    )
-    .context("run cargo package in worktree")?;
-
-    if !output.status.success() {
-        anyhow::bail!("cargo package failed: {:?}", output.stderr);
-    }
-
-    Ok(())
-}
-
-fn get_cargo_package(worktree: &GitWorkTree, package_name: &str) -> anyhow::Result<Package> {
-    let worktree_path = to_utf8_path(worktree.path())?;
-    let manifest_path = worktree_path.join("Cargo.toml");
-
-    // Keep artifacts inside the worktree even if the invocation configured a shared target dir.
-    let target_dir = worktree_path.join("target");
-    let mut command = cargo_utils::cargo_metadata_command();
-    let rust_package = command
-        .current_dir(worktree_path.as_std_path())
-        .env("CARGO_TARGET_DIR", target_dir)
-        .no_deps()
-        .manifest_path(&manifest_path)
-        .exec()
-        .context("get cargo metadata for worktree")?;
-
-    let package_details = rust_package
-        .packages
-        .iter()
-        .find(|x| x.name == package_name)
-        .with_context(|| format!("Failed to find package {package_name:?}"))?;
-
-    let package_path = unpack_cargo_package(&rust_package.target_directory, package_details)?;
-    debug!("package for {package_name} is at {package_path}");
-
-    let single_package_manifest = package_path.join("Cargo.toml");
-    let single_package_meta = get_manifest_metadata(&single_package_manifest)
-        .context("get cargo metadata for package")?;
-
-    let single_package = single_package_meta
-        .workspace_packages()
-        .into_iter()
-        .find(|p| p.name == package_name)
-        .context("Couldn't find the package")?
-        .clone();
-
-    Ok(single_package)
-}
-
-/// Extract the `.crate` archive produced by `cargo package --no-verify` and return the
-/// directory of the unpacked package. Cargo itself only extracts it during verification.
-fn unpack_cargo_package(target_dir: &Utf8Path, package: &Package) -> anyhow::Result<Utf8PathBuf> {
-    let package_dir = target_dir.join("package");
-    let package_id = format!("{}-{}", package.name, package.version);
-    let archive_path = package_dir.join(format!("{package_id}.crate"));
-    let archive = fs_err::File::open(&archive_path)?;
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(archive));
-    // Match Cargo behavior: timestamps are unnecessary and unsupported on some filesystems.
-    archive.set_preserve_mtime(false);
-    archive
-        .unpack(&package_dir)
-        .with_context(|| format!("unpack package archive {archive_path}"))?;
-    Ok(package_dir.join(package_id))
 }
 
 /// Determine next version of packages.
@@ -607,7 +528,7 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::write_package;
+    use crate::test_utils::{package_manifest, write_package};
     use fake_package::FakePackage;
 
     #[test]
@@ -638,6 +559,40 @@ mod tests {
                 "{name} in git-only mode"
             );
         }
+    }
+
+    #[test]
+    fn git_only_reconstruction_uses_historical_cargo_config() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::create_dir(root.path().join(".cargo")).unwrap();
+        let manifest = root.path().join("Cargo.toml");
+        write_package(
+            root.path(),
+            "app",
+            "0.1.0",
+            "[dependencies]\ndep = { version = \"1\", registry = \"historical\" }\n",
+        );
+        let config = root.path().join(".cargo/config.toml");
+        fs_err::write(
+            &config,
+            "[registries.historical]\nindex = \"sparse+https://example.com/index/\"\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("initial release").unwrap();
+        repo.tag("v0.1.0", "initial release").unwrap();
+
+        // The current checkout no longer knows the registry used by the old release.
+        fs_err::write(&manifest, package_manifest("app", "0.1.0", "")).unwrap();
+        fs_err::remove_file(config).unwrap();
+        repo.add_all_and_commit("remove obsolete registry dependency")
+            .unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        let request = super::UpdateRequest::new(metadata.clone()).unwrap();
+        let (packages, _workspaces) =
+            super::collect_git_only_packages(metadata.workspace_packages(), &request, false)
+                .unwrap();
+        assert_eq!(packages["app"].package.dependencies[0].name, "dep");
     }
 
     #[test]
@@ -720,22 +675,22 @@ exclude = ["excluded.txt"]
         let mut original = super::GitRepo::open(root.path()).unwrap();
         let (_repo, worktree) =
             super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
-        super::run_cargo_package(&worktree).unwrap();
-        let package = super::get_cargo_package(&worktree, "non-verifiable").unwrap();
+        let workspace = super::ReconstructedWorkspace::new(worktree, "HEAD".into()).unwrap();
+        let package = workspace.package("non-verifiable").unwrap();
         let package_dir = package.manifest_path.parent().unwrap();
 
         assert_eq!(package.version.to_string(), "0.1.0");
-        // The archive was unpacked. Compare with the checked out file so that
-        // line-ending conversion on Windows doesn't matter.
+        // Normalize line endings to allow Git's Windows checkout conversion.
         assert_eq!(
-            fs_err::read_to_string(package_dir.join("src/lib.rs")).unwrap(),
-            fs_err::read_to_string(worktree.path().join("src/lib.rs")).unwrap()
+            fs_err::read_to_string(package_dir.join("src/lib.rs"))
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "pub fn example() {}\n"
         );
-        assert!(package_dir.join("Cargo.toml.orig").is_file());
-        assert!(!package_dir.join("excluded.txt").exists());
+        let files = crate::get_cargo_package_files(package_dir).unwrap();
+        assert!(!files.iter().any(|file| file == "excluded.txt"));
         // The build script never ran.
         assert!(!package_dir.join("generated.txt").exists());
-        assert!(!worktree.path().join("generated.txt").exists());
     }
 
     #[test]
