@@ -4,10 +4,11 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::CARGO_TOML;
+use secrecy::SecretString;
 use tracing::debug;
 
 use crate::{
-    cargo::{read_package_metadata, run_cargo},
+    cargo::{read_package_metadata, run_cargo_with_env},
     fs_utils,
 };
 use std::{
@@ -57,7 +58,11 @@ pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
 ) -> anyhow::Result<bool> {
-    are_packages_equal_cached(local_package, registry_package, &ReleasedPackageFiles::default())
+    are_packages_equal_cached(
+        local_package,
+        registry_package,
+        &ReleasedPackageFiles::default(),
+    )
 }
 
 /// Same as [`are_packages_equal`], reusing the released package's file list
@@ -154,7 +159,14 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
 fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
     // Local packages can contain uncommitted changes during an update.
     let args = ["package", "--list", "--quiet", "--allow-dirty"];
-    let output = run_cargo(package, &args).context("cannot run `cargo package`")?;
+    // Keep artifacts inside the directory being listed even if the invocation
+    // configured a shared target dir, so that a temporary worktree takes its
+    // cargo scratch state with it when it's dropped.
+    let envs = [(
+        "CARGO_TARGET_DIR".to_owned(),
+        SecretString::from(package.join("target").to_string()),
+    )];
+    let output = run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")?;
 
     anyhow::ensure!(
         output.status.success(),
@@ -234,19 +246,19 @@ pub(crate) fn is_readme_updated(
     let local_package_readme_path = local_readme_override(&package, local_package_path);
     let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
-            let registry_package_readme_path = if is_extracted_registry_package(
-                registry_package_path,
-            ) {
-                registry_package_path.join("README.md")
-            } else {
-                // A released package that was never packaged keeps its original manifest,
-                // so its `readme` field can point outside the package directory.
-                let Some(path) = local_readme_override(released_package, registry_package_path)?
-                else {
-                    return Ok(true);
+            let registry_package_readme_path =
+                if is_extracted_registry_package(registry_package_path) {
+                    registry_package_path.join("README.md")
+                } else {
+                    // A released package that was never packaged keeps its original manifest,
+                    // so its `readme` field can point outside the package directory.
+                    let Some(path) =
+                        local_readme_override(released_package, registry_package_path)?
+                    else {
+                        return Ok(true);
+                    };
+                    path
                 };
-                path
-            };
             if !registry_package_readme_path.exists() {
                 return Ok(true);
             }
@@ -304,6 +316,7 @@ fn file_hash(file: &Utf8Path) -> io::Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cargo::run_cargo;
     use crate::fs_utils::Utf8TempDir;
 
     #[test]
