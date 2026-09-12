@@ -94,7 +94,12 @@ struct ReconstructedWorkspace {
 impl ReconstructedWorkspace {
     fn new(worktree: GitWorkTree) -> anyhow::Result<Self> {
         let manifest = to_utf8_path(worktree.path())?.join("Cargo.toml");
-        let metadata = cargo_utils::get_manifest_metadata(&manifest)
+        // Cargo discovers configuration from its working directory, not --manifest-path.
+        let metadata = cargo_utils::cargo_metadata_command()
+            .current_dir(worktree.path())
+            .no_deps()
+            .manifest_path(&manifest)
+            .exec()
             .context("get cargo metadata for worktree")?;
         Ok(Self {
             worktree,
@@ -502,6 +507,44 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn git_only_reconstruction_uses_historical_cargo_config() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::create_dir(root.path().join("src")).unwrap();
+        fs_err::create_dir(root.path().join(".cargo")).unwrap();
+        fs_err::write(root.path().join("src/lib.rs"), "").unwrap();
+        let manifest = root.path().join("Cargo.toml");
+        let package = "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+        fs_err::write(
+            &manifest,
+            format!(
+                "{package}[dependencies]\ndep = {{ version = \"1\", registry = \"historical\" }}\n"
+            ),
+        )
+        .unwrap();
+        let config = root.path().join(".cargo/config.toml");
+        fs_err::write(
+            &config,
+            "[registries.historical]\nindex = \"sparse+https://example.com/index/\"\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("initial release").unwrap();
+        repo.tag("v0.1.0", "initial release").unwrap();
+
+        // The current checkout no longer knows the registry used by the old release.
+        fs_err::write(&manifest, package).unwrap();
+        fs_err::remove_file(config).unwrap();
+        repo.add_all_and_commit("remove obsolete registry dependency")
+            .unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        let request = super::UpdateRequest::new(metadata.clone()).unwrap();
+        let (packages, _workspaces) =
+            super::collect_git_only_packages(metadata.workspace_packages(), &request, false)
+                .unwrap();
+        assert_eq!(packages["app"].package.dependencies[0].name, "dep");
+    }
+
     #[test]
     fn git_only_packages_share_historical_workspace_metadata() {
         let root = crate::fs_utils::Utf8TempDir::new().unwrap();
