@@ -418,6 +418,7 @@ impl Updater<'_> {
                     &all_changed_packages,
                     workspace_dependencies,
                     workspace_dir,
+                    self.req.should_use_git_only(&p.name),
                 ) && !deps.is_empty()
                 {
                     // This package depends on changed packages, so it needs to be updated
