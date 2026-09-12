@@ -32,9 +32,10 @@ pub struct Project {
     root: Utf8PathBuf,
     /// Directory containing the project manifest
     manifest_dir: Utf8PathBuf,
-    /// The project contains more than one public package.
-    /// Not affected by `single_package` option.
-    contains_multiple_pub_packages: bool,
+    /// Whether the project has more than one release-enabled package.
+    /// Computed before `--package` narrows the set, so that asking for a single
+    /// package doesn't change the tag names of a workspace.
+    contains_multiple_packages: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -77,7 +78,7 @@ impl Project {
             "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
         );
 
-        let contains_multiple_pub_packages = packages.len() > 1;
+        let contains_multiple_packages = packages.len() > 1;
 
         if let Some(pac) = single_package {
             packages.retain(|p| *p.name == pac);
@@ -98,7 +99,7 @@ impl Project {
             release_metadata,
             root,
             manifest_dir,
-            contains_multiple_pub_packages,
+            contains_multiple_packages,
         })
     }
 
@@ -117,6 +118,13 @@ impl Project {
     /// Get all packages, including non-publishable.
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
+    }
+
+    /// Whether the project has more than one release-enabled package.
+    /// This decides the default tag name template, so the update and release
+    /// commands must answer it the same way.
+    pub(crate) fn contains_multiple_packages(&self) -> bool {
+        self.contains_multiple_packages
     }
 
     /// Copy this project in a temporary repository and return the repository.
@@ -162,8 +170,8 @@ impl Project {
             ),
         };
 
-        let template = template
-            .unwrap_or_else(|| default_tag_name_template(self.contains_multiple_pub_packages));
+        let template =
+            template.unwrap_or_else(|| default_tag_name_template(self.contains_multiple_packages));
 
         let context = tera_context(package_name, version);
         crate::tera::render_template(&template, &context, template_name)
@@ -427,6 +435,41 @@ mod tests {
         assert!(result.is_err());
         expect_test::expect![[r#"no public packages found. Are there any public packages in your project? Analyzed packages: ["cargo_utils", "fake_package", "git_cmd", "test_logs", "next_version", "release-plz", "release_plz_core"]"#]]
         .assert_eq(&result.unwrap_err().to_string());
+    }
+
+    #[test]
+    fn single_package_does_not_change_default_tag_template() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        git_cmd::Repo::init(root.path());
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two"] {
+            crate::test_utils::write_package(&root.path().join(name), name, "0.1.0", "");
+        }
+        let manifest = root.path().join("Cargo.toml");
+        let workspace =
+            get_project(&manifest, None, &HashSet::default(), true, None, None).expect("Should ok");
+        assert_eq!(workspace.workspace_packages().len(), 2);
+        assert!(workspace.contains_multiple_packages());
+        assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+
+        // Narrowing the packages with `--package` must keep the tag names that the
+        // whole workspace creates, otherwise the release tags could not be found.
+        let narrowed = get_project(
+            &manifest,
+            Some("one"),
+            &HashSet::default(),
+            true,
+            None,
+            None,
+        )
+        .expect("Should ok");
+        assert_eq!(narrowed.workspace_packages().len(), 1);
+        assert!(narrowed.contains_multiple_packages());
+        assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
     }
 
     #[test]

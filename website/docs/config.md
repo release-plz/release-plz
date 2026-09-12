@@ -406,9 +406,12 @@ When `git_only` is enabled:
 - Version detection is based on git tags matching the
   [`git_tag_name`](#the-git_tag_name-field) pattern.
 - If no matching tag is found, the package is treated as an initial release.
+- Packages with `publish = false` in their `Cargo.toml` are also released (tagged), since
+  they don't need a cargo registry.
 
 :::warning
-`git_only` and `publish` cannot both be `true` for the same package.
+In git-only mode `cargo publish` is skipped, so `publish` doesn't need to be set.
+Setting `publish = true` together with `git_only = true` is an error.
 :::
 
 Example:

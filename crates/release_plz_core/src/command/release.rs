@@ -23,6 +23,7 @@ use crate::{
     cargo::{CargoRegistry, CmdOutput, is_published, run_cargo_with_env, wait_until_published},
     changelog_parser,
     git::forge::GitClient,
+    next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
 
@@ -148,9 +149,23 @@ impl ReleaseRequest {
             })
     }
 
+    /// Return true if the package must be published to a cargo registry.
+    ///
+    /// Git-only packages are never published: their versions live in git tags only,
+    /// so `cargo publish` is skipped even if `publish` isn't explicitly disabled.
     fn is_publish_enabled(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.publish.enabled
+        config.publish.enabled && !config.git_only
+    }
+
+    fn is_git_only(&self, package: &str) -> bool {
+        let config = self.get_package_config(package);
+        config.git_only
+    }
+
+    /// See [`takes_part_in_release`].
+    fn is_releasable(&self, package: &Package) -> bool {
+        takes_part_in_release(package, self.is_git_only(&package.name))
     }
 
     fn is_git_release_enabled(&self, package: &str) -> bool {
@@ -207,7 +222,9 @@ impl ReleaseRequest {
             return Ok(());
         }
         for package in &self.metadata.packages {
-            if !self.metadata.workspace_members.contains(&package.id) || !package.is_publishable() {
+            if !self.metadata.workspace_members.contains(&package.id)
+                || !self.is_releasable(package)
+            {
                 continue;
             }
             let config = self.get_package_config(&package.name);
@@ -226,6 +243,9 @@ impl ReleaseRequest {
     ///
     /// If there is no inconsistency, returns Ok(())
     ///
+    /// Git-only packages are skipped: they are never published, so the `publish`
+    /// field of their release-plz configuration is irrelevant.
+    ///
     /// # Errors
     ///
     /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
@@ -235,6 +255,7 @@ impl ReleaseRequest {
 
         for package in &self.metadata.packages {
             if !package.is_publishable()
+                && !self.is_git_only(&package.name)
                 && let Some(should_publish) = publish_fields.get(package.name.as_str())
             {
                 anyhow::ensure!(
@@ -324,11 +345,20 @@ pub struct ReleaseConfig {
     /// Whether this package has a changelog that release-plz updates or not.
     /// Default: `true`.
     changelog_update: bool,
+    /// Whether the package versions are tracked with git tags instead of a cargo registry.
+    /// A `publish = false` package is only released when this is `true`.
+    /// Default: `false`.
+    git_only: bool,
 }
 
 impl ReleaseConfig {
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
         self.publish = publish;
+        self
+    }
+
+    pub fn with_git_only(mut self, git_only: bool) -> Self {
+        self.git_only = git_only;
         self
     }
 
@@ -399,6 +429,7 @@ impl Default for ReleaseConfig {
             release: true,
             changelog_path: None,
             changelog_update: true,
+            git_only: false,
         }
     }
 }
@@ -615,7 +646,11 @@ async fn release_packages(
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
     // Packages are already ordered by release order.
-    let packages = project.publishable_packages();
+    let packages: Vec<_> = project
+        .workspace_packages()
+        .into_iter()
+        .filter(|package| input.is_releasable(package))
+        .collect();
     if packages.is_empty() {
         info!("nothing to release");
     }
@@ -1294,7 +1329,7 @@ mod tests {
     use std::ffi::OsStr;
     use std::sync::{LazyLock, Mutex};
 
-    use fake_package::metadata::fake_metadata;
+    use fake_package::{FakePackage, metadata::fake_metadata};
 
     use super::*;
 
@@ -1341,18 +1376,36 @@ mod tests {
                 remote: remote.clone(),
             }),
         ] {
-            let mut metadata = fake_metadata();
-            // If validation is moved after repository access, the filesystem error will win.
-            let temp_dir = tempfile::tempdir().unwrap();
-            metadata.workspace_root =
-                Utf8PathBuf::from_path_buf(temp_dir.path().join("missing")).unwrap();
-            let request = ReleaseRequest::new(metadata)
-                .with_git_release(GitRelease { forge })
-                .with_default_package_config(ReleaseConfig::default().with_git_release(
-                    GitReleaseConfig::default().set_generate_release_notes(true),
-                ));
-            let error = release(&request).await.unwrap_err();
-            assert!(error.to_string().contains("git_release_generate_notes"));
+            for git_only in [false, true] {
+                let mut metadata = fake_metadata();
+                // Private packages still require validation when they are released in
+                // git-only mode.
+                if git_only {
+                    for package in &mut metadata.packages {
+                        package.publish = Some(vec![]);
+                    }
+                }
+                // If validation is moved after repository access, the filesystem error will win.
+                let temp_dir = tempfile::tempdir().unwrap();
+                metadata.workspace_root =
+                    Utf8PathBuf::from_path_buf(temp_dir.path().join("missing")).unwrap();
+                let request = ReleaseRequest::new(metadata)
+                    .with_git_release(GitRelease {
+                        forge: forge.clone(),
+                    })
+                    .with_default_package_config(
+                        ReleaseConfig::default()
+                            .with_git_only(git_only)
+                            .with_git_release(
+                                GitReleaseConfig::default().set_generate_release_notes(true),
+                            ),
+                    );
+                let error = release(&request).await.unwrap_err();
+                assert!(
+                    error.to_string().contains("git_release_generate_notes"),
+                    "git only: {git_only}: {error:#}"
+                );
+            }
         }
     }
 
@@ -1467,6 +1520,45 @@ mod tests {
     }
 
     #[test]
+    fn release_config_git_only_reaches_release_rule() {
+        // The full rule is covered by `packages_taking_part_in_a_release` in `next_ver.rs`;
+        // this only checks that the release config's `git_only` flag reaches it.
+        let pkg = Package::from(
+            FakePackage::new("pkg")
+                .unpublishable()
+                .with_targets(&["lib"]),
+        );
+        for git_only in [false, true] {
+            let request =
+                ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
+                    git_only,
+                    ..Default::default()
+                });
+            assert_eq!(
+                request.is_releasable(&pkg),
+                git_only,
+                "git only: {git_only}"
+            );
+        }
+    }
+
+    #[test]
+    fn git_only_packages_are_never_published() {
+        for publish_enabled in [true, false] {
+            let request =
+                ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
+                    publish: PublishConfig::enabled(publish_enabled),
+                    git_only: true,
+                    ..Default::default()
+                });
+            assert!(
+                !request.is_publish_enabled("pkg"),
+                "publish enabled: {publish_enabled}"
+            );
+        }
+    }
+
+    #[test]
     fn check_publish_fields_works() {
         // fake_metadata() has `publish = false` in the Cargo.toml
         let mut request = ReleaseRequest::new(fake_metadata());
@@ -1479,5 +1571,23 @@ mod tests {
         );
 
         assert!(request.check_publish_fields().is_err());
+    }
+
+    #[test]
+    fn check_publish_fields_skips_git_only_packages() {
+        // fake_metadata() has `publish = false` in the Cargo.toml.
+        // The CLI merges `[[package]]` overrides with the `[workspace]` defaults, so an
+        // override for a git-only package carries `publish = true` even if the user
+        // never set `publish`. Git-only packages are never published, so this is fine.
+        let request = ReleaseRequest::new(fake_metadata()).with_package_config(
+            "fake_package".to_string(),
+            ReleaseConfig {
+                publish: PublishConfig::enabled(true),
+                git_only: true,
+                ..Default::default()
+            },
+        );
+
+        assert!(request.check_publish_fields().is_ok());
     }
 }

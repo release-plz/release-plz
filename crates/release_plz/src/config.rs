@@ -147,8 +147,8 @@ impl Config {
 fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
     if git_only == Some(true) && publish == Some(true) {
         anyhow::bail!(
-            "Config options 'git_only' and 'publish' are mutually exclusive. \
-            When git_only is enabled, publish must be explicitly set to false."
+            "Config options 'git_only' and 'publish' are mutually exclusive: \
+            git-only packages are never published, so remove `publish = true`."
         );
     }
     Ok(())
@@ -358,6 +358,9 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
         }
         if let Some(allow_dirty) = value.publish_allow_dirty {
             cfg = cfg.with_allow_dirty(allow_dirty);
+        }
+        if let Some(git_only) = value.git_only {
+            cfg = cfg.with_git_only(git_only);
         }
         cfg
     }
