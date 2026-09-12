@@ -1521,7 +1521,7 @@ mod tests {
     }
 
     #[test]
-    fn only_packages_that_can_be_released_are_released() {
+    fn release_config_git_only_reaches_release_rule() {
         // The full rule is covered by `packages_taking_part_in_a_release` in `next_ver.rs`;
         // this only checks that the release config's `git_only` flag reaches it.
         let pkg = Package::from(
@@ -1529,19 +1529,16 @@ mod tests {
                 .unpublishable()
                 .with_targets(&["lib"]),
         );
-        for (publish_enabled, git_only) in
-            [(true, false), (false, false), (false, true), (true, true)]
-        {
+        for git_only in [false, true] {
             let request =
                 ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
-                    publish: PublishConfig::enabled(publish_enabled),
                     git_only,
                     ..Default::default()
                 });
             assert_eq!(
                 request.is_releasable(&pkg),
                 git_only,
-                "publish enabled: {publish_enabled}, git only: {git_only}"
+                "git only: {git_only}"
             );
         }
     }
