@@ -1,6 +1,6 @@
 use crate::cargo::run_cargo_with_env;
 use crate::command::git::{GitRepo, GitWorkTree};
-use crate::registry_packages::{PackagesCollection, RegistryPackage};
+use crate::registry_packages::{PackagesCollection, RegistryPackage, ReleasedWorkspace};
 use crate::release_regex;
 use crate::tera::default_tag_name_template;
 use crate::tmp_repo::TempRepo;
@@ -27,6 +27,7 @@ use chrono::NaiveDate;
 use secrecy::SecretString;
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
+use std::sync::Arc;
 use toml_edit::TableLike;
 use tracing::{debug, info, instrument, trace};
 
@@ -88,6 +89,36 @@ fn get_temp_worktree_and_repo(
     Ok((repo, worktree))
 }
 
+struct ReconstructedWorkspace {
+    /// Kept alive because the metadata paths point into the worktree, which is
+    /// cleaned up on drop.
+    worktree: GitWorkTree,
+    released: Arc<ReleasedWorkspace>,
+}
+
+impl ReconstructedWorkspace {
+    fn new(worktree: GitWorkTree, commit: String) -> anyhow::Result<Self> {
+        let manifest = to_utf8_path(worktree.path())?.join("Cargo.toml");
+        // Cargo discovers configuration from its working directory, not --manifest-path.
+        let metadata = cargo_utils::cargo_metadata_command()
+            .current_dir(worktree.path())
+            .no_deps()
+            .manifest_path(&manifest)
+            .exec()
+            .context("get cargo metadata for worktree")?;
+        // Snapshot the committed lockfile before any other cargo command runs in the worktree.
+        let released = ReleasedWorkspace::new(metadata, commit)?;
+        Ok(Self {
+            worktree,
+            released: Arc::new(released),
+        })
+    }
+
+    fn package(&self, package_name: &str) -> anyhow::Result<Package> {
+        get_cargo_package(&self.worktree, package_name)
+    }
+}
+
 /// Process a single `git_only` package: find its release tag and commit, reconstruct
 /// the workspace if it hasn't already been reconstructed, and return the package metadata.
 ///
@@ -98,7 +129,7 @@ fn process_git_only_package(
     unreleased_project_repo: &mut GitRepo,
     input: &UpdateRequest,
     is_multi_package: bool,
-    reconstructed_workspaces: &mut BTreeMap<String, GitWorkTree>,
+    reconstructed_workspaces: &mut BTreeMap<String, ReconstructedWorkspace>,
 ) -> anyhow::Result<Option<RegistryPackage>> {
     // Get the release tag template, falling back to default based on project structure
     let template = input
@@ -134,10 +165,10 @@ fn process_git_only_package(
         .get_tag_commit(&release_tag)
         .context("get release tag commit")?;
 
-    let worktree = match reconstructed_workspaces.entry(release_commit.clone()) {
+    let workspace = match reconstructed_workspaces.entry(release_commit.clone()) {
         Entry::Occupied(entry) => {
             debug!(
-                "Reusing packaged workspace at commit {release_commit} for package {}",
+                "Reusing workspace sources at commit {release_commit} for package {}",
                 package.name
             );
             entry.into_mut()
@@ -150,24 +181,20 @@ fn process_git_only_package(
             repo.checkout_commit(&release_commit)
                 .context("checkout release commit for package")?;
 
-            // Package the whole workspace so unpublished path dependencies are
-            // materialized in Cargo's temporary local registry.
-            run_cargo_package(&worktree).context("run cargo package")?;
-            entry.insert(worktree)
+            // Snapshot the historical lockfile before cargo package can rewrite it.
+            debug!("Reconstructing workspace sources at commit {release_commit}");
+            let workspace = ReconstructedWorkspace::new(worktree, release_commit.clone())?;
+            run_cargo_package(&workspace.worktree).context("run cargo package")?;
+            entry.insert(workspace)
         }
     };
 
     // Metadata paths point into the cached worktree. Any error aborts collection and drops
     // all reconstructed workspaces, so an unusable artifact cannot be reused.
-    let single_package = get_cargo_package(worktree, &package.name).with_context(|| {
-        format!(
-            "get cargo package {} from worktree at {:?}",
-            package.name,
-            worktree.path()
-        )
-    })?;
+    let single_package = workspace.package(&package.name)?;
 
-    let registry_package = RegistryPackage::new(single_package, Some(release_commit));
+    let registry_package = RegistryPackage::new(single_package, Some(release_commit))
+        .with_released_workspace(Arc::clone(&workspace.released));
     Ok(Some(registry_package))
 }
 
@@ -335,7 +362,10 @@ fn collect_git_only_packages(
     git_only_packages: Vec<&Package>,
     input: &UpdateRequest,
     is_multi_package: bool,
-) -> anyhow::Result<(BTreeMap<String, RegistryPackage>, Vec<GitWorkTree>)> {
+) -> anyhow::Result<(
+    BTreeMap<String, RegistryPackage>,
+    Vec<ReconstructedWorkspace>,
+)> {
     if git_only_packages.is_empty() {
         return Ok((BTreeMap::new(), Vec::new()));
     }
@@ -351,7 +381,7 @@ fn collect_git_only_packages(
     // See the note on the custom worktree Drop impl for more details.
     // Packages released at the same commit share one reconstructed workspace: all other
     // reconstruction inputs (repository, manifest, Cargo config) are fixed for this invocation.
-    let mut reconstructed_workspaces: BTreeMap<String, GitWorkTree> = BTreeMap::new();
+    let mut reconstructed_workspaces = BTreeMap::new();
 
     let mut unreleased_project_repo = GitRepo::open(
         input
@@ -577,6 +607,7 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::write_package;
     use fake_package::FakePackage;
 
     #[test]
@@ -607,6 +638,56 @@ mod tests {
                 "{name} in git-only mode"
             );
         }
+    }
+
+    #[test]
+    fn git_only_packages_share_historical_workspace_metadata() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two"] {
+            write_package(&root.path().join(name), name, "0.1.0", "");
+        }
+        let lockfile = "version = 4\n\n[[package]]\nname = \"one\"\nversion = \"0.1.0\"\n\n\
+             [[package]]\nname = \"two\"\nversion = \"0.1.0\"\n";
+        fs_err::write(root.path().join("Cargo.lock"), lockfile).unwrap();
+        repo.add_all_and_commit("initial workspace").unwrap();
+        for name in ["one", "two"] {
+            repo.tag(&format!("{name}-v0.1.0"), "initial release")
+                .unwrap();
+        }
+        let release_commit = repo.current_commit_hash().unwrap();
+        let manifest = root.path().join("one/Cargo.toml");
+        let contents = fs_err::read_to_string(&manifest).unwrap();
+        fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
+        repo.add_all_and_commit("update current version").unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&root.path().join("Cargo.toml")).unwrap();
+        let request = super::UpdateRequest::new(metadata.clone()).unwrap();
+        let (packages, workspaces) =
+            super::collect_git_only_packages(metadata.workspace_packages(), &request, true)
+                .unwrap();
+        // Both packages were released at the same commit, so one worktree serves both.
+        assert_eq!(workspaces.len(), 1);
+        let one = &packages["one"];
+        let two = &packages["two"];
+        assert_eq!(one.package.version.to_string(), "0.1.0");
+        assert!(one.package.manifest_path.is_file());
+        assert!(two.package.manifest_path.is_file());
+        let released = one.released_workspace().unwrap();
+        assert!(std::ptr::eq(released, two.released_workspace().unwrap()));
+        assert_eq!(released.commit, release_commit);
+        // The lockfile committed at the release is captured with the workspace.
+        assert_eq!(
+            released
+                .lockfile
+                .as_deref()
+                .map(|l| l.replace("\r\n", "\n")),
+            Some(lockfile.to_owned())
+        );
     }
 
     #[test]

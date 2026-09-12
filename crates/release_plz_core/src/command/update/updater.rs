@@ -719,7 +719,7 @@ impl Updater<'_> {
                         // If the dependencies changed, we add a commit to the diff.
                         self.add_dependencies_update_if_any(
                             diff,
-                            &registry_package.package,
+                            registry_package,
                             package,
                             registry_package_path,
                         )?;
@@ -809,21 +809,29 @@ impl Updater<'_> {
     fn add_dependencies_update_if_any(
         &self,
         diff: &mut Diff,
-        registry_package: &Package,
+        registry_package: &RegistryPackage,
         package: &Package,
         registry_package_path: &Utf8Path,
     ) -> anyhow::Result<()> {
         let are_toml_dependencies_updated = || {
             toml_compare::are_toml_dependencies_updated(
-                &registry_package.dependencies,
+                &registry_package.package.dependencies,
                 &package.dependencies,
             )
         };
         let are_lock_dependencies_updated = || {
-            lock_compare::are_lock_dependencies_updated(
-                &self.project.cargo_lock_path(),
-                registry_package_path,
-            )
+            if let Some(released_workspace) = registry_package.released_workspace() {
+                lock_compare::are_workspace_lock_dependencies_updated(
+                    self.req.cargo_metadata(),
+                    released_workspace,
+                    &package.name,
+                )
+            } else {
+                lock_compare::are_lock_dependencies_updated(
+                    &self.project.cargo_lock_path(),
+                    registry_package_path,
+                )
+            }
             .context("Can't check if Cargo.lock dependencies are up to date")
         };
         if are_toml_dependencies_updated() {

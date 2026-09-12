@@ -1000,7 +1000,7 @@ publish = false
     let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert_eq!(
         stderr
-            .matches("Run `cargo package --allow-dirty --workspace --no-verify`")
+            .matches("Reconstructing workspace sources at commit")
             .count(),
         2,
         "packages at different historical commits need separate workspace reconstructions\n{stderr}"
@@ -1082,7 +1082,7 @@ git_tag_name = "v{{ version }}"
     let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert_eq!(
         stderr
-            .matches("Run `cargo package --allow-dirty --workspace --no-verify`")
+            .matches("Reconstructing workspace sources at commit")
             .count(),
         1,
         "packages at one historical commit should share workspace reconstruction\n{stderr}"
@@ -1314,4 +1314,87 @@ git_release_name = "{{ package }}-v{{ version }}"
 
     context.repo.git(&["fetch", "--tags"]).unwrap();
     assert!(context.repo.tag_exists("mybin-v0.1.1").unwrap());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_does_not_release_unrelated_binaries_for_workspace_lock_changes() {
+    let context = TestContext::new_workspace(&["bin-a", "bin-b"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+"#,
+    );
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    fs_err::write(
+        context.package_path("bin-a").join("src/main.rs"),
+        "fn main() { println!(\"fixed\"); }\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update bin-a");
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("bin-a-v0.1.1").unwrap());
+    assert!(!context.repo.tag_exists("bin-b-v0.1.1").unwrap());
+
+    // Releasing bin-a changes the shared lockfile, but bin-b does not depend on it.
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("support").with_type(PackageType::Lib),
+        TestPackage::new("app").with_path_dependencies(vec!["../support"]),
+    ])
+    .await;
+    let mut manifest =
+        cargo_utils::LocalManifest::try_new(&context.package_path("support").join("Cargo.toml"))
+            .unwrap();
+    manifest.data["dev-dependencies"]["itoa"] = "1".into();
+    manifest.write().unwrap();
+    context.run_cargo_check();
+    let update_test_dependency = |version| {
+        assert_cmd::Command::new("cargo")
+            .current_dir(context.repo_dir())
+            .args(["update", "--package", "itoa", "--precise", version])
+            .assert()
+            .success();
+        context.push_all_changes("chore: update library test dependency");
+    };
+    update_test_dependency("1.0.17");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+"#,
+    );
+    for name in ["support", "app"] {
+        context
+            .repo
+            .tag(&format!("{name}-v0.1.0"), "initial release")
+            .unwrap();
+    }
+    update_test_dependency("1.0.18");
+    context.run_update().success();
+    for name in ["support", "app"] {
+        let package_path = context.package_path(name);
+        let manifest =
+            cargo_utils::LocalManifest::try_new(&package_path.join("Cargo.toml")).unwrap();
+        assert_eq!(
+            manifest.data["package"]["version"].as_str(),
+            Some("0.1.0"),
+            "{name}"
+        );
+        assert!(!package_path.join("CHANGELOG.md").exists());
+    }
 }
