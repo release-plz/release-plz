@@ -198,15 +198,15 @@ impl Package {
         // A patch can replace the declared source. If no source matches, only
         // discard the dependency when every matching declaration is dev-only.
         let has_source_match = matching.clone().any(matches_source);
-        let mut matching = matching.filter(|d| !has_source_match || matches_source(d));
-        matching
-            .clone()
-            .any(|d| d.kind == DependencyKind::Development)
-            && matching.all(|d| d.kind == DependencyKind::Development)
+        let mut matching = matching
+            .filter(|d| !has_source_match || matches_source(d))
+            .peekable();
+        // An empty set means no declaration explains this package, so don't discard it.
+        matching.peek().is_some() && matching.all(|d| d.kind == DependencyKind::Development)
     }
 
     fn matches_dependency(&self, version: Option<&str>, source: Option<&str>) -> bool {
-        version.is_none_or(|version| version == self.version.to_string())
+        version.is_none_or(|version| Version::parse(version).is_ok_and(|v| v == self.version))
             && source.is_none_or(|source| {
                 self.source.as_deref().is_some_and(|s| {
                     source
@@ -336,7 +336,10 @@ mod tests {
             .retain_package_dependencies("app", &Version::new(0, 2, 0), &[])
             .unwrap_err()
             .to_string();
-        assert!(error.contains("cannot find package \"app\" 0.2.0"), "{error}");
+        assert!(
+            error.contains("cannot find package \"app\" 0.2.0"),
+            "{error}"
+        );
         // The lockfile is left untouched, so no caller can mistake it for an empty graph.
         assert_eq!(lock.packages.len(), 2);
     }
