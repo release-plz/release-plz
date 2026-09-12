@@ -36,7 +36,7 @@ impl PackageDependencies for Package {
             // Dev dependencies are included on purpose: `should_update_dependency`
             // decides which of them count.
             let matching_deps = package_manifest
-                .get_package_dependency_tables_with_kind()
+                .get_package_dependency_tables()
                 .flat_map(|(kind, t)| {
                     t.iter().filter_map(move |(name, d)| {
                         d.as_table_like().map(|d| {

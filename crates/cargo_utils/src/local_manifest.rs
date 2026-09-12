@@ -76,7 +76,7 @@ impl LocalManifest {
     /// Iterate over every dependency table of the manifest, including the
     /// `[workspace.dependencies]` templates.
     pub fn get_dependency_tables(&self) -> impl Iterator<Item = &dyn toml_edit::TableLike> + '_ {
-        self.get_package_dependency_tables_with_kind()
+        self.get_package_dependency_tables()
             .map(|(_, table)| table)
             .chain(self.get_workspace_dependency_table())
     }
@@ -86,7 +86,7 @@ impl LocalManifest {
     /// for `[dev-dependencies]` and `[target.'cfg(..)'.dev-dependencies]`).
     /// `[workspace.dependencies]` entries are templates, not dependencies of this package,
     /// so they are left out.
-    pub fn get_package_dependency_tables_with_kind(
+    pub fn get_package_dependency_tables(
         &self,
     ) -> impl Iterator<Item = (DepKind, &dyn toml_edit::TableLike)> + '_ {
         let root = self.data.as_table();
