@@ -88,7 +88,7 @@ fn get_temp_worktree_and_repo(
 
 struct ReconstructedWorkspace {
     worktree: GitWorkTree,
-    workspace: Arc<ReleasedWorkspace>,
+    released: Arc<ReleasedWorkspace>,
 }
 
 impl ReconstructedWorkspace {
@@ -102,15 +102,15 @@ impl ReconstructedWorkspace {
             .exec()
             .context("get cargo metadata for worktree")?;
         // Snapshot the committed lockfile before any other cargo command runs in the worktree.
-        let workspace = ReleasedWorkspace::new(metadata, commit)?;
+        let released = ReleasedWorkspace::new(metadata, commit)?;
         Ok(Self {
             worktree,
-            workspace: Arc::new(workspace),
+            released: Arc::new(released),
         })
     }
 
     fn package(&self, package_name: &str) -> anyhow::Result<Package> {
-        cargo_utils::workspace_package(&self.workspace.metadata, package_name)
+        cargo_utils::workspace_package(&self.released.metadata, package_name)
             .cloned()
             .with_context(|| format!("in worktree at {:?}", self.worktree.path()))
     }
@@ -193,7 +193,7 @@ fn process_git_only_package(
     let single_package = workspace.package(&package.name)?;
 
     let registry_package = RegistryPackage::new(single_package, Some(release_commit))
-        .with_released_workspace(Arc::clone(&workspace.workspace));
+        .with_released_workspace(Arc::clone(&workspace.released));
     Ok(Some(registry_package))
 }
 

@@ -271,12 +271,14 @@ mod tests {
         are_workspace_lock_dependencies_updated(&local_metadata, &released, package).unwrap()
     }
 
-    const STALE_LOCKFILE: &str = "version = 4\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"dep\"]\n\
+    /// A lockfile in which `app 0.1.0` depends on `dep 1.0.0`.
+    const APP_DEP_LOCKFILE: &str = "version = 4\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"dep\"]\n\
              [[package]]\nname = \"dep\"\nversion = \"1.0.0\"\n";
 
-    /// A workspace whose manifest version is ahead of the committed lockfile.
+    /// A workspace whose manifest version (`app 0.2.0`) is ahead of the committed
+    /// lockfile, which still records `app 0.1.0`.
     fn stale_workspace() -> (crate::fs_utils::Utf8TempDir, Metadata) {
-        let (directory, _) = workspace_for_lock(STALE_LOCKFILE);
+        let (directory, _) = workspace_for_lock(APP_DEP_LOCKFILE);
         let manifest = directory.path().join("app-0.1.0/Cargo.toml");
         let contents = fs_err::read_to_string(&manifest).unwrap();
         fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
@@ -287,7 +289,7 @@ mod tests {
     #[test]
     fn workspace_lock_comparison_fails_on_stale_lockfile() {
         let (directory, local_metadata) = stale_workspace();
-        let (_released, released_metadata) = workspace_for_lock(STALE_LOCKFILE);
+        let (_released, released_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
         let released = released_workspace(released_metadata);
         // The user can fix the local lockfile, so this is an error with a hint.
         let error = are_workspace_lock_dependencies_updated(&local_metadata, &released, "app")
@@ -300,13 +302,13 @@ mod tests {
         assert!(error.contains("cargo check"), "{error}");
         assert_eq!(
             fs_err::read_to_string(directory.path().join("Cargo.lock")).unwrap(),
-            STALE_LOCKFILE
+            APP_DEP_LOCKFILE
         );
     }
 
     #[test]
     fn workspace_lock_comparison_treats_stale_released_lockfile_as_updated() {
-        let (_local, local_metadata) = workspace_for_lock(STALE_LOCKFILE);
+        let (_local, local_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
         let (_released, released_metadata) = stale_workspace();
         let released = released_workspace(released_metadata);
         // History can't be rewritten: assume the dependencies changed instead of failing.
@@ -317,7 +319,7 @@ mod tests {
 
     #[test]
     fn workspace_lock_comparison_uses_lockfile_committed_at_release() {
-        let committed = STALE_LOCKFILE;
+        let committed = APP_DEP_LOCKFILE;
         let re_resolved = committed.replace("1.0.0", "1.0.1");
         let (_local, local_metadata) = workspace_for_lock(&re_resolved);
         let (released_dir, released_metadata) = workspace_for_lock(committed);
