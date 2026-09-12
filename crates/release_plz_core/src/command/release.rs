@@ -218,7 +218,9 @@ impl ReleaseRequest {
             return Ok(());
         }
         for package in &self.metadata.packages {
-            if !self.metadata.workspace_members.contains(&package.id) || !package.is_publishable() {
+            if !self.metadata.workspace_members.contains(&package.id)
+                || !self.is_releasable(package)
+            {
                 continue;
             }
             let config = self.get_package_config(&package.name);
@@ -1356,18 +1358,35 @@ mod tests {
                 remote: remote.clone(),
             }),
         ] {
-            let mut metadata = fake_metadata();
-            // If validation is moved after repository access, the filesystem error will win.
-            let temp_dir = tempfile::tempdir().unwrap();
-            metadata.workspace_root =
-                Utf8PathBuf::from_path_buf(temp_dir.path().join("missing")).unwrap();
-            let request = ReleaseRequest::new(metadata)
-                .with_git_release(GitRelease { forge })
-                .with_default_package_config(ReleaseConfig::default().with_git_release(
-                    GitReleaseConfig::default().set_generate_release_notes(true),
-                ));
-            let error = release(&request).await.unwrap_err();
-            assert!(error.to_string().contains("git_release_generate_notes"));
+            for publish_enabled in [true, false] {
+                let mut metadata = fake_metadata();
+                // Private packages still require validation when publishing is disabled.
+                if !publish_enabled {
+                    for package in &mut metadata.packages {
+                        package.publish = Some(vec![]);
+                    }
+                }
+                // If validation is moved after repository access, the filesystem error will win.
+                let temp_dir = tempfile::tempdir().unwrap();
+                metadata.workspace_root =
+                    Utf8PathBuf::from_path_buf(temp_dir.path().join("missing")).unwrap();
+                let request = ReleaseRequest::new(metadata)
+                    .with_git_release(GitRelease {
+                        forge: forge.clone(),
+                    })
+                    .with_default_package_config(
+                        ReleaseConfig::default()
+                            .with_publish(PublishConfig::enabled(publish_enabled))
+                            .with_git_release(
+                                GitReleaseConfig::default().set_generate_release_notes(true),
+                            ),
+                    );
+                let error = release(&request).await.unwrap_err();
+                assert!(
+                    error.to_string().contains("git_release_generate_notes"),
+                    "publish enabled: {publish_enabled}: {error:#}"
+                );
+            }
         }
     }
 
