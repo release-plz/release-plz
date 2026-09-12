@@ -75,7 +75,7 @@ pub fn are_packages_equal(
 pub(crate) fn are_packages_equal_cached(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
-    registry_package_files: &ReleasedPackageFiles,
+    released_package_files: &ReleasedPackageFiles,
 ) -> anyhow::Result<bool> {
     debug!(
         "compare local package {:?} with registry package {:?}",
@@ -89,7 +89,7 @@ pub(crate) fn are_packages_equal_cached(
     let local_package_files = get_cargo_package_files(local_package).with_context(|| {
         format!("cannot determine packaged files of local package {local_package:?}")
     })?;
-    let registry_package_files = registry_package_files.get(registry_package)?;
+    let released_package_files = released_package_files.get(registry_package)?;
 
     // Older published libraries may lack Cargo.lock, but modern `cargo package --list`
     // includes it even when absent. Ignore its presence to preserve the comparison
@@ -104,7 +104,7 @@ pub(crate) fn are_packages_equal_cached(
     };
     let local_files = local_package_files.iter().filter(is_comparable_file);
 
-    let registry_files = registry_package_files
+    let registry_files = released_package_files
         .iter()
         .filter(is_comparable_file)
         // Cargo creates this marker when extracting a registry package.
