@@ -1,5 +1,5 @@
 use cargo_metadata::{Package, camino::Utf8Path, semver::Version};
-use cargo_utils::LocalManifest;
+use cargo_utils::{DepKind, LocalManifest};
 use toml_edit::TableLike;
 
 use crate::PackagePath as _;
@@ -27,7 +27,7 @@ impl PackageDependencies for Package {
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
-        let package_dir = crate::manifest_dir(&package_manifest.path)?.to_owned();
+        let package_dir = crate::manifest_dir(&package_manifest.path)?;
 
         let mut deps_to_update: Vec<&Self> = vec![];
         for (p, next_ver) in updated_packages {
@@ -36,13 +36,14 @@ impl PackageDependencies for Package {
             // Dev dependencies are included on purpose, and this is deliberately
             // different from `lock_compare`, which skips them. Here the question is
             // "does this package need a release because something it declares was
-            // updated", and a dev dependency on a bumped package is such a change.
-            // There the question is "is this package built as part of the released
-            // binary", and a dependency's dev dependencies are not.
+            // updated": rewriting the version requirement of a dev dependency changes
+            // the package, so a versioned dev dependency on a bumped package is such
+            // a change. A versionless dev dependency has nothing to rewrite and, like
+            // in `lock_compare`, is not part of what the package ships, so it is not.
             let matching_deps = package_manifest
-                .get_package_dependency_tables()
-                .flat_map(|t| {
-                    t.iter().filter_map(|(name, d)| {
+                .get_package_dependency_tables_with_kind()
+                .flat_map(|(kind, t)| {
+                    t.iter().filter_map(move |(name, d)| {
                         d.as_table_like().map(|d| {
                             match workspace_dependencies {
                                 Some(workspace_dependencies) if is_workspace_dependency(d) => {
@@ -55,20 +56,20 @@ impl PackageDependencies for Package {
                                         .unwrap_or(d);
                                     // Return also the path of the Cargo.toml so that we can resolve the
                                     // relative path of the dependency later.
-                                    (workspace_dir, dep)
+                                    (kind, workspace_dir, dep)
                                 }
-                                _ => (package_dir.as_path(), d),
+                                _ => (kind, package_dir, d),
                             }
                         })
                     })
                 })
-                .filter(|(toml_base_path, d)| {
+                .filter(|(_, toml_base_path, d)| {
                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
                 })
-                .map(|(_, dep)| dep);
+                .map(|(kind, _, dep)| (kind, dep));
 
-            for dep in matching_deps {
-                if should_update_dependency(dep, next_ver, include_versionless)? {
+            for (kind, dep) in matching_deps {
+                if should_update_dependency(dep, kind, next_ver, include_versionless)? {
                     deps_to_update.push(p);
                     // A package can declare the same dependency in several tables
                     // (for example `[dependencies]` and `[dev-dependencies]`).
@@ -94,14 +95,17 @@ fn is_workspace_dependency(d: &dyn TableLike) -> bool {
 ///
 /// A dependency with a version requirement counts when that requirement has to be
 /// rewritten. A dependency without one has nothing to rewrite, so it only counts for
-/// Git-only releases, which propagate through path dependencies regardless.
+/// Git-only releases, which propagate through the path dependencies that are part of
+/// the released package: `[dependencies]` and `[build-dependencies]`, but not
+/// `[dev-dependencies]`, which only affect its tests.
 fn should_update_dependency(
     dep: &dyn TableLike,
+    kind: DepKind,
     next_ver: &Version,
     include_versionless: bool,
 ) -> anyhow::Result<bool> {
     let Some(old_req) = dep.get("version") else {
-        return Ok(include_versionless);
+        return Ok(include_versionless && kind != DepKind::Development);
     };
     let old_req = old_req.as_str().unwrap_or("*");
     let should_update_dep = cargo_utils::upgrade_requirement(old_req, next_ver)?.is_some();
@@ -145,12 +149,33 @@ mod tests {
             );
             // Actual root dependencies must still propagate, including renamed,
             // inherited dependencies and target-specific build/dev dependencies.
-            for dependency in [
-                "",
-                "[dependencies]\nshared.workspace = true\n",
-                "[dependencies]\nsupport = { path = \"support\", version = \"0.1\" }\n",
-                "[target.'cfg(unix)'.build-dependencies]\nshared.workspace = true\n",
-                "[dev-dependencies]\nshared.workspace = true\n",
+            for (dependency, dev_only) in [
+                ("", false),
+                ("[dependencies]\nshared.workspace = true\n", false),
+                (
+                    "[dependencies]\nsupport = { path = \"support\", version = \"0.1\" }\n",
+                    false,
+                ),
+                (
+                    "[target.'cfg(unix)'.build-dependencies]\nshared.workspace = true\n",
+                    false,
+                ),
+                // A versioned dev dependency is rewritten, so it always propagates.
+                (
+                    "[dev-dependencies]\nsupport = { path = \"support\", version = \"0.1\" }\n",
+                    false,
+                ),
+                // A versionless dev dependency doesn't change the released package.
+                ("[dev-dependencies]\nshared.workspace = true\n", true),
+                (
+                    "[target.'cfg(unix)'.dev-dependencies]\nshared.workspace = true\n",
+                    true,
+                ),
+                // Unless the package also uses it outside of its tests.
+                (
+                    "[dependencies]\nshared.workspace = true\n[dev-dependencies]\nshared.workspace = true\n",
+                    false,
+                ),
             ] {
                 fs_err::write(&manifest_path, format!("{workspace_manifest}{dependency}")).unwrap();
                 let metadata = cargo_utils::get_manifest_metadata(&manifest_path).unwrap();
@@ -171,7 +196,11 @@ mod tests {
                             include_versionless,
                         )
                         .unwrap();
-                    let expected = if name == "consumer" || !dependency.is_empty() {
+                    // Only a versionless dev-only declaration of the updated package
+                    // leaves the root package alone.
+                    let root_app_updated =
+                        !dependency.is_empty() && !(dev_only && version.is_empty());
+                    let expected = if name == "consumer" || root_app_updated {
                         vec!["support"]
                     } else {
                         vec![]
