@@ -39,6 +39,11 @@ impl DepTable {
         self
     }
 
+    /// The type of dependencies stored in this table.
+    pub(crate) fn kind(&self) -> DepKind {
+        self.kind
+    }
+
     pub(crate) fn kind_table(&self) -> &str {
         match self.kind {
             DepKind::Normal => "dependencies",
