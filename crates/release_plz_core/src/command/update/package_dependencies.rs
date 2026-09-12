@@ -33,6 +33,12 @@ impl PackageDependencies for Package {
         for (p, next_ver) in updated_packages {
             let canonical_path = p.canonical_path()?;
             // Find the dependencies that have the same path as the updated package.
+            // Dev dependencies are included on purpose, and this is deliberately
+            // different from `lock_compare`, which skips them. Here the question is
+            // "does this package need a release because something it declares was
+            // updated", and a dev dependency on a bumped package is such a change.
+            // There the question is "is this package built as part of the released
+            // binary", and a dependency's dev dependencies are not.
             let matching_deps = package_manifest
                 .get_package_dependency_tables()
                 .flat_map(|t| {
@@ -56,15 +62,18 @@ impl PackageDependencies for Package {
                         })
                     })
                 })
-                .filter(|(_toml_base_path, d)| include_versionless || d.contains_key("version"))
                 .filter(|(toml_base_path, d)| {
                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
                 })
                 .map(|(_, dep)| dep);
 
             for dep in matching_deps {
-                if !dep.contains_key("version") || should_update_dependency(dep, next_ver)? {
+                if should_update_dependency(dep, next_ver, include_versionless)? {
                     deps_to_update.push(p);
+                    // A package can declare the same dependency in several tables
+                    // (for example `[dependencies]` and `[dev-dependencies]`).
+                    // It still needs a single release.
+                    break;
                 }
             }
         }
@@ -81,12 +90,20 @@ fn is_workspace_dependency(d: &dyn TableLike) -> bool {
         && !d.contains_key("path")
 }
 
-fn should_update_dependency(dep: &dyn TableLike, next_ver: &Version) -> anyhow::Result<bool> {
-    let old_req = dep
-        .get("version")
-        .expect("versionless dependencies are handled by the caller")
-        .as_str()
-        .unwrap_or("*");
+/// Whether a dependency on an updated package means the dependent must be released.
+///
+/// A dependency with a version requirement counts when that requirement has to be
+/// rewritten. A dependency without one has nothing to rewrite, so it only counts for
+/// Git-only releases, which propagate through path dependencies regardless.
+fn should_update_dependency(
+    dep: &dyn TableLike,
+    next_ver: &Version,
+    include_versionless: bool,
+) -> anyhow::Result<bool> {
+    let Some(old_req) = dep.get("version") else {
+        return Ok(include_versionless);
+    };
+    let old_req = old_req.as_str().unwrap_or("*");
     let should_update_dep = cargo_utils::upgrade_requirement(old_req, next_ver)?.is_some();
     Ok(should_update_dep)
 }
