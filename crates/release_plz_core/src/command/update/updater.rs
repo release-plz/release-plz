@@ -29,6 +29,7 @@ use crate::{
     command::update::changelog_update::OldChangelogs,
     diff::{Commit, Diff},
     fs_utils, lock_compare,
+    package_compare::ReleasedPackageFiles,
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -683,6 +684,8 @@ impl Updater<'_> {
         } else {
             u32::MAX
         };
+        // The released package doesn't change while we walk the local history.
+        let registry_package_files = ReleasedPackageFiles::default();
 
         for _ in 0..max_analyze_commits {
             let current_commit_message = repository.current_commit_message()?;
@@ -706,6 +709,7 @@ impl Updater<'_> {
                     package,
                     package_path,
                     registry_package,
+                    &registry_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 let commit_too_old = || {
                     is_commit_too_old(
@@ -780,6 +784,7 @@ impl Updater<'_> {
         package: &Package,
         package_path: &Utf8Path,
         registry_package: &RegistryPackage,
+        registry_package_files: &ReleasedPackageFiles,
     ) -> anyhow::Result<bool> {
         let registry_package_path = registry_package.package.package_path()?;
         if crate::package_compare::is_readme_updated_with_released_package(
@@ -796,8 +801,12 @@ impl Updater<'_> {
         let cargo_lock_path = self
             .get_cargo_lock_path(repository)
             .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = crate::are_packages_equal(package_path, registry_package_path)
-            .context("cannot compare packages")?;
+        let are_packages_equal = crate::package_compare::are_packages_equal_cached(
+            package_path,
+            registry_package_path,
+            registry_package_files,
+        )
+        .context("cannot compare packages")?;
         if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
             // Revert any changes to `Cargo.lock`
             repository

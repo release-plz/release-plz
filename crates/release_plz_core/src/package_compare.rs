@@ -11,18 +11,47 @@ use crate::{
     fs_utils,
 };
 use std::{
+    cell::OnceCell,
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     io::{self, Read},
 };
 
-/// Check if two packages are equal.
+/// The packaged files of the released package, computed at most once.
 ///
-/// ## Args
-/// - `ignored_dirs`: Directories of the `local_package` to ignore when comparing packages.
+/// While walking the git history, the local package is checked out at a different
+/// commit on every iteration, but the released package never changes. Listing its
+/// files can mean running `cargo package --list`, which resolves dependencies and
+/// can reach the registry index, so it must not run once per analyzed commit.
+#[derive(Default)]
+pub(crate) struct ReleasedPackageFiles(OnceCell<Vec<Utf8PathBuf>>);
+
+impl ReleasedPackageFiles {
+    fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
+        if let Some(files) = self.0.get() {
+            return Ok(files);
+        }
+        let files = get_cargo_package_files(package).with_context(|| {
+            format!("cannot determine packaged files of registry package {package:?}")
+        })?;
+        Ok(self.0.get_or_init(|| files))
+    }
+}
+
+/// Check if two packages are equal.
 pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
+) -> anyhow::Result<bool> {
+    are_packages_equal_cached(local_package, registry_package, &ReleasedPackageFiles::default())
+}
+
+/// Same as [`are_packages_equal`], reusing the released package's file list
+/// across the commits of a single history walk.
+pub(crate) fn are_packages_equal_cached(
+    local_package: &Utf8Path,
+    registry_package: &Utf8Path,
+    registry_package_files: &ReleasedPackageFiles,
 ) -> anyhow::Result<bool> {
     debug!(
         "compare local package {:?} with registry package {:?}",
@@ -36,9 +65,7 @@ pub fn are_packages_equal(
     let local_package_files = get_cargo_package_files(local_package).with_context(|| {
         format!("cannot determine packaged files of local package {local_package:?}")
     })?;
-    let registry_package_files = get_cargo_package_files(registry_package).with_context(|| {
-        format!("cannot determine packaged files of registry package {registry_package:?}")
-    })?;
+    let registry_package_files = registry_package_files.get(registry_package)?;
 
     // Older published libraries may lack Cargo.lock, but modern `cargo package --list`
     // includes it even when absent. Ignore its presence to preserve the comparison
