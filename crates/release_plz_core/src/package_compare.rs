@@ -164,12 +164,15 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
 fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
     // Local packages can contain uncommitted changes during an update.
     let args = ["package", "--list", "--quiet", "--allow-dirty"];
-    // Keep artifacts inside the directory being listed even if the invocation
-    // configured a shared target dir, so that a temporary worktree takes its
-    // cargo scratch state with it when it's dropped.
+    // Cargo writes scratch state (e.g. `target/CACHEDIR.TAG`) to the target dir
+    // even when only listing files. Use a throwaway directory so that neither a
+    // shared target dir nor the listed package (which may be a user-supplied
+    // `--registry-manifest-path` tree) is touched; it's deleted on return.
+    let target_dir = fs_utils::Utf8TempDir::new()
+        .context("cannot create temporary target directory for `cargo package`")?;
     let envs = [(
         "CARGO_TARGET_DIR".to_owned(),
-        SecretString::from(package.join("target").to_string()),
+        SecretString::from(target_dir.path().to_string()),
     )];
     let output = run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")?;
 
@@ -515,6 +518,11 @@ mod tests {
         // Keep the target valid while testing a removed packaged file.
         fs_err::write(released.path().join("src/main.rs"), "fn main() {}\n").unwrap();
         assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+
+        // Listing the packaged files must not leave cargo scratch state in the
+        // compared packages, which may live in a user-supplied directory.
+        assert!(!local.path().join("target").exists());
+        assert!(!released.path().join("target").exists());
     }
 
     fn test_package() -> Utf8TempDir {
