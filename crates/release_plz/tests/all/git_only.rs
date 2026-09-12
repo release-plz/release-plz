@@ -1296,9 +1296,9 @@ git_release_name = "{{ package }}-v{{ version }}"
     assert!(pr_body.contains("update mybin readme"));
 }
 
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_workspace_with_versionless_private_dependencies() {
+/// A workspace whose packages inherit `publish = false`, the README and a path-only
+/// dependency from the workspace, released once in git-only mode.
+async fn released_private_workspace() -> TestContext {
     use cargo_utils::LocalManifest;
 
     let context = TestContext::new_workspace_with_packages(&[
@@ -1308,8 +1308,7 @@ async fn git_only_workspace_with_versionless_private_dependencies() {
     .await;
 
     // Inherit a path-only dependency and package fields from the workspace.
-    let root_manifest_path = context.repo_dir().join("Cargo.toml");
-    let mut root = LocalManifest::try_new(&root_manifest_path).unwrap();
+    let mut root = LocalManifest::try_new(&context.repo_dir().join("Cargo.toml")).unwrap();
     root.data["workspace"]["dependencies"]["private-lib"]["path"] = "crates/private-lib".into();
     root.data["workspace"]["package"]["publish"] = false.into();
     root.data["workspace"]["package"]["readme"] = "README.md".into();
@@ -1342,10 +1341,19 @@ git_release_name = "{{ package }}-v{{ version }}"
 "#,
     );
 
-    // Exercise an initial release and a second update with real tags. The default
-    // tag names must stay distinct even when every manifest disables publishing.
+    // Exercise an initial release with real tags.
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_workspace_with_versionless_private_dependencies() {
+    let context = released_private_workspace().await;
+    let root_manifest_path = context.repo_dir().join("Cargo.toml");
+
+    // The default tag names must stay distinct even when every manifest disables publishing.
     for name in ["private-lib", "private-bin"] {
         assert!(context.repo.tag_exists(&format!("{name}-v0.1.0")).unwrap());
     }
@@ -1382,6 +1390,12 @@ git_release_name = "{{ package }}-v{{ version }}"
     assert!(context.repo.tag_exists("private-bin-v0.1.1").unwrap());
     context.run_release_pr().success();
     assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_detects_changes_to_inherited_readme() {
+    let context = released_private_workspace().await;
 
     // Changes to a README inherited from outside either package are still detected.
     fs_err::write(
@@ -1394,7 +1408,7 @@ git_release_name = "{{ package }}-v{{ version }}"
     let prs = context.opened_release_prs().await;
     assert_eq!(prs.len(), 1);
     let body = prs[0].body.as_ref().unwrap();
-    assert!(body.contains("`private-bin`: 0.1.1 -> 0.1.2"));
+    assert!(body.contains("`private-bin`: 0.1.0 -> 0.1.1"));
     assert!(body.contains("`private-lib`: 0.1.0 -> 0.1.1"));
 }
 
@@ -1404,25 +1418,29 @@ async fn git_only_releases_dependents_of_versionless_private_libraries_together(
     use cargo_utils::LocalManifest;
 
     let context = TestContext::new_workspace_with_packages(&[
-        TestPackage::new("support").with_type(PackageType::Lib),
+        TestPackage::new("support")
+            .with_type(PackageType::Lib)
+            .with_publish(false),
         TestPackage::new("wrapper")
             .with_type(PackageType::Lib)
-            .with_path_dependencies(vec!["../support"]),
-        TestPackage::new("app").with_path_dependencies(vec!["../wrapper"]),
-        TestPackage::new("unrelated"),
+            .with_path_dependencies(vec!["../support"])
+            .with_publish(false),
+        TestPackage::new("app")
+            .with_path_dependencies(vec!["../wrapper"])
+            .with_publish(false),
+        TestPackage::new("unrelated").with_publish(false),
     ])
     .await;
     let root_manifest_path = context.repo_dir().join("Cargo.toml");
     let mut root = LocalManifest::try_new(&root_manifest_path).unwrap();
     root.data["workspace"]["dependencies"]["wrapper"]["path"] = "crates/wrapper".into();
     root.write().unwrap();
-    for name in ["support", "wrapper", "app", "unrelated"] {
+    for name in ["wrapper", "app"] {
         let mut manifest =
             LocalManifest::try_new(&context.package_path(name).join("Cargo.toml")).unwrap();
-        manifest.data["package"]["publish"] = false.into();
         if name == "wrapper" {
             manifest.data["dependencies"]["support"]["version"] = toml_edit::Item::None;
-        } else if name == "app" {
+        } else {
             manifest.data["dependencies"]["wrapper"] = toml_edit::Item::None;
             manifest.data["dependencies"]["wrapper"]["workspace"] = true.into();
         }
