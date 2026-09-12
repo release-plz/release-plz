@@ -149,9 +149,13 @@ impl ReleaseRequest {
             })
     }
 
+    /// Return true if the package must be published to a cargo registry.
+    ///
+    /// Git-only packages are never published: their versions live in git tags only,
+    /// so `cargo publish` is skipped even if `publish` isn't explicitly disabled.
     fn is_publish_enabled(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.publish.enabled
+        config.publish.enabled && !config.git_only
     }
 
     fn is_git_only(&self, package: &str) -> bool {
@@ -1572,6 +1576,22 @@ mod tests {
             assert_eq!(
                 released, expected,
                 "publish enabled: {publish_enabled}, git only: {git_only}"
+            );
+        }
+    }
+
+    #[test]
+    fn git_only_packages_are_never_published() {
+        for publish_enabled in [true, false] {
+            let request =
+                ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
+                    publish: PublishConfig::enabled(publish_enabled),
+                    git_only: true,
+                    ..Default::default()
+                });
+            assert!(
+                !request.is_publish_enabled("pkg"),
+                "publish enabled: {publish_enabled}"
             );
         }
     }

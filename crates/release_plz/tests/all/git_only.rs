@@ -1233,6 +1233,43 @@ git_only = true
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
 }
 
+/// With `git_only = true` and no explicit `publish` key, a `publish = false` crate is
+/// bumped by `release-pr` and must then be tagged by `release` without running
+/// `cargo publish`, which would refuse to publish it.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_releases_packages_with_publish_false_in_manifest() {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new().await;
+
+    let cargo_toml_path = context.repo_dir().join("Cargo.toml");
+    let mut cargo_toml = LocalManifest::try_new(&cargo_toml_path).unwrap();
+    cargo_toml.data["package"]["publish"] = false.into();
+    cargo_toml.write().unwrap();
+    context.push_all_changes("chore: set publish = false");
+
+    // `publish` is not set: git-only mode must skip `cargo publish` on its own.
+    let config = r#"
+[workspace]
+git_only = true
+"#;
+    context.write_release_plz_toml(config);
+
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    let readme = context.repo_dir().join("README.md");
+    fs_err::write(&readme, "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("v0.1.1").unwrap());
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_with_package_overrides_keeps_workspace_git_only() {
