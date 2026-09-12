@@ -359,6 +359,9 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
         if let Some(allow_dirty) = value.publish_allow_dirty {
             cfg = cfg.with_allow_dirty(allow_dirty);
         }
+        if let Some(git_only) = value.git_only {
+            cfg = cfg.with_git_only(git_only);
+        }
         cfg
     }
 }

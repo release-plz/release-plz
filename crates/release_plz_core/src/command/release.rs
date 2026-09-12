@@ -154,14 +154,20 @@ impl ReleaseRequest {
         config.publish.enabled
     }
 
+    fn is_git_only(&self, package: &str) -> bool {
+        let config = self.get_package_config(package);
+        config.git_only
+    }
+
     /// Return true if the package takes part in a release.
     ///
-    /// A package is skipped only when it can't be published but we were asked to publish it.
-    /// When publishing is disabled, a `publish = false` package is still tagged and gets a
-    /// Git release. Example packages are never released.
+    /// This mirrors the set of packages that `release-plz update` manages: a package is
+    /// released when it can be published to a registry, or when it is in `git_only` mode
+    /// (its versions are tracked with git tags, so a `publish = false` package is tagged
+    /// and gets a Git release). Example packages are never released.
     fn is_releasable(&self, package: &Package) -> bool {
         !is_example_package(package)
-            && (package.is_publishable() || !self.is_publish_enabled(&package.name))
+            && (package.is_publishable() || self.is_git_only(&package.name))
     }
 
     fn is_git_release_enabled(&self, package: &str) -> bool {
@@ -337,11 +343,20 @@ pub struct ReleaseConfig {
     /// Whether this package has a changelog that release-plz updates or not.
     /// Default: `true`.
     changelog_update: bool,
+    /// Whether the package versions are tracked with git tags instead of a cargo registry.
+    /// A `publish = false` package is only released when this is `true`.
+    /// Default: `false`.
+    git_only: bool,
 }
 
 impl ReleaseConfig {
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
         self.publish = publish;
+        self
+    }
+
+    pub fn with_git_only(mut self, git_only: bool) -> Self {
+        self.git_only = git_only;
         self
     }
 
@@ -412,6 +427,7 @@ impl Default for ReleaseConfig {
             release: true,
             changelog_path: None,
             changelog_update: true,
+            git_only: false,
         }
     }
 }
@@ -1358,10 +1374,11 @@ mod tests {
                 remote: remote.clone(),
             }),
         ] {
-            for publish_enabled in [true, false] {
+            for git_only in [false, true] {
                 let mut metadata = fake_metadata();
-                // Private packages still require validation when publishing is disabled.
-                if !publish_enabled {
+                // Private packages still require validation when they are released in
+                // git-only mode.
+                if git_only {
                     for package in &mut metadata.packages {
                         package.publish = Some(vec![]);
                     }
@@ -1376,7 +1393,8 @@ mod tests {
                     })
                     .with_default_package_config(
                         ReleaseConfig::default()
-                            .with_publish(PublishConfig::enabled(publish_enabled))
+                            .with_publish(PublishConfig::enabled(!git_only))
+                            .with_git_only(git_only)
                             .with_git_release(
                                 GitReleaseConfig::default().set_generate_release_notes(true),
                             ),
@@ -1384,7 +1402,7 @@ mod tests {
                 let error = release(&request).await.unwrap_err();
                 assert!(
                     error.to_string().contains("git_release_generate_notes"),
-                    "publish enabled: {publish_enabled}: {error:#}"
+                    "git only: {git_only}: {error:#}"
                 );
             }
         }
@@ -1527,16 +1545,23 @@ mod tests {
         // A package whose only targets are examples is not a crate anyone depends on.
         let example = package_with(None, &["example"]);
 
-        for (publish_enabled, expected) in [
-            // Publishing on: only the package that can actually be published.
-            (true, vec!["publishable"]),
-            // Publishing off: `publish = false` packages are still tagged and get a
-            // Git release, but example packages are still never released.
-            (false, vec!["publishable", "unpublishable"]),
+        for (publish_enabled, git_only, expected) in [
+            // Registry mode: only the package that can actually be published.
+            (true, false, vec!["publishable"]),
+            // `publish = false` in release-plz config without git-only mode: release-plz still
+            // uses the registry to detect releases, so a `publish = false` package is not
+            // tagged (it would never be bumped by `release-plz update`).
+            (false, false, vec!["publishable"]),
+            // Git-only mode: `publish = false` packages are tagged and get a Git release,
+            // but example packages are still never released.
+            (false, true, vec!["publishable", "unpublishable"]),
+            // The publish flag doesn't matter once git-only mode is on.
+            (true, true, vec!["publishable", "unpublishable"]),
         ] {
             let request =
                 ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
                     publish: PublishConfig::enabled(publish_enabled),
+                    git_only,
                     ..Default::default()
                 });
             let released: Vec<_> = [
@@ -1548,7 +1573,10 @@ mod tests {
             .filter(|(_, package)| request.is_releasable(package))
             .map(|(name, _)| name)
             .collect();
-            assert_eq!(released, expected, "publish enabled: {publish_enabled}");
+            assert_eq!(
+                released, expected,
+                "publish enabled: {publish_enabled}, git only: {git_only}"
+            );
         }
     }
 
