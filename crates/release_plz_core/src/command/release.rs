@@ -1521,60 +1521,25 @@ mod tests {
 
     #[test]
     fn only_packages_that_can_be_released_are_released() {
-        let publishable = Package::from(FakePackage::new("pkg").with_targets(&["lib"]));
-        let unpublishable = Package::from(
+        // The full rule is covered by `packages_taking_part_in_a_release` in `next_ver.rs`;
+        // this only checks that the release config's `git_only` flag reaches it.
+        let pkg = Package::from(
             FakePackage::new("pkg")
                 .unpublishable()
                 .with_targets(&["lib"]),
         );
-        // A package whose only targets are examples is not a crate anyone depends on,
-        // unless the user explicitly sets `publish` to opt it in (see the FAQ).
-        let example = Package::from(FakePackage::new("pkg").with_targets(&["example"]));
-        let published_example = Package::from(
-            FakePackage::new("pkg")
-                .with_targets(&["example"])
-                .with_publish(Some(vec!["my-reg".into()])),
-        );
-
-        for (publish_enabled, git_only, expected) in [
-            // Registry mode: only the packages that can actually be published.
-            (true, false, vec!["publishable", "published example"]),
-            // `publish = false` in release-plz config without git-only mode: release-plz still
-            // uses the registry to detect releases, so a `publish = false` package is not
-            // tagged (it would never be bumped by `release-plz update`).
-            (false, false, vec!["publishable", "published example"]),
-            // Git-only mode: `publish = false` packages are tagged and get a Git release,
-            // but the example without `publish` is still never released.
-            (
-                false,
-                true,
-                vec!["publishable", "unpublishable", "published example"],
-            ),
-            // The publish flag doesn't matter once git-only mode is on.
-            (
-                true,
-                true,
-                vec!["publishable", "unpublishable", "published example"],
-            ),
-        ] {
+        for (publish_enabled, git_only) in
+            [(true, false), (false, false), (false, true), (true, true)]
+        {
             let request =
                 ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
                     publish: PublishConfig::enabled(publish_enabled),
                     git_only,
                     ..Default::default()
                 });
-            let released: Vec<_> = [
-                ("publishable", &publishable),
-                ("unpublishable", &unpublishable),
-                ("example", &example),
-                ("published example", &published_example),
-            ]
-            .into_iter()
-            .filter(|(_, package)| request.is_releasable(package))
-            .map(|(name, _)| name)
-            .collect();
             assert_eq!(
-                released, expected,
+                request.is_releasable(&pkg),
+                git_only,
                 "publish enabled: {publish_enabled}, git only: {git_only}"
             );
         }

@@ -538,7 +538,7 @@ mod tests {
         let example = FakePackage::new("pkg").with_targets(&["example"]);
         let published_example = example.clone().with_publish(Some(vec!["my-reg".into()]));
 
-        // (package, released in registry mode, released in git-only mode)
+        // (name, package, released in registry mode, released in git-only mode)
         for (name, package, registry, git_only) in [
             ("lib", lib, true, true),
             ("private lib", private_lib, false, true),
