@@ -4,6 +4,7 @@ use anyhow::Context;
 use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use tempfile::{TempDir, tempdir};
+use tracing::debug;
 
 use crate::{PackagePath, cargo_vcs_info, download, next_ver, package_compare::CARGO_VCS_INFO};
 
@@ -51,6 +52,27 @@ impl ReleasedWorkspace {
             lockfile,
             commit,
         })
+    }
+
+    /// Make sure the workspace on disk still contains the lockfile committed at the
+    /// release, so that Cargo, which only decodes lockfiles from disk, reads that one.
+    ///
+    /// `cargo package --list`, which runs in the reconstructed worktree while comparing the
+    /// package contents, re-resolves a stale `Cargo.lock` and rewrites it on disk.
+    /// We must compare what was committed at the tag, not cargo's fresh resolution.
+    /// Does nothing when no lockfile was committed.
+    pub(crate) fn restore_lockfile(&self) -> anyhow::Result<()> {
+        let Some(lockfile) = &self.lockfile else {
+            return Ok(());
+        };
+        let lock_path = self.metadata.workspace_root.join("Cargo.lock");
+        let on_disk = fs_err::read_to_string(&lock_path).ok();
+        if on_disk.as_deref() != Some(lockfile.as_str()) {
+            debug!("restoring lockfile committed at {}", self.commit);
+            fs_err::write(&lock_path, lockfile)
+                .with_context(|| format!("cannot restore released lockfile {lock_path:?}"))?;
+        }
+        Ok(())
     }
 }
 

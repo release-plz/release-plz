@@ -39,10 +39,9 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
     released_workspace: &ReleasedWorkspace,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    let Some(released_lockfile) = &released_workspace.lockfile else {
-        return Ok(false);
-    };
-    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
+    if released_workspace.lockfile.is_none()
+        || !local_metadata.workspace_root.join("Cargo.lock").exists()
+    {
         return Ok(false);
     }
     let local = workspace_lock_dependencies(local_metadata, package_name)?;
@@ -56,7 +55,7 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
             local_metadata.workspace_root.join("Cargo.lock")
         )
     })?;
-    restore_released_lockfile(released_workspace, released_lockfile)?;
+    released_workspace.restore_lockfile()?;
     let Some(released) = workspace_lock_dependencies(&released_workspace.metadata, package_name)?
     else {
         // History can't be rewritten: don't fail, assume the dependencies changed.
@@ -69,32 +68,6 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
         return Ok(true);
     };
     Ok(are_dependencies_updated(&local, &released))
-}
-
-/// Cargo only decodes lockfiles from disk, so make sure the released workspace still
-/// contains the lockfile committed at the release.
-///
-/// `cargo package --list`, which runs in the reconstructed worktree while comparing the
-/// package contents, re-resolves a stale `Cargo.lock` and rewrites it on disk.
-/// We must compare what was committed at the tag, not cargo's fresh resolution.
-fn restore_released_lockfile(
-    released_workspace: &ReleasedWorkspace,
-    released_lockfile: &str,
-) -> anyhow::Result<()> {
-    let lock_path = released_workspace
-        .metadata
-        .workspace_root
-        .join("Cargo.lock");
-    let on_disk = fs_err::read_to_string(&lock_path).ok();
-    if on_disk.as_deref() != Some(released_lockfile) {
-        debug!(
-            "restoring lockfile committed at {}",
-            released_workspace.commit
-        );
-        fs_err::write(&lock_path, released_lockfile)
-            .with_context(|| format!("cannot restore released lockfile {lock_path:?}"))?;
-    }
-    Ok(())
 }
 
 /// Collect the dependencies reachable from `package_name` in the workspace lockfile.
