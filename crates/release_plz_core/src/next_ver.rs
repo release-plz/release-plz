@@ -532,8 +532,7 @@ mod tests {
     #[test]
     fn packages_taking_part_in_a_release() {
         let lib = FakePackage::new("pkg").with_targets(&["lib"]);
-        // `publish = false` / `publish = []` in Cargo.toml.
-        let private_lib = lib.clone().with_publish(Some(vec![]));
+        let private_lib = lib.clone().unpublishable();
         let example = FakePackage::new("pkg").with_targets(&["example"]);
         let published_example = example.clone().with_publish(Some(vec!["my-reg".into()]));
 

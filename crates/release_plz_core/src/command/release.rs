@@ -1518,10 +1518,9 @@ mod tests {
     #[test]
     fn only_packages_that_can_be_released_are_released() {
         let publishable = Package::from(FakePackage::new("pkg").with_targets(&["lib"]));
-        // `publish = false` / `publish = []` in Cargo.toml.
         let unpublishable = Package::from(
             FakePackage::new("pkg")
-                .with_publish(Some(vec![]))
+                .unpublishable()
                 .with_targets(&["lib"]),
         );
         // A package whose only targets are examples is not a crate anyone depends on,

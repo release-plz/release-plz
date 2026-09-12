@@ -31,10 +31,19 @@ impl FakePackage {
 
     /// Set the `publish` field of the package.
     ///
-    /// `None` is the default (publishable anywhere), `Some(vec![])` corresponds to
-    /// `publish = false` in `Cargo.toml`.
+    /// `None` is the default (publishable anywhere), `Some(vec!["my-reg".into()])`
+    /// restricts the package to the listed registries. Use [`Self::unpublishable`]
+    /// for `publish = false`.
     pub fn with_publish(self, publish: Option<Vec<String>>) -> Self {
         Self { publish, ..self }
+    }
+
+    /// `publish = false` in `Cargo.toml`: the package can't be published anywhere.
+    pub fn unpublishable(self) -> Self {
+        Self {
+            publish: Some(vec![]),
+            ..self
+        }
     }
 
     /// Set the target kinds of the package, such as `lib`, `bin` or `example`.
@@ -89,13 +98,19 @@ mod tests {
     }
 
     #[test]
+    fn unpublishable_package_has_no_registries() {
+        let package = Package::from(FakePackage::new("pkg").unpublishable());
+        assert_eq!(package.publish, Some(vec![]));
+    }
+
+    #[test]
     fn builders_set_publish_and_targets() {
         let package = Package::from(
             FakePackage::new("pkg")
-                .with_publish(Some(vec![]))
+                .with_publish(Some(vec!["my-reg".into()]))
                 .with_targets(&["lib", "example"]),
         );
-        assert_eq!(package.publish, Some(vec![]));
+        assert_eq!(package.publish, Some(vec!["my-reg".to_string()]));
         let kinds: Vec<_> = package
             .targets
             .iter()
