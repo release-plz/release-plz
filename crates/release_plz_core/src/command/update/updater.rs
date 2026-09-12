@@ -334,8 +334,7 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// The packages `release-plz update` manages. The same rule decides which packages
-    /// `release-plz release` tags, so that every bumped package is released.
+    /// See [`takes_part_in_release`].
     fn packages_to_process(&self) -> Vec<&Package> {
         self.project
             .workspace_packages()

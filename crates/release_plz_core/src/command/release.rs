@@ -163,10 +163,7 @@ impl ReleaseRequest {
         config.git_only
     }
 
-    /// Return true if the package takes part in a release.
-    ///
-    /// This is the same rule `release-plz update` uses to decide which packages it
-    /// bumps, so that every bumped package is tagged. See [`takes_part_in_release`].
+    /// See [`takes_part_in_release`].
     fn is_releasable(&self, package: &Package) -> bool {
         takes_part_in_release(package, self.is_git_only(&package.name))
     }
