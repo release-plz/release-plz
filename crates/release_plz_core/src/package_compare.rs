@@ -17,6 +17,20 @@ use std::{
     io::{self, Read},
 };
 
+/// Cargo stores the original manifest under this name when it packages a crate,
+/// so its presence tells an extracted registry package from a plain source tree.
+pub(crate) const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
+
+/// Return true if `package` is an extracted registry package rather than a source tree.
+///
+/// The two are compared differently: an extracted package already contains exactly
+/// the published files and its pre-packaging manifest, while a source tree (a Git-only
+/// release, or `--registry-manifest-path`) keeps its original manifest and needs
+/// Cargo's file selection to decide what belongs to the package.
+fn is_extracted_registry_package(package: &Utf8Path) -> bool {
+    package.join(CARGO_TOML_ORIG).is_file()
+}
+
 /// The packaged files of the released package, computed at most once.
 ///
 /// While walking the git history, the local package is checked out at a different
@@ -75,7 +89,7 @@ pub(crate) fn are_packages_equal_cached(
     let is_comparable_file = |file: &&Utf8PathBuf| {
         !matches!(
             file.as_str(),
-            "Cargo.toml.orig" | ".cargo_vcs_info.json" | "Cargo.lock"
+            CARGO_TOML_ORIG | ".cargo_vcs_info.json" | "Cargo.lock"
         )
     };
     let local_files = local_package_files.iter().filter(is_comparable_file);
@@ -104,7 +118,7 @@ pub(crate) fn are_packages_equal_cached(
             // Ignore `Cargo.toml` because we already checked it before.
             || file.file_name() == Some(CARGO_TOML)
             // Ignore `Cargo.toml.orig` because it's auto generated.
-            || file.file_name() == Some("Cargo.toml.orig"))
+            || file.file_name() == Some(CARGO_TOML_ORIG))
         });
 
     for local_path in local_files {
@@ -122,10 +136,9 @@ pub(crate) fn are_packages_equal_cached(
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    // Cargo stores the original manifest in `Cargo.toml.orig` when packaging a crate.
     // Downloaded and locally unpacked crates already contain the packaged files.
     debug!("Getting packaged files for crate at {}", package);
-    if package.join("Cargo.toml.orig").is_file() {
+    if is_extracted_registry_package(package) {
         let list =
             list_packaged_files(package).context("cannot list packaged files from directory")?;
         debug!("Packaged files: {:?}", list);
@@ -187,13 +200,10 @@ fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
 }
 
 fn are_cargo_toml_equal(local_package: &Utf8Path, registry_package: &Utf8Path) -> bool {
-    // When a package is published to a cargo registry, the original `Cargo.toml` file is stored as
-    // `Cargo.toml.orig`
-    let original_manifest = registry_package.join("Cargo.toml.orig");
-    let released_manifest = if original_manifest.is_file() {
-        original_manifest
+    let released_manifest = if is_extracted_registry_package(registry_package) {
+        registry_package.join(CARGO_TOML_ORIG)
     } else {
-        // Git-only releases retain their original workspace manifests.
+        // Source trees retain their original manifests.
         registry_package.join(CARGO_TOML)
     };
     are_files_equal(&local_package.join(CARGO_TOML), &released_manifest).unwrap_or(false)
@@ -224,10 +234,9 @@ pub(crate) fn is_readme_updated(
     let local_package_readme_path = local_readme_override(&package, local_package_path);
     let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
-            let registry_package_readme_path = if registry_package_path
-                .join("Cargo.toml.orig")
-                .is_file()
-            {
+            let registry_package_readme_path = if is_extracted_registry_package(
+                registry_package_path,
+            ) {
                 registry_package_path.join("README.md")
             } else {
                 // A released package that was never packaged keeps its original manifest,
