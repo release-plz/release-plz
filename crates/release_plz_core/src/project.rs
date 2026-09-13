@@ -33,8 +33,7 @@ pub struct Project {
     /// Directory containing the project manifest
     manifest_dir: Utf8PathBuf,
     /// Whether the project has more than one release-enabled package.
-    /// Computed before `--package` narrows the set, so that asking for a single
-    /// package doesn't change the tag names of a workspace.
+    /// Not affected by the `single_package` option.
     contains_multiple_releasable_packages: bool,
 }
 
