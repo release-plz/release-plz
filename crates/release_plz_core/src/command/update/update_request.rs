@@ -52,6 +52,9 @@ pub struct UpdateRequest {
     /// Kind of git forge hosting the repository.
     forge_type: ForgeType,
     max_analyze_commits: Option<u32>,
+    /// When set, all package changelogs are aggregated into this single file
+    /// instead of writing per-crate CHANGELOG.md files.
+    workspace_changelog_path: Option<Utf8PathBuf>,
 }
 
 impl UpdateRequest {
@@ -73,6 +76,7 @@ impl UpdateRequest {
             git: None,
             forge_type: ForgeType::Github,
             max_analyze_commits: None,
+            workspace_changelog_path: None,
         })
     }
 
@@ -259,6 +263,15 @@ impl UpdateRequest {
 
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
+    }
+
+    pub fn workspace_changelog_path(&self) -> Option<&Utf8Path> {
+        self.workspace_changelog_path.as_deref()
+    }
+
+    pub fn with_workspace_changelog(mut self, path: Utf8PathBuf) -> Self {
+        self.workspace_changelog_path = Some(path);
+        self
     }
 
     /// Determine if `git_only` mode should be used for a specific package.
