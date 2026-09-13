@@ -443,7 +443,7 @@ mod tests {
         git_cmd::Repo::init(root.path());
         fs_err::write(
             root.path().join("Cargo.toml"),
-            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"2\"\n",
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"3\"\n",
         )
         .unwrap();
         for name in ["one", "two"] {

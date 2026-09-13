@@ -132,7 +132,7 @@ mod tests {
         // Check both versionless Git-only dependencies and versioned dependencies.
         for (version, include_versionless) in [("", true), (", version = \"0.1\"", false)] {
             let workspace_manifest = format!(
-                "{package_manifest}\n[workspace]\nmembers = [\"support\", \"consumer\"]\nresolver = \"2\"\n[workspace.dependencies]\nshared = {{ package = \"support\", path = \"support\"{version} }}\n"
+                "{package_manifest}\n[workspace]\nmembers = [\"support\", \"consumer\"]\nresolver = \"3\"\n[workspace.dependencies]\nshared = {{ package = \"support\", path = \"support\"{version} }}\n"
             );
             // Actual root dependencies must still propagate, including renamed,
             // inherited dependencies and target-specific build/dev dependencies.
