@@ -275,9 +275,6 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         .iter()
         .partition(|p| input.should_use_git_only(&p.name));
 
-    // Use the project's own answer: `Project` computes it before `--package` narrows
-    // the package set, and it is what the release command uses to create the tags we
-    // are about to look for.
     let is_multi_package = local_project.contains_multiple_packages();
 
     // Process git_only packages (version determined from git tags).
@@ -517,12 +514,6 @@ impl Publishable for Package {
 }
 
 /// Whether the package takes part in a release.
-///
-/// This is the single rule shared by `release-plz update` and `release-plz release`, so
-/// that the packages bumped by one are exactly the packages tagged by the other:
-/// a package is released when it can be published to a registry, or when it is in
-/// `git_only` mode (its versions are tracked with git tags, so a `publish = false`
-/// package is tagged and gets a Git release).
 pub(crate) fn takes_part_in_release(package: &Package, git_only: bool) -> bool {
     package.is_publishable() || (git_only && !is_unpublished_example(package))
 }
