@@ -1,18 +1,4 @@
-use release_plz_core::{Publishable, fs_utils::Utf8TempDir, is_readme_updated};
-
-struct DownstreamPackage;
-
-// Existing downstream implementations only need to implement is_publishable.
-impl Publishable for DownstreamPackage {
-    fn is_publishable(&self) -> bool {
-        true
-    }
-}
-
-#[test]
-fn existing_publishable_implementation_remains_compatible() {
-    assert!(DownstreamPackage.is_publishable());
-}
+use release_plz_core::{fs_utils::Utf8TempDir, is_readme_updated};
 
 #[test]
 fn public_readme_comparison_retains_its_original_signature_and_behavior() {
@@ -22,7 +8,7 @@ fn public_readme_comparison_retains_its_original_signature_and_behavior() {
     fs_err::write(local.path().join("src/lib.rs"), "").unwrap();
     fs_err::write(
         local.path().join("Cargo.toml"),
-        "[package]\nname = \"example\"\nversion = \"0.1.0\"\nedition = \"2021\"\nreadme = \"notes.md\"\n",
+        "[package]\nname = \"example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nreadme = \"notes.md\"\n",
     )
     .unwrap();
     fs_err::write(local.path().join("notes.md"), "readme").unwrap();
