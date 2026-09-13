@@ -466,7 +466,7 @@ mod tests {
             None,
             None,
         )
-        .expect("Should ok");
+        .expect("failed to get project");
         assert_eq!(narrowed.workspace_packages().len(), 1);
         assert!(narrowed.contains_multiple_releasable_packages());
         assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
