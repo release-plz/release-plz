@@ -275,7 +275,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         .iter()
         .partition(|p| input.should_use_git_only(&p.name));
 
-    let is_multi_package = local_project.contains_multiple_packages();
+    let is_multi_package = local_project.contains_multiple_releasable_packages();
 
     // Process git_only packages (version determined from git tags).
     // Worktrees must be kept alive until we're done with the packages.

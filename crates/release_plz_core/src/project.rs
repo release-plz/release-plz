@@ -35,7 +35,7 @@ pub struct Project {
     /// Whether the project has more than one release-enabled package.
     /// Computed before `--package` narrows the set, so that asking for a single
     /// package doesn't change the tag names of a workspace.
-    contains_multiple_packages: bool,
+    contains_multiple_releasable_packages: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,7 +78,7 @@ impl Project {
             "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
         );
 
-        let contains_multiple_packages = packages.len() > 1;
+        let contains_multiple_releasable_packages = packages.len() > 1;
 
         if let Some(pac) = single_package {
             packages.retain(|p| *p.name == pac);
@@ -99,7 +99,7 @@ impl Project {
             release_metadata,
             root,
             manifest_dir,
-            contains_multiple_packages,
+            contains_multiple_releasable_packages,
         })
     }
 
@@ -123,8 +123,8 @@ impl Project {
     /// Whether the project has more than one release-enabled package.
     /// This decides the default tag name template, so the update and release
     /// commands must answer it the same way.
-    pub(crate) fn contains_multiple_packages(&self) -> bool {
-        self.contains_multiple_packages
+    pub(crate) fn contains_multiple_releasable_packages(&self) -> bool {
+        self.contains_multiple_releasable_packages
     }
 
     /// Copy this project in a temporary repository and return the repository.
@@ -170,8 +170,9 @@ impl Project {
             ),
         };
 
-        let template =
-            template.unwrap_or_else(|| default_tag_name_template(self.contains_multiple_packages));
+        let template = template.unwrap_or_else(|| {
+            default_tag_name_template(self.contains_multiple_releasable_packages)
+        });
 
         let context = tera_context(package_name, version);
         crate::tera::render_template(&template, &context, template_name)
@@ -453,7 +454,7 @@ mod tests {
         let workspace =
             get_project(&manifest, None, &HashSet::default(), true, None, None).expect("Should ok");
         assert_eq!(workspace.workspace_packages().len(), 2);
-        assert!(workspace.contains_multiple_packages());
+        assert!(workspace.contains_multiple_releasable_packages());
         assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
 
         // Narrowing the packages with `--package` must keep the tag names that the
@@ -468,7 +469,7 @@ mod tests {
         )
         .expect("Should ok");
         assert_eq!(narrowed.workspace_packages().len(), 1);
-        assert!(narrowed.contains_multiple_packages());
+        assert!(narrowed.contains_multiple_releasable_packages());
         assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
     }
 
