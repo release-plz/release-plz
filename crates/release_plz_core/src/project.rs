@@ -450,8 +450,8 @@ mod tests {
             crate::test_utils::write_package(&root.path().join(name), name, "0.1.0", "");
         }
         let manifest = root.path().join("Cargo.toml");
-        let workspace =
-            get_project(&manifest, None, &HashSet::default(), true, None, None).expect("Should ok");
+        let workspace = get_project(&manifest, None, &HashSet::default(), true, None, None)
+            .expect("failed to get project");
         assert_eq!(workspace.workspace_packages().len(), 2);
         assert!(workspace.contains_multiple_releasable_packages());
         assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
