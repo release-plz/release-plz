@@ -121,12 +121,7 @@ mod tests {
         let baseline = temp.path().join("baseline");
         let current = temp.path().join("current");
         for package in [&baseline, &current] {
-            fs_err::create_dir_all(package.join("src")).unwrap();
-            fs_err::write(
-                package.join(CARGO_TOML),
-                "[package]\nname = \"semver-check-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\n",
-            )
-            .unwrap();
+            crate::test_utils::write_package(package, "semver-check-test", "1.0.0", "");
         }
         fs_err::write(baseline.join("src/lib.rs"), "pub fn answer() -> u32 { 42 }").unwrap();
 

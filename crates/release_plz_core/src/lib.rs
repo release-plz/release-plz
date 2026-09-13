@@ -25,6 +25,8 @@ mod repo_url;
 mod response_ext;
 pub mod semver_check;
 mod tera;
+#[cfg(test)]
+mod test_utils;
 mod tmp_repo;
 mod toml_compare;
 mod url_utils;
