@@ -6,7 +6,7 @@ use crate::dependency::FakeDependency;
 pub struct FakePackage {
     name: String,
     dependencies: Vec<FakeDependency>,
-    /// The `publish` field of the manifest, as Cargo reports it.
+    /// The `publish` field of Cargo.toml.
     publish: Option<Vec<String>>,
     /// Target kinds, such as `lib`, `bin` or `example`. One target per kind.
     targets: Vec<String>,
@@ -67,7 +67,7 @@ impl From<FakePackage> for Package {
             .map(|kind| {
                 serde_json::json!({
                     "name": "t", "kind": [kind], "crate_types": [kind],
-                    "src_path": "/src/lib.rs", "edition": "2021", "doctest": false,
+                    "src_path": "/src/lib.rs", "edition": "2024", "doctest": false,
                     "test": true, "doc": true,
                 })
             })
