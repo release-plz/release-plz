@@ -63,6 +63,9 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           cache: false
+          # Cross's ARM64 musl linker wrapper emits shell traces as linker warnings.
+          # RUSTFLAGS still denies compiler warnings for this target.
+          build-warnings: ${{ matrix.target == 'aarch64-unknown-linux-musl' && 'warn' || 'deny' }}
       - uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
         with:
           target: ${{ matrix.target }}
