@@ -333,7 +333,6 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// See [`takes_part_in_release`].
     fn packages_to_process(&self) -> Vec<&Package> {
         self.project
             .workspace_packages()
