@@ -81,6 +81,16 @@ pub(crate) fn are_packages_equal_cached(
         "compare local package {:?} with registry package {:?}",
         local_package, registry_package
     );
+
+    // When cargo package failed in the git_only flow, `registry_package` is a
+    // source directory rather than a packaged tarball, there's no `Cargo.toml.orig`.
+    // In that case, compare the source directories directly.
+    // See: https://github.com/release-plz/release-plz/issues/2983
+    let registry_is_source_dir = !registry_package.join("Cargo.toml.orig").exists();
+    if registry_is_source_dir {
+        return are_source_dirs_equal(local_package, registry_package);
+    }
+
     if !are_cargo_toml_equal(local_package, registry_package) {
         debug!("Cargo.toml is different");
         return Ok(false);
@@ -143,6 +153,130 @@ pub(crate) fn are_packages_equal_cached(
     }
 
     Ok(true)
+}
+
+/// Compare two source directories file-by-file using Cargo's file selection when possible.
+///
+/// This is the fallback path when `cargo package` fails in `git_only` mode.
+/// Without a packaged tarball we first try `cargo package --list`, then fall back
+/// to `git ls-files` if Cargo cannot produce a package file list.
+fn are_source_dirs_equal(
+    local_package: &Utf8Path,
+    registry_package: &Utf8Path,
+) -> anyhow::Result<bool> {
+    // Compare Cargo.toml directly — both sides are source manifests here,
+    // not the rewritten one from a tarball.
+    if !are_files_equal(
+        &local_package.join(CARGO_TOML),
+        &registry_package.join(CARGO_TOML),
+    )
+    .unwrap_or(false)
+    {
+        debug!("source Cargo.toml is different");
+        return Ok(false);
+    }
+
+    let local_files = list_source_files(local_package).with_context(|| {
+        format!("cannot list comparable files in local source at {local_package:?}")
+    })?;
+    let registry_files = list_source_files(registry_package).with_context(|| {
+        format!("cannot list comparable files in registry source at {registry_package:?}")
+    })?;
+
+    let local_set: std::collections::BTreeSet<&Utf8PathBuf> = local_files
+        .iter()
+        .filter(|f| is_comparable_source_file(f))
+        .collect();
+    let registry_set: std::collections::BTreeSet<&Utf8PathBuf> = registry_files
+        .iter()
+        .filter(|f| is_comparable_source_file(f))
+        .collect();
+
+    if local_set != registry_set {
+        debug!(
+            "source file lists differ: local has {} files, registry has {}",
+            local_set.len(),
+            registry_set.len()
+        );
+        return Ok(false);
+    }
+
+    for rel_path in local_set {
+        let local_path = local_package.join(rel_path);
+        let registry_path = registry_package.join(rel_path);
+        if !local_path.exists() || !registry_path.exists() {
+            continue;
+        }
+        if local_path.is_symlink() || registry_path.is_symlink() {
+            continue;
+        }
+        if !are_files_equal(&local_path, &registry_path)
+            .with_context(|| format!("cannot compare {local_path:?} vs {registry_path:?}"))?
+        {
+            debug!("source file {rel_path} differs");
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// List files that should be compared for a source tree.
+///
+/// Cargo's file selection matches what would be packaged and respects manifest
+/// excludes. If Cargo cannot list files, fall back to git-tracked files so
+/// git-only packages with manifests Cargo refuses to package can still be
+/// compared.
+fn list_source_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    match get_cargo_package_files(package) {
+        Ok(files) => Ok(files),
+        Err(e) => {
+            debug!(
+                "cannot get Cargo package files for source at {package:?}, \
+                 falling back to git-tracked files: {e:#}"
+            );
+            list_git_tracked_files(package)
+        }
+    }
+}
+
+/// List git-tracked files in `package`, returning paths relative to it.
+/// Results are sorted for deterministic comparison.
+fn list_git_tracked_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    let output = std::process::Command::new("git")
+        .current_dir(package.as_std_path())
+        .args(["ls-files", "-z"])
+        .output()
+        .with_context(|| format!("cannot run git ls-files in {package:?}"))?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "git ls-files failed in {:?}: {}",
+        package,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let mut files: Vec<Utf8PathBuf> = output
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|s| !s.is_empty())
+        .filter_map(|bytes| std::str::from_utf8(bytes).ok())
+        .map(Utf8PathBuf::from)
+        .collect();
+    files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    Ok(files)
+}
+
+/// Returns `true` if the file should be included in source directory comparison.
+/// Build artifacts and auto-generated files are excluded.
+fn is_comparable_source_file(path: &Utf8Path) -> bool {
+    !matches!(
+        path.file_name(),
+        Some("Cargo.lock")
+            | Some("Cargo.toml.orig")
+            | Some("Cargo.toml.orig.orig")
+            | Some(".cargo_vcs_info.json")
+    )
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
