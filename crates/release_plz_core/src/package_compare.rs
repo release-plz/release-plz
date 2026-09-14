@@ -155,11 +155,11 @@ pub(crate) fn are_packages_equal_cached(
     Ok(true)
 }
 
-/// Compare two source directories file-by-file using `git ls-files`.
+/// Compare two source directories file-by-file using Cargo's file selection when possible.
 ///
 /// This is the fallback path when `cargo package` fails in `git_only` mode.
-/// Without a packaged tarball we can't use `cargo package --list`, so we
-/// list git-tracked files in each directory and compare their hashes instead.
+/// Without a packaged tarball we first try `cargo package --list`, then fall back
+/// to `git ls-files` if Cargo cannot produce a package file list.
 fn are_source_dirs_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
@@ -176,11 +176,11 @@ fn are_source_dirs_equal(
         return Ok(false);
     }
 
-    let local_files = list_git_tracked_files(local_package).with_context(|| {
-        format!("cannot list git-tracked files in local source at {local_package:?}")
+    let local_files = list_source_files(local_package).with_context(|| {
+        format!("cannot list comparable files in local source at {local_package:?}")
     })?;
-    let registry_files = list_git_tracked_files(registry_package).with_context(|| {
-        format!("cannot list git-tracked files in registry source at {registry_package:?}")
+    let registry_files = list_source_files(registry_package).with_context(|| {
+        format!("cannot list comparable files in registry source at {registry_package:?}")
     })?;
 
     let local_set: std::collections::BTreeSet<&Utf8PathBuf> = local_files
@@ -219,6 +219,25 @@ fn are_source_dirs_equal(
     }
 
     Ok(true)
+}
+
+/// List files that should be compared for a source tree.
+///
+/// Cargo's file selection matches what would be packaged and respects manifest
+/// excludes. If Cargo cannot list files, fall back to git-tracked files so
+/// git-only packages with manifests Cargo refuses to package can still be
+/// compared.
+fn list_source_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    match get_cargo_package_files(package) {
+        Ok(files) => Ok(files),
+        Err(e) => {
+            debug!(
+                "cannot get Cargo package files for source at {package:?}, \
+                 falling back to git-tracked files: {e:#}"
+            );
+            list_git_tracked_files(package)
+        }
+    }
 }
 
 /// List git-tracked files in `package`, returning paths relative to it.
