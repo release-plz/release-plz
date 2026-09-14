@@ -1,6 +1,7 @@
 use std::process::Command;
 
-use cargo_metadata::camino::Utf8Path;
+use anyhow::Context as _;
+use cargo_metadata::{Package, camino::Utf8Path};
 
 const CARGO_TERM_QUIET: &str = "CARGO_TERM_QUIET";
 const FALSE: &str = "false";
@@ -29,4 +30,21 @@ pub fn get_manifest_metadata(
 ) -> Result<cargo_metadata::Metadata, cargo_metadata::Error> {
     let mut command = cargo_metadata_command();
     command.no_deps().manifest_path(manifest_path).exec()
+}
+
+/// Find a workspace member by name.
+pub fn workspace_package<'a>(
+    metadata: &'a cargo_metadata::Metadata,
+    package_name: &str,
+) -> anyhow::Result<&'a Package> {
+    metadata
+        .workspace_packages()
+        .into_iter()
+        .find(|package| package.name == package_name)
+        .with_context(|| {
+            format!(
+                "cannot find package {package_name:?} in workspace {:?}",
+                metadata.workspace_root
+            )
+        })
 }

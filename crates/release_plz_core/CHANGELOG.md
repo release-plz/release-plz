@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.4](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.3...release_plz_core-v0.38.4) - 2026-09-13
+
+### Fixed
+
+- compare released source trees with Cargo file selection ([#3056](https://github.com/release-plz/release-plz/pull/3056))
+
+## [0.38.3](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.2...release_plz_core-v0.38.3) - 2026-09-13
+
+### Added
+
+- *(set-version)* support workspace package versions ([#3047](https://github.com/release-plz/release-plz/pull/3047))
+
+### Fixed
+
+- propagate versionless git-only dependency updates ([#3055](https://github.com/release-plz/release-plz/pull/3055))
+- release private git-only packages consistently ([#3054](https://github.com/release-plz/release-plz/pull/3054))
+
 ## [0.38.2](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.1...release_plz_core-v0.38.2) - 2026-09-10
 
 ### Fixed
