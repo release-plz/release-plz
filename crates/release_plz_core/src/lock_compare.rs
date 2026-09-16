@@ -70,7 +70,7 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
     released_workspace: &ReleasedWorkspace,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    let Some(lockfile) = released_workspace.lockfile()? else {
+    let Some(lockfile) = released_workspace.lockfile() else {
         return Ok(false);
     };
     if !local_metadata.workspace_root.join("Cargo.lock").exists() {
@@ -309,7 +309,7 @@ mod tests {
 
     /// Snapshot the lockfile of a workspace the way the reconstruction does.
     fn released_workspace(metadata: Metadata) -> ReleasedWorkspace {
-        ReleasedWorkspace::new(metadata, "release-commit".into())
+        ReleasedWorkspace::new(metadata, "release-commit".into()).unwrap()
     }
 
     fn compare_workspace_locks(local: &Utf8Path, released: &Utf8Path, package: &str) -> bool {
@@ -466,18 +466,14 @@ source = "registry+https://example.com/index"
     }
 
     #[test]
-    fn workspace_lock_comparison_defers_released_lockfile_errors() {
-        let (_local, local_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
+    fn released_workspace_fails_on_invalid_lockfile() {
         let (released_dir, released_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
         fs_err::write(
             released_dir.path().join("Cargo.lock"),
             "this is not a lockfile",
         )
         .unwrap();
-        // Reconstruction must not fail: packages without executables never need the graph.
-        let released = released_workspace(released_metadata);
-        let err =
-            are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap_err();
+        let err = ReleasedWorkspace::new(released_metadata, "release-commit".into()).unwrap_err();
         assert!(
             format!("{err:#}").contains("committed at release-commit"),
             "{err:#}"

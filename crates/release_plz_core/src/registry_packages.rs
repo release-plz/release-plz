@@ -36,33 +36,26 @@ pub(crate) struct ReleasedWorkspace {
     ///
     /// Loaded as soon as the workspace is reconstructed, before cargo commands
     /// (e.g. `cargo package --list`) can rewrite a stale lockfile on disk.
-    /// Loading errors are deferred to [`Self::lockfile`]: only lock comparisons of
-    /// packages with executables need the graph, so a manifest the bundled Cargo
-    /// library can't load must not fail the update of the other packages.
-    lockfile: anyhow::Result<Option<WorkspaceLockfile>>,
+    lockfile: Option<WorkspaceLockfile>,
     /// The commit the workspace was reconstructed from.
     pub(crate) commit: String,
 }
 
 impl ReleasedWorkspace {
-    pub(crate) fn new(metadata: Metadata, commit: String) -> Self {
-        let lockfile = load_lockfile(&metadata, &commit);
-        Self {
+    pub(crate) fn new(metadata: Metadata, commit: String) -> anyhow::Result<Self> {
+        let lockfile = load_lockfile(&metadata, &commit)?;
+        Ok(Self {
             metadata,
             lockfile,
             commit,
-        }
+        })
     }
 
     /// The dependency graph of the `Cargo.lock` committed at the release.
     ///
     /// Returns `None` when no lockfile was committed.
-    pub(crate) fn lockfile(&self) -> anyhow::Result<Option<&WorkspaceLockfile>> {
-        match &self.lockfile {
-            Ok(lockfile) => Ok(lockfile.as_ref()),
-            // `anyhow::Error` isn't `Clone`: preserve the whole chain in the message.
-            Err(err) => Err(anyhow::Error::msg(format!("{err:#}"))),
-        }
+    pub(crate) fn lockfile(&self) -> Option<&WorkspaceLockfile> {
+        self.lockfile.as_ref()
     }
 }
 
