@@ -85,7 +85,8 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
         Some(lockfile),
     )?
     else {
-        // History can't be rewritten: don't fail, assume the dependencies changed.
+        // The old release’s lockfile is inconsistent, so we can’t reliably compare dependencies.
+        // Warn and treat them as changed.
         warn!(
             "package {package_name} is not in the Cargo.lock committed at {}: \
              the lockfile was stale when the package was released. \
