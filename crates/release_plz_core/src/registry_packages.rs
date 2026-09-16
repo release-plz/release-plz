@@ -1,12 +1,15 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context;
+use cargo::core::Workspace;
 use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use tempfile::{TempDir, tempdir};
-use tracing::debug;
 
-use crate::{PackagePath, cargo_vcs_info, download, next_ver, package_compare::CARGO_VCS_INFO};
+use crate::{
+    PackagePath, cargo_vcs_info, download, lock_compare::WorkspaceLockfile, next_ver,
+    package_compare::CARGO_VCS_INFO,
+};
 
 #[derive(Debug, Default)]
 pub struct PackagesCollection {
@@ -29,51 +32,56 @@ pub struct RegistryPackage {
 #[derive(Debug)]
 pub(crate) struct ReleasedWorkspace {
     pub(crate) metadata: Metadata,
-    /// The `Cargo.lock` committed at the release, if any.
+    /// The parsed `Cargo.lock` committed at the release, if any.
     ///
-    /// Captured as soon as the workspace is reconstructed. It is stored because cargo
-    /// commands that run in the /// worktree afterwards (e.g. `cargo package --list`)
-    /// can re-resolve a stale lockfile and rewrite it on disk.
-    pub(crate) lockfile: Option<String>,
+    /// Loaded as soon as the workspace is reconstructed, before cargo commands
+    /// (e.g. `cargo package --list`) can rewrite a stale lockfile on disk.
+    /// Loading errors are deferred to [`Self::lockfile`]: only lock comparisons of
+    /// packages with executables need the graph, so a manifest the bundled Cargo
+    /// library can't load must not fail the update of the other packages.
+    lockfile: anyhow::Result<Option<WorkspaceLockfile>>,
     /// The commit the workspace was reconstructed from.
     pub(crate) commit: String,
 }
 
 impl ReleasedWorkspace {
-    pub(crate) fn new(metadata: Metadata, commit: String) -> anyhow::Result<Self> {
-        let lock_path = metadata.workspace_root.join("Cargo.lock");
-        let lockfile = lock_path
-            .exists()
-            .then(|| fs_err::read_to_string(&lock_path))
-            .transpose()
-            .with_context(|| format!("cannot read lockfile committed at {commit}"))?;
-        Ok(Self {
+    pub(crate) fn new(metadata: Metadata, commit: String) -> Self {
+        let lockfile = load_lockfile(&metadata, &commit);
+        Self {
             metadata,
             lockfile,
             commit,
-        })
+        }
     }
 
-    /// Make sure the workspace on disk still contains the lockfile committed at the
-    /// release, so that Cargo, which only decodes lockfiles from disk, reads that one.
+    /// The dependency graph of the `Cargo.lock` committed at the release.
     ///
-    /// `cargo package --list`, which runs in the reconstructed worktree while comparing the
-    /// package contents, re-resolves a stale `Cargo.lock` and rewrites it on disk.
-    /// We must compare what was committed at the tag, not cargo's fresh resolution.
-    /// Does nothing when no lockfile was committed.
-    pub(crate) fn restore_lockfile(&self) -> anyhow::Result<()> {
-        let Some(lockfile) = &self.lockfile else {
-            return Ok(());
-        };
-        let lock_path = self.metadata.workspace_root.join("Cargo.lock");
-        let on_disk = fs_err::read_to_string(&lock_path).ok();
-        if on_disk.as_deref() != Some(lockfile.as_str()) {
-            debug!("restoring lockfile committed at {}", self.commit);
-            fs_err::write(&lock_path, lockfile)
-                .with_context(|| format!("cannot restore released lockfile {lock_path:?}"))?;
+    /// Returns `None` when no lockfile was committed.
+    pub(crate) fn lockfile(&self) -> anyhow::Result<Option<&WorkspaceLockfile>> {
+        match &self.lockfile {
+            Ok(lockfile) => Ok(lockfile.as_ref()),
+            // `anyhow::Error` isn't `Clone`: preserve the whole chain in the message.
+            Err(err) => Err(anyhow::Error::msg(format!("{err:#}"))),
         }
-        Ok(())
     }
+}
+
+/// Decode the committed lockfile without resolving or fetching dependencies.
+fn load_lockfile(metadata: &Metadata, commit: &str) -> anyhow::Result<Option<WorkspaceLockfile>> {
+    let lock_path = metadata.workspace_root.join("Cargo.lock");
+    if !lock_path.exists() {
+        return Ok(None);
+    }
+    let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
+    let manifest = metadata.workspace_root.join("Cargo.toml");
+    let workspace = Workspace::new(manifest.as_std_path(), &config).with_context(|| {
+        format!(
+            "cannot load workspace manifest {manifest:?} with the Cargo library bundled in release-plz"
+        )
+    })?;
+    let resolve = cargo::ops::load_pkg_lockfile(&workspace)
+        .with_context(|| format!("cannot load lockfile {lock_path:?} committed at {commit}"))?;
+    Ok(resolve.as_ref().map(WorkspaceLockfile::from_resolve))
 }
 
 impl RegistryPackage {
