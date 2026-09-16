@@ -31,9 +31,9 @@ pub(crate) struct ReleasedWorkspace {
     pub(crate) metadata: Metadata,
     /// The `Cargo.lock` committed at the release, if any.
     ///
-    /// Captured as soon as the workspace is reconstructed: cargo commands that run in the
-    /// worktree afterwards (e.g. `cargo package --list`) can re-resolve a stale lockfile and
-    /// rewrite it on disk.
+    /// Captured as soon as the workspace is reconstructed. It is stored because cargo
+    /// commands that run in the /// worktree afterwards (e.g. `cargo package --list`)
+    /// can re-resolve a stale lockfile and rewrite it on disk.
     pub(crate) lockfile: Option<String>,
     /// The commit the workspace was reconstructed from.
     pub(crate) commit: String,
