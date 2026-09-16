@@ -9,7 +9,6 @@ use cargo::{
     util::CanonicalUrl,
 };
 use cargo_metadata::{Metadata, camino::Utf8Path, semver::Version};
-use serde::Deserialize;
 use tracing::{debug, warn};
 
 use crate::registry_packages::ReleasedWorkspace;
@@ -42,21 +41,37 @@ impl WorkspaceLockfile {
     }
 }
 
-/// Compare the local package's reachable locked dependencies with the registry package's
-/// `Cargo.lock`. Only version changes to previously released dependencies count.
+/// Compare the package's reachable locked dependencies in the local and registry workspaces.
+/// Only version changes to previously released dependencies count.
 pub fn are_lock_dependencies_updated(
     local_metadata: &Metadata,
     registry_package: &Utf8Path,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    let registry_lock = &registry_package.join("Cargo.lock");
-    if !local_metadata.workspace_root.join("Cargo.lock").exists() || !registry_lock.exists() {
+    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
+        return Ok(false);
+    }
+    let registry_metadata = cargo_utils::cargo_metadata_command()
+        .current_dir(registry_package)
+        .no_deps()
+        .manifest_path(registry_package.join("Cargo.toml"))
+        .exec()
+        .context("cannot load metadata of registry package")?;
+    let registry_lock_path = registry_metadata.workspace_root.join("Cargo.lock");
+    if !registry_lock_path.exists() {
         return Ok(false);
     }
     let local_lock = local_lock_dependencies(local_metadata, package_name)?;
-    let registry_lock = read_lockfile(registry_lock).with_context(|| {
-        format!("failed to load lockfile of registry package {registry_lock:?}")
-    })?;
+    let package = cargo_utils::workspace_package(&registry_metadata, package_name)?;
+    let Some(registry_lock) = workspace_lock_dependencies(&registry_metadata, package, None)?
+    else {
+        warn!(
+            "package {package_name} is not in the registry lockfile {registry_lock_path:?}: \
+             the lockfile was stale when the package was released. \
+             Assuming its dependencies changed."
+        );
+        return Ok(true);
+    };
     Ok(are_dependencies_updated(&local_lock, &registry_lock))
 }
 
@@ -221,13 +236,6 @@ fn is_dev_only_dependency(
     matching.peek().is_some() && matching.all(|d| d.kind() == DepKind::Development)
 }
 
-fn read_lockfile(path: &Utf8Path) -> anyhow::Result<Lockfile> {
-    let content = fs_err::read_to_string(path).context("can't read lockfile")?;
-    let lockfile =
-        toml::from_str(&content).with_context(|| format!("invalid format of lockfile {path:?}"))?;
-    Ok(lockfile)
-}
-
 fn are_dependencies_updated(local_lock: &Lockfile, released_lock: &Lockfile) -> bool {
     let mut local_versions: HashMap<&str, HashSet<&Version>> = HashMap::new();
     for package in &local_lock.packages {
@@ -252,13 +260,12 @@ fn are_dependencies_updated(local_lock: &Lockfile, released_lock: &Lockfile) -> 
     })
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 struct Lockfile {
-    #[serde(rename = "package")]
     packages: Vec<Package>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 struct Package {
     name: String,
     version: Version,
@@ -336,6 +343,74 @@ mod tests {
              [[package]]\nname = \"dep\"\nversion = \"1.0.0\"\n";
 
     #[test]
+    fn registry_workspace_lock_comparison_ignores_other_members_dependencies() {
+        let lockfile = r#"
+version = 4
+[[package]]
+name = "app"
+version = "0.1.0"
+dependencies = ["dep 1.0.0"]
+[[package]]
+name = "other"
+version = "0.1.0"
+dependencies = ["dep 2.0.0"]
+[[package]]
+name = "dep"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+[[package]]
+name = "dep"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+        let local = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let registry = crate::fs_utils::Utf8TempDir::new().unwrap();
+        // The binary is at the workspace root supplied via --registry-manifest-path.
+        // The other member uses a different version of the same dependency.
+        for directory in [local.path(), registry.path()] {
+            write_package(
+                directory,
+                "app",
+                "0.1.0",
+                "[workspace]\nmembers = [\"other\"]\nresolver = \"2\"\n\
+                 [dependencies]\ndep = \"1\"\n",
+            );
+            fs_err::rename(directory.join("src/lib.rs"), directory.join("src/main.rs")).unwrap();
+            fs_err::write(directory.join("src/main.rs"), "fn main() {}\n").unwrap();
+            write_package(
+                &directory.join("other"),
+                "other",
+                "0.1.0",
+                "[dependencies]\ndep = \"2\"\n",
+            );
+            fs_err::write(directory.join("Cargo.lock"), lockfile).unwrap();
+        }
+        let local_metadata =
+            cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
+
+        let dependencies_updated =
+            |name, path| are_lock_dependencies_updated(&local_metadata, path, name).unwrap();
+        assert!(!dependencies_updated("app", registry.path()));
+        let other = registry.path().join("other");
+        assert!(!dependencies_updated("other", &other));
+
+        // A change confined to the other member still must not release app.
+        let updated = lockfile.replace("2.0.0", "2.0.1");
+        fs_err::write(local.path().join("Cargo.lock"), &updated).unwrap();
+        assert!(!dependencies_updated("app", registry.path()));
+        // A nested member must compare against the shared workspace lockfile too.
+        assert!(dependencies_updated("other", &other));
+        assert_eq!(
+            fs_err::read_to_string(registry.path().join("Cargo.lock")).unwrap(),
+            lockfile
+        );
+        assert_eq!(
+            fs_err::read_to_string(local.path().join("Cargo.lock")).unwrap(),
+            updated
+        );
+    }
+
+    #[test]
     fn registry_lock_comparison_detects_update_when_another_member_keeps_old_version() {
         let registry_lock = r#"
 version = 4
@@ -358,6 +433,7 @@ dependencies = ["dep 1.0.0"]
         );
         let (local, metadata) = workspace_for_lock(&workspace_lock);
         let registry = crate::fs_utils::Utf8TempDir::new().unwrap();
+        write_package(registry.path(), "app", "0.1.0", "");
         fs_err::write(registry.path().join("Cargo.lock"), registry_lock).unwrap();
         let local_lock = local.path().join("Cargo.lock");
         let dependencies_updated =
@@ -387,6 +463,7 @@ source = "registry+https://example.com/index"
     fn registry_lock_comparison_skips_missing_lockfiles() {
         let (local, metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
         let registry = crate::fs_utils::Utf8TempDir::new().unwrap();
+        write_package(registry.path(), "app", "0.1.0", "");
         // There is no published lockfile to compare against.
         assert!(!are_lock_dependencies_updated(&metadata, registry.path(), "app").unwrap());
         fs_err::rename(
@@ -435,9 +512,12 @@ source = "registry+https://example.com/index"
     #[test]
     fn workspace_lock_comparison_treats_stale_released_lockfile_as_updated() {
         let (_local, local_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
-        let (_released, released_metadata) = stale_workspace();
+        let (released_dir, released_metadata) = stale_workspace();
         let released = released_workspace(released_metadata);
         // History can't be rewritten: assume the dependencies changed instead of failing.
+        assert!(
+            are_lock_dependencies_updated(&local_metadata, released_dir.path(), "app").unwrap()
+        );
         assert!(
             are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
         );
