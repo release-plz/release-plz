@@ -416,7 +416,7 @@ mod tests {
 
         // Exercise registry metadata while the local side still uses Cargo's file list.
         fs_err::write(registry.join(".cargo-ok"), "{}").unwrap();
-        fs_err::write(registry.join("Cargo.lock"), "historical lockfile").unwrap();
+        fs_err::write(registry.join("Cargo.lock"), "released lockfile").unwrap();
         fs_err::remove_dir_all(registry.join(".git")).unwrap();
         fs_err::write(registry.join(".git"), "gitdir: /elsewhere/worktrees/crate").unwrap();
         assert!(are_packages_equal(local.path(), &registry).unwrap());

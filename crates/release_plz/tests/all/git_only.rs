@@ -1,6 +1,7 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
+    TEST_REGISTRY,
     package::{PackageType, TestPackage},
     test_context::TestContext,
     today,
@@ -982,7 +983,7 @@ publish = false
         .unwrap();
 
     // Release the binary at a later commit with different package contents, so
-    // each package must be compared against its own historical workspace.
+    // each package must be compared against its own released workspace.
     let readme = context.package_path("mybin").join("README.md");
     fs_err::write(&readme, "# Initial mybin release").unwrap();
     context.push_all_changes("feat: prepare mybin release");
@@ -1003,7 +1004,7 @@ publish = false
             .matches("Reconstructing workspace sources at commit")
             .count(),
         2,
-        "packages at different historical commits need separate workspace reconstructions\n{stderr}"
+        "packages at different release commits need separate workspace reconstructions\n{stderr}"
     );
 
     let opened_prs = context.opened_release_prs().await;
@@ -1047,7 +1048,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_update_handles_packages_sharing_a_release_tag() {
     // All packages are released together under a single workspace tag, so they
-    // are all resolved at the same historical commit.
+    // are all resolved at the same release commit.
     // The unreleased internal libraries are path dependencies of the binary, so
     // the whole workspace must be available at that commit.
     let context = TestContext::new_workspace_with_packages(&[
@@ -1085,7 +1086,7 @@ git_tag_name = "v{{ version }}"
             .matches("Reconstructing workspace sources at commit")
             .count(),
         1,
-        "packages at one historical commit should share workspace reconstruction\n{stderr}"
+        "packages at one release commit should share workspace reconstruction\n{stderr}"
     );
 
     let opened_prs = context.opened_release_prs().await;
@@ -1612,21 +1613,61 @@ async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
         TestPackage::new("app").with_path_dependencies(vec!["../support"]),
     ])
     .await;
+
+    // Publish both versions to the local registry so only Cargo.lock needs to change.
+    let dependency_dir = Utf8TempDir::new().unwrap();
+    let dependency_path = dependency_dir.path().join("test-dependency");
+    fs_err::create_dir_all(&dependency_path).unwrap();
+    TestPackage::new("test-dependency")
+        .with_type(PackageType::Lib)
+        .cargo_init(&dependency_path);
+    let dependency_manifest_path = dependency_path.join("Cargo.toml");
+    for version in ["0.1.0", "0.1.1"] {
+        let mut manifest = cargo_utils::LocalManifest::try_new(&dependency_manifest_path).unwrap();
+        manifest.set_package_version(&version.parse().unwrap());
+        manifest.write().unwrap();
+        let token_env_var =
+            cargo_utils::cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
+        assert_cmd::Command::new("cargo")
+            .current_dir(context.repo_dir())
+            .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", context.gitea.token))
+            .args([
+                "publish",
+                "--allow-dirty",
+                "--manifest-path",
+                dependency_manifest_path.as_str(),
+                "--registry",
+                TEST_REGISTRY,
+            ])
+            .assert()
+            .success();
+    }
+
     let mut manifest =
         cargo_utils::LocalManifest::try_new(&context.package_path("support").join("Cargo.toml"))
             .unwrap();
-    manifest.data["dev-dependencies"]["itoa"] = "1".into();
+    let mut dependency = toml_edit::InlineTable::new();
+    dependency.insert("version", "0.1".into());
+    dependency.insert("registry", TEST_REGISTRY.into());
+    manifest.data["dev-dependencies"]["test-dependency"] = toml_edit::value(dependency);
     manifest.write().unwrap();
     context.run_cargo_check();
     let update_test_dependency = |version| {
         assert_cmd::Command::new("cargo")
             .current_dir(context.repo_dir())
-            .args(["update", "--package", "itoa", "--precise", version])
+            .args([
+                "update",
+                "--package",
+                "test-dependency",
+                "--precise",
+                version,
+            ])
             .assert()
             .success();
         context.push_all_changes("chore: update library test dependency");
     };
-    update_test_dependency("1.0.17");
+    update_test_dependency("0.1.0");
     context.write_release_plz_toml(
         r#"
 [workspace]
@@ -1641,7 +1682,7 @@ semver_check = false
             .tag(&format!("{name}-v0.1.0"), "initial release")
             .unwrap();
     }
-    update_test_dependency("1.0.18");
+    update_test_dependency("0.1.1");
     context.run_update().success();
     for name in ["support", "app"] {
         let package_path = context.package_path(name);

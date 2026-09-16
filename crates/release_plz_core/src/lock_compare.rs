@@ -3,69 +3,105 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use cargo::{
     core::{
-        PackageId, Workspace,
+        PackageId, Resolve, Workspace,
         dependency::{DepKind, Patch},
     },
     util::CanonicalUrl,
 };
 use cargo_metadata::{Metadata, camino::Utf8Path, semver::Version};
-use serde::Deserialize;
 use tracing::{debug, warn};
 
 use crate::registry_packages::ReleasedWorkspace;
 
-/// Compare the dependencies present in the `Cargo.lock` of the registry package and the local one.
-/// Check if the dependencies of the registry package were updated.
-/// This method doesn't detect if the local Cargo.lock added new packages: just if
-/// the version of the packages changed.
-/// This is enough to understand if the package was updated.
+/// The dependency graph decoded from a workspace lockfile.
+///
+/// Cargo's `Resolve` uses `Rc` internally, so it cannot be shared by release workers.
+/// Retain the package IDs, original edges and replacements in thread-safe collections.
+#[derive(Debug)]
+pub(crate) struct WorkspaceLockfile {
+    dependencies: HashMap<PackageId, Vec<PackageId>>,
+    replacements: HashMap<PackageId, PackageId>,
+}
+
+impl WorkspaceLockfile {
+    pub(crate) fn from_resolve(resolve: &Resolve) -> Self {
+        Self {
+            dependencies: resolve
+                .iter()
+                .map(|id| {
+                    let dependencies = resolve
+                        .deps_not_replaced(id)
+                        .map(|(dependency, _)| dependency)
+                        .collect();
+                    (id, dependencies)
+                })
+                .collect(),
+            replacements: resolve.replacements().clone(),
+        }
+    }
+}
+
+/// Compare the package's reachable locked dependencies in the local and registry workspaces.
+/// Only version changes to previously released dependencies count.
 pub fn are_lock_dependencies_updated(
-    local_lock: &Utf8Path,
+    local_metadata: &Metadata,
     registry_package: &Utf8Path,
+    package_name: &str,
 ) -> anyhow::Result<bool> {
-    let registry_lock = &registry_package.join("Cargo.lock");
-    if !local_lock.exists() || !registry_lock.exists() {
+    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
         return Ok(false);
     }
-    let local_lock = read_lockfile(local_lock)
-        .with_context(|| format!("failed to load lockfile of local package {local_lock:?}"))?;
-    let registry_lock = read_lockfile(registry_lock).with_context(|| {
-        format!("failed to load lockfile of registry package {registry_lock:?}")
-    })?;
+    let registry_metadata = cargo_utils::cargo_metadata_command()
+        .current_dir(registry_package)
+        .no_deps()
+        .manifest_path(registry_package.join("Cargo.toml"))
+        .exec()
+        .context("cannot load metadata of registry package")?;
+    let registry_lock_path = registry_metadata.workspace_root.join("Cargo.lock");
+    if !registry_lock_path.exists() {
+        return Ok(false);
+    }
+    let local_lock = local_lock_dependencies(local_metadata, package_name)?;
+    let package = cargo_utils::workspace_package(&registry_metadata, package_name)?;
+    let Some(registry_lock) = workspace_lock_dependencies(&registry_metadata, package, None)?
+    else {
+        warn!(
+            "package {package_name} is not in the registry lockfile {registry_lock_path:?}: \
+             the lockfile was stale when the package was released. \
+             Assuming its dependencies changed."
+        );
+        return Ok(true);
+    };
     Ok(are_dependencies_updated(&local_lock, &registry_lock))
 }
 
-/// Compare only dependencies reachable from a package in a historical workspace lockfile.
+/// Compare only dependencies reachable from a package in a released workspace lockfile.
 ///
-/// The local lockfile is read from disk (the updater reverts it after `cargo package`).
-/// The released side is decoded from the lockfile committed at the release.
+/// The released workspace lockfile is the workspace-root `Cargo.lock` committed at the
+/// git-only package's latest release tag, preserved in [`ReleasedWorkspace::lockfile`].
+/// The local lockfile is read from disk.
 pub(crate) fn are_workspace_lock_dependencies_updated(
     local_metadata: &Metadata,
     released_workspace: &ReleasedWorkspace,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    if released_workspace.lockfile.is_none()
-        || !local_metadata.workspace_root.join("Cargo.lock").exists()
-    {
+    let Some(lockfile) = released_workspace.lockfile() else {
+        return Ok(false);
+    };
+    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
         return Ok(false);
     }
-    let local_package = cargo_utils::workspace_package(local_metadata, package_name)?;
-    let local = workspace_lock_dependencies(local_metadata, local_package)?;
-    // The user can fix the local lockfile.
-    let local = local.with_context(|| {
-        format!(
-            "cannot find package {package_name:?} {} in lockfile {:?}. Hint: run `cargo check` to update the lockfile and commit it.",
-            local_package.version,
-            local_metadata.workspace_root.join("Cargo.lock")
-        )
-    })?;
-    released_workspace.restore_lockfile()?;
+    let local = local_lock_dependencies(local_metadata, package_name)?;
     let released_package =
         cargo_utils::workspace_package(&released_workspace.metadata, package_name)?;
-    let Some(released) =
-        workspace_lock_dependencies(&released_workspace.metadata, released_package)?
+    let Some(released) = workspace_lock_dependencies(
+        &released_workspace.metadata,
+        released_package,
+        Some(lockfile),
+    )?
     else {
-        // History can't be rewritten: don't fail, assume the dependencies changed.
+        // The old release’s lockfile is inconsistent, so we can’t reliably compare dependencies.
+        // Warn and treat them as changed.
         warn!(
             "package {package_name} is not in the Cargo.lock committed at {}: \
              the lockfile was stale when the package was released. \
@@ -77,13 +113,28 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
     Ok(are_dependencies_updated(&local, &released))
 }
 
+/// Collect the local package's locked dependencies, with a hint if its lockfile is stale.
+fn local_lock_dependencies(metadata: &Metadata, package_name: &str) -> anyhow::Result<Lockfile> {
+    let package = cargo_utils::workspace_package(metadata, package_name)?;
+    // The user can fix the local lockfile.
+    workspace_lock_dependencies(metadata, package, None)?.with_context(|| {
+        format!(
+            "cannot find package {package_name:?} {} in lockfile {:?}. Hint: run `cargo check` to update the lockfile and commit it.",
+            package.version,
+            metadata.workspace_root.join("Cargo.lock")
+        )
+    })
+}
+
 /// Collect the dependencies reachable from the workspace `package` in the workspace lockfile.
 ///
+/// Use the cached graph when provided; otherwise read the lockfile from disk.
 /// Returns `None` when the lockfile is stale, i.e. it doesn't contain the package at
 /// the version declared in its manifest.
 fn workspace_lock_dependencies(
     metadata: &Metadata,
     package: &cargo_metadata::Package,
+    lockfile: Option<&WorkspaceLockfile>,
 ) -> anyhow::Result<Option<Lockfile>> {
     let lock_path = metadata.workspace_root.join("Cargo.lock");
     let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
@@ -93,43 +144,31 @@ fn workspace_lock_dependencies(
             "cannot load workspace manifest {manifest:?} with the Cargo library bundled in release-plz"
         )
     })?;
-    // This only decodes the committed lockfile. It does not resolve dependencies,
-    // fetch registry/Git sources, or rewrite the historical workspace.
-    let resolve = cargo::ops::load_pkg_lockfile(&workspace)
-        .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
-        .with_context(|| format!("workspace lockfile {lock_path:?} is missing"))?;
+    let loaded_lockfile;
+    let lockfile = match lockfile {
+        Some(lockfile) => lockfile,
+        None => {
+            // Decode the local lockfile without resolving or fetching dependencies.
+            let resolve = cargo::ops::load_pkg_lockfile(&workspace)
+                .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
+                .with_context(|| format!("workspace lockfile {lock_path:?} is missing"))?;
+            loaded_lockfile = WorkspaceLockfile::from_resolve(&resolve);
+            &loaded_lockfile
+        }
+    };
     let patches = workspace
         .root_patch()?
         .into_iter()
         .map(|(url, patches)| Ok((CanonicalUrl::new(&url)?, patches)))
         .collect::<anyhow::Result<HashMap<_, _>>>()?;
-    let Some(root) = resolve.iter().find(|id| {
+    let Some(root) = lockfile.dependencies.keys().copied().find(|id| {
         id.name().as_str() == package.name.as_str()
             && id.version() == &package.version
             && id.source_id().is_path()
     }) else {
         return Ok(None);
     };
-    let mut pending = vec![root];
-    let mut reachable = HashSet::new();
-    while let Some(id) = pending.pop() {
-        if !reachable.insert(id) {
-            continue;
-        }
-        let workspace_package = workspace.members().find(|p| p.package_id() == id);
-        for (dependency, _) in resolve.deps_not_replaced(id) {
-            // A loaded lockfile has no dependency kinds. Workspace manifests tell
-            // us which edges belong only to a dependency's tests. Classify the
-            // original edge before following `[replace]`, so its declared source
-            // is not confused with a dev alias pointing at the replacement.
-            if id == root
-                || workspace_package
-                    .is_none_or(|package| !is_dev_only_dependency(dependency, package, &patches))
-            {
-                pending.push(resolve.replacement(dependency).unwrap_or(dependency));
-            }
-        }
-    }
+    let reachable = reachable_lock_dependencies(lockfile, &workspace, root, &patches);
     Ok(Some(Lockfile {
         packages: reachable
             .into_iter()
@@ -139,6 +178,41 @@ fn workspace_lock_dependencies(
             })
             .collect(),
     }))
+}
+
+fn reachable_lock_dependencies(
+    lockfile: &WorkspaceLockfile,
+    workspace: &Workspace<'_>,
+    root: PackageId,
+    patches: &HashMap<CanonicalUrl, Vec<Patch>>,
+) -> HashSet<PackageId> {
+    let mut pending = vec![root];
+    let mut reachable = HashSet::new();
+    while let Some(id) = pending.pop() {
+        if !reachable.insert(id) {
+            continue;
+        }
+        let workspace_package = workspace.members().find(|p| p.package_id() == id);
+        for &dependency in &lockfile.dependencies[&id] {
+            // A loaded lockfile has no dependency kinds. Workspace manifests tell
+            // us which edges belong only to a dependency's tests. Classify the
+            // original edge before following `[replace]`, so its declared source
+            // is not confused with a dev alias pointing at the replacement.
+            if id == root
+                || workspace_package
+                    .is_none_or(|package| !is_dev_only_dependency(dependency, package, patches))
+            {
+                pending.push(
+                    lockfile
+                        .replacements
+                        .get(&dependency)
+                        .copied()
+                        .unwrap_or(dependency),
+                );
+            }
+        }
+    }
+    reachable
 }
 
 fn is_dev_only_dependency(
@@ -160,13 +234,6 @@ fn is_dev_only_dependency(
         })
         .peekable();
     matching.peek().is_some() && matching.all(|d| d.kind() == DepKind::Development)
-}
-
-fn read_lockfile(path: &Utf8Path) -> anyhow::Result<Lockfile> {
-    let content = fs_err::read_to_string(path).context("can't read lockfile")?;
-    let lockfile =
-        toml::from_str(&content).with_context(|| format!("invalid format of lockfile {path:?}"))?;
-    Ok(lockfile)
 }
 
 fn are_dependencies_updated(local_lock: &Lockfile, released_lock: &Lockfile) -> bool {
@@ -193,13 +260,12 @@ fn are_dependencies_updated(local_lock: &Lockfile, released_lock: &Lockfile) -> 
     })
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 struct Lockfile {
-    #[serde(rename = "package")]
     packages: Vec<Package>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 struct Package {
     name: String,
     version: Version,
@@ -208,7 +274,7 @@ struct Package {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{generate_lockfile, package_manifest, run_cargo_ok, write_package};
+    use crate::test_utils::{generate_lockfile, package_manifest, run_cargo_unwrap, write_package};
     use cargo_metadata::DependencyKind;
 
     /// Spell a source the way Cargo writes it into a lockfile: `encodable_source_id`
@@ -227,6 +293,7 @@ mod tests {
         workspace_lock_dependencies(
             metadata,
             cargo_utils::workspace_package(metadata, package).unwrap(),
+            None,
         )
         .unwrap()
         .unwrap()
@@ -275,6 +342,139 @@ mod tests {
     const APP_DEP_LOCKFILE: &str = "version = 4\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"dep\"]\n\
              [[package]]\nname = \"dep\"\nversion = \"1.0.0\"\n";
 
+    #[test]
+    fn registry_workspace_lock_comparison_ignores_other_members_dependencies() {
+        let lockfile = r#"
+version = 4
+[[package]]
+name = "app"
+version = "0.1.0"
+dependencies = ["dep 1.0.0"]
+[[package]]
+name = "other"
+version = "0.1.0"
+dependencies = ["dep 2.0.0"]
+[[package]]
+name = "dep"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+[[package]]
+name = "dep"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+        let local = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let registry = crate::fs_utils::Utf8TempDir::new().unwrap();
+        // The binary is at the workspace root supplied via --registry-manifest-path.
+        // The other member uses a different version of the same dependency.
+        for directory in [local.path(), registry.path()] {
+            write_package(
+                directory,
+                "app",
+                "0.1.0",
+                "[workspace]\nmembers = [\"other\"]\nresolver = \"2\"\n\
+                 [dependencies]\ndep = \"1\"\n",
+            );
+            fs_err::rename(directory.join("src/lib.rs"), directory.join("src/main.rs")).unwrap();
+            fs_err::write(directory.join("src/main.rs"), "fn main() {}\n").unwrap();
+            write_package(
+                &directory.join("other"),
+                "other",
+                "0.1.0",
+                "[dependencies]\ndep = \"2\"\n",
+            );
+            fs_err::write(directory.join("Cargo.lock"), lockfile).unwrap();
+        }
+        let local_metadata =
+            cargo_utils::get_manifest_metadata(&local.path().join("Cargo.toml")).unwrap();
+
+        let dependencies_updated =
+            |name, path| are_lock_dependencies_updated(&local_metadata, path, name).unwrap();
+        assert!(!dependencies_updated("app", registry.path()));
+        let other = registry.path().join("other");
+        assert!(!dependencies_updated("other", &other));
+
+        // A change confined to the other member still must not release app.
+        let updated = lockfile.replace("2.0.0", "2.0.1");
+        fs_err::write(local.path().join("Cargo.lock"), &updated).unwrap();
+        assert!(!dependencies_updated("app", registry.path()));
+        // A nested member must compare against the shared workspace lockfile too.
+        assert!(dependencies_updated("other", &other));
+        assert_eq!(
+            fs_err::read_to_string(registry.path().join("Cargo.lock")).unwrap(),
+            lockfile
+        );
+        assert_eq!(
+            fs_err::read_to_string(local.path().join("Cargo.lock")).unwrap(),
+            updated
+        );
+    }
+
+    #[test]
+    fn registry_lock_comparison_detects_update_when_another_member_keeps_old_version() {
+        let registry_lock = r#"
+version = 4
+[[package]]
+name = "app"
+version = "0.1.0"
+dependencies = ["dep 1.0.0"]
+[[package]]
+name = "dep"
+version = "1.0.0"
+source = "registry+https://example.com/index"
+"#;
+        let workspace_lock = format!(
+            r#"{registry_lock}
+[[package]]
+name = "other"
+version = "0.1.0"
+dependencies = ["dep 1.0.0"]
+"#
+        );
+        let (local, metadata) = workspace_for_lock(&workspace_lock);
+        let registry = crate::fs_utils::Utf8TempDir::new().unwrap();
+        write_package(registry.path(), "app", "0.1.0", "");
+        fs_err::write(registry.path().join("Cargo.lock"), registry_lock).unwrap();
+        let local_lock = local.path().join("Cargo.lock");
+        let dependencies_updated =
+            || are_lock_dependencies_updated(&metadata, registry.path(), "app").unwrap();
+        assert!(!dependencies_updated());
+
+        let updated = format!(
+            r#"{workspace_lock}
+[[package]]
+name = "dep"
+version = "1.1.0"
+source = "registry+https://example.com/index"
+"#
+        );
+        // Only app updates to dep 1.1.0; other still uses dep 1.0.0.
+        let updated = updated.replacen(
+            "dependencies = [\"dep 1.0.0\"]",
+            "dependencies = [\"dep 1.1.0\"]",
+            1,
+        );
+        fs_err::write(&local_lock, &updated).unwrap();
+        assert!(dependencies_updated());
+        assert_eq!(fs_err::read_to_string(&local_lock).unwrap(), updated);
+    }
+
+    #[test]
+    fn registry_lock_comparison_skips_missing_lockfiles() {
+        let (local, metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
+        let registry = crate::fs_utils::Utf8TempDir::new().unwrap();
+        write_package(registry.path(), "app", "0.1.0", "");
+        // There is no published lockfile to compare against.
+        assert!(!are_lock_dependencies_updated(&metadata, registry.path(), "app").unwrap());
+        fs_err::rename(
+            local.path().join("Cargo.lock"),
+            registry.path().join("Cargo.lock"),
+        )
+        .unwrap();
+        // There is now a published lockfile, but no local lockfile.
+        assert!(!are_lock_dependencies_updated(&metadata, registry.path(), "app").unwrap());
+    }
+
     /// A workspace whose manifest version (`app 0.2.0`) is ahead of the committed
     /// lockfile, which still records `app 0.1.0`.
     fn stale_workspace() -> (crate::fs_utils::Utf8TempDir, Metadata) {
@@ -287,19 +487,22 @@ mod tests {
     }
 
     #[test]
-    fn workspace_lock_comparison_fails_on_stale_lockfile() {
+    fn lock_comparison_fails_on_stale_local_lockfile() {
         let (directory, local_metadata) = stale_workspace();
-        let (_released, released_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
+        let (released_dir, released_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
         let released = released_workspace(released_metadata);
         // The user can fix the local lockfile, so this is an error with a hint.
-        let error = are_workspace_lock_dependencies_updated(&local_metadata, &released, "app")
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains("cannot find package \"app\" 0.2.0"),
-            "{error}"
-        );
-        assert!(error.contains("cargo check"), "{error}");
+        for result in [
+            are_lock_dependencies_updated(&local_metadata, released_dir.path(), "app"),
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "app"),
+        ] {
+            let error = result.unwrap_err().to_string();
+            assert!(
+                error.contains("cannot find package \"app\" 0.2.0"),
+                "{error}"
+            );
+            assert!(error.contains("cargo check"), "{error}");
+        }
         assert_eq!(
             fs_err::read_to_string(directory.path().join("Cargo.lock")).unwrap(),
             APP_DEP_LOCKFILE
@@ -309,9 +512,12 @@ mod tests {
     #[test]
     fn workspace_lock_comparison_treats_stale_released_lockfile_as_updated() {
         let (_local, local_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
-        let (_released, released_metadata) = stale_workspace();
+        let (released_dir, released_metadata) = stale_workspace();
         let released = released_workspace(released_metadata);
         // History can't be rewritten: assume the dependencies changed instead of failing.
+        assert!(
+            are_lock_dependencies_updated(&local_metadata, released_dir.path(), "app").unwrap()
+        );
         assert!(
             are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
         );
@@ -324,7 +530,6 @@ mod tests {
         let (_local, local_metadata) = workspace_for_lock(&re_resolved);
         let (released_dir, released_metadata) = workspace_for_lock(committed);
         let released = released_workspace(released_metadata);
-        assert_eq!(released.lockfile.as_deref(), Some(committed));
         // Simulate `cargo package --list` re-resolving the released lockfile on disk
         // after the snapshot was taken.
         let released_lock = released_dir.path().join("Cargo.lock");
@@ -333,15 +538,36 @@ mod tests {
         assert!(
             are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
         );
-        assert_eq!(fs_err::read_to_string(&released_lock).unwrap(), committed);
+        assert_eq!(fs_err::read_to_string(&released_lock).unwrap(), re_resolved);
 
-        // Without a lockfile at the release there is nothing to compare.
-        let released = ReleasedWorkspace {
-            lockfile: None,
-            ..released
-        };
+        // The cached graph is sufficient even if the on-disk lockfile is gone.
+        fs_err::remove_file(&released_lock).unwrap();
+        assert!(
+            are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
+        );
+        assert!(!released_lock.exists());
+
+        // Without a lockfile at the release there is nothing to compare, even if a
+        // cargo command later writes one to disk.
+        let released = released_workspace(released.metadata);
+        fs_err::write(&released_lock, committed).unwrap();
         assert!(
             !are_workspace_lock_dependencies_updated(&local_metadata, &released, "app").unwrap()
+        );
+    }
+
+    #[test]
+    fn released_workspace_fails_on_invalid_lockfile() {
+        let (released_dir, released_metadata) = workspace_for_lock(APP_DEP_LOCKFILE);
+        fs_err::write(
+            released_dir.path().join("Cargo.lock"),
+            "this is not a lockfile",
+        )
+        .unwrap();
+        let err = ReleasedWorkspace::new(released_metadata, "release-commit".into()).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("committed at release-commit"),
+            "{err:#}"
         );
     }
 
@@ -434,7 +660,7 @@ mod tests {
         }
         git_repo.add_all_and_commit("initial dependency").unwrap();
         // Let Cargo encode the ambiguous path/Git dependency IDs itself.
-        run_cargo_ok(&workspace, &["generate-lockfile"]);
+        run_cargo_unwrap(&workspace, &["generate-lockfile"]);
         let released_lock = directory.path().join("released.lock");
         let local_lock = workspace.join("Cargo.lock");
         fs_err::copy(&local_lock, &released_lock).unwrap();
@@ -449,7 +675,7 @@ mod tests {
         let manifest = fs_err::read_to_string(&leaf_manifest).unwrap();
         fs_err::write(&leaf_manifest, manifest.replace("1.0.0", "1.0.1")).unwrap();
         git_repo.add_all_and_commit("update Git leaf").unwrap();
-        run_cargo_ok(&workspace, &["update"]);
+        run_cargo_unwrap(&workspace, &["update"]);
 
         // Only `other` reaches the Git package and its updated transitive dependency.
         assert!(!compare_workspace_locks(&local_lock, &released_lock, "app"));
@@ -778,13 +1004,13 @@ version = "1.0.0"
                 write_package(&root.join(name), name, "1.0.0", &dependencies);
             }
         }
-        run_cargo_ok(&local, &["generate-lockfile"]);
+        run_cargo_unwrap(&local, &["generate-lockfile"]);
         fs_err::copy(local.join("Cargo.lock"), released.join("Cargo.lock")).unwrap();
         fs_err::write(&leaf_manifest, leaf.replace("1.0.0", "1.0.1")).unwrap();
         git_repo
             .add_all_and_commit("update dev dependency")
             .unwrap();
-        run_cargo_ok(&local, &["update"]);
+        run_cargo_unwrap(&local, &["update"]);
 
         let local_metadata = cargo_utils::get_manifest_metadata(&local.join("Cargo.toml")).unwrap();
         let released_metadata =
