@@ -827,8 +827,9 @@ impl Updater<'_> {
                 )
             } else {
                 lock_compare::are_lock_dependencies_updated(
-                    &self.project.cargo_lock_path(),
+                    self.req.cargo_metadata(),
                     registry_package_path,
+                    &package.name,
                 )
             }
             .context("Can't check if Cargo.lock dependencies are up to date")
