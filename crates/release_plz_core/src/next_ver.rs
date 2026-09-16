@@ -633,11 +633,12 @@ mod tests {
 
     #[test]
     fn git_only_packages_share_released_workspace_metadata() {
+        // Create a two-package workspace with a known lockfile to snapshot at release time.
         let root = crate::fs_utils::Utf8TempDir::new().unwrap();
         let repo = git_cmd::Repo::init(root.path());
         fs_err::write(
             root.path().join("Cargo.toml"),
-            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"2\"\n",
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"3\"\n",
         )
         .unwrap();
         for name in ["one", "two"] {
@@ -647,15 +648,20 @@ mod tests {
              [[package]]\nname = \"two\"\nversion = \"0.1.0\"\n";
         fs_err::write(root.path().join("Cargo.lock"), lockfile).unwrap();
         repo.add_all_and_commit("initial workspace").unwrap();
+        // Separate package tags point to the same commit, allowing workspace reuse.
         for name in ["one", "two"] {
             repo.tag(&format!("{name}-v0.1.0"), "initial release")
                 .unwrap();
         }
         let release_commit = repo.current_commit_hash().unwrap();
+
+        // Advance one package so reconstruction must read the release, not the current checkout.
         let manifest = root.path().join("one/Cargo.toml");
         let contents = fs_err::read_to_string(&manifest).unwrap();
         fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
         repo.add_all_and_commit("update current version").unwrap();
+
+        // Keep the returned workspaces alive while inspecting paths in their worktrees.
         let metadata = cargo_utils::get_manifest_metadata(&root.path().join("Cargo.toml")).unwrap();
         let request = super::UpdateRequest::new(metadata.clone()).unwrap();
         let (packages, workspaces) =
@@ -665,9 +671,11 @@ mod tests {
         assert_eq!(workspaces.len(), 1);
         let one = &packages["one"];
         let two = &packages["two"];
+        // Package metadata reflects the tagged version and points to files that still exist.
         assert_eq!(one.package.version.to_string(), "0.1.0");
         assert!(one.package.manifest_path.is_file());
         assert!(two.package.manifest_path.is_file());
+        // Both packages share the same metadata allocation for the released workspace.
         let released = one.released_workspace().unwrap();
         assert!(std::ptr::eq(released, two.released_workspace().unwrap()));
         assert_eq!(released.commit, release_commit);
