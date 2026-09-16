@@ -22,12 +22,12 @@ pub(crate) fn write_package(dir: &Utf8Path, name: &str, version: &str, extra_tom
 }
 
 /// Run `cargo` with `args` in `root`, asserting that it succeeds.
-pub(crate) fn run_cargo_ok(root: &Utf8Path, args: &[&str]) {
+pub(crate) fn run_cargo_unwrap(root: &Utf8Path, args: &[&str]) {
     let output = crate::cargo::run_cargo(root, args).unwrap();
     assert!(output.status.success(), "{}", output.stderr);
 }
 
 /// Generate the lockfile of the workspace at `root` without network access.
 pub(crate) fn generate_lockfile(root: &Utf8Path) {
-    run_cargo_ok(root, &["generate-lockfile", "--offline"]);
+    run_cargo_unwrap(root, &["generate-lockfile", "--offline"]);
 }

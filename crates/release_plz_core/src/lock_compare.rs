@@ -210,7 +210,7 @@ struct Package {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{generate_lockfile, package_manifest, run_cargo_ok, write_package};
+    use crate::test_utils::{generate_lockfile, package_manifest, run_cargo_unwrap, write_package};
     use cargo_metadata::DependencyKind;
 
     /// Spell a source the way Cargo writes it into a lockfile: `encodable_source_id`
@@ -502,7 +502,7 @@ source = "registry+https://example.com/index"
         }
         git_repo.add_all_and_commit("initial dependency").unwrap();
         // Let Cargo encode the ambiguous path/Git dependency IDs itself.
-        run_cargo_ok(&workspace, &["generate-lockfile"]);
+        run_cargo_unwrap(&workspace, &["generate-lockfile"]);
         let released_lock = directory.path().join("released.lock");
         let local_lock = workspace.join("Cargo.lock");
         fs_err::copy(&local_lock, &released_lock).unwrap();
@@ -517,7 +517,7 @@ source = "registry+https://example.com/index"
         let manifest = fs_err::read_to_string(&leaf_manifest).unwrap();
         fs_err::write(&leaf_manifest, manifest.replace("1.0.0", "1.0.1")).unwrap();
         git_repo.add_all_and_commit("update Git leaf").unwrap();
-        run_cargo_ok(&workspace, &["update"]);
+        run_cargo_unwrap(&workspace, &["update"]);
 
         // Only `other` reaches the Git package and its updated transitive dependency.
         assert!(!compare_workspace_locks(&local_lock, &released_lock, "app"));
@@ -846,13 +846,13 @@ version = "1.0.0"
                 write_package(&root.join(name), name, "1.0.0", &dependencies);
             }
         }
-        run_cargo_ok(&local, &["generate-lockfile"]);
+        run_cargo_unwrap(&local, &["generate-lockfile"]);
         fs_err::copy(local.join("Cargo.lock"), released.join("Cargo.lock")).unwrap();
         fs_err::write(&leaf_manifest, leaf.replace("1.0.0", "1.0.1")).unwrap();
         git_repo
             .add_all_and_commit("update dev dependency")
             .unwrap();
-        run_cargo_ok(&local, &["update"]);
+        run_cargo_unwrap(&local, &["update"]);
 
         let local_metadata = cargo_utils::get_manifest_metadata(&local.join("Cargo.toml")).unwrap();
         let released_metadata =
