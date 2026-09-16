@@ -153,6 +153,24 @@ fn workspace_lock_dependencies(
     }) else {
         return Ok(None);
     };
+    let reachable = reachable_lock_dependencies(lockfile, &workspace, root, &patches);
+    Ok(Some(Lockfile {
+        packages: reachable
+            .into_iter()
+            .map(|id| Package {
+                name: id.name().to_string(),
+                version: id.version().clone(),
+            })
+            .collect(),
+    }))
+}
+
+fn reachable_lock_dependencies(
+    lockfile: &WorkspaceLockfile,
+    workspace: &Workspace<'_>,
+    root: PackageId,
+    patches: &HashMap<CanonicalUrl, Vec<Patch>>,
+) -> HashSet<PackageId> {
     let mut pending = vec![root];
     let mut reachable = HashSet::new();
     while let Some(id) = pending.pop() {
@@ -167,7 +185,7 @@ fn workspace_lock_dependencies(
             // is not confused with a dev alias pointing at the replacement.
             if id == root
                 || workspace_package
-                    .is_none_or(|package| !is_dev_only_dependency(dependency, package, &patches))
+                    .is_none_or(|package| !is_dev_only_dependency(dependency, package, patches))
             {
                 pending.push(
                     lockfile
@@ -179,15 +197,7 @@ fn workspace_lock_dependencies(
             }
         }
     }
-    Ok(Some(Lockfile {
-        packages: reachable
-            .into_iter()
-            .map(|id| Package {
-                name: id.name().to_string(),
-                version: id.version().clone(),
-            })
-            .collect(),
-    }))
+    reachable
 }
 
 fn is_dev_only_dependency(
