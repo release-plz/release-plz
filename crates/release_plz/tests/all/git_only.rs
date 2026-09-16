@@ -983,7 +983,7 @@ publish = false
         .unwrap();
 
     // Release the binary at a later commit with different package contents, so
-    // each package must be compared against its own historical workspace.
+    // each package must be compared against its own released workspace.
     let readme = context.package_path("mybin").join("README.md");
     fs_err::write(&readme, "# Initial mybin release").unwrap();
     context.push_all_changes("feat: prepare mybin release");
@@ -1004,7 +1004,7 @@ publish = false
             .matches("Reconstructing workspace sources at commit")
             .count(),
         2,
-        "packages at different historical commits need separate workspace reconstructions\n{stderr}"
+        "packages at different release commits need separate workspace reconstructions\n{stderr}"
     );
 
     let opened_prs = context.opened_release_prs().await;
@@ -1048,7 +1048,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_update_handles_packages_sharing_a_release_tag() {
     // All packages are released together under a single workspace tag, so they
-    // are all resolved at the same historical commit.
+    // are all resolved at the same release commit.
     // The unreleased internal libraries are path dependencies of the binary, so
     // the whole workspace must be packaged at that commit.
     let context = TestContext::new_workspace_with_packages(&[
@@ -1086,7 +1086,7 @@ git_tag_name = "v{{ version }}"
             .matches("Reconstructing workspace sources at commit")
             .count(),
         1,
-        "packages at one historical commit should share workspace reconstruction\n{stderr}"
+        "packages at one release commit should share workspace reconstruction\n{stderr}"
     );
 
     let opened_prs = context.opened_release_prs().await;

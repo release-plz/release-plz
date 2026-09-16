@@ -181,7 +181,7 @@ fn process_git_only_package(
             repo.checkout_commit(&release_commit)
                 .context("checkout release commit for package")?;
 
-            // Snapshot the historical lockfile before cargo package can rewrite it.
+            // Snapshot the released workspace lockfile before cargo package can rewrite it.
             debug!("Reconstructing workspace sources at commit {release_commit}");
             let workspace = ReconstructedWorkspace::new(worktree, release_commit.clone())?;
             run_cargo_package(&workspace.worktree).context("run cargo package")?;
@@ -203,7 +203,7 @@ fn run_cargo_package(worktree: &GitWorkTree) -> anyhow::Result<()> {
     let worktree_path = to_utf8_path(worktree.path())?;
     let target_dir = worktree_path.join("target");
     // Git-only version comparisons only need packaged files. Skip verification
-    // so historical build scripts cannot fail reconstruction or modify sources.
+    // so build scripts in the released workspace cannot fail reconstruction or modify sources.
     // unpack_cargo_package extracts the archive explicitly instead.
     let output = run_cargo_with_env(
         worktree_path,
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn git_only_packages_share_historical_workspace_metadata() {
+    fn git_only_packages_share_released_workspace_metadata() {
         let root = crate::fs_utils::Utf8TempDir::new().unwrap();
         let repo = git_cmd::Repo::init(root.path());
         fs_err::write(

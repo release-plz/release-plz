@@ -35,10 +35,11 @@ pub fn are_lock_dependencies_updated(
     Ok(are_dependencies_updated(&local_lock, &registry_lock))
 }
 
-/// Compare only dependencies reachable from a package in a historical workspace lockfile.
+/// Compare only dependencies reachable from a package in a released workspace lockfile.
 ///
+/// The released workspace lockfile is the workspace-root `Cargo.lock` committed at the
+/// git-only package's latest release tag, preserved in [`ReleasedWorkspace::lockfile`].
 /// The local lockfile is read from disk (the updater reverts it after `cargo package`).
-/// The released side is decoded from the lockfile committed at the release.
 pub(crate) fn are_workspace_lock_dependencies_updated(
     local_metadata: &Metadata,
     released_workspace: &ReleasedWorkspace,
@@ -94,7 +95,7 @@ fn workspace_lock_dependencies(
         )
     })?;
     // This only decodes the committed lockfile. It does not resolve dependencies,
-    // fetch registry/Git sources, or rewrite the historical workspace.
+    // fetch registry/Git sources, or rewrite the released workspace.
     let resolve = cargo::ops::load_pkg_lockfile(&workspace)
         .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
         .with_context(|| format!("workspace lockfile {lock_path:?} is missing"))?;

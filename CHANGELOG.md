@@ -78,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
-- *(git-only)* reuse historical workspace packaging ([#2953](https://github.com/release-plz/release-plz/pull/2953))
+- *(git-only)* reuse released workspace packaging ([#2953](https://github.com/release-plz/release-plz/pull/2953))
 - remove git-url-parse-rs dependency ([#2934](https://github.com/release-plz/release-plz/pull/2934))
 
 ## [0.3.161](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.160...release-plz-v0.3.161) - 2026-08-31
