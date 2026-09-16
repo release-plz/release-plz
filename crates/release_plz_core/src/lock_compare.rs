@@ -64,7 +64,7 @@ pub fn are_lock_dependencies_updated(
 ///
 /// The released workspace lockfile is the workspace-root `Cargo.lock` committed at the
 /// git-only package's latest release tag, preserved in [`ReleasedWorkspace::lockfile`].
-/// The local lockfile is read from disk (the updater reverts it after `cargo package`).
+/// The local lockfile is read from disk.
 pub(crate) fn are_workspace_lock_dependencies_updated(
     local_metadata: &Metadata,
     released_workspace: &ReleasedWorkspace,
