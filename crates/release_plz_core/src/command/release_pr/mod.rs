@@ -710,6 +710,10 @@ mod tests {
         .unwrap_err();
         let error = format!("{error:#}");
         assert!(error.contains("failed to force push PR branch"), "{error}");
+        assert!(
+            error.contains("failed to update ref heads/release-plz-test with sha new-release-sha"),
+            "{error}"
+        );
         server.verify().await;
     }
 
@@ -737,6 +741,10 @@ mod tests {
         let error = format!("{error:#}");
         assert!(
             error.contains("failed to create commit via graphql"),
+            "{error}"
+        );
+        assert!(
+            error.contains("createCommitOnBranch returned errors"),
             "{error}"
         );
         server.verify().await;
