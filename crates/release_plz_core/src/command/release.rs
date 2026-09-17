@@ -621,7 +621,7 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
             // Not expected to fail because `should_release` only returns commits in
             // HEAD's history.
             Err(e) => {
-                warn!("failed to checkout commit {commit}: {e:?}. Releasing from HEAD");
+                warn!("failed to checkout commit {commit}: {e:#}. Releasing from HEAD.");
             }
         }
     }
