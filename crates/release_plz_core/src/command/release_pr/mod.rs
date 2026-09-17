@@ -331,18 +331,30 @@ async fn update_pr(
     new_pr: &Pr,
     branch_prefix: &str,
 ) -> anyhow::Result<()> {
-    update_pr_branch(commits_number, opened_pr, repository, branch_prefix).with_context(|| {
-        format!(
-            "failed to update pr branch with changes from `{}` branch",
-            repository.original_branch()
-        )
-    })?;
+    // sanity check to avoid doing bad things on non-release-plz branches
+    anyhow::ensure!(
+        opened_pr.branch().starts_with(branch_prefix)
+            || opened_pr.branch().starts_with(DEFAULT_BRANCH_PREFIX)
+            || opened_pr.branch().starts_with(OLD_BRANCH_PREFIX),
+        "wrong branch name"
+    );
+
     // The commit message comes from the new PR, while the branch comes from the opened one:
     // `opened_pr.title` still contains the version calculated by the previous release-plz run,
     // which we are about to replace below.
     if git_client.forge == ForgeType::Github {
+        // The temporary repository already contains the release changes on the
+        // checked-out base commit. Rebuild the PR from there using the API;
+        // fetching the old PR branch would require separate git credentials.
+        // See https://github.com/release-plz/release-plz/issues/2957
         github_force_push(git_client, opened_pr.branch(), &new_pr.title, repository).await?;
     } else {
+        update_pr_branch(commits_number, opened_pr, repository).with_context(|| {
+            format!(
+                "failed to update pr branch with changes from `{}` branch",
+                repository.original_branch()
+            )
+        })?;
         force_push(opened_pr.branch(), &new_pr.title, repository)?;
     }
     let pr_edit = {
@@ -373,12 +385,11 @@ fn update_pr_branch(
     commits_number: usize,
     opened_pr: &GitPr,
     repository: &Repo,
-    branch_prefix: &str,
 ) -> anyhow::Result<()> {
     // save local work
     repository.git(&["stash", "--include-untracked"])?;
 
-    reset_branch(opened_pr, commits_number, repository, branch_prefix).inspect_err(|_e| {
+    reset_branch(opened_pr, commits_number, repository).inspect_err(|_e| {
         // restore local work
         if let Err(e) = repository.stash_pop() {
             tracing::error!("cannot restore local work: {:?}", e);
@@ -388,20 +399,7 @@ fn update_pr_branch(
     Ok(())
 }
 
-fn reset_branch(
-    pr: &GitPr,
-    commits_number: usize,
-    repository: &Repo,
-    branch_prefix: &str,
-) -> anyhow::Result<()> {
-    // sanity check to avoid doing bad things on non-release-plz branches
-    anyhow::ensure!(
-        pr.branch().starts_with(branch_prefix)
-            || pr.branch().starts_with(DEFAULT_BRANCH_PREFIX)
-            || pr.branch().starts_with(OLD_BRANCH_PREFIX),
-        "wrong branch name"
-    );
-
+fn reset_branch(pr: &GitPr, commits_number: usize, repository: &Repo) -> anyhow::Result<()> {
     if repository.checkout(pr.branch()).is_err() {
         repository.git(&["pull"])?;
         repository.checkout(pr.branch())?;
@@ -434,10 +432,14 @@ async fn github_force_push(
     commit_message: &str,
     repository: &Repo,
 ) -> anyhow::Result<()> {
-    // Use a randomized hash to make temporary branch name collisions unlikely.
+    // Use a randomized suffix to avoid collisions with existing remote branches.
     let suffix = RandomState::new().hash_one(branch);
     let tmp_release_branch = format!("{branch}-tmp-{suffix}");
-    repository.checkout_new_branch(&tmp_release_branch)?;
+    let base_sha = repository.current_commit_hash()?;
+    client
+        .create_branch(&tmp_release_branch, &base_sha)
+        .await
+        .with_context(|| format!("failed to create branch `{tmp_release_branch}`"))?;
 
     // Push the "Verified" commit in the temporary branch using
     // the GitHub API.
@@ -447,35 +449,21 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let sha = github_create_release_branch(client, repository, &tmp_release_branch, commit_message)
-        .await?;
-
-    let force_push_result =
-        execute_github_force_push(client, branch, repository, &tmp_release_branch, &sha).await;
-    // Delete the temporary branch if it was created. Even if the push failed.
+    let force_push_result: anyhow::Result<()> = async {
+        let sha =
+            github_commit_changes(client, repository, &tmp_release_branch, commit_message).await?;
+        client
+            .patch_github_ref(&format!("heads/{branch}"), &sha)
+            .await
+            .context("failed to force push PR branch")
+    }
+    .await;
+    // Delete the temporary branch even if the commit or the force push failed.
     if let Err(e) = client.delete_branch(&tmp_release_branch).await {
         tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
     }
 
     force_push_result
-}
-
-async fn execute_github_force_push(
-    client: &GitClient,
-    branch: &str,
-    repository: &Repo,
-    tmp_release_branch: &str,
-    sha: &str,
-) -> anyhow::Result<()> {
-    repository.fetch(tmp_release_branch)?;
-
-    // Rewrite the PR branch so that it's the same as the temporary branch.
-    client
-        .patch_github_ref(&format!("heads/{branch}"), sha)
-        .await
-        .context("failed to force push PR branch")?;
-
-    Ok(())
 }
 
 fn create_release_branch(
@@ -499,12 +487,21 @@ async fn github_create_release_branch(
         .create_branch(release_branch, &sha)
         .await
         .with_context(|| format!("failed to create branch `{release_branch}`"))?;
-    let sha = github_graphql::commit_changes(client, repository, commit_message, release_branch)
+    github_commit_changes(client, repository, release_branch, commit_message).await
+}
+
+/// Commit the changes of the repository on `branch` using the GitHub API.
+/// Returns the SHA of the new commit.
+async fn github_commit_changes(
+    client: &GitClient,
+    repository: &Repo,
+    branch: &str,
+    commit_message: &str,
+) -> anyhow::Result<String> {
+    let sha = github_graphql::commit_changes(client, repository, commit_message, branch)
         .await
-        .with_context(|| {
-            format!("failed to create commit via graphql on branch `{release_branch}`")
-        })?;
-    tracing::debug!("committed changes on branch `{release_branch}` via graphql");
+        .with_context(|| format!("failed to create commit via graphql on branch `{branch}`"))?;
+    tracing::debug!("committed changes on branch `{branch}` via graphql");
     Ok(sha)
 }
 
@@ -513,4 +510,285 @@ fn add_changes_and_commit(repository: &Repo, commit_message: &str) -> anyhow::Re
     repository.add(&changes_expect_typechanges)?;
     repository.commit_signed(commit_message)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::prelude::*;
+    use secrecy::SecretString;
+    use serde_json::json;
+    use tempfile::tempdir;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_json, body_partial_json, header, method, path, path_regex},
+    };
+
+    use super::*;
+    use crate::git::{
+        forge::{Author, Commit, GitForge},
+        github_client::GitHub,
+    };
+
+    fn github_client(server: &MockServer) -> GitClient {
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        GitClient::new(GitForge::Github(github)).unwrap()
+    }
+
+    fn graphql_commit_created() -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"createCommitOnBranch": {"commit": {"oid": "new-release-sha"}}}
+        }))
+    }
+
+    /// Mock the GitHub API calls made by `github_force_push`.
+    /// The PR branch is only patched when the GraphQL commit succeeds, so
+    /// `patch_status` is `None` when `graphql_response` is an error.
+    async fn mock_github_push(
+        server: &MockServer,
+        base_sha: &str,
+        graphql_response: ResponseTemplate,
+        patch_status: Option<u16>,
+    ) {
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/git/refs"))
+            .and(header("authorization", "Bearer token"))
+            .and(body_partial_json(json!({"sha": base_sha})))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(1)
+            .mount(server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/graphql"))
+            .and(header("authorization", "Bearer token"))
+            .and(body_partial_json(json!({"variables": {"input": {
+                "expectedHeadOid": base_sha,
+                "message": {"headline": "chore: release v0.2.0"},
+                "fileChanges": {
+                    "additions": [
+                        {"path": "README.md", "contents": BASE64_STANDARD.encode("updated release")},
+                        {"path": "CHANGELOG.md", "contents": BASE64_STANDARD.encode("new release notes")}
+                    ],
+                    "deletions": []
+                }
+            }}})))
+            .respond_with(graphql_response)
+            .expect(1)
+            .mount(server)
+            .await;
+        let patch_ref = Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/git/refs/heads/release-plz-test"))
+            .and(header("authorization", "Bearer token"))
+            .and(body_json(json!({"sha": "new-release-sha", "force": true})));
+        match patch_status {
+            Some(status) => patch_ref
+                .respond_with(ResponseTemplate::new(status))
+                .expect(1),
+            None => patch_ref.respond_with(ResponseTemplate::new(500)).expect(0),
+        }
+        .mount(server)
+        .await;
+        Mock::given(method("DELETE"))
+            .and(path_regex(
+                r"^/repos/owner/repo/git/refs/heads/release-plz-test-tmp-\d+$",
+            ))
+            .and(header("authorization", "Bearer token"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+
+    fn prepare_release_changes(repo: &Repo) {
+        fs_err::write(repo.directory().join("README.md"), "updated release").unwrap();
+        fs_err::write(repo.directory().join("CHANGELOG.md"), "new release notes").unwrap();
+    }
+
+    /// Release PR opened by a previous release-plz run, with `branch` as head.
+    fn opened_pr(branch: &str) -> GitPr {
+        GitPr {
+            user: Author {
+                id: 1,
+                login: "release-plz[bot]".into(),
+            },
+            number: 42,
+            html_url: "https://github.com/owner/repo/pull/42".parse().unwrap(),
+            head: Commit {
+                ref_field: branch.into(),
+                sha: "old-release-sha".into(),
+            },
+            title: "chore: release v0.1.0".into(),
+            body: Some("release notes".into()),
+            labels: vec![],
+        }
+    }
+
+    /// Release PR calculated by the current release-plz run.
+    fn new_pr(repo: &Repo) -> Pr {
+        Pr {
+            base_branch: repo.original_branch().to_string(),
+            branch: "release-plz-new".into(),
+            title: "chore: release v0.2.0".into(),
+            body: "release notes".into(),
+            draft: false,
+            labels: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn github_updates_existing_pr_without_git_remote_access() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        // No remote is configured, so any git fetch or pull would fail.
+        fs_err::write(repo.directory().join("feature.txt"), "new feature").unwrap();
+        repo.add_all_and_commit("feat: new feature").unwrap();
+        let base_sha = repo.current_commit_hash().unwrap();
+        prepare_release_changes(&repo);
+
+        let server = MockServer::start().await;
+        mock_github_push(&server, &base_sha, graphql_commit_created(), Some(200)).await;
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/pulls/42/commits"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"sha": "old-release-sha", "author": {"id": 1, "login": "release-plz[bot]"}}
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/pulls/42"))
+            .and(body_partial_json(json!({"title": "chore: release v0.2.0"})))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // The existing PR must be updated in place, not closed and reopened.
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/pulls/42"))
+            .and(body_partial_json(json!({"state": "closed"})))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/pulls"))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let opened_pr = opened_pr("release-plz-test");
+        let new_pr = new_pr(&repo);
+        let updated = handle_opened_pr(
+            &github_client(&server),
+            &opened_pr,
+            &repo,
+            &new_pr,
+            DEFAULT_BRANCH_PREFIX,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.number, opened_pr.number);
+        assert_eq!(updated.head_branch, opened_pr.branch());
+        assert_eq!(updated.base_branch, repo.original_branch());
+        assert_eq!(repo.current_commit_hash().unwrap(), base_sha);
+        // The GitHub update path must not touch the local checkout, e.g. by checking out a temporary branch.
+        assert_eq!(
+            repo.git(&["branch", "--show-current"]).unwrap().trim(),
+            repo.original_branch()
+        );
+        assert_eq!(
+            fs_err::read_to_string(repo.directory().join("feature.txt")).unwrap(),
+            "new feature"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn github_cleans_up_temporary_branch_when_force_push_fails() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        let base_sha = repo.current_commit_hash().unwrap();
+        prepare_release_changes(&repo);
+        let server = MockServer::start().await;
+        mock_github_push(&server, &base_sha, graphql_commit_created(), Some(403)).await;
+
+        let error = github_force_push(
+            &github_client(&server),
+            "release-plz-test",
+            "chore: release v0.2.0",
+            &repo,
+        )
+        .await
+        .unwrap_err();
+        let error = format!("{error:#}");
+        assert!(error.contains("failed to force push PR branch"), "{error}");
+        assert!(
+            error.contains("failed to update ref heads/release-plz-test with sha new-release-sha"),
+            "{error}"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn github_cleans_up_temporary_branch_when_graphql_commit_fails() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        let base_sha = repo.current_commit_hash().unwrap();
+        prepare_release_changes(&repo);
+        let server = MockServer::start().await;
+        let graphql_error = ResponseTemplate::new(200).set_body_json(json!({
+            "errors": [{"message": "expectedHeadOid does not match"}]
+        }));
+        mock_github_push(&server, &base_sha, graphql_error, None).await;
+
+        let error = github_force_push(
+            &github_client(&server),
+            "release-plz-test",
+            "chore: release v0.2.0",
+            &repo,
+        )
+        .await
+        .unwrap_err();
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("failed to create commit via graphql"),
+            "{error}"
+        );
+        assert!(
+            error.contains("createCommitOnBranch returned errors"),
+            "{error}"
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn github_refuses_to_update_pr_on_non_release_branch() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        let server = MockServer::start().await;
+        let opened_pr = opened_pr("main");
+        let new_pr = new_pr(&repo);
+
+        let error = update_pr(
+            &github_client(&server),
+            &opened_pr,
+            1,
+            &repo,
+            &new_pr,
+            DEFAULT_BRANCH_PREFIX,
+        )
+        .await
+        .unwrap_err();
+
+        let error = format!("{error:#}");
+        assert!(error.contains("wrong branch name"), "{error}");
+        // The guard must fire before any API call: the force ref update is
+        // destructive, so a non-release branch must never be touched.
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
 }
