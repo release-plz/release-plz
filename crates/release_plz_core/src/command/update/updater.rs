@@ -706,7 +706,8 @@ impl Updater<'_> {
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     // Stop this ancestry, but keep independent sibling branches.
-                    // Topological ordering ensures ancestors have not been visited yet.
+                    // The commit ordering never yields a commit before all of its
+                    // children, so these ancestors have not been visited yet.
                     let ancestors = repository.git(&["rev-list", &current_commit_hash])?;
                     released_ancestors.extend(ancestors.lines().map(str::to_owned));
                     continue;

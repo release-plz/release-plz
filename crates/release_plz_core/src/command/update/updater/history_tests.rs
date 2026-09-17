@@ -42,6 +42,23 @@ impl History {
         self.repo.current_commit_hash().unwrap()
     }
 
+    /// Like [`Self::write_commit`], but with an explicit author and committer date,
+    /// so the test controls where the commit lands in the date-ordered walk.
+    fn write_commit_at(&self, path: &str, contents: &str, message: &str, date: &str) -> String {
+        fs_err::write(self.repo.directory().join(path), contents).unwrap();
+        self.repo.git(&["add", "."]).unwrap();
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(self.repo.directory())
+            .args(["commit", "-m", message])
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git commit failed: {output:?}");
+        self.repo.current_commit_hash().unwrap()
+    }
+
     fn diff(&self, published_at: Option<&str>) -> Diff {
         let metadata =
             cargo_utils::get_manifest_metadata(&self.registry.directory().join(CARGO_TOML))
@@ -164,11 +181,18 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
     let equal = history.write_commit("src/lib.rs", "", "revert: temporary");
     let branch = history.write_commit("src/branch.rs", "", "fix: branch");
     repo.checkout_head().unwrap();
-    let sibling = history.write_commit("src/sibling.rs", "", "fix: sibling");
+    // Date the sibling before the branch, so the walk reaches the equal snapshot
+    // first: that's the order in which stopping there would lose the sibling.
+    let sibling = history.write_commit_at(
+        "src/sibling.rs",
+        "",
+        "fix: sibling",
+        "2000-01-01T00:00:00 +0000",
+    );
     repo.git(&["merge", "--no-ff", "-m", "merge branch", "branch"])
         .unwrap();
     // Exercise the order where stopping at the equal snapshot would lose its sibling.
-    let order = repo.git(&["rev-list", "--topo-order", "HEAD"]).unwrap();
+    let order = repo.git(&["rev-list", "--date-order", "HEAD"]).unwrap();
     assert!(order.find(&equal).unwrap() < order.find(&sibling).unwrap());
     assert_eq!(
         commit_ids(&history.diff(None)),

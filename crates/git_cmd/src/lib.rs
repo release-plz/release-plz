@@ -240,10 +240,13 @@ impl Repo {
         Ok(())
     }
 
-    /// List commits touching `paths`, newest descendants before their ancestors.
+    /// List commits touching `paths`, newest first, and never a commit before all
+    /// of its children.
     ///
     /// Walk from `head` once so checking out individual commits cannot hide sibling
-    /// branches. Release boundaries and their ancestors are excluded, even when the
+    /// branches. The walk is ordered by commit date rather than topologically:
+    /// `--topo-order` emits whole lineages contiguously, so combining it with
+    /// `max_commits` would drop the newest commits of every branch but one. Release boundaries and their ancestors are excluded, even when the
     /// boundary itself isn't reachable from `head`: the history it shares with `head`
     /// was already released. A boundary that doesn't exist in this repository is
     /// ignored, so a commit hash recorded by a release that happened in another
@@ -262,7 +265,7 @@ impl Repo {
             .map(|commit| format!("^{commit}"))
             .collect();
         let limit = (max_commits != u32::MAX).then(|| format!("--max-count={max_commits}"));
-        let mut args = vec!["rev-list", "--topo-order", head];
+        let mut args = vec!["rev-list", "--date-order", head];
         args.extend(exclusions.iter().map(String::as_str));
         args.extend(limit.as_deref());
         args.push("--");
@@ -584,6 +587,76 @@ mod tests {
             messages.iter().any(|m| m == "fix: feature two (D)"),
             "commit D missing from sibling-branch walk: {messages:?}"
         );
+    }
+
+    /// `git rev-list --topo-order` emits whole lineages contiguously, so combining
+    /// it with `--max-count` returns the oldest commits of one branch instead of the
+    /// newest commits overall. Every mainline commit would be dropped from a first
+    /// release limited by `max_analyze_commits`.
+    #[test]
+    fn commit_limit_keeps_the_newest_commit_of_every_branch() {
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+
+        // Interleave the commit dates of the two branches, so taking the newest
+        // three commits must take from both sides.
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["branch", "other"]).unwrap();
+        for (name, date) in [
+            ("a1", "2024-01-01T00:00:01 +0000"),
+            ("a2", "2024-01-01T00:00:03 +0000"),
+            ("a3", "2024-01-01T00:00:05 +0000"),
+        ] {
+            commit_file_at(&repo, path, name, date);
+        }
+        let a3 = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "other"]).unwrap();
+        for (name, date) in [
+            ("b1", "2024-01-01T00:00:02 +0000"),
+            ("b2", "2024-01-01T00:00:04 +0000"),
+            ("b3", "2024-01-01T00:00:06 +0000"),
+        ] {
+            commit_file_at(&repo, path, name, date);
+        }
+        let b3 = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_merge_at(&repo, "other", "2024-01-01T00:00:07 +0000");
+        let merge = repo.current_commit_hash().unwrap();
+
+        assert_eq!(
+            repo.commits_at_paths_since("HEAD", &[], &[path], 3)
+                .unwrap(),
+            [merge, b3, a3]
+        );
+    }
+
+    /// Commit the current worktree with both the author and the committer date set
+    /// to `date`, so the test controls the `--date-order` walk.
+    fn git_commit_at(repo: &Repo, args: &[&str], date: &str) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo.directory())
+            .args(args)
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {args:?} failed: {output:?}");
+    }
+
+    fn commit_file_at(repo: &Repo, directory: &Path, name: &str, date: &str) {
+        let file = repo.directory().as_std_path().join(directory).join(name);
+        fs_err::write(file, name).unwrap();
+        repo.git(&["add", "."]).unwrap();
+        git_commit_at(repo, &["commit", "-m", name], date);
+    }
+
+    fn commit_merge_at(repo: &Repo, branch: &str, date: &str) {
+        let message = format!("merge {branch}");
+        git_commit_at(repo, &["merge", "--no-ff", "-m", &message, branch], date);
     }
 
     #[test]
