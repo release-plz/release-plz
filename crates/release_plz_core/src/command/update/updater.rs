@@ -955,7 +955,10 @@ fn contains_executable(package: &Package) -> bool {
 }
 
 fn contains_library(package: &Package) -> bool {
-    contains_target_kind(package, &TargetKind::Lib)
+    // Explicit Rust library crate types also expose an API to downstream Rust crates.
+    [TargetKind::Lib, TargetKind::RLib, TargetKind::DyLib]
+        .iter()
+        .any(|kind| contains_target_kind(package, kind))
 }
 
 fn contains_target_kind(package: &Package, target_kind: &TargetKind) -> bool {
@@ -1167,6 +1170,29 @@ fn get_repo_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_rust_library_targets_do_not_enable_semver_checks() {
+        for kind in [
+            "bin",
+            "cdylib",
+            "staticlib",
+            "proc-macro",
+            "example",
+            "test",
+            "bench",
+            "custom-build",
+        ] {
+            let mut package: Package = fake_package::FakePackage::new("my_package")
+                .with_targets(&[kind])
+                .into();
+            if kind == "example" {
+                // An example built as an rlib is not the package's library API.
+                package.targets[0].crate_types = vec![cargo_metadata::CrateType::RLib];
+            }
+            assert!(!contains_library(&package), "unexpected library: {kind}");
+        }
+    }
 
     #[test]
     fn same_version_is_not_added_to_changelog() {
