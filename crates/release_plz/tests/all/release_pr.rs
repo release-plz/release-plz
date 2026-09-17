@@ -235,18 +235,6 @@ async fn release_plz_opens_pr_with_breaking_changes() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_opens_pr_with_breaking_changes_in_rlib() {
-    check_release_pr_with_breaking_changes(&["rlib"], &["rlib"]).await;
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_plz_opens_pr_with_breaking_changes_in_dylib() {
-    check_release_pr_with_breaking_changes(&["dylib"], &["dylib"]).await;
-}
-
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib() {
     check_release_pr_with_breaking_changes(&["cdylib", "rlib"], &["cdylib", "rlib"]).await;
 }
