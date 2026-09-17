@@ -432,10 +432,9 @@ async fn github_force_push(
     commit_message: &str,
     repository: &Repo,
 ) -> anyhow::Result<()> {
-    // Use a randomized hash to make temporary branch name collisions unlikely.
+    // Use a randomized suffix to avoid collisions with existing remote branches.
     let suffix = RandomState::new().hash_one(branch);
     let tmp_release_branch = format!("{branch}-tmp-{suffix}");
-    repository.checkout_new_branch(&tmp_release_branch)?;
     let base_sha = repository.current_commit_hash()?;
     client
         .create_branch(&tmp_release_branch, &base_sha)
