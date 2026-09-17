@@ -1053,6 +1053,31 @@ fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
     }
 }
 
+/// The registry records the commit a package was published from. It bounds the
+/// walk on its own: the published sources can differ from every local snapshot,
+/// for instance when the release was built from a modified working tree.
+#[test]
+fn the_published_commit_bounds_the_walk_without_an_equal_snapshot() {
+    let history = History::new();
+    let published = history.write_commit("src/released.rs", "", "feat: released");
+    fs_err::write(
+        history.registry.directory().join("src/released.rs"),
+        "// published from a modified working tree\n",
+    )
+    .unwrap();
+    history
+        .registry
+        .add_all_and_commit("published release")
+        .unwrap();
+    let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
+    // No local snapshot equals the release, so nothing else bounds the walk.
+    assert!(commit_ids(&history.diff(None)).contains(published.as_str()));
+    assert_eq!(
+        commit_ids(&history.diff(Some(&published))),
+        HashSet::from([unreleased.as_str()])
+    );
+}
+
 #[test]
 fn late_merge_keeps_mainline_changes_after_the_release() {
     let history = History::new();
