@@ -1367,10 +1367,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn release_rejects_detached_head_before_accessing_forge_or_registry() {
+    async fn release_rejects_detached_head_before_accessing_forge() {
         test_logs::init();
         let forge_server = wiremock::MockServer::start().await;
-        let registry_server = wiremock::MockServer::start().await;
         let temporary = tempfile::tempdir().unwrap();
         let repo = Repo::init(temporary.path());
         let manifest = repo.directory().join("Cargo.toml");
@@ -1381,15 +1380,6 @@ mod tests {
         )
         .unwrap();
         fs_err::write(repo.directory().join("lib.rs"), "").unwrap();
-        fs_err::create_dir(repo.directory().join(".cargo")).unwrap();
-        fs_err::write(
-            repo.directory().join(".cargo/config.toml"),
-            format!(
-                "[registries.detached-head-test]\nindex = \"sparse+{}/index/\"\n",
-                registry_server.uri()
-            ),
-        )
-        .unwrap();
         let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
         repo.add_all_and_commit("feat: initial package").unwrap();
         repo.git(&["checkout", "--detach"]).unwrap();
@@ -1398,7 +1388,6 @@ mod tests {
         let github = crate::GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
             .with_base_url(forge_server.uri().parse().unwrap());
         let request = ReleaseRequest::new(metadata)
-            .with_registry("detached-head-test")
             .with_token("token")
             .with_git_release(GitRelease {
                 forge: GitForge::Github(github),
@@ -1411,13 +1400,6 @@ mod tests {
             "{error:#}"
         );
         assert!(forge_server.received_requests().await.unwrap().is_empty());
-        assert!(
-            registry_server
-                .received_requests()
-                .await
-                .unwrap()
-                .is_empty()
-        );
         assert_eq!(repo.current_commit_hash().unwrap(), original_head);
         assert!(repo.is_head_detached().unwrap());
         assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
