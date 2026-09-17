@@ -708,8 +708,14 @@ impl Updater<'_> {
                     // Stop this ancestry, but keep independent sibling branches.
                     // The commit ordering never yields a commit before all of its
                     // children, so these ancestors have not been visited yet.
-                    let ancestors = repository.git(&["rev-list", &current_commit_hash])?;
-                    released_ancestors.extend(ancestors.lines().map(str::to_owned));
+                    // Only commits in `commits` are ever looked up, so restrict the
+                    // ancestry to the same paths instead of dumping every hash.
+                    released_ancestors.extend(repository.commits_at_paths_since(
+                        &current_commit_hash,
+                        &[],
+                        &paths_to_check,
+                        u32::MAX,
+                    )?);
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
