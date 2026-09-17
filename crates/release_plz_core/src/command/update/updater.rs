@@ -788,24 +788,14 @@ impl Updater<'_> {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
-        // We run `cargo package` when comparing packages, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = crate::package_compare::are_packages_equal_cached(
-            package_path,
-            registry_package_path,
-            released_package_files,
-        )
-        .context("cannot compare packages")?;
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
-        Ok(are_packages_equal)
+        self.with_cargo_lock_restored(repository, || {
+            crate::package_compare::are_packages_equal_cached(
+                package_path,
+                registry_package_path,
+                released_package_files,
+            )
+        })?
+        .context("cannot compare packages")
     }
 
     /// If the dependencies changed, add a commit to the diff.
@@ -865,6 +855,26 @@ impl Updater<'_> {
         }
     }
 
+    /// Run `f`, which inspects the package with `cargo package`, then revert the
+    /// edits `cargo package` can make to files such as `Cargo.lock`.
+    fn with_cargo_lock_restored<T>(
+        &self,
+        repository: &Repo,
+        f: impl FnOnce() -> T,
+    ) -> anyhow::Result<T> {
+        // Store the path before `f` runs so it can be reverted afterwards.
+        let cargo_lock_path = self
+            .get_cargo_lock_path(repository)
+            .context("failed to determine Cargo.lock path")?;
+        let result = f();
+        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
+            repository
+                .checkout(cargo_lock_path)
+                .context("cannot revert changes introduced when comparing packages")?;
+        }
+        Ok(result)
+    }
+
     fn get_next_version(
         &self,
         new_workspace_version: Option<&Version>,
@@ -906,18 +916,8 @@ impl Updater<'_> {
         repository: &Repo,
         hash: &str,
     ) -> anyhow::Result<bool> {
-        // We run `cargo package` to get package files, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let package_files_res = get_package_files(package_path, repository);
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
+        let package_files_res = self
+            .with_cargo_lock_restored(repository, || get_package_files(package_path, repository))?;
         let Ok(package_files) = package_files_res.inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
@@ -938,15 +938,9 @@ impl Updater<'_> {
         package_path: &Utf8Path,
         repository: &Repo,
     ) -> anyhow::Result<Option<HashSet<Utf8PathBuf>>> {
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let package_files = crate::get_cargo_package_files(package_path);
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
+        let package_files = self.with_cargo_lock_restored(repository, || {
+            crate::get_cargo_package_files(package_path)
+        })?;
         let relative = package_path.strip_prefix(repository.directory())?;
         // Cargo also lists generated files that do not exist in the checkout.
         // Tree comparisons only need their names, not canonicalized files.
