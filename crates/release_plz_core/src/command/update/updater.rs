@@ -706,8 +706,8 @@ impl Updater<'_> {
                     diff.set_version_unpublished(registry_package.package.version.clone());
                 }
             }
-            // A package can contain another package in a subdirectory, so only
-            // include commits which change files Cargo packages for this crate.
+            // A package can contain another package in a subdirectory, so only count
+            // commits that touch files Cargo would package for this crate.
             if self.are_changed_files_in_package(package_path, repository, &current_commit_hash)? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,

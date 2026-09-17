@@ -19,8 +19,8 @@ impl History {
         let local_dir = tempfile::tempdir().unwrap();
         let registry_dir = tempfile::tempdir().unwrap();
         // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
-        let repo = Repo::init(dunce::canonicalize(local_dir.path()).unwrap());
-        let registry = Repo::init(dunce::canonicalize(registry_dir.path()).unwrap());
+        let repo = Repo::init(canonicalize(&local_dir));
+        let registry = Repo::init(canonicalize(&registry_dir));
         for repo in [&repo, &registry] {
             write_packages(repo.directory());
             fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
@@ -113,6 +113,11 @@ impl History {
         }
         .get_diff(&package, &registry_packages, &self.repo)
     }
+}
+
+fn canonicalize(directory: &tempfile::TempDir) -> Utf8PathBuf {
+    let path = fs_utils::to_utf8_path(directory.path()).unwrap();
+    fs_utils::canonicalize_utf8(path).unwrap()
 }
 
 fn commit_ids(diff: &Diff) -> HashSet<&str> {
@@ -267,6 +272,12 @@ fn workspace_dependency_updates_are_detected_without_package_commits() {
 #[test]
 fn first_release_respects_the_commit_limit() {
     let history = History::new();
+    let baseline = history.repo.current_commit_hash().unwrap();
+    // `Repo::init` commits a README before the package baseline.
+    let readme = history
+        .repo
+        .git(&["rev-parse", &format!("{baseline}^")])
+        .unwrap();
     let one = history.write_commit("src/one.rs", "", "fix: one");
     let two = history.write_commit("src/two.rs", "", "fix: two");
     assert_eq!(
@@ -277,8 +288,16 @@ fn first_release_respects_the_commit_limit() {
         commit_ids(&history.diff_with(None, Some(2))),
         HashSet::from([one.as_str(), two.as_str()])
     );
-    // Repo::init also creates an initial README commit. Zero means all four commits.
-    assert_eq!(history.diff_with(None, Some(0)).commits.len(), 4);
+    // Zero means no limit.
+    assert_eq!(
+        commit_ids(&history.diff_with(None, Some(0))),
+        HashSet::from([
+            readme.as_str(),
+            baseline.as_str(),
+            one.as_str(),
+            two.as_str()
+        ])
+    );
 }
 
 #[test]
