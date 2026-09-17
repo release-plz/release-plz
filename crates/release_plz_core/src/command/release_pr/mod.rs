@@ -10,6 +10,8 @@ use serde::Serialize;
 use tracing::{debug, info, instrument};
 use url::Url;
 pub(crate) mod git;
+#[cfg(test)]
+mod tests;
 
 use crate::git::forge::{
     ForgeType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
@@ -331,18 +333,23 @@ async fn update_pr(
     new_pr: &Pr,
     branch_prefix: &str,
 ) -> anyhow::Result<()> {
-    update_pr_branch(commits_number, opened_pr, repository, branch_prefix).with_context(|| {
-        format!(
-            "failed to update pr branch with changes from `{}` branch",
-            repository.original_branch()
-        )
-    })?;
     // The commit message comes from the new PR, while the branch comes from the opened one:
     // `opened_pr.title` still contains the version calculated by the previous release-plz run,
     // which we are about to replace below.
     if git_client.forge == ForgeType::Github {
+        // The temporary repository already contains the release changes on the
+        // checked-out base commit. Rebuild the PR from there using the API;
+        // fetching the old PR branch would require separate git credentials.
         github_force_push(git_client, opened_pr.branch(), &new_pr.title, repository).await?;
     } else {
+        update_pr_branch(commits_number, opened_pr, repository, branch_prefix).with_context(
+            || {
+                format!(
+                    "failed to update pr branch with changes from `{}` branch",
+                    repository.original_branch()
+                )
+            },
+        )?;
         force_push(opened_pr.branch(), &new_pr.title, repository)?;
     }
     let pr_edit = {
@@ -450,32 +457,18 @@ async fn github_force_push(
     let sha = github_create_release_branch(client, repository, &tmp_release_branch, commit_message)
         .await?;
 
-    let force_push_result =
-        execute_github_force_push(client, branch, repository, &tmp_release_branch, &sha).await;
+    // The API returned the new commit's SHA, so updating the PR ref doesn't
+    // require fetching the temporary branch into the local repository.
+    let force_push_result = client
+        .patch_github_ref(&format!("heads/{branch}"), &sha)
+        .await
+        .context("failed to force push PR branch");
     // Delete the temporary branch if it was created. Even if the push failed.
     if let Err(e) = client.delete_branch(&tmp_release_branch).await {
         tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
     }
 
     force_push_result
-}
-
-async fn execute_github_force_push(
-    client: &GitClient,
-    branch: &str,
-    repository: &Repo,
-    tmp_release_branch: &str,
-    sha: &str,
-) -> anyhow::Result<()> {
-    repository.fetch(tmp_release_branch)?;
-
-    // Rewrite the PR branch so that it's the same as the temporary branch.
-    client
-        .patch_github_ref(&format!("heads/{branch}"), sha)
-        .await
-        .context("failed to force push PR branch")?;
-
-    Ok(())
 }
 
 fn create_release_branch(
