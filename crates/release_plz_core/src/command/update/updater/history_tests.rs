@@ -18,8 +18,9 @@ impl History {
     fn with_packages(write_packages: impl Fn(&Utf8Path)) -> Self {
         let local_dir = tempfile::tempdir().unwrap();
         let registry_dir = tempfile::tempdir().unwrap();
-        let repo = Repo::init(&local_dir);
-        let registry = Repo::init(&registry_dir);
+        // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
+        let repo = Repo::init(dunce::canonicalize(local_dir.path()).unwrap());
+        let registry = Repo::init(dunce::canonicalize(registry_dir.path()).unwrap());
         for repo in [&repo, &registry] {
             write_packages(repo.directory());
             fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
