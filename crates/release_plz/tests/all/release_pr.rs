@@ -230,32 +230,41 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
-    check_release_pr_with_breaking_changes(&[], &[]).await;
+    check_release_pr_with_breaking_changes(None, None).await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib() {
-    check_release_pr_with_breaking_changes(&["cdylib", "rlib"], &["cdylib", "rlib"]).await;
+    check_release_pr_with_breaking_changes(
+        Some(&["cdylib", "rlib"][..]),
+        Some(&["cdylib", "rlib"][..]),
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes_after_rlib_to_lib() {
-    check_release_pr_with_breaking_changes(&["cdylib", "rlib"], &["cdylib", "lib"]).await;
+    check_release_pr_with_breaking_changes(
+        Some(&["cdylib", "rlib"][..]),
+        Some(&["cdylib", "lib"][..]),
+    )
+    .await;
 }
 
+/// `None` leaves the `crate-type` of the `Cargo.toml` untouched.
 async fn check_release_pr_with_breaking_changes(
-    baseline_crate_types: &[&str],
-    current_crate_types: &[&str],
+    baseline_crate_types: Option<&[&str]>,
+    current_crate_types: Option<&[&str]>,
 ) {
     assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
 
-    let write_lib_file = |content: &str, commit_message: &str, crate_types: &[&str]| {
-        if !crate_types.is_empty() {
+    let write_lib_file = |content: &str, commit_message: &str, crate_types: Option<&[&str]>| {
+        if let Some(crate_types) = crate_types {
             let mut manifest =
                 LocalManifest::try_new(&context.repo_dir().join(CARGO_TOML)).unwrap();
             manifest.data["lib"]["crate-type"] =
