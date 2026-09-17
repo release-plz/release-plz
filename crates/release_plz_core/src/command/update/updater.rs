@@ -670,14 +670,10 @@ impl Updater<'_> {
 
         let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        let max_analyze_commits = if registry_package.is_none() {
-            match self.req.max_analyze_commits() {
-                0 => u32::MAX,
-                n => n,
-            }
-        } else {
-            u32::MAX
-        };
+        let max_analyze_commits = registry_package
+            .is_none()
+            .then(|| self.req.max_analyze_commits())
+            .filter(|&n| n != 0);
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(registry_package.and_then(RegistryPackage::published_at_sha1))
@@ -714,7 +710,7 @@ impl Updater<'_> {
                         &current_commit_hash,
                         &[],
                         &paths_to_check,
-                        u32::MAX,
+                        None,
                     )?);
                     continue;
                 }

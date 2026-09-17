@@ -240,31 +240,29 @@ impl Repo {
         Ok(())
     }
 
-    /// List commits touching `paths`, newest first, and never a commit before all
-    /// of its children.
+    /// Commits reachable from `head` that touch `paths`, descendants before ancestors.
     ///
-    /// Walk from `head` once so checking out individual commits cannot hide sibling
-    /// branches. The walk is ordered by commit date rather than topologically:
-    /// `--topo-order` emits whole lineages contiguously, so combining it with
-    /// `max_commits` would drop the newest commits of every branch but one. Release boundaries and their ancestors are excluded, even when the
-    /// boundary itself isn't reachable from `head`: the history it shares with `head`
-    /// was already released. A boundary that doesn't exist in this repository is
-    /// ignored, so a commit hash recorded by a release that happened in another
-    /// repository, or missing from a shallow clone, is not fatal.
-    /// `u32::MAX` means no commit limit.
+    /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
+    /// doesn't exist in this repository is ignored, so a commit hash recorded by a
+    /// release that happened in another repository, or missing from a shallow clone,
+    /// is not fatal.
+    ///
+    /// Commits are ordered by date rather than topologically: `--topo-order` emits
+    /// whole lineages contiguously, so combining it with `max_commits` would keep the
+    /// oldest commits of one branch instead of the newest commits overall.
     pub fn commits_at_paths_since(
         &self,
         head: &str,
-        release_boundaries: &[&str],
+        exclude: &[&str],
         paths: &[&Path],
-        max_commits: u32,
+        max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
-        let exclusions: Vec<String> = release_boundaries
+        let exclusions: Vec<String> = exclude
             .iter()
             .filter(|commit| self.commit_exists(commit))
             .map(|commit| format!("^{commit}"))
             .collect();
-        let limit = (max_commits != u32::MAX).then(|| format!("--max-count={max_commits}"));
+        let limit = max_commits.map(|n| format!("--max-count={n}"));
         let mut args = vec!["rev-list", "--date-order", head];
         args.extend(exclusions.iter().map(String::as_str));
         args.extend(limit.as_deref());
@@ -273,7 +271,7 @@ impl Repo {
             args.push(path.to_str().expect("invalid path"));
         }
         let output = self.git(&args)?;
-        Ok(output.lines().map(|s| s.to_string()).collect())
+        Ok(output.lines().map(str::to_owned).collect())
     }
 
     /// Get `nth` commit starting from `1`.
@@ -568,7 +566,7 @@ mod tests {
                 "HEAD",
                 &["v0.1.0"],
                 &[pkg_dir.strip_prefix(repository_dir.as_ref()).unwrap()],
-                u32::MAX,
+                None,
             )
             .unwrap();
 
@@ -627,7 +625,7 @@ mod tests {
         let merge = repo.current_commit_hash().unwrap();
 
         assert_eq!(
-            repo.commits_at_paths_since("HEAD", &[], &[path], 3)
+            repo.commits_at_paths_since("HEAD", &[], &[path], Some(3))
                 .unwrap(),
             [merge, b3, a3]
         );
@@ -683,7 +681,7 @@ mod tests {
                 "HEAD",
                 &["0000000000000000000000000000000000000000"],
                 &[path],
-                u32::MAX,
+                None,
             )
             .unwrap(),
             [local.clone(), shared.clone()]
@@ -692,7 +690,7 @@ mod tests {
         // A boundary on a divergent branch still excludes the history it shares
         // with `head`: those changes were already released.
         assert_eq!(
-            repo.commits_at_paths_since("HEAD", &[&release], &[path], u32::MAX)
+            repo.commits_at_paths_since("HEAD", &[&release], &[path], None)
                 .unwrap(),
             [local]
         );
@@ -711,13 +709,8 @@ mod tests {
         }
         repo.checkout(&commits[0]).unwrap();
         assert_eq!(
-            repo.commits_at_paths_since(
-                &commits[2],
-                &[&commits[0], &commits[1]],
-                &[path],
-                u32::MAX,
-            )
-            .unwrap(),
+            repo.commits_at_paths_since(&commits[2], &[&commits[0], &commits[1]], &[path], None,)
+                .unwrap(),
             [commits[2].clone()]
         );
     }
