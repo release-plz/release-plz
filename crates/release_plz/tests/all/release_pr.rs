@@ -230,23 +230,64 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes() {
+    check_release_pr_with_breaking_changes(None, None).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib() {
+    check_release_pr_with_breaking_changes(
+        Some(&["cdylib", "rlib"][..]),
+        Some(&["cdylib", "rlib"][..]),
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_opens_pr_with_breaking_changes_after_rlib_to_lib() {
+    // The published version has a different `crate-type` than the current one.
+    check_release_pr_with_breaking_changes(
+        Some(&["cdylib", "rlib"][..]),
+        Some(&["cdylib", "lib"][..]),
+    )
+    .await;
+}
+
+/// `None` leaves the `crate-type` of the `Cargo.toml` untouched.
+async fn check_release_pr_with_breaking_changes(
+    baseline_crate_types: Option<&[&str]>,
+    current_crate_types: Option<&[&str]>,
+) {
     assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
 
     let lib_file = context.repo_dir().join("src").join("lib.rs");
 
-    let write_lib_file = |content: &str, commit_message: &str| {
+    let write_lib_file = |content: &str, commit_message: &str, crate_types: Option<&[&str]>| {
+        if let Some(crate_types) = crate_types {
+            let mut manifest =
+                LocalManifest::try_new(&context.repo_dir().join(CARGO_TOML)).unwrap();
+            let lib = manifest.data.entry("lib").or_insert(toml_edit::table());
+            lib["crate-type"] =
+                toml_edit::value(toml_edit::Array::from_iter(crate_types.iter().copied()));
+            manifest.write().unwrap();
+        }
         fs_err::write(&lib_file, content).unwrap();
         context.push_all_changes(commit_message);
     };
 
-    write_lib_file("pub fn foo() {}", "add lib");
+    write_lib_file("pub fn foo() {}", "add lib", baseline_crate_types);
 
     context.run_release_pr().success();
     context.merge_release_pr().await;
     context.run_release().success();
 
-    write_lib_file("pub fn bar() {}", "edit lib with breaking change");
+    write_lib_file(
+        "pub fn bar() {}",
+        "edit lib with breaking change",
+        current_crate_types,
+    );
 
     context.run_release_pr().success();
     let today = today();
