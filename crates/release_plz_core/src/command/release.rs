@@ -626,13 +626,11 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
     // Don't return the error immediately because we want to go back to the previous commit if needed
     let release = release_packages(input, &project, &repo, &git_client).await;
 
-    if let ShouldRelease::YesWithCommit(_) = should_release {
-        // Go back to the previous commit so that the user finds
-        // the repository in the same commit they launched release-plz.
-        if checkout_done {
-            repo.checkout("-")?;
-            trace!("restored previous commit after release");
-        }
+    // Go back to the previous commit so that the user finds
+    // the repository in the same commit they launched release-plz.
+    if checkout_done {
+        repo.checkout("-")?;
+        trace!("restored previous commit after release");
     }
 
     release
