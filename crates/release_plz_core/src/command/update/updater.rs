@@ -694,7 +694,7 @@ impl Updater<'_> {
             if released_ancestors.contains(&current_commit_hash) {
                 continue;
             }
-            repository.checkout(&current_commit_hash)?;
+            checkout_commit(repository, &current_commit_hash)?;
             if let Some(registry_package) = registry_package {
                 let are_packages_equal = self.check_package_equality(
                     repository,
@@ -916,6 +916,22 @@ impl Updater<'_> {
         };
         Ok(!package_files.is_disjoint(&changed_files))
     }
+}
+
+/// Checkout a commit of the history we are walking, hinting at `--allow-dirty` when
+/// uncommitted changes are what stopped the checkout.
+fn checkout_commit(repository: &Repo, commit: &str) -> anyhow::Result<()> {
+    repository.checkout(commit).map_err(|err| {
+        // git reports this in the stderr of the innermost error, so look at the
+        // whole chain rather than at the outermost context.
+        if format!("{err:#}")
+            .contains("Your local changes to the following files would be overwritten")
+        {
+            err.context("The allow-dirty option can't be used in this case")
+        } else {
+            err.context(format!("failed to checkout commit {commit}"))
+        }
+    })
 }
 
 /// Check if release-plz should check the semver compatibility of the package.

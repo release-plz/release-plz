@@ -75,6 +75,16 @@ impl History {
 
     fn diff_with(&self, published: Option<RegistryPackage>, limit: Option<u32>) -> Diff {
         let tip = self.repo.current_commit_hash().unwrap();
+        let diff = self.try_diff_with(published, limit).unwrap();
+        assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
+        diff
+    }
+
+    fn try_diff_with(
+        &self,
+        published: Option<RegistryPackage>,
+        limit: Option<u32>,
+    ) -> anyhow::Result<Diff> {
         let metadata =
             cargo_utils::get_manifest_metadata(&self.repo.directory().join(CARGO_TOML)).unwrap();
         let package = cargo_utils::workspace_package(&metadata, PACKAGE)
@@ -97,14 +107,11 @@ impl History {
                 .map(|p| (p.package.name.to_string(), p))
                 .collect(),
         );
-        let diff = Updater {
+        Updater {
             project: &project,
             req: &request,
         }
         .get_diff(&package, &registry_packages, &self.repo)
-        .unwrap();
-        assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
-        diff
     }
 }
 
@@ -272,4 +279,22 @@ fn first_release_respects_the_commit_limit() {
     );
     // Repo::init also creates an initial README commit. Zero means all four commits.
     assert_eq!(history.diff_with(None, Some(0)).commits.len(), 4);
+}
+
+#[test]
+fn a_blocking_dirty_working_tree_hints_at_the_allow_dirty_option() {
+    let history = History::new();
+    history.write_commit("src/lib.rs", "pub fn one() {}\n", "feat: one");
+    history.write_commit("src/lib.rs", "pub fn two() {}\n", "feat: two");
+    // Uncommitted changes that checking out the previous commit would overwrite.
+    fs_err::write(
+        history.repo.directory().join("src/lib.rs"),
+        "pub fn dirty() {}\n",
+    )
+    .unwrap();
+    let error = format!("{:#}", history.try_diff_with(None, None).unwrap_err());
+    assert!(
+        error.contains("The allow-dirty option can't be used in this case"),
+        "{error}"
+    );
 }
