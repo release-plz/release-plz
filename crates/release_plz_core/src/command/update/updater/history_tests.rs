@@ -54,6 +54,23 @@ impl History {
         self.repo.current_commit_hash().unwrap()
     }
 
+    /// Two sibling branches off the current commit, each merged back with a
+    /// `--no-ff` merge. Returns the baseline and the two sibling commits.
+    fn two_merged_siblings(&self) -> (String, String, String) {
+        let repo = &self.repo;
+        let baseline = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "one"]).unwrap();
+        let one = self.write_commit("src/one.rs", "", "fix: sibling one");
+        repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
+        let two = self.write_commit("src/two.rs", "", "fix: sibling two");
+        repo.checkout_head().unwrap();
+        for branch in ["one", "two"] {
+            repo.git(&["merge", "--no-ff", "-m", "merge sibling", branch])
+                .unwrap();
+        }
+        (baseline, one, two)
+    }
+
     fn diff(&self, published_at: Option<&str>) -> Diff {
         let metadata =
             cargo_utils::get_manifest_metadata(&self.registry.directory().join(CARGO_TOML))
@@ -139,17 +156,8 @@ fn commit_ids(diff: &Diff) -> HashSet<&str> {
 fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
     let history = History::new();
     let repo = &history.repo;
-    let baseline = repo.current_commit_hash().unwrap();
-    repo.tag_lightweight("v0.1.0").unwrap();
-    repo.git(&["checkout", "-b", "one"]).unwrap();
-    let one = history.write_commit("src/one.rs", "", "fix: sibling one");
-    repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
-    let two = history.write_commit("src/two.rs", "", "fix: sibling two");
-    repo.checkout_head().unwrap();
-    for branch in ["one", "two"] {
-        repo.git(&["merge", "--no-ff", "-m", "merge sibling", branch])
-            .unwrap();
-    }
+    let (baseline, one, two) = history.two_merged_siblings();
+    repo.git(&["tag", "v0.1.0", &baseline]).unwrap();
     let expected = HashSet::from([one.as_str(), two.as_str()]);
     assert_eq!(commit_ids(&history.diff(None)), expected);
     repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
@@ -493,17 +501,7 @@ fn a_blocking_dirty_working_tree_hints_at_the_allow_dirty_option() {
 #[test]
 fn a_tip_matching_the_release_releases_nothing_although_its_branches_differ() {
     let history = History::new();
-    let repo = &history.repo;
-    let baseline = repo.current_commit_hash().unwrap();
-    repo.git(&["checkout", "-b", "one"]).unwrap();
-    history.write_commit("src/one.rs", "", "fix: sibling one");
-    repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
-    history.write_commit("src/two.rs", "", "fix: sibling two");
-    repo.checkout_head().unwrap();
-    for branch in ["one", "two"] {
-        repo.git(&["merge", "--no-ff", "-m", "merge sibling", branch])
-            .unwrap();
-    }
+    history.two_merged_siblings();
     // The release already contains both siblings, so nothing is left to release
     // even though neither sibling matches the release on its own: only the merge
     // commit does.

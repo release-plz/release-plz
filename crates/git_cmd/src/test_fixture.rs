@@ -40,7 +40,9 @@ impl Repo {
             .with_context(|| format!("error while running git with args `{args:?}`"))?;
         anyhow::ensure!(
             output.status.success(),
-            "error while running git with args `{args:?}`: {output:?}"
+            "error while running git with args `{args:?}`: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
         cmd::string_from_bytes(output.stdout)
     }

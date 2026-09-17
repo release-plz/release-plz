@@ -580,7 +580,7 @@ mod tests {
         }
         repo.checkout(&commits[0]).unwrap();
         assert_eq!(
-            repo.commits_at_paths(&commits[2], &[&commits[0], &commits[1]], &[path], None,)
+            repo.commits_at_paths(&commits[2], &[&commits[0], &commits[1]], &[path], None)
                 .unwrap(),
             [commits[2].clone()]
         );
