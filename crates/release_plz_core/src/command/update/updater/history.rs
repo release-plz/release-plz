@@ -12,17 +12,34 @@ use super::*;
 /// Compare conflicting text at character granularity so independent edits to the
 /// same line do not obscure that proof.
 pub(super) struct RetainedChanges {
+    /// The walked repository, opened in memory: no snapshot is ever checked out.
     repo: git2::Repository,
+    /// Mirrors `core.symlinks`: whether Git materializes links as links.
     symlinks: bool,
+    /// The branch tip whose surviving changes are being released.
     head: git2::Oid,
+    /// The first equal snapshot found by the walk, standing in for the release.
     released: git2::Oid,
+    /// Repository-relative files Cargo packages at HEAD and at the release, or
+    /// `None` when listing failed and every file under `paths` counts.
     package_files: Option<HashSet<Utf8PathBuf>>,
+    /// Repository-relative paths: the package directory first, then the canonical
+    /// target of the configured README when it lives outside the package.
+    /// [`Self::includes`] relies on that order to ignore generated files at the
+    /// package root and to include an overridden README.
     paths: Vec<Utf8PathBuf>,
+    /// Repository-relative path of the configured README link itself, kept next
+    /// to its canonical target in `paths` so that a link retarget counts.
     readme: Option<Utf8PathBuf>,
+    /// Git's simplified, path-limited parent graph of the walk.
     parents: HashMap<String, Vec<String>>,
+    /// First commit of the simplified walk: HEAD only when HEAD touches the package.
     root: Option<String>,
+    /// Equal snapshots found so far; every lineage stops there.
     boundaries: HashSet<String>,
+    /// Commits reachable from `root` without passing a boundary.
     reachable: HashSet<String>,
+    /// Full-history ancestors of every boundary: candidates for pruning.
     released_ancestors: HashSet<String>,
 }
 
