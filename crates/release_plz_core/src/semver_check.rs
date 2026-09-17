@@ -45,6 +45,14 @@ pub fn run_semver_check(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
 ) -> anyhow::Result<SemverCheck> {
+    let local_manifest = local_package.join(CARGO_TOML);
+    let manifest: cargo_utils::Manifest = fs_err::read_to_string(&local_manifest)?.parse()?;
+    let package_name = manifest
+        .data
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml_edit::Item::as_str)
+        .context("cannot find the package name to check for API compatibility")?;
     let local_cargo_lock = cargo_lock(local_package);
     let registry_cargo_lock = cargo_lock(registry_package);
     let local_target_dir = target_dir(local_package);
@@ -63,7 +71,10 @@ pub fn run_semver_check(
         // also exit 100 and incorrectly trigger a breaking version bump.
         .args(["--release-type", "minor"])
         .arg("--manifest-path")
-        .arg(local_package.join(CARGO_TOML))
+        .arg(local_manifest)
+        // Explicitly select private workspace members, which cargo-semver-checks
+        // otherwise skips even when their manifest path is provided.
+        .args(["--package", package_name])
         .arg("--baseline-root")
         .arg(registry_package.join(CARGO_TOML))
         .output()
@@ -114,6 +125,60 @@ fn parse_semver_check_output(output: &Output) -> anyhow::Result<SemverCheck> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checks_private_library_with_versionless_dependency() {
+        let temp = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let baseline = temp.path().join("baseline");
+        let current = temp.path().join("current");
+        for workspace in [&baseline, &current] {
+            crate::test_utils::write_package(
+                &workspace.join("support"),
+                "support",
+                "0.1.0",
+                "publish = false\n",
+            );
+            fs_err::write(
+                workspace.join("support/src/lib.rs"),
+                "pub fn answer() -> u32 { 42 }\n",
+            )
+            .unwrap();
+            crate::test_utils::write_package(
+                &workspace.join("wrapper"),
+                "wrapper",
+                "0.1.0",
+                "publish = false\n[dependencies]\nsupport = { path = \"../support\" }\n",
+            );
+            fs_err::write(
+                workspace.join("wrapper/src/lib.rs"),
+                "pub fn answer() -> u32 { support::answer() }\npub fn removed() {}\n",
+            )
+            .unwrap();
+            fs_err::write(
+                workspace.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"support\", \"wrapper\"]\nresolver = \"3\"\n",
+            )
+            .unwrap();
+        }
+
+        let baseline = baseline.join("wrapper");
+        let current = current.join("wrapper");
+        assert!(matches!(
+            run_semver_check(&current, &baseline).unwrap(),
+            SemverCheck::Compatible
+        ));
+
+        fs_err::write(
+            current.join("src/lib.rs"),
+            "pub fn answer() -> u32 { support::answer() }\n",
+        )
+        .unwrap();
+        let result = run_semver_check(&current, &baseline).unwrap();
+        assert!(
+            matches!(result, SemverCheck::Incompatible(ref report) if report.contains("function_missing")),
+            "expected a removed-function report for the private library, got {result:?}"
+        );
+    }
 
     #[test]
     fn only_major_changes_are_incompatible() {
