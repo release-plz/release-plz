@@ -58,9 +58,16 @@ impl History {
 
     /// Ignore a revert of the current change, then import a sibling change
     /// through the reverted branch so that its equal snapshot is also visited.
-    fn merge_ignored_revert(&self, path: &str, contents: &str) -> String {
+    fn merge_ignored_revert(&self, path: &str, contents: Option<&str>) -> String {
         self.repo.git(&["checkout", "-b", "equal"]).unwrap();
-        self.write_commit(path, contents, "revert: breaking change");
+        let path = self.repo.directory().join(path);
+        match contents {
+            Some(contents) => fs_err::write(path, contents).unwrap(),
+            None => fs_err::remove_file(path).unwrap(),
+        }
+        self.repo
+            .add_all_and_commit("revert: breaking change")
+            .unwrap();
         self.repo.checkout_head().unwrap();
         self.repo
             .git(&[
@@ -423,17 +430,25 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
 
 #[test]
 fn ignored_file_changes_do_not_hide_a_retained_package_change() {
-    for ignored in ["ignored.txt", "Cargo.lock"] {
+    for ignored in [
+        "ignored.txt",
+        "Cargo.lock",
+        "src/Cargo.lock",
+        "src/Cargo.toml.orig",
+    ] {
         let history = History::with_packages(|root| {
             write_package(root, PACKAGE, "0.1.0", "exclude = [\"ignored.txt\"]\n");
             fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
             fs_err::write(root.join("ignored.txt"), "original\n").unwrap();
+            for nested in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+                fs_err::write(root.join(nested), "original\n").unwrap();
+            }
         });
         let path = history.repo.directory().join(ignored);
         let old = fs_err::read_to_string(&path).unwrap();
         fs_err::write(path, format!("{old}# changed\n")).unwrap();
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
         let diff = history.diff(None);
         assert_eq!(
             commit_ids(&diff),
@@ -452,7 +467,7 @@ fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
         fs_err::write(root.join(path), "{}\n").unwrap();
     });
     let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
-    let sibling = history.merge_ignored_revert(path, "{}\n");
+    let sibling = history.merge_ignored_revert(path, Some("{}\n"));
     let diff = history.diff(None);
     assert_eq!(
         commit_ids(&diff),
@@ -462,10 +477,26 @@ fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
 }
 
 #[test]
+fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = History::new();
+        let breaking = history.write_commit(path, "fixture\n", "feat!: fixture format");
+        let sibling = history.merge_ignored_revert(path, None);
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "path={path}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
-    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
     let diff = history.diff(None);
     assert_eq!(
         commit_ids(&diff),
@@ -478,7 +509,7 @@ fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
 fn a_retained_change_can_move_to_a_different_file() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    history.merge_ignored_revert("src/lib.rs", BASE_API);
+    history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
     history
         .repo
         .git(&["mv", "src/lib.rs", "src/api.rs"])

@@ -131,12 +131,14 @@ impl RetainedChanges {
         let index = self.repo.revert_commit(commit, target, mainline, None)?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
+            let changes_file_presence = conflict.our.as_ref().map(|entry| &entry.path)
+                != conflict.their.as_ref().map(|entry| &entry.path);
             for entry in [conflict.ancestor, conflict.our, conflict.their]
                 .into_iter()
                 .flatten()
             {
                 if std::str::from_utf8(&entry.path)
-                    .map(|path| self.includes(Path::new(path)))
+                    .map(|path| self.includes(Path::new(path), changes_file_presence))
                     .unwrap_or(true)
                 {
                     return Ok(Contribution::Conflict);
@@ -148,10 +150,12 @@ impl RetainedChanges {
             .repo
             .diff_tree_to_index(Some(&tree), Some(&index), None)?;
         let changed = diff.deltas().any(|delta| {
+            let changes_file_presence =
+                matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted);
             [delta.old_file().path(), delta.new_file().path()]
                 .into_iter()
                 .flatten()
-                .any(|path| self.includes(path))
+                .any(|path| self.includes(path, changes_file_presence))
         });
         Ok(if changed {
             Contribution::Present
@@ -160,18 +164,25 @@ impl RetainedChanges {
         })
     }
 
-    fn includes(&self, path: &Path) -> bool {
+    fn includes(&self, path: &Path, changes_file_presence: bool) -> bool {
         let Some(path) = Utf8Path::from_path(path) else {
             return true;
         };
-        // Match package equality: lockfile changes are handled separately for
-        // executables, and Cargo's generated metadata is not package source.
-        // The VCS marker is generated only at the package root.
-        if matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
-            || self
-                .paths
-                .first()
-                .is_some_and(|root| path == root.join(CARGO_VCS_INFO))
+        // Match package equality: generated files are ignored at the package root.
+        let package_relative_path = self
+            .paths
+            .first()
+            .and_then(|root| path.strip_prefix(root).ok());
+        if matches!(
+            package_relative_path.map(Utf8Path::as_str),
+            Some("Cargo.lock" | CARGO_TOML_ORIG | CARGO_VCS_INFO)
+        ) {
+            return false;
+        }
+        // Nested lockfiles and original manifests contribute to the package file
+        // list even though their contents are excluded from equality checks.
+        if !changes_file_presence
+            && matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
         {
             return false;
         }
