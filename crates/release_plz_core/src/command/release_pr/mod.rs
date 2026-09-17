@@ -576,14 +576,18 @@ mod tests {
             .expect(1)
             .mount(server)
             .await;
-        Mock::given(method("PATCH"))
+        let patch_ref = Mock::given(method("PATCH"))
             .and(path("/repos/owner/repo/git/refs/heads/release-plz-test"))
             .and(header("authorization", "Bearer token"))
-            .and(body_json(json!({"sha": "new-release-sha", "force": true})))
-            .respond_with(ResponseTemplate::new(patch_status.unwrap_or(500)))
-            .expect(u64::from(patch_status.is_some()))
-            .mount(server)
-            .await;
+            .and(body_json(json!({"sha": "new-release-sha", "force": true})));
+        match patch_status {
+            Some(status) => patch_ref
+                .respond_with(ResponseTemplate::new(status))
+                .expect(1),
+            None => patch_ref.respond_with(ResponseTemplate::new(500)).expect(0),
+        }
+        .mount(server)
+        .await;
         Mock::given(method("DELETE"))
             .and(path_regex(
                 r"^/repos/owner/repo/git/refs/heads/release-plz-test-tmp-\d+$",
