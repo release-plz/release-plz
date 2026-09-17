@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
     sync::{Mutex, Once},
     thread,
 };
@@ -651,8 +650,7 @@ impl Updater<'_> {
         let registry = registry_package
             .map(|rp| rp.package.package_path().map(|path| (rp, path)))
             .transpose()?;
-        let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
-        let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
+        let paths_to_check = paths_to_check(package_path, package)?;
         let max_analyze_commits = registry_package
             .is_none()
             .then(|| self.req.max_analyze_commits())
@@ -973,10 +971,7 @@ fn get_package_files(
         .collect()
 }
 
-fn pathbufs_to_check(
-    package_path: &Utf8Path,
-    package: &Package,
-) -> anyhow::Result<Vec<Utf8PathBuf>> {
+fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Vec<Utf8PathBuf>> {
     let mut paths = vec![package_path.to_path_buf()];
     if let Some(readme_path) = crate::local_readme_override(package, package_path)? {
         paths.push(readme_path);

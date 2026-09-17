@@ -4,7 +4,7 @@ mod cmd;
 #[cfg(feature = "test_fixture")]
 pub mod test_fixture;
 
-use std::{collections::HashSet, path::Path, process::Command};
+use std::{collections::HashSet, process::Command};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -231,7 +231,7 @@ impl Repo {
         &self,
         head: &str,
         exclude: &[&str],
-        paths: &[&Path],
+        paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
         let exclusions: Vec<String> = exclude
@@ -251,16 +251,24 @@ impl Repo {
     /// Unlike [`Repo::commits_at_paths_since`], this doesn't simplify history: every
     /// parent of a merge is followed, so the result is a superset of the commits any
     /// simplified walk can reach through `commit`.
-    pub fn ancestors_at_paths(&self, commit: &str, paths: &[&Path]) -> anyhow::Result<Vec<String>> {
+    pub fn ancestors_at_paths(
+        &self,
+        commit: &str,
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
         self.rev_list(&["--full-history", commit], paths)
     }
 
     /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
-    fn rev_list(&self, args: &[&str], paths: &[&Path]) -> anyhow::Result<Vec<String>> {
+    fn rev_list(
+        &self,
+        args: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
         let mut rev_list = vec!["rev-list"];
         rev_list.extend(args);
         rev_list.push("--");
-        rev_list.extend(paths.iter().map(|p| p.to_str().expect("invalid path")));
+        rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
         let output = self.git(&rev_list)?;
         Ok(output.lines().map(str::to_owned).collect())
     }
@@ -497,12 +505,7 @@ mod tests {
             .unwrap();
 
         let commits = repo
-            .commits_at_paths_since(
-                "HEAD",
-                &["v0.1.0"],
-                &[pkg_dir.strip_prefix(repository_dir.as_ref()).unwrap()],
-                None,
-            )
+            .commits_at_paths_since("HEAD", &["v0.1.0"], &[Utf8Path::new("pkg")], None)
             .unwrap();
 
         let messages: Vec<String> = commits
@@ -530,7 +533,7 @@ mod tests {
     fn commit_limit_keeps_the_newest_commit_of_every_branch() {
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
-        let path = Path::new("pkg");
+        let path = Utf8Path::new("pkg");
         fs_err::create_dir(directory.path().join(path)).unwrap();
         let main_branch = repo.original_branch().to_string();
 
@@ -580,8 +583,8 @@ mod tests {
         assert!(output.status.success(), "git {args:?} failed: {output:?}");
     }
 
-    fn commit_file_at(repo: &Repo, directory: &Path, name: &str, date: &str) {
-        let file = repo.directory().as_std_path().join(directory).join(name);
+    fn commit_file_at(repo: &Repo, directory: &Utf8Path, name: &str, date: &str) {
+        let file = repo.directory().join(directory).join(name);
         fs_err::write(file, name).unwrap();
         repo.git(&["add", "."]).unwrap();
         git_commit_at(repo, &["commit", "-m", name], date);
@@ -596,7 +599,7 @@ mod tests {
     fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
-        let path = Path::new("file.rs");
+        let path = Utf8Path::new("file.rs");
         fs_err::write(directory.path().join(path), "shared").unwrap();
         repo.add_all_and_commit("shared change").unwrap();
         let shared = repo.current_commit_hash().unwrap();
@@ -635,7 +638,7 @@ mod tests {
     fn commit_range_uses_both_release_boundaries_and_the_given_tip() {
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
-        let path = Path::new("file.rs");
+        let path = Utf8Path::new("file.rs");
         let mut commits = Vec::new();
         for message in ["tagged", "published", "unreleased"] {
             fs_err::write(directory.path().join(path), message).unwrap();
