@@ -39,7 +39,9 @@ commit you want to release, for example with `jj new <revision>`.
 This makes Git's `HEAD` point to that commit and leaves the Git working tree clean.
 Since a detached HEAD has no upstream branch, release-plz reads the repository
 URL from the `origin` remote.
-Pass `--repo-url` if your remote has a different name.
+Pass `--repo-url` to override the repository URL used for forge API requests.
+If you sign tags (`tag.gpgSign=true`), the `origin` remote must point to the target
+repository because signed tags are pushed via Git.
 
 ## Git Forges
 
