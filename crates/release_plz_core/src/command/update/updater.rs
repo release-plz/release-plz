@@ -647,17 +647,18 @@ impl Updater<'_> {
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
         let released_package_files = ReleasedPackageFiles::default();
-        let registry = registry_package
-            .map(|rp| rp.package.package_path().map(|path| (rp, path)))
+        // The released package, paired with the path of its extracted sources.
+        let released = registry_package
+            .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
         let paths_to_check = paths_to_check(package_path, package)?;
-        let max_analyze_commits = registry_package
+        let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
             .filter(|&n| n != 0);
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
-            .chain(registry_package.and_then(RegistryPackage::published_at_sha1))
+            .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
         // Enumerate from the branch tip before checking out any historical snapshot.
         let commits = repository.commits_at_paths(
@@ -672,7 +673,7 @@ impl Updater<'_> {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
-            if let Some((registry_package, registry_package_path)) = registry {
+            if let Some((registry_package, registry_package_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
                     package,
@@ -721,7 +722,7 @@ impl Updater<'_> {
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
-            && let Some((registry_package, registry_package_path)) = registry
+            && let Some((registry_package, registry_package_path)) = released
         {
             self.add_dependencies_update_if_any(
                 diff,
