@@ -124,9 +124,10 @@ pub struct PrPackageRelease {
 pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<ReleasePr>> {
     let manifest_dir = input.update_request.local_manifest_dir()?;
     let original_project_root = root_repo_path_from_manifest_dir(manifest_dir)?;
-    git_cmd::git_in_dir(&original_project_root, &["symbolic-ref", "--quiet", "HEAD"]).context(
-        "release-pr requires a branch. Check out the target branch instead of a detached HEAD",
-    )?;
+    anyhow::ensure!(
+        !Repo::new(&original_project_root)?.is_head_detached()?,
+        "release-pr requires a branch. Check out the target branch instead of a detached HEAD"
+    );
     let tmp_project_root_parent = copy_to_temp_dir(&original_project_root)?;
     let tmp_project_manifest_dir = new_manifest_dir_path(
         &original_project_root,
@@ -677,7 +678,7 @@ mod tests {
         );
         assert!(server.received_requests().await.unwrap().is_empty());
         assert_eq!(repo.current_commit_hash().unwrap(), original_head);
-        assert!(repo.git(&["symbolic-ref", "--quiet", "HEAD"]).is_err());
+        assert!(repo.is_head_detached().unwrap());
         assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
         repo.is_clean().unwrap();
     }

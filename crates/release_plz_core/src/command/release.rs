@@ -602,9 +602,10 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         input,
     )?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
-    repo.git(&["symbolic-ref", "--quiet", "HEAD"]).context(
-        "release requires a branch. Check out the target branch instead of a detached HEAD",
-    )?;
+    anyhow::ensure!(
+        !repo.is_head_detached()?,
+        "release requires a branch. Check out the target branch instead of a detached HEAD"
+    );
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
     debug!("should release: {should_release:?}");
@@ -1418,7 +1419,7 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(repo.current_commit_hash().unwrap(), original_head);
-        assert!(repo.git(&["symbolic-ref", "--quiet", "HEAD"]).is_err());
+        assert!(repo.is_head_detached().unwrap());
         assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
         repo.is_clean().unwrap();
     }

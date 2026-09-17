@@ -96,5 +96,5 @@ fn update_detached_workspace(repo_url: Option<&str>) {
         );
     }
     assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
-    assert!(repo.git(&["symbolic-ref", "--quiet", "HEAD"]).is_err());
+    assert!(repo.is_head_detached().unwrap());
 }

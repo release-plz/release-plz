@@ -189,6 +189,12 @@ impl Repo {
         &self.original_branch
     }
 
+    /// Whether HEAD points directly to a commit rather than to a branch.
+    pub fn is_head_detached(&self) -> anyhow::Result<bool> {
+        // `rev-parse --abbrev-ref HEAD` prints `HEAD` when HEAD is detached.
+        Ok(get_current_branch(&self.directory)? == "HEAD")
+    }
+
     /// Run a git command in the repository git directory
     pub fn git(&self, args: &[&str]) -> anyhow::Result<String> {
         git_in_dir(&self.directory, args)
@@ -484,7 +490,7 @@ mod tests {
         repo.checkout(&previous_commit).unwrap();
         repo.checkout_head().unwrap();
         assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
-        assert!(repo.git(&["symbolic-ref", "--quiet", "HEAD"]).is_err());
+        assert!(repo.is_head_detached().unwrap());
     }
 
     #[test]
