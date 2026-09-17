@@ -267,7 +267,8 @@ async fn check_release_pr_with_breaking_changes(
         if let Some(crate_types) = crate_types {
             let mut manifest =
                 LocalManifest::try_new(&context.repo_dir().join(CARGO_TOML)).unwrap();
-            manifest.data["lib"]["crate-type"] =
+            let lib = manifest.data.entry("lib").or_insert(toml_edit::table());
+            lib["crate-type"] =
                 toml_edit::value(toml_edit::Array::from_iter(crate_types.iter().copied()));
             manifest.write().unwrap();
         }
