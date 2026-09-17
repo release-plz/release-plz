@@ -1527,7 +1527,7 @@ semver_check = false
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_root_package_with_versionless_dependency() {
+async fn git_only_updates_root_package_with_versionless_dependency() {
     use cargo_utils::LocalManifest;
 
     let context = TestContext::new().await;
