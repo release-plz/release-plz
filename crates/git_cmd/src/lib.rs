@@ -417,11 +417,21 @@ fn changed_files(output: &str, filter: impl FnMut(&&str) -> bool) -> Vec<String>
 
 #[instrument]
 pub fn git_in_dir(dir: &Utf8Path, args: &[&str]) -> anyhow::Result<String> {
+    git_in_dir_with_env(dir, args, &[])
+}
+
+/// Like [`git_in_dir`], but with `envs` added to the environment of the git process.
+pub(crate) fn git_in_dir_with_env(
+    dir: &Utf8Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> anyhow::Result<String> {
     let args: Vec<&str> = args.iter().map(|s| s.trim()).collect();
     let output = Command::new("git")
         .arg("-C")
         .arg(dir)
         .args(&args)
+        .envs(envs.iter().copied())
         .output()
         .with_context(|| {
             format!("error while running git in directory `{dir:?}` with args `{args:?}`")
