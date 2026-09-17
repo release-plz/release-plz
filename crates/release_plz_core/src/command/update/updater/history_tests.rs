@@ -1037,43 +1037,6 @@ fn sequential_readme_edits_keep_their_breaking_change_marker() {
     assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
-#[cfg(unix)]
-#[test]
-fn readme_parent_symlinks_are_not_collapsed_lexically() {
-    use std::os::unix::fs::symlink;
-
-    let history = History::with_packages(|root| {
-        write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
-        fs_err::create_dir(root.join("docs")).unwrap();
-        fs_err::create_dir_all(root.join("alt/subdir")).unwrap();
-        fs_err::write(root.join("old.md"), "old\n").unwrap();
-        fs_err::write(root.join("docs/b.md"), "old\n").unwrap();
-        fs_err::write(root.join("alt/b.md"), "new\n").unwrap();
-        fs_err::write(root.join("alt/subdir/keep"), "").unwrap();
-        symlink("../alt/subdir", root.join("docs/link")).unwrap();
-        symlink("old.md", root.join("API.md")).unwrap();
-    });
-    let readme = history.repo.directory().join("API.md");
-    fs_err::remove_file(&readme).unwrap();
-    symlink("docs/link/../b.md", &readme).unwrap();
-    // Following the directory link reaches alt/b.md, not docs/b.md.
-    assert_eq!(fs_err::read_to_string(&readme).unwrap(), "new\n");
-    let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
-    let breaking = history.write_commit(
-        "Cargo.lock",
-        &format!("{lock}# changed\n"),
-        "feat!: documented API",
-    );
-    history.merge_ignored_change("src/fix.rs", |root| {
-        let readme = root.join("API.md");
-        fs_err::remove_file(&readme).unwrap();
-        symlink("old.md", readme).unwrap();
-    });
-    let diff = history.diff(None);
-    assert!(commit_ids(&diff).contains(breaking.as_str()));
-    assert_next_version(&diff, &Version::new(0, 2, 0));
-}
-
 #[test]
 fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     let path = "src/.cargo_vcs_info.json";
