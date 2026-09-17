@@ -647,27 +647,10 @@ impl Updater<'_> {
         tag_commit: Option<&str>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
-        // get_diff starts at the branch tip. Compare the final tree first: a change followed by a revert must not
-        // trigger a release. Workspace dependencies can still have changed.
         let released_package_files = ReleasedPackageFiles::default();
-        if let Some(registry_package) = registry_package
-            && self.check_package_equality(
-                repository,
-                package,
-                package_path,
-                registry_package,
-                registry_package.package.package_path()?,
-                &released_package_files,
-            )?
-        {
-            return self.add_dependencies_update_if_any(
-                diff,
-                registry_package,
-                package,
-                registry_package.package.package_path()?,
-            );
-        }
-
+        let registry = registry_package
+            .map(|rp| rp.package.package_path().map(|path| (rp, path)))
+            .transpose()?;
         let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
         let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
         let max_analyze_commits = registry_package
@@ -691,13 +674,13 @@ impl Updater<'_> {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
-            if let Some(registry_package) = registry_package {
+            if let Some((registry_package, registry_package_path)) = registry {
                 let are_packages_equal = self.check_package_equality(
                     repository,
                     package,
                     package_path,
                     registry_package,
-                    registry_package.package.package_path()?,
+                    registry_package_path,
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
@@ -739,13 +722,13 @@ impl Updater<'_> {
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
-            && let Some(registry_package) = registry_package
+            && let Some((registry_package, registry_package_path)) = registry
         {
             self.add_dependencies_update_if_any(
                 diff,
                 registry_package,
                 package,
-                registry_package.package.package_path()?,
+                registry_package_path,
             )?;
         }
         Ok(())

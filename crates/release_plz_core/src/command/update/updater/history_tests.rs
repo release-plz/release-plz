@@ -298,3 +298,30 @@ fn a_blocking_dirty_working_tree_hints_at_the_allow_dirty_option() {
         "{error}"
     );
 }
+
+#[test]
+fn a_tip_matching_the_release_releases_nothing_although_its_branches_differ() {
+    let history = History::new();
+    let repo = &history.repo;
+    let baseline = repo.current_commit_hash().unwrap();
+    repo.git(&["checkout", "-b", "one"]).unwrap();
+    history.write_commit("src/one.rs", "", "fix: sibling one");
+    repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
+    history.write_commit("src/two.rs", "", "fix: sibling two");
+    repo.checkout_head().unwrap();
+    for branch in ["one", "two"] {
+        repo.git(&["merge", "--no-ff", "-m", "merge sibling", branch])
+            .unwrap();
+    }
+    // The release already contains both siblings, so nothing is left to release
+    // even though neither sibling matches the release on its own: only the merge
+    // commit does.
+    for file in ["src/one.rs", "src/two.rs"] {
+        fs_err::write(history.registry.directory().join(file), "").unwrap();
+    }
+    history
+        .registry
+        .add_all_and_commit("published release")
+        .unwrap();
+    assert!(history.diff(None).commits.is_empty());
+}
