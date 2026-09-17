@@ -1,5 +1,8 @@
 use super::*;
-use crate::test_utils::{generate_lockfile, write_package};
+use crate::{
+    command::update::UpdateConfig,
+    test_utils::{generate_lockfile, write_package},
+};
 
 const PACKAGE: &str = "history-test";
 
@@ -66,8 +69,18 @@ impl History {
     }
 
     fn diff_with(&self, published: Option<RegistryPackage>, limit: Option<u32>) -> Diff {
+        self.diff_configured(published, limit, |request| request)
+    }
+
+    /// Like [`Self::diff_with`], but with a chance to change the update request.
+    fn diff_configured(
+        &self,
+        published: Option<RegistryPackage>,
+        limit: Option<u32>,
+        configure: impl FnOnce(UpdateRequest) -> UpdateRequest,
+    ) -> Diff {
         let tip = self.repo.current_commit_hash().unwrap();
-        let diff = self.try_diff_with(published, limit).unwrap();
+        let diff = self.try_diff_with(published, limit, configure).unwrap();
         assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
         diff
     }
@@ -76,15 +89,18 @@ impl History {
         &self,
         published: Option<RegistryPackage>,
         limit: Option<u32>,
+        configure: impl FnOnce(UpdateRequest) -> UpdateRequest,
     ) -> anyhow::Result<Diff> {
         let metadata =
             cargo_utils::get_manifest_metadata(&self.repo.directory().join(CARGO_TOML)).unwrap();
         let package = cargo_utils::workspace_package(&metadata, PACKAGE)
             .unwrap()
             .clone();
-        let request = UpdateRequest::new(metadata.clone())
-            .unwrap()
-            .with_max_analyze_commits(limit);
+        let request = configure(
+            UpdateRequest::new(metadata.clone())
+                .unwrap()
+                .with_max_analyze_commits(limit),
+        );
         let project = Project::new(
             request.local_manifest(),
             None,
@@ -343,16 +359,39 @@ fn first_release_respects_the_commit_limit() {
         commit_ids(&history.diff_with(None, Some(2))),
         HashSet::from([one.as_str(), two.as_str()])
     );
-    // Zero means no limit.
+    // Zero means no limit. The commits are collected newest first, which is the
+    // order the changelog renders them in.
+    let diff = history.diff_with(None, Some(0));
     assert_eq!(
-        commit_ids(&history.diff_with(None, Some(0))),
-        HashSet::from([
-            readme.as_str(),
-            baseline.as_str(),
+        diff.commits
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            two.as_str(),
             one.as_str(),
-            two.as_str()
-        ])
+            baseline.as_str(),
+            readme.as_str()
+        ]
     );
+}
+
+/// The git tag bounds the history of packages that aren't in the registry too.
+/// It's the only release boundary a `publish = false` or `git_only` package has:
+/// without it, every release would repeat the whole history in its changelog.
+#[test]
+fn a_tag_bounds_the_history_of_a_package_that_is_not_published() {
+    let history = History::new();
+    history.write_commit("src/released.rs", "", "feat: released by the tag");
+    history.repo.tag_lightweight("v0.1.0").unwrap();
+    let unreleased = history.write_commit("src/unreleased.rs", "", "feat: after the tag");
+    let diff = history.diff_configured(None, None, |request| {
+        request.with_default_package_config(UpdateConfig {
+            publish: false,
+            ..UpdateConfig::default()
+        })
+    });
+    assert_eq!(commit_ids(&diff), HashSet::from([unreleased.as_str()]));
 }
 
 #[test]
@@ -366,7 +405,12 @@ fn a_blocking_dirty_working_tree_hints_at_the_allow_dirty_option() {
         "pub fn dirty() {}\n",
     )
     .unwrap();
-    let error = format!("{:#}", history.try_diff_with(None, None).unwrap_err());
+    let error = format!(
+        "{:#}",
+        history
+            .try_diff_with(None, None, |request| request)
+            .unwrap_err()
+    );
     assert!(
         error.contains("The allow-dirty option can't be used in this case"),
         "{error}"
