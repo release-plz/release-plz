@@ -217,7 +217,8 @@ impl Repo {
         Ok(())
     }
 
-    /// Commits reachable from `head` that touch `paths`, descendants before ancestors.
+    /// Commits reachable from `head` that touch `paths`, descendants before
+    /// ancestors in the simplified history this walks.
     ///
     /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
     /// doesn't exist in this repository is ignored, so a commit hash recorded by a

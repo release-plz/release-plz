@@ -684,15 +684,11 @@ impl Updater<'_> {
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    // Stop this ancestry, but keep independent sibling branches.
-                    // `--date-order` doesn't yield a commit before its children, so
-                    // these ancestors are usually still ahead of the walk. That only
-                    // holds for the simplified history `commits` traverses, though,
-                    // which is why the ancestry is collected with `--full-history`:
-                    // an ancestor only reachable through an edge that simplification
-                    // severed has to be pruned as well.
-                    // Only commits in `commits` are ever looked up, so restrict the
-                    // ancestry to the same paths instead of dumping every hash.
+                    // This snapshot is already released, so everything it is built
+                    // on is too. `--full-history` is what makes the set complete:
+                    // git's default simplification drops the second parent of a
+                    // "keep mine" merge, hiding real ancestors. The paths are the
+                    // same as the outer walk's, since only its commits are probed.
                     released_ancestors.extend(
                         repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
                     );
@@ -716,6 +712,12 @@ impl Updater<'_> {
                 ));
             }
         }
+
+        // `--date-order` only orders the simplified history the walk traverses, so
+        // an ancestor hidden behind a severed merge edge can be visited before the
+        // snapshot that prunes it. Drop it here rather than relying on the order.
+        diff.commits
+            .retain(|commit| !released_ancestors.contains(&commit.id));
 
         repository
             .checkout_head()

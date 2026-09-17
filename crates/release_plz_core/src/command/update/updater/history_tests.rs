@@ -283,6 +283,79 @@ fn a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot() {
     );
 }
 
+/// The mirror image of
+/// [`a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot`]: here the
+/// discarded commit is dated after the equal snapshot, so the walk reaches it first.
+/// `--date-order` can't prevent that, because simplification severed the only edge
+/// that connects the two, so pruning must not depend on the visit order.
+#[test]
+fn an_ancestor_visited_before_the_equal_snapshot_is_still_pruned() {
+    let history = History::new();
+    let repo = &history.repo;
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let discarded = history.write_commit_at(
+        "src/feature.rs",
+        "",
+        "feat: discarded by the merge",
+        "2000-01-05T00:00:00 +0000",
+    );
+    repo.checkout_head().unwrap();
+    history.write_commit_at(
+        "src/lib.rs",
+        "pub fn temporary() {}\n",
+        "feat: temporary",
+        "2000-01-01T00:00:00 +0000",
+    );
+    // "Keep mine": the merge commit has the same tree as its first parent, which is
+    // what makes git prune the feature branch from walks rooted after it.
+    repo.git_at(
+        &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+        "2000-01-02T00:00:00 +0000",
+    )
+    .unwrap();
+    // Back to the released tree, so this commit is the equal snapshot.
+    let equal = history.write_commit_at(
+        "src/lib.rs",
+        "",
+        "revert: temporary",
+        "2000-01-03T00:00:00 +0000",
+    );
+    assert!(
+        repo.is_ancestor(&discarded, &equal),
+        "the discarded commit must be a real ancestor of the equal snapshot"
+    );
+    // A second merge of the same branch makes the discarded commit reachable again
+    // from HEAD, this time through a merge that git doesn't simplify away.
+    repo.git(&["checkout", "feature"]).unwrap();
+    let unreleased = history.write_commit_at(
+        "src/feature2.rs",
+        "",
+        "feat: unreleased",
+        "2000-01-06T00:00:00 +0000",
+    );
+    repo.checkout_head().unwrap();
+    repo.git_at(
+        &["merge", "--no-ff", "-m", "merge feature again", "feature"],
+        "2000-01-07T00:00:00 +0000",
+    )
+    .unwrap();
+
+    // Exercise the unfavourable order: the walk this simplifies exactly like the
+    // diff's own one has to reach the discarded commit before the equal snapshot.
+    let order = repo
+        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+        .unwrap();
+    assert!(
+        order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
+        "{order}"
+    );
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([unreleased.as_str()]),
+        "an ancestor of the equal snapshot was released again"
+    );
+}
+
 #[test]
 fn workspace_dependency_updates_are_detected_without_package_commits() {
     for update_lockfile in [false, true] {
