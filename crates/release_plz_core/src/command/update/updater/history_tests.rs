@@ -47,15 +47,7 @@ impl History {
     fn write_commit_at(&self, path: &str, contents: &str, message: &str, date: &str) -> String {
         fs_err::write(self.repo.directory().join(path), contents).unwrap();
         self.repo.git(&["add", "."]).unwrap();
-        let output = std::process::Command::new("git")
-            .arg("-C")
-            .arg(self.repo.directory())
-            .args(["commit", "-m", message])
-            .env("GIT_AUTHOR_DATE", date)
-            .env("GIT_COMMITTER_DATE", date)
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "git commit failed: {output:?}");
+        self.repo.git_at(&["commit", "-m", message], date).unwrap();
         self.repo.current_commit_hash().unwrap()
     }
 

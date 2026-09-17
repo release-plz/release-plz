@@ -512,30 +512,17 @@ mod tests {
         );
     }
 
-    /// Commit the current worktree with both the author and the committer date set
-    /// to `date`, so the test controls the `--date-order` walk.
-    fn git_commit_at(repo: &Repo, args: &[&str], date: &str) {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(repo.directory())
-            .args(args)
-            .env("GIT_AUTHOR_DATE", date)
-            .env("GIT_COMMITTER_DATE", date)
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "git {args:?} failed: {output:?}");
-    }
-
     fn commit_file_at(repo: &Repo, directory: &Utf8Path, name: &str, date: &str) {
         let file = repo.directory().join(directory).join(name);
         fs_err::write(file, name).unwrap();
         repo.git(&["add", "."]).unwrap();
-        git_commit_at(repo, &["commit", "-m", name], date);
+        repo.git_at(&["commit", "-m", name], date).unwrap();
     }
 
     fn commit_merge_at(repo: &Repo, branch: &str, date: &str) {
         let message = format!("merge {branch}");
-        git_commit_at(repo, &["merge", "--no-ff", "-m", &message, branch], date);
+        repo.git_at(&["merge", "--no-ff", "-m", &message, branch], date)
+            .unwrap();
     }
 
     #[test]
