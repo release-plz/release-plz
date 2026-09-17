@@ -1527,6 +1527,77 @@ semver_check = false
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_checks_semver_with_versionless_private_dependencies() {
+    use cargo_utils::LocalManifest;
+
+    assert!(
+        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
+        "cargo-semver-checks must be installed to run this test"
+    );
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("support")
+            .with_type(PackageType::Lib)
+            .with_publish(false),
+        TestPackage::new("wrapper")
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec!["../support"])
+            .with_publish(false),
+    ])
+    .await;
+    let manifest_path = context.package_path("wrapper").join("Cargo.toml");
+    let mut manifest = LocalManifest::try_new(&manifest_path).unwrap();
+    manifest.data["dependencies"]["support"]["version"] = toml_edit::Item::None;
+    manifest.write().unwrap();
+    fs_err::write(
+        context.package_path("support").join("src/lib.rs"),
+        "pub fn answer() -> u32 { 42 }\n",
+    )
+    .unwrap();
+    let wrapper_source = context.package_path("wrapper").join("src/lib.rs");
+    fs_err::write(
+        &wrapper_source,
+        "pub fn answer() -> u32 { support::answer() }\npub fn removed() {}\n",
+    )
+    .unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("chore: configure private libraries");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+semver_check = true
+"#,
+    );
+    for name in ["support", "wrapper"] {
+        context
+            .repo
+            .tag(&format!("{name}-v0.1.0"), "initial release")
+            .unwrap();
+    }
+
+    // Both current and historical APIs need the versionless dependency to build.
+    // A fix commit alone would only bump the patch version: the API check must
+    // detect the removed function and require a breaking release.
+    fs_err::write(
+        &wrapper_source,
+        "pub fn answer() -> u32 { support::answer() }\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: simplify wrapper API");
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_ref().unwrap();
+    assert!(
+        body.contains("`wrapper`: 0.1.0 -> 0.2.0 (⚠️ API breaking changes)"),
+        "{body}"
+    );
+    assert!(body.contains("function_missing"), "{body}");
+    assert!(!body.contains("`support`:"), "{body}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_updates_root_package_with_versionless_dependency() {
     use cargo_utils::LocalManifest;
 
