@@ -1078,6 +1078,20 @@ fn the_published_commit_bounds_the_walk_without_an_equal_snapshot() {
     );
 }
 
+/// The published commit can be missing locally, for instance after a history
+/// rewrite or when the release was published from another clone. Excluding it
+/// would make git fail, so the walk proceeds as if the registry recorded none.
+#[test]
+fn a_published_commit_missing_from_the_repository_is_ignored() {
+    let history = History::new();
+    let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
+    let missing = "0".repeat(40);
+    assert_eq!(
+        commit_ids(&history.diff(Some(&missing))),
+        HashSet::from([unreleased.as_str()])
+    );
+}
+
 #[test]
 fn late_merge_keeps_mainline_changes_after_the_release() {
     let history = History::new();
