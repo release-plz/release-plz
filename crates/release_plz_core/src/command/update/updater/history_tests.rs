@@ -56,11 +56,11 @@ impl History {
         self.repo.current_commit_hash().unwrap()
     }
 
-    /// Ignore a revert of the current API change, then import a sibling change
+    /// Ignore a revert of the current change, then import a sibling change
     /// through the reverted branch so that its equal snapshot is also visited.
-    fn merge_ignored_api_revert(&self) -> String {
+    fn merge_ignored_revert(&self, path: &str, contents: &str) -> String {
         self.repo.git(&["checkout", "-b", "equal"]).unwrap();
-        self.write_commit("src/lib.rs", BASE_API, "revert: breaking API");
+        self.write_commit(path, contents, "revert: breaking change");
         self.repo.checkout_head().unwrap();
         self.repo
             .git(&[
@@ -433,7 +433,7 @@ fn ignored_file_changes_do_not_hide_a_retained_package_change() {
         let old = fs_err::read_to_string(&path).unwrap();
         fs_err::write(path, format!("{old}# changed\n")).unwrap();
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-        let sibling = history.merge_ignored_api_revert();
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         let diff = history.diff(None);
         assert_eq!(
             commit_ids(&diff),
@@ -445,10 +445,27 @@ fn ignored_file_changes_do_not_hide_a_retained_package_change() {
 }
 
 #[test]
+fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
+    let path = "src/.cargo_vcs_info.json";
+    let history = History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "");
+        fs_err::write(root.join(path), "{}\n").unwrap();
+    });
+    let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
+    let sibling = history.merge_ignored_revert(path, "{}\n");
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([breaking.as_str(), sibling.as_str()])
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
-    let sibling = history.merge_ignored_api_revert();
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
     let diff = history.diff(None);
     assert_eq!(
         commit_ids(&diff),
@@ -461,7 +478,7 @@ fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
 fn a_retained_change_can_move_to_a_different_file() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    history.merge_ignored_api_revert();
+    history.merge_ignored_revert("src/lib.rs", BASE_API);
     history
         .repo
         .git(&["mv", "src/lib.rs", "src/api.rs"])

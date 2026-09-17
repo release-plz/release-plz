@@ -166,10 +166,13 @@ impl RetainedChanges {
         };
         // Match package equality: lockfile changes are handled separately for
         // executables, and Cargo's generated metadata is not package source.
-        if matches!(
-            path.file_name(),
-            Some("Cargo.lock" | CARGO_TOML_ORIG | CARGO_VCS_INFO)
-        ) {
+        // The VCS marker is generated only at the package root.
+        if matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
+            || self
+                .paths
+                .first()
+                .is_some_and(|root| path == root.join(CARGO_VCS_INFO))
+        {
             return false;
         }
         if let Some(files) = &self.package_files {
