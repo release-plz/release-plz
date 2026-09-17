@@ -240,25 +240,31 @@ impl Repo {
         Ok(())
     }
 
-    /// List commits in the given revision range that touch any of the given paths.
+    /// List commits touching `paths`, newest descendants before their ancestors.
     ///
-    /// `range` is passed as-is to `git rev-list`, e.g. `"<tag>..<branch>"` for a
-    /// bounded walk or a single revision for an unbounded one.
-    ///
-    /// Returns commits in topological order (children before parents). This is
-    /// resilient to sibling branches: every commit reachable from the upper
-    /// bound that touches `paths` is returned, including commits on branches
-    /// that merged in via a merge commit. A sequential HEAD-walk via
-    /// `git log -n 2` would miss those after the first HEAD move.
-    pub fn commits_in_range_at_paths(
+    /// Walk from `head` once so checking out individual commits cannot hide sibling
+    /// branches. Exclude release boundaries and their ancestors only when the
+    /// boundary is reachable from `head`; a release on another branch must not
+    /// exclude shared history. `u32::MAX` means no commit limit.
+    pub fn commits_at_paths_since(
         &self,
-        range: &str,
+        head: &str,
+        release_boundaries: &[&str],
         paths: &[&Path],
+        max_commits: u32,
     ) -> anyhow::Result<Vec<String>> {
-        let mut args = vec!["rev-list", "--topo-order", range, "--"];
-        for p in paths {
-            let path = p.to_str().expect("invalid path");
-            args.push(path);
+        let exclusions: Vec<String> = release_boundaries
+            .iter()
+            .filter(|commit| self.is_ancestor(commit, head))
+            .map(|commit| format!("^{commit}"))
+            .collect();
+        let limit = (max_commits != u32::MAX).then(|| format!("--max-count={max_commits}"));
+        let mut args = vec!["rev-list", "--topo-order", head];
+        args.extend(exclusions.iter().map(String::as_str));
+        args.extend(limit.as_deref());
+        args.push("--");
+        for path in paths {
+            args.push(path.to_str().expect("invalid path"));
         }
         let output = self.git(&args)?;
         Ok(output.lines().map(|s| s.to_string()).collect())
@@ -507,7 +513,7 @@ mod tests {
     /// commits on sibling branches. With sibling PRs branching off a shared
     /// parent and merged via separate merge commits, the previous walk via
     /// `git log -n 2 -- <paths>` only saw one side after the first HEAD move.
-    /// `commits_in_range_at_paths` must list both.
+    /// `commits_at_paths_since` must list both.
     #[test]
     fn sibling_branch_commits_at_paths_are_listed() {
         test_logs::init();
@@ -541,9 +547,11 @@ mod tests {
             .unwrap();
 
         let commits = repo
-            .commits_in_range_at_paths(
-                "v0.1.0..HEAD",
+            .commits_at_paths_since(
+                "HEAD",
+                &["v0.1.0"],
                 &[pkg_dir.strip_prefix(repository_dir.as_ref()).unwrap()],
+                u32::MAX,
             )
             .unwrap();
 
@@ -561,6 +569,56 @@ mod tests {
         assert!(
             messages.iter().any(|m| m == "fix: feature two (D)"),
             "commit D missing from sibling-branch walk: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn commit_range_ignores_unreachable_release_boundaries() {
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Path::new("file.rs");
+        fs_err::write(directory.path().join(path), "shared").unwrap();
+        repo.add_all_and_commit("shared change").unwrap();
+        let shared = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "release"]).unwrap();
+        fs_err::write(directory.path().join(path), "other branch").unwrap();
+        repo.add_all_and_commit("release on another branch")
+            .unwrap();
+        let release = repo.current_commit_hash().unwrap();
+        repo.checkout_head().unwrap();
+        fs_err::write(directory.path().join(path), "local change").unwrap();
+        repo.add_all_and_commit("local change").unwrap();
+        let local = repo.current_commit_hash().unwrap();
+        for boundary in [release.as_str(), "0000000000000000000000000000000000000000"] {
+            assert_eq!(
+                repo.commits_at_paths_since("HEAD", &[boundary], &[path], u32::MAX)
+                    .unwrap(),
+                [local.clone(), shared.clone()]
+            );
+        }
+    }
+
+    #[test]
+    fn commit_range_uses_both_release_boundaries_and_the_given_tip() {
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Path::new("file.rs");
+        let mut commits = Vec::new();
+        for message in ["tagged", "published", "unreleased"] {
+            fs_err::write(directory.path().join(path), message).unwrap();
+            repo.add_all_and_commit(message).unwrap();
+            commits.push(repo.current_commit_hash().unwrap());
+        }
+        repo.checkout(&commits[0]).unwrap();
+        assert_eq!(
+            repo.commits_at_paths_since(
+                &commits[2],
+                &[&commits[0], &commits[1]],
+                &[path],
+                u32::MAX,
+            )
+            .unwrap(),
+            [commits[2].clone()]
         );
     }
 

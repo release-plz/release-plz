@@ -1,0 +1,250 @@
+use super::*;
+use crate::test_utils::{generate_lockfile, write_package};
+
+const PACKAGE: &str = "history-test";
+
+struct History {
+    repo: Repo,
+    registry: Repo,
+    _local_dir: tempfile::TempDir,
+    _registry_dir: tempfile::TempDir,
+}
+
+impl History {
+    fn new() -> Self {
+        Self::with_packages(|root| write_package(root, PACKAGE, "0.1.0", ""))
+    }
+
+    fn with_packages(write_packages: impl Fn(&Utf8Path)) -> Self {
+        let local_dir = tempfile::tempdir().unwrap();
+        let registry_dir = tempfile::tempdir().unwrap();
+        let repo = Repo::init(&local_dir);
+        let registry = Repo::init(&registry_dir);
+        for repo in [&repo, &registry] {
+            write_packages(repo.directory());
+            fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
+            generate_lockfile(repo.directory());
+            repo.add_all_and_commit("chore: published baseline")
+                .unwrap();
+        }
+        Self {
+            repo,
+            registry,
+            _local_dir: local_dir,
+            _registry_dir: registry_dir,
+        }
+    }
+
+    fn write_commit(&self, path: &str, contents: &str, message: &str) -> String {
+        fs_err::write(self.repo.directory().join(path), contents).unwrap();
+        self.repo.add_all_and_commit(message).unwrap();
+        self.repo.current_commit_hash().unwrap()
+    }
+
+    fn diff(&self, published_at: Option<&str>) -> Diff {
+        let metadata =
+            cargo_utils::get_manifest_metadata(&self.registry.directory().join(CARGO_TOML))
+                .unwrap();
+        let package = cargo_utils::workspace_package(&metadata, PACKAGE).unwrap();
+        self.diff_with(
+            Some(RegistryPackage::new(
+                package.clone(),
+                published_at.map(str::to_owned),
+            )),
+            None,
+        )
+    }
+
+    fn diff_with(&self, published: Option<RegistryPackage>, limit: Option<u32>) -> Diff {
+        let tip = self.repo.current_commit_hash().unwrap();
+        let metadata =
+            cargo_utils::get_manifest_metadata(&self.repo.directory().join(CARGO_TOML)).unwrap();
+        let package = cargo_utils::workspace_package(&metadata, PACKAGE)
+            .unwrap()
+            .clone();
+        let request = UpdateRequest::new(metadata.clone())
+            .unwrap()
+            .with_max_analyze_commits(limit);
+        let project = Project::new(
+            request.local_manifest(),
+            None,
+            &HashSet::new(),
+            &metadata,
+            &request,
+        )
+        .unwrap();
+        let registry_packages = PackagesCollection::default().with_packages(
+            published
+                .into_iter()
+                .map(|p| (p.package.name.to_string(), p))
+                .collect(),
+        );
+        let diff = Updater {
+            project: &project,
+            req: &request,
+        }
+        .get_diff(&package, &registry_packages, &self.repo)
+        .unwrap();
+        assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
+        diff
+    }
+}
+
+fn commit_ids(diff: &Diff) -> HashSet<&str> {
+    diff.commits
+        .iter()
+        .map(|commit| commit.id.as_str())
+        .collect()
+}
+
+#[test]
+fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
+    let history = History::new();
+    let repo = &history.repo;
+    let baseline = repo.current_commit_hash().unwrap();
+    repo.tag_lightweight("v0.1.0").unwrap();
+    repo.git(&["checkout", "-b", "one"]).unwrap();
+    let one = history.write_commit("src/one.rs", "", "fix: sibling one");
+    repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
+    let two = history.write_commit("src/two.rs", "", "fix: sibling two");
+    repo.checkout_head().unwrap();
+    for branch in ["one", "two"] {
+        repo.git(&["merge", "--no-ff", "-m", "merge sibling", branch])
+            .unwrap();
+    }
+    let expected = HashSet::from([one.as_str(), two.as_str()]);
+    assert_eq!(commit_ids(&history.diff(None)), expected);
+    repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
+    for published_at in [Some(baseline.as_str()), None] {
+        assert_eq!(commit_ids(&history.diff(published_at)), expected);
+    }
+}
+
+#[test]
+fn late_merge_keeps_mainline_changes_after_the_release() {
+    let history = History::new();
+    let repo = &history.repo;
+    repo.git(&["checkout", "-b", "old-branch"]).unwrap();
+    let branch = history.write_commit("src/branch.rs", "", "fix: old branch");
+    repo.checkout_head().unwrap();
+    history.write_commit("src/released.rs", "", "feat: already released");
+    fs_err::write(history.registry.directory().join("src/released.rs"), "").unwrap();
+    history
+        .registry
+        .add_all_and_commit("published release")
+        .unwrap();
+    repo.tag_lightweight("v0.1.0").unwrap();
+    let mainline = history.write_commit("src/mainline.rs", "", "fix: mainline");
+    repo.git(&["merge", "--no-ff", "-m", "merge old branch", "old-branch"])
+        .unwrap();
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([branch.as_str(), mainline.as_str()])
+    );
+}
+
+#[test]
+fn final_revert_does_not_release_reverted_changes() {
+    let history = History::new();
+    history.repo.tag_lightweight("v0.1.0").unwrap();
+    history.write_commit("src/lib.rs", "pub fn temporary() {}\n", "feat: temporary");
+    history.write_commit("src/lib.rs", "", "revert: temporary");
+    assert!(history.diff(None).commits.is_empty());
+    history.repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
+    assert!(history.diff(None).commits.is_empty());
+}
+
+#[test]
+fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
+    let history = History::new();
+    let repo = &history.repo;
+    repo.git(&["checkout", "-b", "branch"]).unwrap();
+    history.write_commit("src/lib.rs", "pub fn temporary() {}\n", "feat: temporary");
+    let equal = history.write_commit("src/lib.rs", "", "revert: temporary");
+    let branch = history.write_commit("src/branch.rs", "", "fix: branch");
+    repo.checkout_head().unwrap();
+    let sibling = history.write_commit("src/sibling.rs", "", "fix: sibling");
+    repo.git(&["merge", "--no-ff", "-m", "merge branch", "branch"])
+        .unwrap();
+    // Exercise the order where stopping at the equal snapshot would lose its sibling.
+    let order = repo.git(&["rev-list", "--topo-order", "HEAD"]).unwrap();
+    assert!(order.find(&equal).unwrap() < order.find(&sibling).unwrap());
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([branch.as_str(), sibling.as_str()])
+    );
+}
+
+#[test]
+fn workspace_dependency_updates_are_detected_without_package_commits() {
+    for update_lockfile in [false, true] {
+        let history = History::with_packages(|root| {
+            fs_err::write(
+                root.join(CARGO_TOML),
+                "[workspace]\nmembers = [\"app\", \"dep\"]\nresolver = \"2\"\n\
+                 [workspace.dependencies]\nhistory-dependency = \"1\"\n\
+                 [patch.crates-io]\nhistory-dependency = { path = \"dep\" }\n",
+            )
+            .unwrap();
+            write_package(
+                &root.join("app"),
+                PACKAGE,
+                "0.1.0",
+                "[dependencies]\nhistory-dependency.workspace = true\n",
+            );
+            // Lockfile changes only trigger releases for executables.
+            fs_err::write(root.join("app/src/main.rs"), "fn main() {}\n").unwrap();
+            write_package(&root.join("dep"), "history-dependency", "1.0.0", "");
+        });
+        let repo = &history.repo;
+        repo.tag_lightweight("history-test-v0.1.0").unwrap();
+        assert!(history.diff(None).commits.is_empty());
+        let (path, old, new, expected) = if update_lockfile {
+            (
+                "dep/Cargo.toml",
+                "1.0.0",
+                "1.0.1",
+                "chore: update Cargo.lock dependencies",
+            )
+        } else {
+            (
+                "Cargo.toml",
+                "history-dependency = \"1\"",
+                "history-dependency = \">=1.0.0\"",
+                "chore: update Cargo.toml dependencies",
+            )
+        };
+        let manifest = repo.directory().join(path);
+        let contents = fs_err::read_to_string(&manifest).unwrap();
+        fs_err::write(manifest, contents.replace(old, new)).unwrap();
+        generate_lockfile(repo.directory());
+        repo.add_all_and_commit("chore: workspace dependencies")
+            .unwrap();
+        assert!(
+            repo.git(&["rev-list", "history-test-v0.1.0..HEAD", "--", "app"])
+                .unwrap()
+                .is_empty()
+        );
+        let diff = history.diff(None);
+        assert_eq!(diff.commits.len(), 1);
+        assert_eq!(diff.commits[0].message, expected);
+        assert_eq!(diff.commits[0].id, NO_COMMIT_ID);
+    }
+}
+
+#[test]
+fn first_release_respects_the_commit_limit() {
+    let history = History::new();
+    let one = history.write_commit("src/one.rs", "", "fix: one");
+    let two = history.write_commit("src/two.rs", "", "fix: two");
+    assert_eq!(
+        commit_ids(&history.diff_with(None, Some(1))),
+        HashSet::from([two.as_str()])
+    );
+    assert_eq!(
+        commit_ids(&history.diff_with(None, Some(2))),
+        HashSet::from([one.as_str(), two.as_str()])
+    );
+    // Repo::init also creates an initial README commit. Zero means all four commits.
+    assert_eq!(history.diff_with(None, Some(0)).commits.len(), 4);
+}
