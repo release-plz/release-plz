@@ -660,7 +660,7 @@ impl Updater<'_> {
             .chain(registry_package.and_then(RegistryPackage::published_at_sha1))
             .collect();
         // Enumerate from the branch tip before checking out any historical snapshot.
-        let commits = repository.commits_at_paths_since(
+        let commits = repository.commits_at_paths(
             "HEAD",
             &release_boundaries,
             &paths_to_check,

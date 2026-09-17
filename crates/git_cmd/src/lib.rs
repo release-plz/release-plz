@@ -227,7 +227,7 @@ impl Repo {
     /// Commits are ordered by date rather than topologically: `--topo-order` emits
     /// whole lineages contiguously, so combining it with `max_commits` would keep the
     /// oldest commits of one branch instead of the newest commits overall.
-    pub fn commits_at_paths_since(
+    pub fn commits_at_paths(
         &self,
         head: &str,
         exclude: &[&str],
@@ -248,7 +248,7 @@ impl Repo {
 
     /// Commits reachable from `commit` that touch `paths`, including `commit` itself.
     ///
-    /// Unlike [`Repo::commits_at_paths_since`], this doesn't simplify history: every
+    /// Unlike [`Repo::commits_at_paths`], this doesn't simplify history: every
     /// parent of a merge is followed, so the result is a superset of the commits any
     /// simplified walk can reach through `commit`.
     pub fn ancestors_at_paths(
@@ -471,7 +471,7 @@ mod tests {
     /// commits on sibling branches. With sibling PRs branching off a shared
     /// parent and merged via separate merge commits, the previous walk via
     /// `git log -n 2 -- <paths>` only saw one side after the first HEAD move.
-    /// `commits_at_paths_since` must list both.
+    /// `commits_at_paths` must list both.
     #[test]
     fn sibling_branch_commits_at_paths_are_listed() {
         test_logs::init();
@@ -505,7 +505,7 @@ mod tests {
             .unwrap();
 
         let commits = repo
-            .commits_at_paths_since("HEAD", &["v0.1.0"], &[Utf8Path::new("pkg")], None)
+            .commits_at_paths("HEAD", &["v0.1.0"], &[Utf8Path::new("pkg")], None)
             .unwrap();
 
         let messages: Vec<String> = commits
@@ -563,7 +563,7 @@ mod tests {
         let merge = repo.current_commit_hash().unwrap();
 
         assert_eq!(
-            repo.commits_at_paths_since("HEAD", &[], &[path], Some(3))
+            repo.commits_at_paths("HEAD", &[], &[path], Some(3))
                 .unwrap(),
             [merge, b3, a3]
         );
@@ -615,7 +615,7 @@ mod tests {
 
         // A boundary that doesn't exist locally can't exclude anything.
         assert_eq!(
-            repo.commits_at_paths_since(
+            repo.commits_at_paths(
                 "HEAD",
                 &["0000000000000000000000000000000000000000"],
                 &[path],
@@ -628,7 +628,7 @@ mod tests {
         // A boundary on a divergent branch still excludes the history it shares
         // with `head`: those changes were already released.
         assert_eq!(
-            repo.commits_at_paths_since("HEAD", &[&release], &[path], None)
+            repo.commits_at_paths("HEAD", &[&release], &[path], None)
                 .unwrap(),
             [local]
         );
@@ -647,7 +647,7 @@ mod tests {
         }
         repo.checkout(&commits[0]).unwrap();
         assert_eq!(
-            repo.commits_at_paths_since(&commits[2], &[&commits[0], &commits[1]], &[path], None,)
+            repo.commits_at_paths(&commits[2], &[&commits[0], &commits[1]], &[path], None,)
                 .unwrap(),
             [commits[2].clone()]
         );
