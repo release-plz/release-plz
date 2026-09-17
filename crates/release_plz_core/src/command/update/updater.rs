@@ -1172,26 +1172,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn non_rust_library_targets_do_not_enable_semver_checks() {
-        for kind in [
-            "bin",
-            "cdylib",
-            "staticlib",
-            "proc-macro",
-            "example",
-            "test",
-            "bench",
-            "custom-build",
+    fn only_rust_library_targets_are_libraries() {
+        // (target kind, downstream Rust crates can depend on it)
+        for (kind, is_library) in [
+            ("lib", true),
+            ("rlib", true),
+            ("dylib", true),
+            ("bin", false),
+            ("cdylib", false),
+            ("staticlib", false),
+            ("proc-macro", false),
+            ("example", false),
+            ("test", false),
+            ("bench", false),
+            ("custom-build", false),
         ] {
-            let mut package: Package = fake_package::FakePackage::new("my_package")
+            let package: Package = fake_package::FakePackage::new("my_package")
                 .with_targets(&[kind])
                 .into();
-            if kind == "example" {
-                // An example built as an rlib is not the package's library API.
-                package.targets[0].crate_types = vec![cargo_metadata::CrateType::RLib];
-            }
-            assert!(!contains_library(&package), "unexpected library: {kind}");
+            assert_eq!(contains_library(&package), is_library, "kind: {kind}");
         }
+    }
+
+    #[test]
+    fn library_with_cdylib_and_rlib_kinds_is_a_library() {
+        // `crate-type = ["cdylib", "rlib"]` is reported by cargo as one target with two kinds.
+        let mut package: Package = fake_package::FakePackage::new("my_package")
+            .with_targets(&["cdylib"])
+            .into();
+        package.targets[0].kind.push(TargetKind::RLib);
+        assert!(contains_library(&package));
     }
 
     #[test]
