@@ -602,6 +602,10 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         input,
     )?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
+    anyhow::ensure!(
+        !repo.is_head_detached()?,
+        "release requires a branch. Check out the target branch instead of a detached HEAD"
+    );
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
     debug!("should release: {should_release:?}");
@@ -1360,6 +1364,40 @@ mod tests {
         } else {
             unsafe { env::remove_var(key.as_ref()) };
         }
+    }
+
+    #[tokio::test]
+    async fn release_rejects_detached_head_before_accessing_forge() {
+        test_logs::init();
+        let forge_server = wiremock::MockServer::start().await;
+        let temporary = tempfile::tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        crate::test_utils::write_package(repo.directory(), "test-package", "0.1.0", "");
+        let manifest = repo.directory().join(cargo_utils::CARGO_TOML);
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        repo.add_all_and_commit("feat: initial package").unwrap();
+        repo.git(&["checkout", "--detach"]).unwrap();
+        let original_head = repo.current_commit_hash().unwrap();
+        let original_refs = repo.git(&["show-ref"]).unwrap();
+        let github = crate::GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(forge_server.uri().parse().unwrap());
+        let request = ReleaseRequest::new(metadata)
+            .with_token("token")
+            .with_git_release(GitRelease {
+                forge: GitForge::Github(github),
+            });
+
+        let error = release(&request).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("release requires a branch"),
+            "{error:#}"
+        );
+        assert!(forge_server.received_requests().await.unwrap().is_empty());
+        assert_eq!(repo.current_commit_hash().unwrap(), original_head);
+        assert!(repo.is_head_detached().unwrap());
+        assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
+        repo.is_clean().unwrap();
     }
 
     #[tokio::test]

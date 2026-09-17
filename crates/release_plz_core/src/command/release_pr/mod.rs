@@ -124,6 +124,10 @@ pub struct PrPackageRelease {
 pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<ReleasePr>> {
     let manifest_dir = input.update_request.local_manifest_dir()?;
     let original_project_root = root_repo_path_from_manifest_dir(manifest_dir)?;
+    anyhow::ensure!(
+        !Repo::new(&original_project_root)?.is_head_detached()?,
+        "release-pr requires a branch. Check out the target branch instead of a detached HEAD"
+    );
     let tmp_project_root_parent = copy_to_temp_dir(&original_project_root)?;
     let tmp_project_manifest_dir = new_manifest_dir_path(
         &original_project_root,
@@ -633,6 +637,44 @@ mod tests {
             draft: false,
             labels: vec![],
         }
+    }
+
+    #[tokio::test]
+    async fn release_pr_rejects_detached_head_before_accessing_forge() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        crate::test_utils::write_package(repo.directory(), "test-package", "0.1.0", "");
+        let manifest = repo.directory().join(CARGO_TOML);
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        repo.add_all_and_commit("feat: initial package").unwrap();
+        repo.git(&["checkout", "--detach"]).unwrap();
+        let original_head = repo.current_commit_hash().unwrap();
+        let original_refs = repo.git(&["show-ref"]).unwrap();
+
+        let server = MockServer::start().await;
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let update_request = UpdateRequest::new(metadata)
+            .unwrap()
+            .with_default_package_config(crate::UpdateConfig {
+                git_only: Some(true),
+                ..Default::default()
+            })
+            .with_git_client(GitForge::Github(github));
+        let request = ReleasePrRequest::new(update_request);
+
+        let error = release_pr(&request).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("release-pr requires a branch"),
+            "{error:#}"
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+        assert_eq!(repo.current_commit_hash().unwrap(), original_head);
+        assert!(repo.is_head_detached().unwrap());
+        assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
+        repo.is_clean().unwrap();
     }
 
     #[tokio::test]
