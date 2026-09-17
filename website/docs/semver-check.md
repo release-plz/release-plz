@@ -7,7 +7,8 @@ The check results are shown in the release Pull Request and in the output of the
 `release-plz update` command:
 
 - If the check is skipped, release-plz shows nothing. This happens when the package
-  or its previously released version doesn't contain a library.
+  or its previously released version doesn't contain a Rust library, i.e. a `lib`,
+  `rlib` or `dylib` target.
 - If the check is successful, release-plz shows "(✓ API compatible changes)".
 - If the check detects incompatibilities, release-plz shows "(⚠️ API breaking changes)",
   with a report of what went wrong.
