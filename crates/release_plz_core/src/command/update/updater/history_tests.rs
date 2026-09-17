@@ -1156,6 +1156,68 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
     );
 }
 
+/// Every lineage stops at its own equal snapshot, and a later snapshot must keep
+/// the pruning of the earlier one: two feature branches each revert their change
+/// before contributing a fix, so each revert equals the release on its own.
+#[test]
+fn every_lineage_stops_at_its_own_equal_snapshot() {
+    let history = History::new();
+    let repo = &history.repo;
+    let baseline = repo.current_commit_hash().unwrap();
+    repo.git(&["checkout", "-b", "one"]).unwrap();
+    let reverted_one = history.write_commit_at(
+        "src/lib.rs",
+        "pub fn one() {}\n",
+        "feat: one",
+        "2000-01-01T00:00:00 +0000",
+    );
+    let equal_one =
+        history.write_commit_at("src/lib.rs", "", "revert: one", "2000-01-03T00:00:00 +0000");
+    let one = history.write_commit_at("src/one.rs", "", "fix: one", "2000-01-05T00:00:00 +0000");
+    repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
+    let reverted_two = history.write_commit_at(
+        "src/lib.rs",
+        "pub fn two() {}\n",
+        "feat: two",
+        "1999-12-31T00:00:00 +0000",
+    );
+    let equal_two =
+        history.write_commit_at("src/lib.rs", "", "revert: two", "2000-01-02T00:00:00 +0000");
+    let two = history.write_commit_at("src/two.rs", "", "fix: two", "2000-01-04T00:00:00 +0000");
+    repo.checkout_head().unwrap();
+    for (branch, date) in [
+        ("one", "2000-01-06T00:00:00 +0000"),
+        ("two", "2000-01-07T00:00:00 +0000"),
+    ] {
+        repo.git_at(&["merge", "--no-ff", "-m", "merge fix", branch], date)
+            .unwrap();
+    }
+    // Edit the line both branches reverted: undoing either reverted change at
+    // HEAD conflicts, so only its lineage can prove it was discarded.
+    let unreleased = history.write_commit_at(
+        "src/lib.rs",
+        "pub fn unreleased() {}\n",
+        "feat: unreleased",
+        "2000-01-08T00:00:00 +0000",
+    );
+    // The dates make the walk find the first equal snapshot before the second, and
+    // the second before the change reverted by the first: the second snapshot must
+    // neither forget the first one nor keep the lineages it stopped.
+    let order = repo
+        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+        .unwrap();
+    assert!(order.find(&equal_one).unwrap() < order.find(&equal_two).unwrap());
+    assert!(order.find(&equal_two).unwrap() < order.find(&reverted_one).unwrap());
+    assert!(order.find(&equal_two).unwrap() < order.find(&reverted_two).unwrap());
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([one.as_str(), two.as_str(), unreleased.as_str()]),
+        "{:?}",
+        diff.commits
+    );
+}
+
 /// Git's default history simplification prunes a merge's other parent when the
 /// merge is TREESAME to one of them, so the commits reachable through that parent
 /// are missing from a walk rooted at one of its descendants, even though they are
