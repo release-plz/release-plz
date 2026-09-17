@@ -631,9 +631,6 @@ impl Updater<'_> {
             &mut diff,
         )?;
 
-        repository
-            .checkout_head()
-            .context("can't checkout to head after calculating diff")?;
         Ok(diff)
     }
 
