@@ -630,6 +630,53 @@ fn ignored_file_changes_do_not_hide_a_retained_package_change() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn executable_bit_changes_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for sequential in [false, true] {
+        let history = api_history();
+        history
+            .repo
+            .git(&["config", "core.filemode", "true"])
+            .unwrap();
+        let implementation = if sequential {
+            let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+            history.write_commit("src/lib.rs", &implementation, "chore: implementation");
+            implementation
+        } else {
+            BASE_API.to_owned()
+        };
+        fs_err::set_permissions(
+            history.repo.directory().join("src/lib.rs"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            &implementation.replace("api()", "api(_: bool)"),
+            "feat!: breaking API and set executable bit",
+        );
+        history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(None);
+        assert!(
+            commit_ids(&diff).contains(breaking.as_str()),
+            "sequential={sequential}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        // Keeping only the executable bit must not retain the breaking marker.
+        history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let diff = history.diff(None);
+        assert!(
+            !commit_ids(&diff).contains(breaking.as_str()),
+            "sequential={sequential}"
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
 #[test]
 fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     let path = "src/.cargo_vcs_info.json";

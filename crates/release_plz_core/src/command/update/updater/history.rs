@@ -171,6 +171,16 @@ impl RetainedChanges {
             if delta.status() == git2::Delta::Conflicted {
                 return false;
             }
+            // Package equality compares file contents, not executable bits.
+            if delta.old_file().id() == delta.new_file().id()
+                && [delta.old_file().mode(), delta.new_file().mode()]
+                    .into_iter()
+                    .all(|mode| {
+                        matches!(mode, git2::FileMode::Blob | git2::FileMode::BlobExecutable)
+                    })
+            {
+                return false;
+            }
             let changes_file_presence =
                 matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted);
             [delta.old_file().path(), delta.new_file().path()]
@@ -193,9 +203,9 @@ impl RetainedChanges {
         };
         if ancestor.path != ours.path
             || ancestor.path != theirs.path
-            || ancestor.mode != ours.mode
-            || ancestor.mode != theirs.mode
-            || !matches!(ancestor.mode, 0o100_644 | 0o100_755)
+            || ![ancestor.mode, ours.mode, theirs.mode]
+                .into_iter()
+                .all(|mode| matches!(mode, 0o100_644 | 0o100_755))
         {
             return Ok(Contribution::Conflict);
         }
