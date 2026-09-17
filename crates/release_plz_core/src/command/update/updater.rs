@@ -684,18 +684,14 @@ impl Updater<'_> {
             &paths_to_check,
             max_analyze_commits,
         )?;
-        let mut released_ancestors = HashSet::new();
-        let mut retained_changes = None;
+        let mut retained_changes: Option<history::RetainedChanges> = None;
         for current_commit_hash in commits {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
-            if released_ancestors.contains(&current_commit_hash)
-                && !retained_changes
-                    .as_ref()
-                    .is_some_and(|changes: &history::RetainedChanges| {
-                        changes.reaches(&current_commit_hash)
-                    })
+            if retained_changes
+                .as_ref()
+                .is_some_and(|changes| changes.skips(&current_commit_hash))
             {
                 continue;
             }
@@ -727,14 +723,11 @@ impl Updater<'_> {
                         )?);
                     }
                     if let Some(changes) = &mut retained_changes {
-                        changes.add_boundary(&current_commit_hash);
+                        changes.add_boundary(
+                            &current_commit_hash,
+                            repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
+                        );
                     }
-                    // Full ancestry also includes branches discarded by merges.
-                    // An ancestor can nevertheless survive through another lineage;
-                    // lineage reachability and the final content check preserve them.
-                    released_ancestors.extend(
-                        repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
-                    );
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
@@ -760,10 +753,9 @@ impl Updater<'_> {
         // prunes it. Make the final decision with every discovered boundary, keeping
         // only ancestors whose changes survive through another lineage.
         diff.commits.retain(|commit| {
-            !released_ancestors.contains(&commit.id)
-                || retained_changes
-                    .as_ref()
-                    .is_some_and(|changes| changes.retains(&commit.id))
+            retained_changes
+                .as_ref()
+                .is_none_or(|changes| changes.retains(&commit.id))
         });
 
         repository

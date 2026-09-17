@@ -23,6 +23,7 @@ pub(super) struct RetainedChanges {
     root: Option<String>,
     boundaries: HashSet<String>,
     reachable: HashSet<String>,
+    released_ancestors: HashSet<String>,
 }
 
 enum Contribution {
@@ -81,11 +82,18 @@ impl RetainedChanges {
             root,
             boundaries: HashSet::new(),
             reachable: HashSet::new(),
+            released_ancestors: HashSet::new(),
         })
     }
 
-    pub(super) fn add_boundary(&mut self, commit: &str) {
+    /// Register an equal snapshot together with its full-history `ancestors`.
+    ///
+    /// Full ancestry also includes branches discarded by merges. An ancestor can
+    /// nevertheless survive through another lineage; lineage reachability and the
+    /// content check of [`Self::retains`] preserve them.
+    pub(super) fn add_boundary(&mut self, commit: &str, ancestors: Vec<String>) {
         self.boundaries.insert(commit.to_owned());
+        self.released_ancestors.extend(ancestors);
         self.reachable.clear();
         let mut pending: Vec<_> = self.root.iter().map(String::as_str).collect();
         while let Some(commit) = pending.pop() {
@@ -98,9 +106,22 @@ impl RetainedChanges {
         }
     }
 
-    /// Whether `commit` stays in the diff: another lineage reaches it without
-    /// passing an equal snapshot, and its change survives at HEAD.
+    /// Whether the walk can skip `commit` without inspecting it: it is an
+    /// ancestor of an equal snapshot and no other lineage reaches it without
+    /// passing one. This is only an optimization; [`Self::retains`] makes the
+    /// final decision with every discovered boundary.
+    pub(super) fn skips(&self, commit: &str) -> bool {
+        self.released_ancestors.contains(commit) && !self.reaches(commit)
+    }
+
+    /// Whether `commit` stays in the diff: either it is not an ancestor of an
+    /// equal snapshot, or another lineage reaches it without passing one and its
+    /// change survives at HEAD. A simplified walk can visit an ancestor before
+    /// the equal snapshot that prunes it, so this decision is load-bearing.
     pub(super) fn retains(&self, commit: &str) -> bool {
+        if !self.released_ancestors.contains(commit) {
+            return true;
+        }
         // A sibling editing the same lines as a reverted commit can make its
         // undo conflict. Reachability ensures another lineage reaches the commit
         // without passing an equal package snapshot before trusting that.
@@ -113,7 +134,7 @@ impl RetainedChanges {
             })
     }
 
-    pub(super) fn reaches(&self, commit: &str) -> bool {
+    fn reaches(&self, commit: &str) -> bool {
         self.reachable.contains(commit)
     }
 
