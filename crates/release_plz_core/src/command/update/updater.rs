@@ -951,16 +951,20 @@ fn should_check_semver(
 }
 
 fn contains_executable(package: &Package) -> bool {
-    contains_target_kind(package, &TargetKind::Bin)
+    target_kinds(package).any(|kind| *kind == TargetKind::Bin)
 }
 
 fn contains_library(package: &Package) -> bool {
-    contains_target_kind(package, &TargetKind::Lib)
+    // `rlib` and `dylib` are Rust libraries like `lib`: downstream Rust crates can depend on
+    // them, so their API is subject to semver. `cdylib` and `staticlib` only expose a C ABI.
+    target_kinds(package)
+        .any(|kind| matches!(kind, TargetKind::Lib | TargetKind::RLib | TargetKind::DyLib))
 }
 
-fn contains_target_kind(package: &Package, target_kind: &TargetKind) -> bool {
-    // We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
-    package.targets.iter().any(|t| t.kind.contains(target_kind))
+/// Kinds of all the targets of the package.
+/// We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
+fn target_kinds(package: &Package) -> impl Iterator<Item = &TargetKind> {
+    package.targets.iter().flat_map(|t| t.kind.iter())
 }
 
 /// Get files that belong to the package.
@@ -1167,6 +1171,39 @@ fn get_repo_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_rust_library_targets_are_libraries() {
+        // (target kind, is semver-checked as a Rust library)
+        for (kind, is_library) in [
+            ("lib", true),
+            ("rlib", true),
+            ("dylib", true),
+            ("bin", false),
+            ("cdylib", false),
+            ("staticlib", false),
+            ("proc-macro", false),
+            ("example", false),
+            ("test", false),
+            ("bench", false),
+            ("custom-build", false),
+        ] {
+            let package: Package = fake_package::FakePackage::new("my_package")
+                .with_targets(&[kind])
+                .into();
+            assert_eq!(contains_library(&package), is_library, "kind: {kind}");
+        }
+    }
+
+    #[test]
+    fn target_with_cdylib_and_rlib_kinds_is_a_library() {
+        // `crate-type = ["cdylib", "rlib"]` is reported by cargo as one target with two kinds.
+        let mut package: Package = fake_package::FakePackage::new("my_package")
+            .with_targets(&["cdylib"])
+            .into();
+        package.targets[0].kind.push(TargetKind::RLib);
+        assert!(contains_library(&package));
+    }
 
     #[test]
     fn same_version_is_not_added_to_changelog() {
