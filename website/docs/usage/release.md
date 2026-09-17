@@ -27,6 +27,17 @@ If all packages are already published, the `release-plz release` command does no
 
 To learn more, run `release-plz release --help`.
 
+## Jujutsu (jj)
+
+`release-plz release` supports detached Git HEADs, including
+[colocated jj repositories](https://docs.jj-vcs.dev/latest/git-compatibility/#colocated-jujutsugit-workspaces).
+It uses Git's `HEAD` as the starting commit for the release.
+
+Before releasing with jj, create an empty working-copy change on top of the
+commit you want to release, for example with `jj new <revision>`.
+This makes Git's `HEAD` point to that commit and leaves the Git working tree clean.
+The repository URL is inferred from `origin`, or you can pass `--repo-url`.
+
 ## Git Forges
 
 GitHub is the default release-plz forge. Both github.com and self-hosted
@@ -136,7 +147,8 @@ or if you are the only maintainer of your repository.
 
 To avoid race conditions when the release PR is merged,
 `release-plz release` does a `git checkout` to the latest commit of the PR
-before releasing (if the commit of the PR exists in the main branch).
+before releasing (if the commit of the PR is an ancestor of the starting commit).
+Afterwards, it restores the original checkout, including a detached HEAD.
 
 Depending on the merge strategy you use, this can have different effects:
 
