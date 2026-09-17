@@ -58,22 +58,27 @@ impl RetainedChanges {
                 Some((ids.next()?.to_owned(), ids.map(str::to_owned).collect()))
             })
             .collect();
+        // The walked repository can be a temporary copy at a non-canonical path,
+        // such as `/var` on macOS, while the README paths were canonicalized.
+        let directory = repository.directory();
+        let canonical_directory = crate::fs_utils::canonicalize_utf8(directory)?;
+        let relativize = |path: &Utf8Path| {
+            path.strip_prefix(directory)
+                .or_else(|_| path.strip_prefix(&canonical_directory))
+                .map(Utf8Path::to_path_buf)
+                .with_context(|| format!("{path} is outside the repository {directory}"))
+        };
         Ok(Self {
-            repo: git2::Repository::open(repository.directory())?,
+            repo: git2::Repository::open(directory)?,
             symlinks,
             head: git2::Oid::from_str(head)?,
             released: git2::Oid::from_str(released)?,
             package_files,
             paths: paths
                 .iter()
-                .map(|path| {
-                    path.strip_prefix(repository.directory())
-                        .map(Utf8Path::to_path_buf)
-                })
-                .collect::<Result<_, _>>()?,
-            readme: readme
-                .and_then(|path| path.strip_prefix(repository.directory()).ok())
-                .map(Utf8Path::to_path_buf),
+                .map(|path| relativize(path))
+                .collect::<anyhow::Result<_>>()?,
+            readme: readme.map(relativize).transpose()?,
             parents,
             root,
             boundaries: HashSet::new(),

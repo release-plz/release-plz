@@ -9,8 +9,10 @@ const PACKAGE: &str = "history-test";
 struct History {
     repo: Repo,
     registry: Repo,
-    _local_dir: tempfile::TempDir,
+    local_dir: tempfile::TempDir,
     _registry_dir: tempfile::TempDir,
+    /// Keeps the symlink through which `repo` addresses `local_dir` alive.
+    _link_dir: Option<tempfile::TempDir>,
 }
 
 impl History {
@@ -20,9 +22,31 @@ impl History {
 
     fn with_packages(write_packages: impl Fn(&Utf8Path)) -> Self {
         let local_dir = tempfile::tempdir().unwrap();
-        let registry_dir = tempfile::tempdir().unwrap();
         // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
-        let repo = Repo::init(canonicalize(&local_dir));
+        let repo_dir = canonicalize(&local_dir);
+        Self::init(local_dir, repo_dir, None, write_packages)
+    }
+
+    /// Like [`Self::with_packages`], but the walked repository is addressed through
+    /// a symlink to the project directory, like the temporary copy `release-plz
+    /// update` walks when `tempfile` returns a non-canonical path (`/var` on macOS).
+    #[cfg(unix)]
+    fn with_repo_through_symlink(write_packages: impl Fn(&Utf8Path)) -> Self {
+        let local_dir = tempfile::tempdir().unwrap();
+        let link_dir = tempfile::tempdir().unwrap();
+        let link = canonicalize(&link_dir).join("link");
+        std::os::unix::fs::symlink(canonicalize(&local_dir), &link).unwrap();
+        Self::init(local_dir, link, Some(link_dir), write_packages)
+    }
+
+    fn init(
+        local_dir: tempfile::TempDir,
+        repo_dir: Utf8PathBuf,
+        link_dir: Option<tempfile::TempDir>,
+        write_packages: impl Fn(&Utf8Path),
+    ) -> Self {
+        let registry_dir = tempfile::tempdir().unwrap();
+        let repo = Repo::init(repo_dir);
         let registry = Repo::init(canonicalize(&registry_dir));
         for repo in [&repo, &registry] {
             // Keep checked-out files byte-identical to the LF-only registry fixtures.
@@ -36,9 +60,16 @@ impl History {
         Self {
             repo,
             registry,
-            _local_dir: local_dir,
+            local_dir,
             _registry_dir: registry_dir,
+            _link_dir: link_dir,
         }
+    }
+
+    /// The project directory: the canonical path of the repository, which the
+    /// repository itself may address through a symlink.
+    fn project_dir(&self) -> Utf8PathBuf {
+        canonicalize(&self.local_dir)
     }
 
     fn write_commit(&self, path: &str, contents: &str, message: &str) -> String {
@@ -205,7 +236,7 @@ impl History {
         configure: impl FnOnce(UpdateRequest) -> UpdateRequest,
     ) -> anyhow::Result<Diff> {
         let metadata =
-            cargo_utils::get_manifest_metadata(&self.repo.directory().join(CARGO_TOML)).unwrap();
+            cargo_utils::get_manifest_metadata(&self.project_dir().join(CARGO_TOML)).unwrap();
         let package = cargo_utils::workspace_package(&metadata, PACKAGE)
             .unwrap()
             .clone();
@@ -1367,4 +1398,19 @@ fn a_tip_matching_the_release_releases_nothing_although_its_branches_differ() {
         .add_all_and_commit("published release")
         .unwrap();
     assert!(history.diff(None).commits.is_empty());
+}
+
+/// `release-plz update` walks a temporary copy of the project whose path is
+/// whatever `tempfile` returns (`/var/folders/...` on macOS resolves to
+/// `/private/var/...`), while the configured README paths are canonicalized.
+#[cfg(unix)]
+#[test]
+fn retained_changes_are_checked_when_the_repository_path_is_not_canonical() {
+    let history = History::with_repo_through_symlink(|root| {
+        write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
+        fs_err::write(root.join("API.md"), "# API\n").unwrap();
+    });
+    let feature = history.write_commit("src/lib.rs", "pub fn api() {}\n", "feat: api");
+    let diff = history.diff(None);
+    assert_eq!(commit_ids(&diff), HashSet::from([feature.as_str()]));
 }
