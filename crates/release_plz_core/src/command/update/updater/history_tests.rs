@@ -354,7 +354,8 @@ fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                     "2000-01-05T00:00:00 +0000",
                 );
                 repo.git(&["checkout", "-b", "equal"]).unwrap();
-                history.write_commit_at(
+                // `skew` dates the equal branch before the API changes it descends from.
+                let equal = history.write_commit_at(
                     "src/lib.rs",
                     BASE_API,
                     "revert: API changes",
@@ -388,6 +389,16 @@ fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                     fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
                     format!("{breaking_api}pub fn extra() {{}}\n")
                 );
+                // The equal branch descends from the breaking change, so the walk visits
+                // the equal snapshot first whatever the skew: dates out of topological
+                // order must not change the outcome.
+                let order = repo
+                    .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+                    .unwrap();
+                assert!(
+                    order.find(&equal).unwrap() < order.find(&breaking).unwrap(),
+                    "skew={skew}: {order}"
+                );
                 let diff = history.diff(published_at.as_deref());
                 assert_next_version(&diff, &Version::new(0, 2, 0));
                 let mut expected =
@@ -407,7 +418,12 @@ fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
 #[test]
 fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
     for sequential in [false, true] {
-        for discarded_date in ["2000-01-02T00:00:00 +0000", "2000-01-08T00:00:00 +0000"] {
+        // The discarded change is dated either before or after the equal snapshot,
+        // so the walk visits it either after or before the snapshot that prunes it.
+        for (discarded_date, discarded_first) in [
+            ("2000-01-02T00:00:00 +0000", false),
+            ("2000-01-08T00:00:00 +0000", true),
+        ] {
             let history = api_history();
             let repo = &history.repo;
             repo.git(&["checkout", "-b", "feature"]).unwrap();
@@ -425,7 +441,7 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
                     "2000-01-01T00:00:00 +0000",
                 );
             }
-            history.write_commit_at(
+            let discarded = history.write_commit_at(
                 "src/lib.rs",
                 &breaking_api,
                 "feat!: discarded breaking API",
@@ -443,7 +459,7 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
                 "merge feature",
                 Some("2000-01-04T00:00:00 +0000"),
             );
-            history.write_commit_at(
+            let equal = history.write_commit_at(
                 "src/lib.rs",
                 BASE_API,
                 "revert: temporary",
@@ -466,6 +482,14 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
             assert_eq!(
                 fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
                 format!("{BASE_API}pub fn extra() {{}}\n")
+            );
+            let order = repo
+                .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+                .unwrap();
+            assert_eq!(
+                order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
+                discarded_first,
+                "{order}"
             );
             let diff = history.diff(None);
             assert_eq!(
