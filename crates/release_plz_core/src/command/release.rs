@@ -618,7 +618,8 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
                 debug!("checking out commit {commit}");
                 checkout_done = true;
             }
-            // The commit does not exist if the PR was squashed.
+            // Not expected to fail because `should_release` only returns commits in
+            // HEAD's history, but release from the current commit just in case.
             Err(_) => trace!("checkout failed; continuing"),
         }
     }
