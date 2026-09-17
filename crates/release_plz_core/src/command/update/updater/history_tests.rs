@@ -448,40 +448,60 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
 }
 
 #[test]
-fn a_restored_api_does_not_inherit_a_discarded_breaking_change_marker() {
-    let history = api_history();
-    let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
-    let implementation_commit = history.write_commit(
-        "src/lib.rs",
-        &implementation,
-        "chore: modify implementation",
-    );
-    history.write_commit(
-        "src/lib.rs",
-        &implementation.replace("api()", "api(_: bool)"),
-        "feat!: breaking API",
-    );
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
-    // Keep the preparation, but restore the original signature and evolve its
-    // implementation on the same line. An inverse patch for the signature now
-    // conflicts, even though the breaking API itself no longer survives.
-    let restored = history.write_commit(
-        "src/lib.rs",
-        &implementation.replace("/* implementation */", "/* implementation */ /* sibling */"),
-        "fix: restore API and evolve implementation",
-    );
-    let diff = history.diff(None);
-    assert_eq!(
-        commit_ids(&diff),
-        HashSet::from([
+fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
+    for breaking_survives in [false, true] {
+        let history = api_history();
+        let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+        let implementation_commit = history.write_commit(
+            "src/lib.rs",
+            &implementation,
+            "chore: modify implementation",
+        );
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            &implementation.replace("api()", "api(_: bool)"),
+            "feat!: breaking API",
+        );
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        // Evolve the implementation on the same line, either retaining the breaking
+        // signature or restoring the original. The line-based inverse patch now
+        // conflicts in both cases, although only one still needs a breaking bump.
+        let evolved = implementation
+            .replace("/* implementation */", "/* implementation */ /* sibling */")
+            .replace(
+                "api()",
+                if breaking_survives {
+                    "api(_: bool)"
+                } else {
+                    "api()"
+                },
+            );
+        let evolved_commit =
+            history.write_commit("src/lib.rs", &evolved, "fix: evolve implementation");
+        let diff = history.diff(None);
+        assert_next_version(
+            &diff,
+            &if breaking_survives {
+                Version::new(0, 2, 0)
+            } else {
+                Version::new(0, 1, 1)
+            },
+        );
+        let mut expected = HashSet::from([
             implementation_commit.as_str(),
             sibling.as_str(),
-            restored.as_str(),
-        ]),
-        "{:?}",
-        diff.commits
-    );
-    assert_next_version(&diff, &Version::new(0, 1, 1));
+            evolved_commit.as_str(),
+        ]);
+        if breaking_survives {
+            expected.insert(breaking.as_str());
+        }
+        assert_eq!(
+            commit_ids(&diff),
+            expected,
+            "breaking_survives={breaking_survives}: {:?}",
+            diff.commits
+        );
+    }
 }
 
 #[test]

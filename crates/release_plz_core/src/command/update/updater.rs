@@ -673,22 +673,6 @@ impl Updater<'_> {
         )?;
         let mut released_ancestors = HashSet::new();
         let mut retained_changes = None;
-        let check_equality = |released_package, released_path, commit: &str| {
-            self.check_package_equality(
-                repository,
-                package,
-                package_path,
-                released_package,
-                released_path,
-                &released_package_files,
-            )
-            .with_context(|| {
-                format!(
-                    "failed to check package equality for `{}` at commit {commit}",
-                    package.name
-                )
-            })
-        };
         for current_commit_hash in commits {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -704,8 +688,14 @@ impl Updater<'_> {
             }
             checkout_commit(repository, &current_commit_hash)?;
             if let Some((released_package, released_path)) = released {
-                let are_packages_equal =
-                    check_equality(released_package, released_path, &current_commit_hash)?;
+                let are_packages_equal = self.check_package_equality(
+                    repository,
+                    package,
+                    package_path,
+                    released_package,
+                    released_path,
+                    &released_package_files,
+                ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     if retained_changes.is_none() {
                         if let Some(files) = &mut package_files {
@@ -749,27 +739,6 @@ impl Updater<'_> {
                     current_commit_hash,
                     repository.current_commit_message()?,
                 ));
-            }
-        }
-
-        // Explicit release boundaries were excluded from the walk. They can
-        // still prove where a surviving sequence of edits began, but only after
-        // applying the same package comparison used for discovered boundaries.
-        if let Some(changes) = &mut retained_changes
-            && let Some((released_package, released_path)) = released
-        {
-            for boundary in release_boundaries {
-                // Missing or unrelated published SHAs cannot bound a candidate.
-                if diff.commits.iter().any(|commit| {
-                    released_ancestors.contains(&commit.id)
-                        && changes.reaches(&commit.id)
-                        && changes.descends_from(&commit.id, boundary)
-                }) {
-                    checkout_commit(repository, boundary)?;
-                    if check_equality(released_package, released_path, boundary)? {
-                        changes.add_boundary(boundary);
-                    }
-                }
             }
         }
 

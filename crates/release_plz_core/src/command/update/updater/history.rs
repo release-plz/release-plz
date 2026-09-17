@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt::Write as _, path::Path};
 
 use super::*;
 
@@ -9,9 +9,8 @@ use super::*;
 /// snapshots. For ancestors reachable through another lineage, revert the change
 /// in memory to distinguish surviving contributions from discarded merge parents.
 /// A revert that leaves the release unchanged proves a change was absent there.
-/// Sequential edits can make that revert conflict; an earlier equal snapshot can
-/// still establish the start of the sequence, provided this commit can be undone
-/// cleanly at HEAD.
+/// Compare conflicting text at character granularity so independent edits to the
+/// same line do not obscure that proof.
 pub(super) struct RetainedChanges {
     repo: git2::Repository,
     head: git2::Oid,
@@ -105,42 +104,21 @@ impl RetainedChanges {
         self.reachable.contains(commit)
     }
 
-    pub(super) fn descends_from(&self, commit: &str, ancestor: &str) -> bool {
-        git2::Oid::from_str(commit)
-            .and_then(|id| {
-                self.repo
-                    .graph_descendant_of(id, git2::Oid::from_str(ancestor)?)
-            })
-            .unwrap_or(false)
-    }
-
-    fn check(&self, commit_id: &str) -> anyhow::Result<Contribution> {
-        let commit = self.repo.find_commit(git2::Oid::from_str(commit_id)?)?;
+    fn check(&self, commit: &str) -> anyhow::Result<Contribution> {
+        let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
         let released = self.repo.find_commit(self.released)?;
-        let head = self.repo.find_commit(self.head)?;
-        match self.undo_changes_package(&commit, &released)? {
-            // Once absence from the release is established, a conflict at HEAD
-            // is ambiguous: preserve the breaking-change marker.
-            Contribution::Absent => self.undo_changes_package(&commit, &head),
-            Contribution::Present => Ok(Contribution::Absent),
-            Contribution::Conflict => {
-                // The commit may depend on an earlier edit to the same lines.
-                // An equal ancestor bounds that sequence just like a linear
-                // unreleased history. Require a clean undo of this individual
-                // commit at HEAD: surviving earlier edits alone are insufficient.
-                if matches!(
-                    self.undo_changes_package(&commit, &head)?,
-                    Contribution::Present
-                ) && self
-                    .boundaries
-                    .iter()
-                    .any(|boundary| self.descends_from(commit_id, boundary))
-                {
-                    return Ok(Contribution::Present);
-                }
-                Ok(Contribution::Absent)
-            }
+        // A conflict against the release does not establish that the commit's
+        // contribution was absent from it. Preserve the existing pruning then.
+        if !matches!(
+            self.undo_changes_package(&commit, &released)?,
+            Contribution::Absent
+        ) {
+            return Ok(Contribution::Absent);
         }
+        let head = self.repo.find_commit(self.head)?;
+        // Once absence from the release is established, a conflict at HEAD is
+        // ambiguous: keep the commit rather than losing a breaking-change marker.
+        self.undo_changes_package(&commit, &head)
     }
 
     fn undo_changes_package(
@@ -152,19 +130,34 @@ impl RetainedChanges {
         // `git revert -m 1` does. Root commits are handled by libgit2's empty base.
         let mainline = u32::from(commit.parent_count() > 1);
         let index = self.repo.revert_commit(commit, target, mainline, None)?;
+        let mut changed = false;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
             let changes_file_presence = conflict.our.as_ref().map(|entry| &entry.path)
                 != conflict.their.as_ref().map(|entry| &entry.path);
-            for entry in [conflict.ancestor, conflict.our, conflict.their]
-                .into_iter()
-                .flatten()
-            {
-                if std::str::from_utf8(&entry.path)
+            let affects_package = [
+                conflict.ancestor.as_ref(),
+                conflict.our.as_ref(),
+                conflict.their.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|entry| {
+                std::str::from_utf8(&entry.path)
                     .map(|path| self.includes(Path::new(path), changes_file_presence))
                     .unwrap_or(true)
-                {
-                    return Ok(Contribution::Conflict);
+            });
+            if affects_package {
+                let refined = self
+                    .refine_text_conflict(&conflict)
+                    .unwrap_or_else(|error| {
+                        debug!("cannot refine retained text changes: {error:#}");
+                        Contribution::Conflict
+                    });
+                match refined {
+                    Contribution::Absent => {}
+                    Contribution::Present => changed = true,
+                    Contribution::Conflict => return Ok(Contribution::Conflict),
                 }
             }
         }
@@ -172,7 +165,12 @@ impl RetainedChanges {
         let diff = self
             .repo
             .diff_tree_to_index(Some(&tree), Some(&index), None)?;
-        let changed = diff.deltas().any(|delta| {
+        changed |= diff.deltas().any(|delta| {
+            // Conflicts were classified above without changing the in-memory
+            // index; do not count a refined no-op again as a changed file.
+            if delta.status() == git2::Delta::Conflicted {
+                return false;
+            }
             let changes_file_presence =
                 matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted);
             [delta.old_file().path(), delta.new_file().path()]
@@ -184,6 +182,60 @@ impl RetainedChanges {
             Contribution::Present
         } else {
             Contribution::Absent
+        })
+    }
+
+    fn refine_text_conflict(&self, conflict: &git2::IndexConflict) -> anyhow::Result<Contribution> {
+        let (Some(ancestor), Some(ours), Some(theirs)) =
+            (&conflict.ancestor, &conflict.our, &conflict.their)
+        else {
+            return Ok(Contribution::Conflict);
+        };
+        if ancestor.path != ours.path
+            || ancestor.path != theirs.path
+            || ancestor.mode != ours.mode
+            || ancestor.mode != theirs.mode
+            || !matches!(ancestor.mode, 0o100_644 | 0o100_755)
+        {
+            return Ok(Contribution::Conflict);
+        }
+        let blobs = [
+            self.repo.find_blob(ancestor.id)?,
+            self.repo.find_blob(ours.id)?,
+            self.repo.find_blob(theirs.id)?,
+        ];
+        // Character-per-line inputs expand the diff's working set. Keep large
+        // or binary conflicts unresolved instead of allocating unbounded tokens.
+        if blobs.iter().map(git2::Blob::size).sum::<usize>() > 1024 * 1024
+            || blobs.iter().any(|blob| blob.content().contains(&0))
+        {
+            return Ok(Contribution::Conflict);
+        }
+        let mut encoded = Vec::with_capacity(blobs.len());
+        for blob in &blobs {
+            let Ok(contents) = std::str::from_utf8(blob.content()) else {
+                return Ok(Contribution::Conflict);
+            };
+            let mut characters = String::with_capacity(contents.len() * 3);
+            for character in contents.chars() {
+                // Encoding preserves newlines and Unicode scalars as individual,
+                // unambiguous lines for libgit2's existing three-way text merge.
+                writeln!(characters, "{:x}", u32::from(character))?;
+            }
+            encoded.push(characters);
+        }
+        let [mut ancestor, mut ours, mut theirs] =
+            std::array::from_fn(|_| git2::MergeFileInput::new());
+        ancestor.content(encoded[0].as_bytes());
+        ours.content(encoded[1].as_bytes());
+        theirs.content(encoded[2].as_bytes());
+        let merged = git2::merge_file(&ancestor, &ours, &theirs, None)?;
+        Ok(if !merged.is_automergeable() {
+            Contribution::Conflict
+        } else if merged.content() == encoded[1].as_bytes() {
+            Contribution::Absent
+        } else {
+            Contribution::Present
         })
     }
 
