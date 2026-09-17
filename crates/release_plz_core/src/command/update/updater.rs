@@ -951,23 +951,20 @@ fn should_check_semver(
 }
 
 fn contains_executable(package: &Package) -> bool {
-    contains_target_kind(package, &TargetKind::Bin)
+    target_kinds(package).any(|kind| *kind == TargetKind::Bin)
 }
 
 fn contains_library(package: &Package) -> bool {
     // `rlib` and `dylib` are Rust libraries like `lib`: downstream Rust crates can depend on
     // them, so their API is subject to semver. `cdylib` and `staticlib` only expose a C ABI.
-    // We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
-    package.targets.iter().any(|t| {
-        t.kind
-            .iter()
-            .any(|kind| matches!(kind, TargetKind::Lib | TargetKind::RLib | TargetKind::DyLib))
-    })
+    target_kinds(package)
+        .any(|kind| matches!(kind, TargetKind::Lib | TargetKind::RLib | TargetKind::DyLib))
 }
 
-fn contains_target_kind(package: &Package, target_kind: &TargetKind) -> bool {
-    // We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
-    package.targets.iter().any(|t| t.kind.contains(target_kind))
+/// Kinds of all the targets of the package.
+/// We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
+fn target_kinds(package: &Package) -> impl Iterator<Item = &TargetKind> {
+    package.targets.iter().flat_map(|t| t.kind.iter())
 }
 
 /// Get files that belong to the package.
