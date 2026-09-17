@@ -1401,6 +1401,8 @@ mod tests {
         }
     }
 
+    /// Mock the GitHub requests made when creating a git release.
+    /// The tag ref and the release are only created when the tag creation succeeds.
     async fn mock_git_release(server: &MockServer, commit: &str, tag_status: u16) {
         Mock::given(method("POST"))
             .and(path("/repos/owner/repo/git/tags"))
@@ -1413,21 +1415,21 @@ mod tests {
             .expect(1)
             .mount(server)
             .await;
-        let subsequent_requests = u64::from(tag_status == 201);
+        let follow_up_requests: u64 = if tag_status == 201 { 1 } else { 0 };
         Mock::given(method("POST"))
             .and(path("/repos/owner/repo/git/refs"))
             .and(body_partial_json(
                 json!({"ref": "refs/tags/v0.1.0", "sha": "tag-sha"}),
             ))
             .respond_with(ResponseTemplate::new(201))
-            .expect(subsequent_requests)
+            .expect(follow_up_requests)
             .mount(server)
             .await;
         Mock::given(method("POST"))
             .and(path("/repos/owner/repo/releases"))
             .and(body_partial_json(json!({"tag_name": "v0.1.0"})))
             .respond_with(ResponseTemplate::new(201))
-            .expect(subsequent_requests)
+            .expect(follow_up_requests)
             .mount(server)
             .await;
     }
