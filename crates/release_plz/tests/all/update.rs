@@ -1,4 +1,4 @@
-use git_cmd::{Repo, git_in_dir};
+use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::cmd::release_plz_cmd;
@@ -45,17 +45,7 @@ fn update_detached_workspace(repo_url: Option<&str>) {
         "[workspace]\nsemver_check = false\n",
     )
     .unwrap();
-    for args in [
-        vec!["init"],
-        vec!["config", "user.name", "Test"],
-        vec!["config", "user.email", "test@example.com"],
-        vec!["config", "commit.gpgsign", "false"],
-        vec!["add", "."],
-        vec!["commit", "-m", "chore: initial release"],
-    ] {
-        git_in_dir(&project_dir, &args).unwrap();
-    }
-    let repo = Repo::new(&project_dir).unwrap();
+    let repo = Repo::init(&project_dir);
     if repo_url.is_none() {
         repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
             .unwrap();

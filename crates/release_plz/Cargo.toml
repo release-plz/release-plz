@@ -46,6 +46,7 @@ url.workspace = true
 
 [dev-dependencies]
 cargo_utils = { path = "../cargo_utils" }
+git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
 test_logs = { path = "../test_logs" }
 fake_package = { path = "../fake_package" }
 
