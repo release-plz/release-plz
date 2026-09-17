@@ -622,6 +622,43 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
     assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
+/// A merge commit can be an ancestor of the equal snapshot too. Its own
+/// contribution, the conflict resolution, is undone relative to its first parent,
+/// like `git revert -m 1` does.
+#[test]
+fn a_merge_commit_whose_resolution_survives_is_retained() {
+    let history = api_history();
+    let repo = &history.repo;
+    let baseline = repo.current_commit_hash().unwrap();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    repo.git(&["checkout", "-b", "feature", &baseline]).unwrap();
+    history.write_commit(
+        "src/lib.rs",
+        &BASE_API.replace("api() {}", "api() {} // TODO: take a flag"),
+        "chore: plan the flag",
+    );
+    repo.checkout_head().unwrap();
+    assert!(
+        repo.git(&["merge", "--no-ff", "--no-commit", "feature"])
+            .is_err()
+    );
+    // The resolution drops the plan and documents the flag: a line of its own.
+    let resolved = history.write_commit(
+        "src/lib.rs",
+        &format!("/// Takes a flag.\n{BREAKING_API}"),
+        "merge resolved",
+    );
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([breaking.as_str(), resolved.as_str(), sibling.as_str()]),
+        "{:?}",
+        diff.commits
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
 #[test]
 fn ignored_file_changes_do_not_hide_a_retained_package_change() {
     for ignored in [
