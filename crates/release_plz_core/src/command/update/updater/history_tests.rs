@@ -106,17 +106,7 @@ impl History {
             .add_all_and_commit("revert: breaking change")
             .unwrap();
         self.repo.checkout_head().unwrap();
-        self.repo
-            .git(&[
-                "merge",
-                "--no-ff",
-                "-s",
-                "ours",
-                "-m",
-                "merge equal",
-                "equal",
-            ])
-            .unwrap();
+        self.merge_ours("equal", "merge equal", None);
         self.repo.git(&["checkout", "equal"]).unwrap();
         let sibling = self.write_commit(sibling_path, "", "fix: sibling");
         self.repo.checkout_head().unwrap();
@@ -124,6 +114,18 @@ impl History {
             .git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
             .unwrap();
         sibling
+    }
+
+    /// Merge `branch` with a "keep mine" merge: the merge commit has the same tree
+    /// as its first parent, discarding the branch's changes. `date` sets the author
+    /// and committer date of the merge commit.
+    fn merge_ours(&self, branch: &str, message: &str, date: Option<&str>) {
+        let args = ["merge", "--no-ff", "-s", "ours", "-m", message, branch];
+        match date {
+            Some(date) => self.repo.git_at(&args, date),
+            None => self.repo.git(&args),
+        }
+        .unwrap();
     }
 
     /// Two sibling branches off the current commit, each merged back with a
@@ -168,11 +170,11 @@ impl History {
         );
         // "Keep mine": the merge commit has the same tree as its first parent, which is
         // what makes git prune the feature branch from walks rooted after it.
-        repo.git_at(
-            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
-            "2000-01-02T00:00:00 +0000",
-        )
-        .unwrap();
+        self.merge_ours(
+            "feature",
+            "merge feature",
+            Some("2000-01-02T00:00:00 +0000"),
+        );
         // Back to the released tree, so this commit is the equal snapshot.
         let equal = self.write_commit_at(
             "src/lib.rs",
@@ -282,6 +284,11 @@ fn commit_ids(diff: &Diff) -> HashSet<&str> {
 const BASE_API: &str = "pub fn api() {}\n\n\n\n\n\npub fn stable() {}\n";
 const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}\n";
 
+/// [`BASE_API`] with an implementation change that leaves the API untouched.
+fn implemented_api() -> String {
+    BASE_API.replace("api() {}", "api() { /* implementation */ }")
+}
+
 fn api_history() -> History {
     History::with_packages(|root| {
         write_package(root, PACKAGE, "0.1.0", "");
@@ -322,7 +329,7 @@ fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                     _ => None,
                 };
                 let implementation = if sequential {
-                    BASE_API.replace("api() {}", "api() { /* implementation */ }")
+                    implemented_api()
                 } else {
                     BASE_API.to_owned()
                 };
@@ -358,19 +365,7 @@ fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                     },
                 );
                 repo.checkout_head().unwrap();
-                repo.git_at(
-                    &[
-                        "merge",
-                        "--no-ff",
-                        "-s",
-                        "ours",
-                        "-m",
-                        "merge equal",
-                        "equal",
-                    ],
-                    "2000-01-09T00:00:00 +0000",
-                )
-                .unwrap();
+                history.merge_ours("equal", "merge equal", Some("2000-01-09T00:00:00 +0000"));
                 repo.git(&["checkout", "equal"]).unwrap();
                 let sibling = history.write_commit_at(
                     "src/lib.rs",
@@ -417,7 +412,7 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
             let repo = &history.repo;
             repo.git(&["checkout", "-b", "feature"]).unwrap();
             let implementation = if sequential {
-                BASE_API.replace("api() {}", "api() { /* implementation */ }")
+                implemented_api()
             } else {
                 BASE_API.to_owned()
             };
@@ -443,11 +438,11 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
                 "chore: temporary",
                 "2000-01-03T00:00:00 +0000",
             );
-            repo.git_at(
-                &["merge", "-s", "ours", "-m", "merge feature", "feature"],
-                "2000-01-04T00:00:00 +0000",
-            )
-            .unwrap();
+            history.merge_ours(
+                "feature",
+                "merge feature",
+                Some("2000-01-04T00:00:00 +0000"),
+            );
             history.write_commit_at(
                 "src/lib.rs",
                 BASE_API,
@@ -488,7 +483,7 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
 fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
     for breaking_survives in [false, true] {
         let history = api_history();
-        let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+        let implementation = implemented_api();
         let implementation_commit = history.write_commit(
             "src/lib.rs",
             &implementation,
@@ -566,16 +561,7 @@ fn an_evolved_released_api_does_not_repeat_its_breaking_change_marker() {
         "chore: published implementation",
     );
     repo.checkout_head().unwrap();
-    repo.git(&[
-        "merge",
-        "--no-ff",
-        "-s",
-        "ours",
-        "-m",
-        "merge equal",
-        "equal",
-    ])
-    .unwrap();
+    history.merge_ours("equal", "merge equal", None);
     repo.git(&["checkout", "equal"]).unwrap();
     let sibling = history.write_commit(
         "src/lib.rs",
@@ -679,7 +665,7 @@ fn executable_bit_changes_do_not_hide_a_retained_package_change() {
             .git(&["config", "core.filemode", "true"])
             .unwrap();
         let implementation = if sequential {
-            let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+            let implementation = implemented_api();
             history.write_commit("src/lib.rs", &implementation, "chore: implementation");
             implementation
         } else {
@@ -938,7 +924,7 @@ fn sequential_readme_edits_keep_their_breaking_change_marker() {
         write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
         fs_err::write(root.join("API.md"), BASE_API).unwrap();
     });
-    let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+    let implementation = implemented_api();
     history.write_commit("API.md", &implementation, "chore: clarify documentation");
     let breaking = history.write_commit(
         "API.md",
