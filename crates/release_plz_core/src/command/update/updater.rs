@@ -707,17 +707,22 @@ impl Updater<'_> {
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     if retained_changes.is_none() {
-                        if let Some(files) = &mut package_files {
-                            match self.history_package_files(package_path, repository)? {
-                                Some(released_files) => files.extend(released_files),
-                                None => package_files = None,
-                            }
-                        }
+                        // Both file lists are needed: a file added or removed since
+                        // the release is only listed on one side.
+                        let package_files = match package_files.take() {
+                            Some(mut files) => self
+                                .history_package_files(package_path, repository)?
+                                .map(|released_files| {
+                                    files.extend(released_files);
+                                    files
+                                }),
+                            None => None,
+                        };
                         retained_changes = Some(history::RetainedChanges::new(
                             repository,
                             &head,
                             &current_commit_hash,
-                            package_files.take(),
+                            package_files,
                             &paths_to_check,
                             readme.as_deref(),
                         )?);
