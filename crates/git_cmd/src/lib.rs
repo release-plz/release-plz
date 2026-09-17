@@ -531,6 +531,7 @@ mod tests {
     /// release limited by `max_analyze_commits`.
     #[test]
     fn commit_limit_keeps_the_newest_commit_of_every_branch() {
+        test_logs::init();
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
         let path = Utf8Path::new("pkg");
@@ -597,6 +598,7 @@ mod tests {
 
     #[test]
     fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
+        test_logs::init();
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
         let path = Utf8Path::new("file.rs");
@@ -635,7 +637,8 @@ mod tests {
     }
 
     #[test]
-    fn commit_range_uses_both_release_boundaries_and_the_given_tip() {
+    fn commit_range_uses_the_given_tip_and_exclusions() {
+        test_logs::init();
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
         let path = Utf8Path::new("file.rs");

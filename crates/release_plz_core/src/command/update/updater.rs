@@ -655,6 +655,7 @@ impl Updater<'_> {
         let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
+            // 0 means "no limit"
             .filter(|&n| n != 0);
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
@@ -707,7 +708,7 @@ impl Updater<'_> {
                 }
             }
             // A package can contain another package in a subdirectory, so only count
-            // commits that touch files Cargo would package for this crate.
+            // commits that touch files Cargo would package for this package.
             if self.are_changed_files_in_package(package_path, repository, &current_commit_hash)? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
