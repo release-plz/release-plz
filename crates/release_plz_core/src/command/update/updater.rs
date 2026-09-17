@@ -674,13 +674,13 @@ impl Updater<'_> {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
-            if let Some((registry_package, registry_package_path)) = released {
+            if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
                     package,
                     package_path,
-                    registry_package,
-                    registry_package_path,
+                    released_package,
+                    released_path,
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
@@ -695,12 +695,12 @@ impl Updater<'_> {
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
-                if package.version > registry_package.package.version && diff.is_version_published {
+                if package.version > released_package.package.version && diff.is_version_published {
                     info!(
                         "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
-                        package.name, package.version, registry_package.package.version
+                        package.name, package.version, released_package.package.version
                     );
-                    diff.set_version_unpublished(registry_package.package.version.clone());
+                    diff.set_version_unpublished(released_package.package.version.clone());
                 }
             }
             // A package can contain another package in a subdirectory, so only count
@@ -725,14 +725,9 @@ impl Updater<'_> {
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
-            && let Some((registry_package, registry_package_path)) = released
+            && let Some((released_package, released_path)) = released
         {
-            self.add_dependencies_update_if_any(
-                diff,
-                registry_package,
-                package,
-                registry_package_path,
-            )?;
+            self.add_dependencies_update_if_any(diff, released_package, package, released_path)?;
         }
         Ok(())
     }
