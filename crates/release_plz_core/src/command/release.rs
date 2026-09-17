@@ -1437,6 +1437,7 @@ mod tests {
     #[tokio::test]
     async fn release_with_detached_head_respects_release_always() {
         for release_always in [true, false] {
+            let context = format!("release_always: {release_always}");
             let server = MockServer::start().await;
             let (_temporary, repo, request) = release_fixture(&server);
             // Model a colocated jj repository without requiring jj in CI.
@@ -1452,14 +1453,15 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(outcome.is_some(), release_always);
+            assert_eq!(outcome.is_some(), release_always, "{context}");
             assert_eq!(
                 server.received_requests().await.unwrap().len(),
-                if release_always { 4 } else { 1 }
+                if release_always { 4 } else { 1 },
+                "{context}"
             );
-            assert_eq!(repo.current_commit_hash().unwrap(), head);
-            assert!(repo.is_head_detached().unwrap());
-            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs);
+            assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+            assert!(repo.is_head_detached().unwrap(), "{context}");
+            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
             repo.is_clean().unwrap();
         }
     }
@@ -1468,6 +1470,7 @@ mod tests {
     async fn release_uses_prepared_commit_and_restores_checkout() {
         for detached in [false, true] {
             for tag_status in [201, 403] {
+                let context = format!("detached: {detached}, tag status: {tag_status}");
                 let server = MockServer::start().await;
                 let (_temporary, repo, request) = release_fixture(&server);
                 if detached {
@@ -1492,27 +1495,29 @@ mod tests {
                 let outcome = release(&request.with_release_always(false)).await;
 
                 if tag_status == 201 {
-                    assert_eq!(outcome.unwrap().unwrap().releases.len(), 1);
+                    assert_eq!(outcome.unwrap().unwrap().releases.len(), 1, "{context}");
                 } else {
                     let error = outcome.unwrap_err();
                     assert!(
                         format!("{error:#}").contains("failed to create tag"),
-                        "{error:#}"
+                        "{context}: {error:#}"
                     );
                 }
-                assert_eq!(repo.current_commit_hash().unwrap(), head);
+                assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
                 assert_eq!(
                     repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap(),
-                    branch
+                    branch,
+                    "{context}"
                 );
-                assert_eq!(repo.is_head_detached().unwrap(), detached);
-                assert_eq!(repo.git(&["show-ref"]).unwrap(), refs);
+                assert_eq!(repo.is_head_detached().unwrap(), detached, "{context}");
+                assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
                 // Checkout can convert line endings when core.autocrlf is enabled.
                 assert_eq!(
                     fs_err::read_to_string(repo.directory().join("src/lib.rs"))
                         .unwrap()
                         .replace("\r\n", "\n"),
-                    "// Unreleased change\n"
+                    "// Unreleased change\n",
+                    "{context}"
                 );
                 repo.is_clean().unwrap();
             }
@@ -1522,6 +1527,7 @@ mod tests {
     #[tokio::test]
     async fn release_ignores_pr_commits_outside_detached_history() {
         for missing_commit in [false, true] {
+            let context = format!("missing commit: {missing_commit}");
             let server = MockServer::start().await;
             let (_temporary, repo, request) = release_fixture(&server);
             let head = repo.current_commit_hash().unwrap();
@@ -1540,10 +1546,10 @@ mod tests {
 
             let outcome = release(&request.with_release_always(false)).await.unwrap();
 
-            assert_eq!(outcome.unwrap().releases.len(), 1);
-            assert_eq!(repo.current_commit_hash().unwrap(), head);
-            assert!(repo.is_head_detached().unwrap());
-            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs);
+            assert_eq!(outcome.unwrap().releases.len(), 1, "{context}");
+            assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+            assert!(repo.is_head_detached().unwrap(), "{context}");
+            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
             repo.is_clean().unwrap();
         }
     }
