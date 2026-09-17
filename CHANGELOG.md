@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.168](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.167...release-plz-v0.3.168) - 2026-09-17
+
+### Fixed
+
+- check semver for rlib and dylib libraries ([#3070](https://github.com/release-plz/release-plz/pull/3070))
+- check semver for private workspace libraries ([#3067](https://github.com/release-plz/release-plz/pull/3067))
+- reconstruct git-only releases without creating crate archives ([#3058](https://github.com/release-plz/release-plz/pull/3058))
+- scope git-only Cargo.lock comparisons to packaged dependencies ([#3057](https://github.com/release-plz/release-plz/pull/3057))
+- update GitHub release PRs without git credentials ([#3068](https://github.com/release-plz/release-plz/pull/3068))
+
 ## [0.3.167](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.166...release-plz-v0.3.167) - 2026-09-13
 
 ### Fixed
