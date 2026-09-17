@@ -626,6 +626,20 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
+        // The existing PR must be updated in place, not closed and reopened.
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/pulls/42"))
+            .and(body_partial_json(json!({"state": "closed"})))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/pulls"))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(0)
+            .mount(&server)
+            .await;
         let opened_pr: GitPr = serde_json::from_value(json!({
             "user": {"id": 1, "login": "release-plz[bot]"},
             "number": 42,
@@ -662,8 +676,7 @@ mod tests {
             fs_err::read_to_string(repo.directory().join("feature.txt")).unwrap(),
             "new feature"
         );
-        // Only the existing PR is edited; no PR is closed or opened.
-        assert_eq!(server.received_requests().await.unwrap().len(), 6);
+        server.verify().await;
     }
 
     #[tokio::test]
@@ -684,10 +697,8 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(
-            format!("{error:#}").contains("failed to force push PR branch"),
-            "{error:#}"
-        );
+        let error = format!("{error:#}");
+        assert!(error.contains("failed to force push PR branch"), "{error}");
         server.verify().await;
     }
 
@@ -712,9 +723,10 @@ mod tests {
         )
         .await
         .unwrap_err();
+        let error = format!("{error:#}");
         assert!(
-            format!("{error:#}").contains("failed to create commit via graphql"),
-            "{error:#}"
+            error.contains("failed to create commit via graphql"),
+            "{error}"
         );
         server.verify().await;
     }
