@@ -678,9 +678,11 @@ impl Updater<'_> {
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
             if released_ancestors.contains(&current_commit_hash)
-                && !retained_changes.as_mut().is_some_and(
-                    |changes: &mut history::RetainedChanges| changes.reaches(&current_commit_hash),
-                )
+                && !retained_changes
+                    .as_ref()
+                    .is_some_and(|changes: &history::RetainedChanges| {
+                        changes.reaches(&current_commit_hash)
+                    })
             {
                 continue;
             }
@@ -746,7 +748,7 @@ impl Updater<'_> {
         diff.commits.retain(|commit| {
             !released_ancestors.contains(&commit.id)
                 || retained_changes
-                    .as_mut()
+                    .as_ref()
                     .is_some_and(|changes| changes.contains(&commit.id))
         });
 

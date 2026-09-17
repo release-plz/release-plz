@@ -16,14 +16,12 @@ pub(super) struct RetainedChanges {
     released: git2::Oid,
     package_files: Option<HashSet<Utf8PathBuf>>,
     paths: Vec<Utf8PathBuf>,
-    cache: HashMap<String, Contribution>,
     parents: HashMap<String, Vec<String>>,
     root: Option<String>,
     boundaries: HashSet<String>,
     reachable: HashSet<String>,
 }
 
-#[derive(Clone, Copy)]
 enum Contribution {
     Absent,
     Present,
@@ -61,7 +59,6 @@ impl RetainedChanges {
                         .map(Utf8Path::to_path_buf)
                 })
                 .collect::<Result<_, _>>()?,
-            cache: HashMap::new(),
             parents,
             root,
             boundaries: HashSet::new(),
@@ -83,22 +80,16 @@ impl RetainedChanges {
         }
     }
 
-    pub(super) fn contains(&mut self, commit: &str) -> bool {
+    pub(super) fn contains(&self, commit: &str) -> bool {
         if !self.reaches(commit) {
             return false;
         }
-        let contribution = if let Some(contribution) = self.cache.get(commit) {
-            *contribution
-        } else {
-            let contribution = self.check(commit).unwrap_or_else(|error| {
-                // Shallow histories may not contain the parent required for a revert.
-                // In that case there is no evidence to override ancestry pruning.
-                debug!("cannot check retained changes in {commit}: {error:#}");
-                Contribution::Absent
-            });
-            self.cache.insert(commit.to_owned(), contribution);
-            contribution
-        };
+        let contribution = self.check(commit).unwrap_or_else(|error| {
+            // Shallow histories may not contain the parent required for a revert.
+            // In that case there is no evidence to override ancestry pruning.
+            debug!("cannot check retained changes in {commit}: {error:#}");
+            Contribution::Absent
+        });
         match contribution {
             Contribution::Absent => false,
             // A sibling editing the same lines as a reverted commit can make its
