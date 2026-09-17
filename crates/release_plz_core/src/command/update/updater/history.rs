@@ -8,8 +8,10 @@ use super::*;
 /// release. Follow Git's simplified parent graph, stopping each lineage at equal
 /// snapshots. For ancestors reachable through another lineage, revert the change
 /// in memory to distinguish surviving contributions from discarded merge parents.
-/// First require that the same revert leaves the released snapshot unchanged:
-/// otherwise its absence from the release is unproven, so keep normal pruning.
+/// A revert that leaves the release unchanged proves a change was absent there.
+/// Sequential edits can make that revert conflict; an earlier equal snapshot can
+/// still establish the start of the sequence, provided this commit can be undone
+/// cleanly at HEAD.
 pub(super) struct RetainedChanges {
     repo: git2::Repository,
     head: git2::Oid,
@@ -103,21 +105,42 @@ impl RetainedChanges {
         self.reachable.contains(commit)
     }
 
-    fn check(&self, commit: &str) -> anyhow::Result<Contribution> {
-        let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
+    pub(super) fn descends_from(&self, commit: &str, ancestor: &str) -> bool {
+        git2::Oid::from_str(commit)
+            .and_then(|id| {
+                self.repo
+                    .graph_descendant_of(id, git2::Oid::from_str(ancestor)?)
+            })
+            .unwrap_or(false)
+    }
+
+    fn check(&self, commit_id: &str) -> anyhow::Result<Contribution> {
+        let commit = self.repo.find_commit(git2::Oid::from_str(commit_id)?)?;
         let released = self.repo.find_commit(self.released)?;
-        // A conflict against the release does not establish that the commit's
-        // contribution was absent from it. Preserve the existing pruning then.
-        if !matches!(
-            self.undo_changes_package(&commit, &released)?,
-            Contribution::Absent
-        ) {
-            return Ok(Contribution::Absent);
-        }
         let head = self.repo.find_commit(self.head)?;
-        // Once absence from the release is established, a conflict at HEAD is
-        // ambiguous: keep the commit rather than losing a breaking-change marker.
-        self.undo_changes_package(&commit, &head)
+        match self.undo_changes_package(&commit, &released)? {
+            // Once absence from the release is established, a conflict at HEAD
+            // is ambiguous: preserve the breaking-change marker.
+            Contribution::Absent => self.undo_changes_package(&commit, &head),
+            Contribution::Present => Ok(Contribution::Absent),
+            Contribution::Conflict => {
+                // The commit may depend on an earlier edit to the same lines.
+                // An equal ancestor bounds that sequence just like a linear
+                // unreleased history. Require a clean undo of this individual
+                // commit at HEAD: surviving earlier edits alone are insufficient.
+                if matches!(
+                    self.undo_changes_package(&commit, &head)?,
+                    Contribution::Present
+                ) && self
+                    .boundaries
+                    .iter()
+                    .any(|boundary| self.descends_from(commit_id, boundary))
+                {
+                    return Ok(Contribution::Present);
+                }
+                Ok(Contribution::Absent)
+            }
+        }
     }
 
     fn undo_changes_package(

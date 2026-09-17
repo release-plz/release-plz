@@ -260,136 +260,287 @@ fn assert_next_version(diff: &Diff, expected: &Version) {
 }
 
 #[test]
-fn an_ignored_revert_does_not_hide_a_surviving_breaking_change() {
-    for skew in [false, true] {
-        for tagged in [false, true] {
-            let history = api_history();
-            let repo = &history.repo;
-            if tagged {
-                repo.tag_lightweight("v0.1.0").unwrap();
+fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
+    for sequential in [false, true] {
+        for skew in [false, true] {
+            for boundary in ["equality", "tag", "unrelated published commit"] {
+                let history = api_history();
+                let repo = &history.repo;
+                let published_at = match boundary {
+                    "tag" => {
+                        repo.tag_lightweight("v0.1.0").unwrap();
+                        None
+                    }
+                    "unrelated published commit" => {
+                        repo.git(&["checkout", "--orphan", "published"]).unwrap();
+                        // The manifest matches the release, but this unrelated
+                        // history has no source targets and cannot be packaged.
+                        fs_err::remove_dir_all(repo.directory().join("src")).unwrap();
+                        repo.add_all_and_commit("chore: unrelated published snapshot")
+                            .unwrap();
+                        let commit = repo.current_commit_hash().unwrap();
+                        repo.checkout_head().unwrap();
+                        Some(commit)
+                    }
+                    _ => None,
+                };
+                let implementation = if sequential {
+                    BASE_API.replace("api() {}", "api() { /* implementation */ }")
+                } else {
+                    BASE_API.to_owned()
+                };
+                let breaking_api = implementation.replace("api()", "api(_: bool)");
+                let implementation_commit = sequential.then(|| {
+                    // Package equality ignores the root lockfile even when its
+                    // bytes differ between the tag and later equal snapshot.
+                    let lockfile = repo.directory().join("Cargo.lock");
+                    let contents = fs_err::read_to_string(&lockfile).unwrap();
+                    fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
+                    history.write_commit_at(
+                        "src/lib.rs",
+                        &implementation,
+                        "chore: modify implementation",
+                        "2000-01-04T00:00:00 +0000",
+                    )
+                });
+                let breaking = history.write_commit_at(
+                    "src/lib.rs",
+                    &breaking_api,
+                    "feat!: breaking API",
+                    "2000-01-05T00:00:00 +0000",
+                );
+                repo.git(&["checkout", "-b", "equal"]).unwrap();
+                history.write_commit_at(
+                    "src/lib.rs",
+                    BASE_API,
+                    "revert: API changes",
+                    if skew {
+                        "2000-01-02T00:00:00 +0000"
+                    } else {
+                        "2000-01-06T00:00:00 +0000"
+                    },
+                );
+                repo.checkout_head().unwrap();
+                repo.git_at(
+                    &[
+                        "merge",
+                        "--no-ff",
+                        "-s",
+                        "ours",
+                        "-m",
+                        "merge equal",
+                        "equal",
+                    ],
+                    "2000-01-09T00:00:00 +0000",
+                )
+                .unwrap();
+                repo.git(&["checkout", "equal"]).unwrap();
+                let sibling = history.write_commit_at(
+                    "src/lib.rs",
+                    &format!("{BASE_API}pub fn extra() {{}}\n"),
+                    "fix: sibling",
+                    if skew {
+                        "2000-01-03T00:00:00 +0000"
+                    } else {
+                        "2000-01-07T00:00:00 +0000"
+                    },
+                );
+                repo.checkout_head().unwrap();
+                repo.git_at(
+                    &["merge", "--no-ff", "-m", "merge sibling", "equal"],
+                    "2000-01-10T00:00:00 +0000",
+                )
+                .unwrap();
+                let merge = repo.current_commit_hash().unwrap();
+                assert_eq!(
+                    fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+                    format!("{breaking_api}pub fn extra() {{}}\n")
+                );
+                let diff = history.diff(published_at.as_deref());
+                assert_next_version(&diff, &Version::new(0, 2, 0));
+                let mut expected =
+                    HashSet::from([breaking.as_str(), sibling.as_str(), merge.as_str()]);
+                expected.extend(implementation_commit.as_deref());
+                assert_eq!(
+                    commit_ids(&diff),
+                    expected,
+                    "sequential={sequential}, skew={skew}, boundary={boundary}: {:?}",
+                    diff.commits
+                );
             }
-            let breaking = history.write_commit_at(
-                "src/lib.rs",
-                BREAKING_API,
-                "feat!: breaking API",
-                "2000-01-05T00:00:00 +0000",
-            );
-            repo.git(&["checkout", "-b", "equal"]).unwrap();
-            history.write_commit_at(
-                "src/lib.rs",
-                BASE_API,
-                "revert: breaking API",
-                if skew {
-                    "2000-01-02T00:00:00 +0000"
-                } else {
-                    "2000-01-06T00:00:00 +0000"
-                },
-            );
-            repo.checkout_head().unwrap();
-            repo.git_at(
-                &[
-                    "merge",
-                    "--no-ff",
-                    "-s",
-                    "ours",
-                    "-m",
-                    "merge equal",
-                    "equal",
-                ],
-                "2000-01-09T00:00:00 +0000",
-            )
-            .unwrap();
-            repo.git(&["checkout", "equal"]).unwrap();
-            let sibling = history.write_commit_at(
-                "src/lib.rs",
-                &format!("{BASE_API}pub fn extra() {{}}\n"),
-                "fix: sibling",
-                if skew {
-                    "2000-01-03T00:00:00 +0000"
-                } else {
-                    "2000-01-07T00:00:00 +0000"
-                },
-            );
-            repo.checkout_head().unwrap();
-            repo.git_at(
-                &["merge", "--no-ff", "-m", "merge sibling", "equal"],
-                "2000-01-10T00:00:00 +0000",
-            )
-            .unwrap();
-            let merge = repo.current_commit_hash().unwrap();
-            assert_eq!(
-                fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-                format!("{BREAKING_API}pub fn extra() {{}}\n")
-            );
-            let diff = history.diff(None);
-            assert_eq!(
-                commit_ids(&diff),
-                HashSet::from([breaking.as_str(), sibling.as_str(), merge.as_str()]),
-                "skew={skew}, tagged={tagged}: {:?}",
-                diff.commits
-            );
-            assert_next_version(&diff, &Version::new(0, 2, 0));
         }
     }
 }
 
 #[test]
 fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
-    for discarded_date in ["2000-01-02T00:00:00 +0000", "2000-01-08T00:00:00 +0000"] {
-        let history = api_history();
-        let repo = &history.repo;
-        repo.git(&["checkout", "-b", "feature"]).unwrap();
-        history.write_commit_at(
-            "src/lib.rs",
-            BREAKING_API,
-            "feat!: discarded breaking API",
-            discarded_date,
-        );
-        repo.checkout_head().unwrap();
-        history.write_commit_at(
-            "src/lib.rs",
-            &format!("{BASE_API}// temporary\n"),
-            "chore: temporary",
-            "2000-01-03T00:00:00 +0000",
-        );
-        repo.git_at(
-            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
-            "2000-01-04T00:00:00 +0000",
-        )
-        .unwrap();
-        history.write_commit_at(
-            "src/lib.rs",
-            BASE_API,
-            "revert: temporary",
-            "2000-01-05T00:00:00 +0000",
-        );
-        repo.git(&["checkout", "feature"]).unwrap();
-        let sibling = history.write_commit_at(
-            "src/lib.rs",
-            &format!("{BREAKING_API}pub fn extra() {{}}\n"),
-            "fix: sibling",
-            "2000-01-09T00:00:00 +0000",
-        );
-        repo.checkout_head().unwrap();
-        repo.git_at(
-            &["merge", "--no-ff", "-m", "merge feature again", "feature"],
-            "2000-01-10T00:00:00 +0000",
-        )
-        .unwrap();
-        let merge = repo.current_commit_hash().unwrap();
-        assert_eq!(
-            fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-            format!("{BASE_API}pub fn extra() {{}}\n")
-        );
-        let diff = history.diff(None);
-        assert_eq!(
-            commit_ids(&diff),
-            HashSet::from([sibling.as_str(), merge.as_str()]),
-            "{:?}",
-            diff.commits
-        );
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+    for sequential in [false, true] {
+        for discarded_date in ["2000-01-02T00:00:00 +0000", "2000-01-08T00:00:00 +0000"] {
+            let history = api_history();
+            let repo = &history.repo;
+            repo.git(&["checkout", "-b", "feature"]).unwrap();
+            let implementation = if sequential {
+                BASE_API.replace("api() {}", "api() { /* implementation */ }")
+            } else {
+                BASE_API.to_owned()
+            };
+            let breaking_api = implementation.replace("api()", "api(_: bool)");
+            if sequential {
+                history.write_commit_at(
+                    "src/lib.rs",
+                    &implementation,
+                    "chore: modify implementation",
+                    "2000-01-01T00:00:00 +0000",
+                );
+            }
+            history.write_commit_at(
+                "src/lib.rs",
+                &breaking_api,
+                "feat!: discarded breaking API",
+                discarded_date,
+            );
+            repo.checkout_head().unwrap();
+            history.write_commit_at(
+                "src/lib.rs",
+                &format!("{BASE_API}// temporary\n"),
+                "chore: temporary",
+                "2000-01-03T00:00:00 +0000",
+            );
+            repo.git_at(
+                &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+                "2000-01-04T00:00:00 +0000",
+            )
+            .unwrap();
+            history.write_commit_at(
+                "src/lib.rs",
+                BASE_API,
+                "revert: temporary",
+                "2000-01-05T00:00:00 +0000",
+            );
+            repo.git(&["checkout", "feature"]).unwrap();
+            let sibling = history.write_commit_at(
+                "src/lib.rs",
+                &format!("{breaking_api}pub fn extra() {{}}\n"),
+                "fix: sibling",
+                "2000-01-09T00:00:00 +0000",
+            );
+            repo.checkout_head().unwrap();
+            repo.git_at(
+                &["merge", "--no-ff", "-m", "merge feature again", "feature"],
+                "2000-01-10T00:00:00 +0000",
+            )
+            .unwrap();
+            let merge = repo.current_commit_hash().unwrap();
+            assert_eq!(
+                fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+                format!("{BASE_API}pub fn extra() {{}}\n")
+            );
+            let diff = history.diff(None);
+            assert_eq!(
+                commit_ids(&diff),
+                HashSet::from([sibling.as_str(), merge.as_str()]),
+                "sequential={sequential}, discarded_date={discarded_date}: {:?}",
+                diff.commits
+            );
+            assert_next_version(&diff, &Version::new(0, 1, 1));
+        }
     }
+}
+
+#[test]
+fn a_restored_api_does_not_inherit_a_discarded_breaking_change_marker() {
+    let history = api_history();
+    let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+    let implementation_commit = history.write_commit(
+        "src/lib.rs",
+        &implementation,
+        "chore: modify implementation",
+    );
+    history.write_commit(
+        "src/lib.rs",
+        &implementation.replace("api()", "api(_: bool)"),
+        "feat!: breaking API",
+    );
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    // Keep the preparation, but restore the original signature and evolve its
+    // implementation on the same line. An inverse patch for the signature now
+    // conflicts, even though the breaking API itself no longer survives.
+    let restored = history.write_commit(
+        "src/lib.rs",
+        &implementation.replace("/* implementation */", "/* implementation */ /* sibling */"),
+        "fix: restore API and evolve implementation",
+    );
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([
+            implementation_commit.as_str(),
+            sibling.as_str(),
+            restored.as_str(),
+        ]),
+        "{:?}",
+        diff.commits
+    );
+    assert_next_version(&diff, &Version::new(0, 1, 1));
+}
+
+#[test]
+fn an_evolved_released_api_does_not_repeat_its_breaking_change_marker() {
+    let history = api_history();
+    let repo = &history.repo;
+    let published_api = BREAKING_API.replace(
+        "api(_: bool) {}",
+        "api(_: bool) { /* published implementation */ }",
+    );
+    fs_err::write(
+        history.registry.directory().join("src/lib.rs"),
+        &published_api,
+    )
+    .unwrap();
+    history
+        .registry
+        .add_all_and_commit("published release")
+        .unwrap();
+    history.write_commit("src/lib.rs", BREAKING_API, "feat!: released breaking API");
+    repo.git(&["checkout", "-b", "equal"]).unwrap();
+    history.write_commit(
+        "src/lib.rs",
+        &published_api,
+        "chore: published implementation",
+    );
+    repo.checkout_head().unwrap();
+    repo.git(&[
+        "merge",
+        "--no-ff",
+        "-s",
+        "ours",
+        "-m",
+        "merge equal",
+        "equal",
+    ])
+    .unwrap();
+    repo.git(&["checkout", "equal"]).unwrap();
+    let sibling = history.write_commit(
+        "src/lib.rs",
+        &format!("{published_api}pub fn extra() {{}}\n"),
+        "fix: sibling",
+    );
+    repo.checkout_head().unwrap();
+    repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
+        .unwrap();
+    let merge = repo.current_commit_hash().unwrap();
+    assert_eq!(
+        fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+        format!("{BREAKING_API}pub fn extra() {{}}\n")
+    );
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([sibling.as_str(), merge.as_str()]),
+        "{:?}",
+        diff.commits
+    );
+    assert_next_version(&diff, &Version::new(0, 1, 1));
 }
 
 #[test]
