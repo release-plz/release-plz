@@ -670,6 +670,10 @@ impl Updater<'_> {
         )?;
         let mut released_ancestors = HashSet::new();
         for current_commit_hash in commits {
+            // Optimization only: an already pruned commit would be checked out and
+            // `cargo package`d for nothing. The `retain` after the loop is what keeps
+            // these out of the diff — the walk can reach them before the snapshot that
+            // prunes them, so this check alone can't be relied on.
             if released_ancestors.contains(&current_commit_hash) {
                 continue;
             }
@@ -713,9 +717,11 @@ impl Updater<'_> {
             }
         }
 
-        // `--date-order` only orders the simplified history the walk traverses, so
-        // an ancestor hidden behind a severed merge edge can be visited before the
-        // snapshot that prunes it. Drop it here rather than relying on the order.
+        // This, not the skip at the top of the loop, is what keeps released ancestors
+        // out of the diff. `--date-order` only orders the simplified history the walk
+        // traverses, so an ancestor hidden behind a severed merge edge can be visited
+        // before the snapshot that prunes it. Drop it here rather than relying on the
+        // order.
         diff.commits
             .retain(|commit| !released_ancestors.contains(&commit.id));
 
