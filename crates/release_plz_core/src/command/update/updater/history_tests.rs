@@ -71,6 +71,61 @@ impl History {
         (baseline, one, two)
     }
 
+    /// A feature branch discarded by a "keep mine" merge, then merged again with a
+    /// `--no-ff` merge that makes its commits reachable from HEAD. `discarded_date`
+    /// places the discarded commit relative to the equal snapshot in the date-ordered
+    /// walk. Returns the discarded, the equal and the unreleased commit.
+    fn feature_discarded_by_a_keep_mine_merge(
+        &self,
+        discarded_date: &str,
+    ) -> (String, String, String) {
+        let repo = &self.repo;
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        let discarded = self.write_commit_at(
+            "src/feature.rs",
+            "",
+            "feat: discarded by the merge",
+            discarded_date,
+        );
+        repo.checkout_head().unwrap();
+        self.write_commit_at(
+            "src/lib.rs",
+            "pub fn temporary() {}\n",
+            "feat: temporary",
+            "2000-01-01T00:00:00 +0000",
+        );
+        // "Keep mine": the merge commit has the same tree as its first parent, which is
+        // what makes git prune the feature branch from walks rooted after it.
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2000-01-02T00:00:00 +0000",
+        )
+        .unwrap();
+        // Back to the released tree, so this commit is the equal snapshot.
+        let equal = self.write_commit_at(
+            "src/lib.rs",
+            "",
+            "revert: temporary",
+            "2000-01-03T00:00:00 +0000",
+        );
+        // A second merge of the same branch makes the discarded commit reachable again
+        // from HEAD, this time through a merge that git doesn't simplify away.
+        repo.git(&["checkout", "feature"]).unwrap();
+        let unreleased = self.write_commit_at(
+            "src/feature2.rs",
+            "",
+            "feat: unreleased",
+            "2000-01-06T00:00:00 +0000",
+        );
+        repo.checkout_head().unwrap();
+        repo.git_at(
+            &["merge", "--no-ff", "-m", "merge feature again", "feature"],
+            "2000-01-07T00:00:00 +0000",
+        )
+        .unwrap();
+        (discarded, equal, unreleased)
+    }
+
     fn diff(&self, published_at: Option<&str>) -> Diff {
         let metadata =
             cargo_utils::get_manifest_metadata(&self.registry.directory().join(CARGO_TOML))
@@ -239,55 +294,22 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
 #[test]
 fn a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot() {
     let history = History::new();
-    let repo = &history.repo;
-    repo.git(&["checkout", "-b", "feature"]).unwrap();
-    let discarded = history.write_commit_at(
-        "src/feature.rs",
-        "",
-        "feat: discarded by the merge",
-        "2000-01-02T00:00:00 +0000",
-    );
-    repo.checkout_head().unwrap();
-    history.write_commit_at(
-        "src/lib.rs",
-        "pub fn temporary() {}\n",
-        "feat: temporary",
-        "2000-01-03T00:00:00 +0000",
-    );
-    // "Keep mine": the merge commit has the same tree as its first parent, which is
-    // what makes git prune the feature branch from walks rooted after it.
-    repo.git(&["merge", "-s", "ours", "-m", "merge feature", "feature"])
-        .unwrap();
-    // Back to the released tree, so this commit is the equal snapshot.
-    let equal = history.write_commit_at(
-        "src/lib.rs",
-        "",
-        "revert: temporary",
-        "2000-01-05T00:00:00 +0000",
-    );
+    let (discarded, equal, unreleased) =
+        history.feature_discarded_by_a_keep_mine_merge("1999-12-31T00:00:00 +0000");
     assert!(
-        repo.is_ancestor(&discarded, &equal),
+        history.repo.is_ancestor(&discarded, &equal),
         "the discarded commit must be a real ancestor of the equal snapshot"
     );
-    // A second merge of the same branch makes the discarded commit reachable again
-    // from HEAD, this time through a merge that git doesn't simplify away.
-    repo.git(&["checkout", "feature"]).unwrap();
-    let unreleased = history.write_commit_at(
-        "src/feature2.rs",
-        "",
-        "feat: unreleased",
-        "2000-01-06T00:00:00 +0000",
-    );
-    repo.checkout_head().unwrap();
-    repo.git(&["merge", "--no-ff", "-m", "merge feature again", "feature"])
-        .unwrap();
-
     // Exercise the order where the equal snapshot is visited before the commit it
     // has to prune.
-    let order = repo
+    let order = history
+        .repo
         .git(&["rev-list", "--date-order", "HEAD", "--", "."])
         .unwrap();
-    assert!(order.find(&equal).unwrap() < order.find(&discarded).unwrap());
+    assert!(
+        order.find(&equal).unwrap() < order.find(&discarded).unwrap(),
+        "{order}"
+    );
     assert_eq!(
         commit_ids(&history.diff(None)),
         HashSet::from([unreleased.as_str()]),
@@ -303,58 +325,16 @@ fn a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot() {
 #[test]
 fn an_ancestor_visited_before_the_equal_snapshot_is_still_pruned() {
     let history = History::new();
-    let repo = &history.repo;
-    repo.git(&["checkout", "-b", "feature"]).unwrap();
-    let discarded = history.write_commit_at(
-        "src/feature.rs",
-        "",
-        "feat: discarded by the merge",
-        "2000-01-05T00:00:00 +0000",
-    );
-    repo.checkout_head().unwrap();
-    history.write_commit_at(
-        "src/lib.rs",
-        "pub fn temporary() {}\n",
-        "feat: temporary",
-        "2000-01-01T00:00:00 +0000",
-    );
-    // "Keep mine": the merge commit has the same tree as its first parent, which is
-    // what makes git prune the feature branch from walks rooted after it.
-    repo.git_at(
-        &["merge", "-s", "ours", "-m", "merge feature", "feature"],
-        "2000-01-02T00:00:00 +0000",
-    )
-    .unwrap();
-    // Back to the released tree, so this commit is the equal snapshot.
-    let equal = history.write_commit_at(
-        "src/lib.rs",
-        "",
-        "revert: temporary",
-        "2000-01-03T00:00:00 +0000",
-    );
+    let (discarded, equal, unreleased) =
+        history.feature_discarded_by_a_keep_mine_merge("2000-01-05T00:00:00 +0000");
     assert!(
-        repo.is_ancestor(&discarded, &equal),
+        history.repo.is_ancestor(&discarded, &equal),
         "the discarded commit must be a real ancestor of the equal snapshot"
     );
-    // A second merge of the same branch makes the discarded commit reachable again
-    // from HEAD, this time through a merge that git doesn't simplify away.
-    repo.git(&["checkout", "feature"]).unwrap();
-    let unreleased = history.write_commit_at(
-        "src/feature2.rs",
-        "",
-        "feat: unreleased",
-        "2000-01-06T00:00:00 +0000",
-    );
-    repo.checkout_head().unwrap();
-    repo.git_at(
-        &["merge", "--no-ff", "-m", "merge feature again", "feature"],
-        "2000-01-07T00:00:00 +0000",
-    )
-    .unwrap();
-
     // Exercise the unfavourable order: the walk this simplifies exactly like the
     // diff's own one has to reach the discarded commit before the equal snapshot.
-    let order = repo
+    let order = history
+        .repo
         .git(&["rev-list", "--date-order", "HEAD", "--", "."])
         .unwrap();
     assert!(
