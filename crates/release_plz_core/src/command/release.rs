@@ -798,7 +798,7 @@ async fn should_release(
             match pr_commits.last() {
                 Some(commit) if commit.sha != last_commit => {
                     if repo.is_ancestor(&commit.sha, &last_commit) {
-                        // I need to checkout the last commit of the PR if it exists
+                        // Checkout the last commit of the PR
                         Ok(ShouldRelease::YesWithCommit(commit.sha.clone()))
                     } else {
                         // The commit is not in HEAD's history, probably the PR was squashed
