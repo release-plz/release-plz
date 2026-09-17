@@ -649,6 +649,19 @@ impl Updater<'_> {
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
         let paths_to_check = paths_to_check(package_path, package)?;
+        // Keep the configured README link as well as its canonical target: README
+        // equality follows links even though ordinary package-file equality does not.
+        let readme = package
+            .readme
+            .as_ref()
+            .map(|readme| package_path.join(readme))
+            .filter(|readme| readme.exists())
+            .map(|readme| -> anyhow::Result<_> {
+                let parent = readme.parent().context("README has no parent")?;
+                let name = readme.file_name().context("README has no file name")?;
+                Ok(fs_utils::canonicalize_utf8(parent)?.join(name))
+            })
+            .transpose()?;
         let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
@@ -710,6 +723,7 @@ impl Updater<'_> {
                             &current_commit_hash,
                             package_files.take(),
                             &paths_to_check,
+                            readme.as_deref(),
                         )?);
                     }
                     if let Some(changes) = &mut retained_changes {

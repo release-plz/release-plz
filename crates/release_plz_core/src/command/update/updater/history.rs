@@ -17,6 +17,7 @@ pub(super) struct RetainedChanges {
     released: git2::Oid,
     package_files: Option<HashSet<Utf8PathBuf>>,
     paths: Vec<Utf8PathBuf>,
+    readme: Option<Utf8PathBuf>,
     parents: HashMap<String, Vec<String>>,
     root: Option<String>,
     boundaries: HashSet<String>,
@@ -36,6 +37,7 @@ impl RetainedChanges {
         released: &str,
         package_files: Option<HashSet<Utf8PathBuf>>,
         paths: &[Utf8PathBuf],
+        readme: Option<&Utf8Path>,
     ) -> anyhow::Result<Self> {
         let mut args = vec!["rev-list", "--parents", "--date-order", head, "--"];
         args.extend(paths.iter().map(|path| path.as_str()));
@@ -60,6 +62,9 @@ impl RetainedChanges {
                         .map(Utf8Path::to_path_buf)
                 })
                 .collect::<Result<_, _>>()?,
+            readme: readme
+                .and_then(|path| path.strip_prefix(repository.directory()).ok())
+                .map(Utf8Path::to_path_buf),
             parents,
             root,
             boundaries: HashSet::new(),
@@ -130,6 +135,7 @@ impl RetainedChanges {
         // `git revert -m 1` does. Root commits are handled by libgit2's empty base.
         let mainline = u32::from(commit.parent_count() > 1);
         let index = self.repo.revert_commit(commit, target, mainline, None)?;
+        let tree = target.tree()?;
         let mut changed = false;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
@@ -144,7 +150,7 @@ impl RetainedChanges {
             .flatten()
             .any(|entry| {
                 std::str::from_utf8(&entry.path)
-                    .map(|path| self.includes(Path::new(path), changes_file_presence))
+                    .map(|path| self.includes(Path::new(path), changes_file_presence, &tree))
                     .unwrap_or(true)
             });
             if affects_package {
@@ -161,10 +167,12 @@ impl RetainedChanges {
                 }
             }
         }
-        let tree = target.tree()?;
+        // Replacing a regular file with a symlink keeps the same packaged path.
+        let mut options = git2::DiffOptions::new();
+        options.include_typechange(true);
         let diff = self
             .repo
-            .diff_tree_to_index(Some(&tree), Some(&index), None)?;
+            .diff_tree_to_index(Some(&tree), Some(&index), Some(&mut options))?;
         changed |= diff.deltas().any(|delta| {
             // Conflicts were classified above without changing the in-memory
             // index; do not count a refined no-op again as a changed file.
@@ -186,7 +194,7 @@ impl RetainedChanges {
             [delta.old_file().path(), delta.new_file().path()]
                 .into_iter()
                 .flatten()
-                .any(|path| self.includes(path, changes_file_presence))
+                .any(|path| self.includes(path, changes_file_presence, &tree))
         });
         Ok(if changed {
             Contribution::Present
@@ -249,10 +257,13 @@ impl RetainedChanges {
         })
     }
 
-    fn includes(&self, path: &Path, changes_file_presence: bool) -> bool {
+    fn includes(&self, path: &Path, changes_file_presence: bool, target: &git2::Tree<'_>) -> bool {
         let Some(path) = Utf8Path::from_path(path) else {
             return true;
         };
+        if self.readme.as_deref() == Some(path) {
+            return true;
+        }
         // Match package equality: generated files are ignored at the package root.
         let package_relative_path = self
             .paths
@@ -268,6 +279,17 @@ impl RetainedChanges {
         // list even though their contents are excluded from equality checks.
         if !changes_file_presence
             && matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
+        {
+            return false;
+        }
+        // Equality ignores symlink contents in the local snapshot, but their
+        // addition or deletion still changes the package's file list. The
+        // manifest and configured README are compared separately, following links.
+        if !changes_file_presence
+            && package_relative_path.map(Utf8Path::as_str) != Some(CARGO_TOML)
+            && target
+                .get_path(path.as_std_path())
+                .is_ok_and(|entry| entry.filemode() == i32::from(git2::FileMode::Link))
         {
             return false;
         }

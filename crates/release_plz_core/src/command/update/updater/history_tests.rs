@@ -59,12 +59,18 @@ impl History {
     /// Ignore a revert of the current change, then import a sibling change
     /// through the reverted branch so that its equal snapshot is also visited.
     fn merge_ignored_revert(&self, path: &str, contents: Option<&str>) -> String {
+        self.merge_ignored_change("src/fix.rs", |root| {
+            let path = root.join(path);
+            match contents {
+                Some(contents) => fs_err::write(path, contents).unwrap(),
+                None => fs_err::remove_file(path).unwrap(),
+            }
+        })
+    }
+
+    fn merge_ignored_change(&self, sibling_path: &str, revert: impl FnOnce(&Utf8Path)) -> String {
         self.repo.git(&["checkout", "-b", "equal"]).unwrap();
-        let path = self.repo.directory().join(path);
-        match contents {
-            Some(contents) => fs_err::write(path, contents).unwrap(),
-            None => fs_err::remove_file(path).unwrap(),
-        }
+        revert(self.repo.directory());
         self.repo
             .add_all_and_commit("revert: breaking change")
             .unwrap();
@@ -81,7 +87,7 @@ impl History {
             ])
             .unwrap();
         self.repo.git(&["checkout", "equal"]).unwrap();
-        let sibling = self.write_commit("src/fix.rs", "", "fix: sibling");
+        let sibling = self.write_commit(sibling_path, "", "fix: sibling");
         self.repo.checkout_head().unwrap();
         self.repo
             .git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
@@ -674,6 +680,151 @@ fn executable_bit_changes_do_not_hide_a_retained_package_change() {
             "sequential={sequential}"
         );
         assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_target_changes_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::symlink;
+
+    for (was_symlink, conflicting) in [(false, false), (true, false), (true, true)] {
+        let history = History::with_packages(|root| {
+            write_package(root, PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+            for target in ["a.txt", "b.txt", "c.txt"] {
+                fs_err::write(root.join("src").join(target), target).unwrap();
+            }
+            let link = root.join("src/link.txt");
+            if was_symlink {
+                symlink("a.txt", link).unwrap();
+            } else {
+                fs_err::write(link, "original\n").unwrap();
+            }
+        });
+        let link = history.repo.directory().join("src/link.txt");
+        fs_err::remove_file(&link).unwrap();
+        symlink("b.txt", &link).unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        if conflicting {
+            // Undoing a -> b at c conflicts even though equality ignores the link.
+            fs_err::remove_file(&link).unwrap();
+            symlink("c.txt", &link).unwrap();
+            history
+                .repo
+                .add_all_and_commit("chore: retarget link")
+                .unwrap();
+        }
+        history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(None);
+        assert!(
+            commit_ids(&diff).contains(breaking.as_str()),
+            "was_symlink={was_symlink}, conflicting={conflicting}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let diff = history.diff(None);
+        assert!(
+            !commit_ids(&diff).contains(breaking.as_str()),
+            "was_symlink={was_symlink}, conflicting={conflicting}"
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_presence_changes_keep_their_breaking_change_marker() {
+    use std::os::unix::fs::symlink;
+
+    for added in [false, true] {
+        let history = History::with_packages(|root| {
+            write_package(root, PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("src/target.txt"), "fixture\n").unwrap();
+            if !added {
+                symlink("target.txt", root.join("src/link.txt")).unwrap();
+            }
+        });
+        let link = history.repo.directory().join("src/link.txt");
+        if added {
+            symlink("target.txt", &link).unwrap();
+        } else {
+            fs_err::remove_file(&link).unwrap();
+        }
+        // Include a regular packaged path in the commit; its contents are ignored.
+        let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
+        let breaking = history.write_commit(
+            "Cargo.lock",
+            &format!("{lock}# changed\n"),
+            "feat!: fixture paths",
+        );
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            let link = root.join("src/link.txt");
+            if added {
+                fs_err::remove_file(link).unwrap();
+            } else {
+                symlink("target.txt", link).unwrap();
+            }
+        });
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "added={added}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn readme_symlink_changes_keep_their_breaking_change_marker() {
+    use std::os::unix::fs::symlink;
+
+    for package_dir in ["", "app"] {
+        let ignored = Utf8Path::new(package_dir).join("src/Cargo.lock");
+        let history = History::with_packages(|root| {
+            let readme = if package_dir.is_empty() {
+                "API.md"
+            } else {
+                fs_err::write(root.join(CARGO_TOML), "[workspace]\nmembers = [\"app\"]\n").unwrap();
+                "../API.md"
+            };
+            write_package(
+                &root.join(package_dir),
+                PACKAGE,
+                "0.1.0",
+                &format!("readme = {readme:?}\n"),
+            );
+            fs_err::write(root.join(&ignored), "original\n").unwrap();
+            for target in ["old.md", "new.md"] {
+                fs_err::write(root.join(target), target).unwrap();
+            }
+            symlink("old.md", root.join("API.md")).unwrap();
+        });
+        let readme = history.repo.directory().join("API.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink("new.md", &readme).unwrap();
+        let breaking = history.write_commit(ignored.as_str(), "changed\n", "feat!: documented API");
+        let sibling = history.merge_ignored_change(
+            Utf8Path::new(package_dir).join("src/fix.rs").as_str(),
+            |root| {
+                let readme = root.join("API.md");
+                fs_err::remove_file(&readme).unwrap();
+                symlink("old.md", readme).unwrap();
+                // Keep the equal snapshot in the package's path-filtered history
+                // even when its README link lives outside the package directory.
+                fs_err::write(root.join(&ignored), "reverted\n").unwrap();
+            },
+        );
+        let diff = history.diff(None);
+        assert!(
+            HashSet::from([breaking.as_str(), sibling.as_str()]).is_subset(&commit_ids(&diff)),
+            "package_dir={package_dir}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
     }
 }
 
