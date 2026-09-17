@@ -688,11 +688,14 @@ impl Updater<'_> {
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    // This snapshot is already released, so everything it is built
-                    // on is too. `--full-history` is what makes the set complete:
-                    // git's default simplification drops the second parent of a
-                    // "keep mine" merge, hiding real ancestors. The paths are the
-                    // same as the outer walk's, since only its commits are probed.
+                    // Prune every ancestor of this released snapshot.
+                    // `--full-history` is what makes the set complete: git's
+                    // default simplification drops the second parent of a "keep
+                    // mine" merge, hiding real ancestors. The paths are the same
+                    // as the outer walk's, since only its commits are probed.
+                    // "Ancestor of a released snapshot" only coincides with
+                    // "already released" while merges don't invert tree order: a
+                    // `merge -s ours` can keep an ancestor's tree alive at HEAD.
                     released_ancestors.extend(
                         repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
                     );
