@@ -25,6 +25,8 @@ impl History {
         let repo = Repo::init(canonicalize(&local_dir));
         let registry = Repo::init(canonicalize(&registry_dir));
         for repo in [&repo, &registry] {
+            // Keep checked-out files byte-identical to the LF-only registry fixtures.
+            repo.git(&["config", "core.autocrlf", "false"]).unwrap();
             write_packages(repo.directory());
             fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
             generate_lockfile(repo.directory());
