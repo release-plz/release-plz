@@ -15,7 +15,7 @@ use tracing::{debug, instrument, trace, warn};
 pub struct Repo {
     /// Directory where you want to run git operations
     directory: Utf8PathBuf,
-    /// Branch name before running any git operation
+    /// Branch name, or commit hash if HEAD was detached, before running any git operation
     original_branch: String,
     /// Remote name before running any git operation
     original_remote: String,
@@ -64,6 +64,11 @@ impl Repo {
                     let branch = get_current_branch(directory)?;
                     warn!("no upstream configured for branch {branch}");
                     Ok(("origin".to_string(), branch))
+                } else if err.contains("fatal: HEAD does not point to a branch") {
+                    // Save the commit, rather than the symbolic HEAD, so checkout_head
+                    // can restore it after checking out older commits.
+                    let commit = git_in_dir(directory.as_ref(), &["rev-parse", "HEAD"])?;
+                    Ok(("origin".to_string(), commit))
                 } else if err.contains("fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.") {
                     Err(anyhow!("git repository does not contain any commit."))
                 } else {
@@ -178,10 +183,16 @@ impl Repo {
         Ok(())
     }
 
-    /// Branch name before running any git operation.
+    /// Branch name, or commit hash if HEAD was detached, before running any git operation.
     /// I.e. when the [`Repo`] was created.
     pub fn original_branch(&self) -> &str {
         &self.original_branch
+    }
+
+    /// Whether HEAD points directly to a commit rather than to a branch.
+    pub fn is_head_detached(&self) -> anyhow::Result<bool> {
+        // `rev-parse --abbrev-ref HEAD` prints `HEAD` when HEAD is detached.
+        Ok(get_current_branch(&self.directory)? == "HEAD")
     }
 
     /// Run a git command in the repository git directory
@@ -576,6 +587,58 @@ mod tests {
                 .contains(&discarded),
             "the simplified walk is supposed to miss it: that's why the two differ"
         );
+    }
+
+    #[test]
+    fn detached_head_is_restored_after_checking_out_history() {
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let previous_commit = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "--detach"]).unwrap();
+        repo.git(&["commit", "--allow-empty", "-m", "detached commit"])
+            .unwrap();
+        let original_commit = repo.current_commit_hash().unwrap();
+        repo.git(&[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/test/project.git",
+        ])
+        .unwrap();
+
+        let repo = Repo::new(repo.directory()).unwrap();
+        assert_eq!(repo.original_branch(), original_commit);
+        assert_eq!(repo.original_remote(), "origin");
+        assert_eq!(
+            repo.original_remote_url().unwrap(),
+            "https://github.com/test/project.git"
+        );
+
+        repo.checkout(&previous_commit).unwrap();
+        repo.checkout_head().unwrap();
+        assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
+        assert!(repo.is_head_detached().unwrap());
+    }
+
+    #[test]
+    fn configured_upstream_is_used() {
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        repo.git(&[
+            "remote",
+            "add",
+            "upstream",
+            "https://github.com/test/project.git",
+        ])
+        .unwrap();
+        repo.git(&["update-ref", "refs/remotes/upstream/release/stable", "HEAD"])
+            .unwrap();
+        repo.git(&["branch", "--set-upstream-to=upstream/release/stable"])
+            .unwrap();
+
+        let repo = Repo::new(repo.directory()).unwrap();
+        assert_eq!(repo.original_remote(), "upstream");
+        assert_eq!(repo.original_branch(), "release/stable");
     }
 
     #[test]
