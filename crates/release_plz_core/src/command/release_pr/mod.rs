@@ -693,6 +693,11 @@ mod tests {
         assert_eq!(updated.head_branch, opened_pr.branch());
         assert_eq!(updated.base_branch, repo.original_branch());
         assert_eq!(repo.current_commit_hash().unwrap(), base_sha);
+        // The GitHub update path must not touch the local checkout, e.g. by checking out a temporary branch.
+        assert_eq!(
+            repo.git(&["branch", "--show-current"]).unwrap().trim(),
+            repo.original_branch()
+        );
         assert_eq!(
             fs_err::read_to_string(repo.directory().join("feature.txt")).unwrap(),
             "new feature"
