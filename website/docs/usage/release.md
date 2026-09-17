@@ -31,7 +31,8 @@ To learn more, run `release-plz release --help`.
 
 `release-plz release` supports detached Git HEADs, including
 [colocated jj repositories](https://docs.jj-vcs.dev/latest/git-compatibility/#colocated-jujutsugit-workspaces).
-It releases from the commit checked out in Git's `HEAD`.
+It starts from the commit checked out in Git's `HEAD` and then applies the logic
+described in [What commit is released](#what-commit-is-released).
 
 Before releasing with jj, create an empty working-copy change on top of the
 commit you want to release, for example with `jj new <revision>`.
