@@ -220,7 +220,9 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
     repo.git(&["merge", "--no-ff", "-m", "merge branch", "branch"])
         .unwrap();
     // Exercise the order where stopping at the equal snapshot would lose its sibling.
-    let order = repo.git(&["rev-list", "--date-order", "HEAD"]).unwrap();
+    let order = repo
+        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+        .unwrap();
     assert!(order.find(&equal).unwrap() < order.find(&sibling).unwrap());
     assert_eq!(
         commit_ids(&history.diff(None)),
@@ -282,7 +284,9 @@ fn a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot() {
 
     // Exercise the order where the equal snapshot is visited before the commit it
     // has to prune.
-    let order = repo.git(&["rev-list", "--date-order", "HEAD"]).unwrap();
+    let order = repo
+        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+        .unwrap();
     assert!(order.find(&equal).unwrap() < order.find(&discarded).unwrap());
     assert_eq!(
         commit_ids(&history.diff(None)),
