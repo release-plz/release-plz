@@ -525,7 +525,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::git::{forge::GitForge, github_client::GitHub};
+    use crate::git::{
+        forge::{Author, Commit, GitForge},
+        github_client::GitHub,
+    };
 
     fn github_client(server: &MockServer) -> GitClient {
         let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
@@ -640,16 +643,21 @@ mod tests {
             .expect(0)
             .mount(&server)
             .await;
-        let opened_pr: GitPr = serde_json::from_value(json!({
-            "user": {"id": 1, "login": "release-plz[bot]"},
-            "number": 42,
-            "html_url": "https://github.com/owner/repo/pull/42",
-            "head": {"ref": "release-plz-test", "sha": "old-release-sha"},
-            "title": "chore: release v0.1.0",
-            "body": "release notes",
-            "labels": []
-        }))
-        .unwrap();
+        let opened_pr = GitPr {
+            user: Author {
+                id: 1,
+                login: "release-plz[bot]".into(),
+            },
+            number: 42,
+            html_url: "https://github.com/owner/repo/pull/42".parse().unwrap(),
+            head: Commit {
+                ref_field: "release-plz-test".into(),
+                sha: "old-release-sha".into(),
+            },
+            title: "chore: release v0.1.0".into(),
+            body: Some("release notes".into()),
+            labels: vec![],
+        };
         let new_pr = Pr {
             base_branch: repo.original_branch().to_string(),
             branch: "release-plz-new".into(),
