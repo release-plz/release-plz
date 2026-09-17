@@ -240,14 +240,28 @@ impl Repo {
             .map(|commit| format!("^{commit}"))
             .collect();
         let limit = max_commits.map(|n| format!("--max-count={n}"));
-        let mut args = vec!["rev-list", "--date-order", head];
+        let mut args = vec!["--date-order", head];
         args.extend(exclusions.iter().map(String::as_str));
         args.extend(limit.as_deref());
-        args.push("--");
-        for path in paths {
-            args.push(path.to_str().expect("invalid path"));
-        }
-        let output = self.git(&args)?;
+        self.rev_list(&args, paths)
+    }
+
+    /// Commits reachable from `commit` that touch `paths`, including `commit` itself.
+    ///
+    /// Unlike [`Repo::commits_at_paths_since`], this doesn't simplify history: every
+    /// parent of a merge is followed, so the result is a superset of the commits any
+    /// simplified walk can reach through `commit`.
+    pub fn ancestors_at_paths(&self, commit: &str, paths: &[&Path]) -> anyhow::Result<Vec<String>> {
+        self.rev_list(&["--full-history", commit], paths)
+    }
+
+    /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
+    fn rev_list(&self, args: &[&str], paths: &[&Path]) -> anyhow::Result<Vec<String>> {
+        let mut rev_list = vec!["rev-list"];
+        rev_list.extend(args);
+        rev_list.push("--");
+        rev_list.extend(paths.iter().map(|p| p.to_str().expect("invalid path")));
+        let output = self.git(&rev_list)?;
         Ok(output.lines().map(str::to_owned).collect())
     }
 

@@ -689,12 +689,9 @@ impl Updater<'_> {
                     // children, so these ancestors have not been visited yet.
                     // Only commits in `commits` are ever looked up, so restrict the
                     // ancestry to the same paths instead of dumping every hash.
-                    released_ancestors.extend(repository.commits_at_paths_since(
-                        &current_commit_hash,
-                        &[],
-                        &paths_to_check,
-                        None,
-                    )?);
+                    released_ancestors.extend(
+                        repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
+                    );
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
