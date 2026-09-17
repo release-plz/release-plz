@@ -1196,7 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn library_with_cdylib_and_rlib_kinds_is_a_library() {
+    fn target_with_cdylib_and_rlib_kinds_is_a_library() {
         // `crate-type = ["cdylib", "rlib"]` is reported by cargo as one target with two kinds.
         let mut package: Package = fake_package::FakePackage::new("my_package")
             .with_targets(&["cdylib"])
