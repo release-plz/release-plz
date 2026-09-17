@@ -604,6 +604,37 @@ mod tests {
         fs_err::write(repo.directory().join("CHANGELOG.md"), "new release notes").unwrap();
     }
 
+    /// Release PR opened by a previous release-plz run, with `branch` as head.
+    fn opened_pr(branch: &str) -> GitPr {
+        GitPr {
+            user: Author {
+                id: 1,
+                login: "release-plz[bot]".into(),
+            },
+            number: 42,
+            html_url: "https://github.com/owner/repo/pull/42".parse().unwrap(),
+            head: Commit {
+                ref_field: branch.into(),
+                sha: "old-release-sha".into(),
+            },
+            title: "chore: release v0.1.0".into(),
+            body: Some("release notes".into()),
+            labels: vec![],
+        }
+    }
+
+    /// Release PR calculated by the current release-plz run.
+    fn new_pr(repo: &Repo) -> Pr {
+        Pr {
+            base_branch: repo.original_branch().to_string(),
+            branch: "release-plz-new".into(),
+            title: "chore: release v0.2.0".into(),
+            body: "release notes".into(),
+            draft: false,
+            labels: vec![],
+        }
+    }
+
     #[tokio::test]
     async fn github_updates_existing_pr_without_git_remote_access() {
         test_logs::init();
@@ -646,29 +677,8 @@ mod tests {
             .expect(0)
             .mount(&server)
             .await;
-        let opened_pr = GitPr {
-            user: Author {
-                id: 1,
-                login: "release-plz[bot]".into(),
-            },
-            number: 42,
-            html_url: "https://github.com/owner/repo/pull/42".parse().unwrap(),
-            head: Commit {
-                ref_field: "release-plz-test".into(),
-                sha: "old-release-sha".into(),
-            },
-            title: "chore: release v0.1.0".into(),
-            body: Some("release notes".into()),
-            labels: vec![],
-        };
-        let new_pr = Pr {
-            base_branch: repo.original_branch().to_string(),
-            branch: "release-plz-new".into(),
-            title: "chore: release v0.2.0".into(),
-            body: "release notes".into(),
-            draft: false,
-            labels: vec![],
-        };
+        let opened_pr = opened_pr("release-plz-test");
+        let new_pr = new_pr(&repo);
         let updated = handle_opened_pr(
             &github_client(&server),
             &opened_pr,
@@ -748,5 +758,32 @@ mod tests {
             "{error}"
         );
         server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn github_refuses_to_update_pr_on_non_release_branch() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        let server = MockServer::start().await;
+        let opened_pr = opened_pr("main");
+        let new_pr = new_pr(&repo);
+
+        let error = update_pr(
+            &github_client(&server),
+            &opened_pr,
+            1,
+            &repo,
+            &new_pr,
+            DEFAULT_BRANCH_PREFIX,
+        )
+        .await
+        .unwrap_err();
+
+        let error = format!("{error:#}");
+        assert!(error.contains("wrong branch name"), "{error}");
+        // The guard must fire before any API call: the force ref update is
+        // destructive, so a non-release branch must never be touched.
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 }
