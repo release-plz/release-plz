@@ -602,6 +602,9 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         input,
     )?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
+    repo.git(&["symbolic-ref", "--quiet", "HEAD"]).context(
+        "release requires a branch. Check out the target branch instead of a detached HEAD",
+    )?;
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
     debug!("should release: {should_release:?}");
@@ -1360,6 +1363,64 @@ mod tests {
         } else {
             unsafe { env::remove_var(key.as_ref()) };
         }
+    }
+
+    #[tokio::test]
+    async fn release_rejects_detached_head_before_accessing_forge_or_registry() {
+        test_logs::init();
+        let forge_server = wiremock::MockServer::start().await;
+        let registry_server = wiremock::MockServer::start().await;
+        let temporary = tempfile::tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        let manifest = repo.directory().join("Cargo.toml");
+        fs_err::write(
+            &manifest,
+            "[package]\nname = \"test-package\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
+             [lib]\npath = \"lib.rs\"\n",
+        )
+        .unwrap();
+        fs_err::write(repo.directory().join("lib.rs"), "").unwrap();
+        fs_err::create_dir(repo.directory().join(".cargo")).unwrap();
+        fs_err::write(
+            repo.directory().join(".cargo/config.toml"),
+            format!(
+                "[registries.detached-head-test]\nindex = \"sparse+{}/index/\"\n",
+                registry_server.uri()
+            ),
+        )
+        .unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        repo.add_all_and_commit("feat: initial package").unwrap();
+        repo.git(&["checkout", "--detach"]).unwrap();
+        let original_head = repo.current_commit_hash().unwrap();
+        let original_refs = repo.git(&["show-ref"]).unwrap();
+        let github = crate::GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(forge_server.uri().parse().unwrap());
+        let request = ReleaseRequest::new(metadata)
+            .with_registry("detached-head-test")
+            .with_token("token")
+            .with_git_release(GitRelease {
+                forge: GitForge::Github(github),
+            });
+
+        let error = release(&request).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("release requires a branch"),
+            "{error:#}"
+        );
+        assert!(forge_server.received_requests().await.unwrap().is_empty());
+        assert!(
+            registry_server
+                .received_requests()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(repo.current_commit_hash().unwrap(), original_head);
+        assert!(repo.git(&["symbolic-ref", "--quiet", "HEAD"]).is_err());
+        assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
+        repo.is_clean().unwrap();
     }
 
     #[tokio::test]
