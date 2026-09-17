@@ -1531,7 +1531,9 @@ mod tests {
             let server = MockServer::start().await;
             let (_temporary, repo, request) = release_fixture(&server);
             let head = repo.current_commit_hash().unwrap();
-            // Keep a newer PR commit on the original branch, outside detached HEAD's history.
+            // The PR commit is either a newer commit on the original branch, outside
+            // detached HEAD's history, or a commit that doesn't exist locally,
+            // e.g. because the PR was squashed.
             repo.git(&["commit", "--allow-empty", "-m", "chore: release"])
                 .unwrap();
             let pr_commit = if missing_commit {
