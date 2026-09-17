@@ -246,6 +246,7 @@ async fn release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib() {
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_breaking_changes_after_rlib_to_lib() {
+    // The published version has a different `crate-type` than the current one.
     check_release_pr_with_breaking_changes(
         Some(&["cdylib", "rlib"][..]),
         Some(&["cdylib", "lib"][..]),
