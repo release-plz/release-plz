@@ -458,7 +458,7 @@ async fn github_force_push(
             .context("failed to force push PR branch")
     }
     .await;
-    // Delete the temporary branch if it was created. Even if the push failed.
+    // Delete the temporary branch even if the commit or the force push failed.
     if let Err(e) = client.delete_branch(&tmp_release_branch).await {
         tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
     }
