@@ -683,6 +683,79 @@ fn executable_bit_changes_do_not_hide_a_retained_package_change() {
     }
 }
 
+#[test]
+fn materialized_symlink_files_keep_their_breaking_change_marker() {
+    for (path, sequential) in [
+        ("src/link.txt", false),
+        ("src/link.txt", true),
+        ("API.md", false),
+        ("API.md", true),
+    ] {
+        let history = History::with_packages(|root| {
+            let readme = if path == "API.md" {
+                "readme = \"API.md\"\n"
+            } else {
+                ""
+            };
+            write_package(root, PACKAGE, "0.1.0", readme);
+            fs_err::write(root.join(path), "old-target.txt").unwrap();
+            for target in [
+                "old-target.txt",
+                "new-target.txt",
+                "old-target.txt-extra",
+                "new-target.txt-extra",
+            ] {
+                fs_err::write(
+                    root.join(path).parent().unwrap().join(target),
+                    "# same contents\n",
+                )
+                .unwrap();
+            }
+        });
+        for repo in [&history.repo, &history.registry] {
+            repo.git(&["config", "core.symlinks", "false"]).unwrap();
+            let blob = repo.git(&["hash-object", "-w", "--", path]).unwrap();
+            repo.git(&[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("120000,{blob},{path}"),
+            ])
+            .unwrap();
+            repo.git(&["commit", "-m", "chore: materialized link baseline"])
+                .unwrap();
+            assert!(!repo.directory().join(path).is_symlink());
+            assert!(
+                repo.git(&["ls-files", "--stage", "--", path])
+                    .unwrap()
+                    .starts_with("120000 ")
+            );
+        }
+        let contents = if sequential {
+            history.write_commit(path, "old-target.txt-extra", "chore: pointer suffix");
+            "new-target.txt-extra"
+        } else {
+            "new-target.txt"
+        };
+        let breaking = history.write_commit(path, contents, "feat!: pointer format");
+        let sibling = history.merge_ignored_revert(path, Some("old-target.txt"));
+        let diff = history.diff(None);
+        assert!(
+            HashSet::from([breaking.as_str(), sibling.as_str()]).is_subset(&commit_ids(&diff)),
+            "path={path}, sequential={sequential}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        history.write_commit(path, "old-target.txt", "fix: restore pointer");
+        let diff = history.diff(None);
+        assert!(
+            !commit_ids(&diff).contains(breaking.as_str()),
+            "path={path}, sequential={sequential}"
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn symlink_target_changes_do_not_hide_a_retained_package_change() {

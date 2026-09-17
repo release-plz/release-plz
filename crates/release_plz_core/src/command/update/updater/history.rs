@@ -15,6 +15,7 @@ use super::*;
 /// same line do not obscure that proof.
 pub(super) struct RetainedChanges {
     repo: git2::Repository,
+    symlinks: bool,
     head: git2::Oid,
     released: git2::Oid,
     package_files: Option<HashSet<Utf8PathBuf>>,
@@ -44,6 +45,11 @@ impl RetainedChanges {
         let mut args = vec!["rev-list", "--parents", "--date-order", head, "--"];
         args.extend(paths.iter().map(|path| path.as_str()));
         let graph = repository.git(&args)?;
+        // Match the native Git process that checks out historical snapshots,
+        // including configuration supplied through environment overrides.
+        let symlinks = repository
+            .git(&["config", "--type=bool", "--get", "core.symlinks"])
+            .map_or(true, |value| value == "true");
         let root = graph.split_whitespace().next().map(str::to_owned);
         let parents = graph
             .lines()
@@ -54,6 +60,7 @@ impl RetainedChanges {
             .collect();
         Ok(Self {
             repo: git2::Repository::open(repository.directory())?,
+            symlinks,
             head: git2::Oid::from_str(head)?,
             released: git2::Oid::from_str(released)?,
             package_files,
@@ -194,9 +201,7 @@ impl RetainedChanges {
             if delta.old_file().id() == delta.new_file().id()
                 && [delta.old_file().mode(), delta.new_file().mode()]
                     .into_iter()
-                    .all(|mode| {
-                        matches!(mode, git2::FileMode::Blob | git2::FileMode::BlobExecutable)
-                    })
+                    .all(|mode| self.is_regular_file_in_checkout(u32::from(mode)))
             {
                 return false;
             }
@@ -224,7 +229,7 @@ impl RetainedChanges {
             || ancestor.path != theirs.path
             || ![ancestor.mode, ours.mode, theirs.mode]
                 .into_iter()
-                .all(|mode| matches!(mode, 0o100_644 | 0o100_755))
+                .all(|mode| self.is_regular_file_in_checkout(mode))
         {
             return Ok(Contribution::Conflict);
         }
@@ -331,7 +336,7 @@ impl RetainedChanges {
             }
             let (id, mode) = lookup(&path)?;
             match mode {
-                0o100_644 | 0o100_755 => return Some(id),
+                mode if self.is_regular_file_in_checkout(mode) => return Some(id),
                 0o120_000 => {
                     let blob = self.repo.find_blob(id).ok()?;
                     let target = std::str::from_utf8(blob.content()).ok()?;
@@ -358,6 +363,10 @@ impl RetainedChanges {
             }
         }
         None
+    }
+
+    fn is_regular_file_in_checkout(&self, mode: u32) -> bool {
+        matches!(mode, 0o100_644 | 0o100_755) || (!self.symlinks && mode == 0o120_000)
     }
 
     fn includes(
@@ -395,6 +404,7 @@ impl RetainedChanges {
         // addition or deletion still changes the package's file list. The
         // manifest and configured README are compared separately, following links.
         if !changes_file_presence
+            && self.symlinks
             && package_relative_path.map(Utf8Path::as_str) != Some(CARGO_TOML)
             && target
                 .get_path(path.as_std_path())
