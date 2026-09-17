@@ -1507,8 +1507,11 @@ mod tests {
                 );
                 assert_eq!(repo.is_head_detached().unwrap(), detached);
                 assert_eq!(repo.git(&["show-ref"]).unwrap(), refs);
+                // Checkout can convert line endings when core.autocrlf is enabled.
                 assert_eq!(
-                    fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+                    fs_err::read_to_string(repo.directory().join("src/lib.rs"))
+                        .unwrap()
+                        .replace("\r\n", "\n"),
                     "// Unreleased change\n"
                 );
                 repo.is_clean().unwrap();
