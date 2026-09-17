@@ -763,7 +763,7 @@ impl Updater<'_> {
             !released_ancestors.contains(&commit.id)
                 || retained_changes
                     .as_ref()
-                    .is_some_and(|changes| changes.contains(&commit.id))
+                    .is_some_and(|changes| changes.retains(&commit.id))
         });
 
         repository

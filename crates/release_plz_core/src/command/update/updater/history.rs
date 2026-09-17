@@ -98,44 +98,46 @@ impl RetainedChanges {
         }
     }
 
-    pub(super) fn contains(&self, commit: &str) -> bool {
-        if !self.reaches(commit) {
-            return false;
-        }
-        let contribution = self.check(commit).unwrap_or_else(|error| {
-            // Shallow histories may not contain the parent required for a revert.
-            // In that case there is no evidence to override ancestry pruning.
-            debug!("cannot check retained changes in {commit}: {error:#}");
-            Contribution::Absent
-        });
-        match contribution {
-            Contribution::Absent => false,
-            // A sibling editing the same lines as a reverted commit can make its
-            // undo conflict. The reachability check above ensures another lineage
-            // reaches it without passing an equal package snapshot.
-            Contribution::Present | Contribution::Conflict => true,
-        }
+    /// Whether `commit` stays in the diff: another lineage reaches it without
+    /// passing an equal snapshot, and its change survives at HEAD.
+    pub(super) fn retains(&self, commit: &str) -> bool {
+        // A sibling editing the same lines as a reverted commit can make its
+        // undo conflict. Reachability ensures another lineage reaches the commit
+        // without passing an equal package snapshot before trusting that.
+        self.reaches(commit)
+            && self.survives(commit).unwrap_or_else(|error| {
+                // Shallow histories may not contain the parent required for a
+                // revert. Then there is no evidence to override ancestry pruning.
+                debug!("cannot check retained changes in {commit}: {error:#}");
+                false
+            })
     }
 
     pub(super) fn reaches(&self, commit: &str) -> bool {
         self.reachable.contains(commit)
     }
 
-    fn check(&self, commit: &str) -> anyhow::Result<Contribution> {
+    /// Whether the change of `commit` was absent from the release and is still
+    /// present at HEAD.
+    fn survives(&self, commit: &str) -> anyhow::Result<bool> {
         let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
         let released = self.repo.find_commit(self.released)?;
         // A conflict against the release does not establish that the commit's
         // contribution was absent from it. Preserve the existing pruning then.
-        if !matches!(
+        let absent_from_release = matches!(
             self.undo_changes_package(&commit, &released)?,
             Contribution::Absent
-        ) {
-            return Ok(Contribution::Absent);
+        );
+        if !absent_from_release {
+            return Ok(false);
         }
         let head = self.repo.find_commit(self.head)?;
         // Once absence from the release is established, a conflict at HEAD is
         // ambiguous: keep the commit rather than losing a breaking-change marker.
-        self.undo_changes_package(&commit, &head)
+        Ok(!matches!(
+            self.undo_changes_package(&commit, &head)?,
+            Contribution::Absent
+        ))
     }
 
     fn undo_changes_package(
