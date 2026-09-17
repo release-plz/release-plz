@@ -1530,6 +1530,8 @@ semver_check = false
 async fn git_only_updates_root_package_with_versionless_dependency() {
     use cargo_utils::LocalManifest;
 
+    // Create a workspace with a root package that depends on a member library by
+    // path only, without a version requirement in the dependency declaration.
     let context = TestContext::new().await;
     let lib_dir = context.repo_dir().join("internal-lib");
     fs_err::create_dir_all(&lib_dir).unwrap();
@@ -1543,6 +1545,7 @@ async fn git_only_updates_root_package_with_versionless_dependency() {
     root.write().unwrap();
     context.run_cargo_check();
     context.push_all_changes("chore: add versionless path dependency");
+    // Use git tags as the release baseline, with registry publishing disabled.
     context.write_release_plz_toml(
         r#"
 [workspace]
@@ -1557,9 +1560,12 @@ semver_check = false
             .tag(&format!("{name}-v0.1.0"), "initial release")
             .unwrap();
     }
+    // Change only the root package's README after both packages were tagged at 0.1.0.
     fs_err::write(context.repo_dir().join("README.md"), "# Fixed readme\n").unwrap();
     context.push_all_changes("fix: update root readme");
     context.run_update().success();
+    // The fix should bump the root package's patch version despite its versionless
+    // dependency, while the unchanged library should keep its existing version.
     let metadata =
         cargo_utils::get_manifest_metadata(&context.repo_dir().join("Cargo.toml")).unwrap();
     assert_eq!(
