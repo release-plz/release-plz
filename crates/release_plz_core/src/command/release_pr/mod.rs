@@ -443,6 +443,11 @@ async fn github_force_push(
     let suffix = RandomState::new().hash_one(branch);
     let tmp_release_branch = format!("{branch}-tmp-{suffix}");
     repository.checkout_new_branch(&tmp_release_branch)?;
+    let base_sha = repository.current_commit_hash()?;
+    client
+        .create_branch(&tmp_release_branch, &base_sha)
+        .await
+        .with_context(|| format!("failed to create branch `{tmp_release_branch}`"))?;
 
     // Push the "Verified" commit in the temporary branch using
     // the GitHub API.
@@ -452,15 +457,17 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let sha = github_create_release_branch(client, repository, &tmp_release_branch, commit_message)
-        .await?;
-
-    // The API returned the new commit's SHA, so updating the PR ref doesn't
-    // require fetching the temporary branch into the local repository.
-    let force_push_result = client
-        .patch_github_ref(&format!("heads/{branch}"), &sha)
-        .await
-        .context("failed to force push PR branch");
+    let force_push_result: anyhow::Result<()> = async {
+        let sha =
+            github_commit_changes(client, repository, &tmp_release_branch, commit_message).await?;
+        // The API returned the new commit's SHA, so updating the PR ref doesn't
+        // require fetching the temporary branch into the local repository.
+        client
+            .patch_github_ref(&format!("heads/{branch}"), &sha)
+            .await
+            .context("failed to force push PR branch")
+    }
+    .await;
     // Delete the temporary branch if it was created. Even if the push failed.
     if let Err(e) = client.delete_branch(&tmp_release_branch).await {
         tracing::error!("cannot delete branch {tmp_release_branch}: {e:?}");
@@ -490,12 +497,21 @@ async fn github_create_release_branch(
         .create_branch(release_branch, &sha)
         .await
         .with_context(|| format!("failed to create branch `{release_branch}`"))?;
-    let sha = github_graphql::commit_changes(client, repository, commit_message, release_branch)
+    github_commit_changes(client, repository, release_branch, commit_message).await
+}
+
+/// Commit the changes of the repository on `branch` using the GitHub API.
+/// Returns the SHA of the new commit.
+async fn github_commit_changes(
+    client: &GitClient,
+    repository: &Repo,
+    branch: &str,
+    commit_message: &str,
+) -> anyhow::Result<String> {
+    let sha = github_graphql::commit_changes(client, repository, commit_message, branch)
         .await
-        .with_context(|| {
-            format!("failed to create commit via graphql on branch `{release_branch}`")
-        })?;
-    tracing::debug!("committed changes on branch `{release_branch}` via graphql");
+        .with_context(|| format!("failed to create commit via graphql on branch `{branch}`"))?;
+    tracing::debug!("committed changes on branch `{branch}` via graphql");
     Ok(sha)
 }
 
@@ -526,7 +542,21 @@ mod tests {
         GitClient::new(GitForge::Github(github)).unwrap()
     }
 
-    async fn mock_github_push(server: &MockServer, base_sha: &str, patch_status: u16) {
+    fn graphql_commit_created() -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"createCommitOnBranch": {"commit": {"oid": "new-release-sha"}}}
+        }))
+    }
+
+    /// Mock the GitHub API calls made by `github_force_push`.
+    /// The PR branch is only patched when the GraphQL commit succeeds, so
+    /// `patch_status` is `None` when `graphql_response` is an error.
+    async fn mock_github_push(
+        server: &MockServer,
+        base_sha: &str,
+        graphql_response: ResponseTemplate,
+        patch_status: Option<u16>,
+    ) {
         Mock::given(method("POST"))
             .and(path("/repos/owner/repo/git/refs"))
             .and(header("authorization", "Bearer token"))
@@ -549,9 +579,7 @@ mod tests {
                     "deletions": []
                 }
             }}})))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": {"createCommitOnBranch": {"commit": {"oid": "new-release-sha"}}}
-            })))
+            .respond_with(graphql_response)
             .expect(1)
             .mount(server)
             .await;
@@ -559,8 +587,8 @@ mod tests {
             .and(path("/repos/owner/repo/git/refs/heads/release-plz-test"))
             .and(header("authorization", "Bearer token"))
             .and(body_json(json!({"sha": "new-release-sha", "force": true})))
-            .respond_with(ResponseTemplate::new(patch_status))
-            .expect(1)
+            .respond_with(ResponseTemplate::new(patch_status.unwrap_or(500)))
+            .expect(u64::from(patch_status.is_some()))
             .mount(server)
             .await;
         Mock::given(method("DELETE"))
@@ -599,7 +627,7 @@ mod tests {
             prepare_release_changes(&repo);
 
             let server = MockServer::start().await;
-            mock_github_push(&server, &base_sha, 200).await;
+            mock_github_push(&server, &base_sha, graphql_commit_created(), Some(200)).await;
             Mock::given(method("GET"))
                 .and(path("/repos/owner/repo/pulls/42/commits"))
                 .respond_with(ResponseTemplate::new(200).set_body_json(json!([
@@ -664,7 +692,7 @@ mod tests {
         let base_sha = repo.current_commit_hash().unwrap();
         prepare_release_changes(&repo);
         let server = MockServer::start().await;
-        mock_github_push(&server, &base_sha, 403).await;
+        mock_github_push(&server, &base_sha, graphql_commit_created(), Some(403)).await;
 
         let error = github_force_push(
             &github_client(&server),
@@ -678,5 +706,34 @@ mod tests {
             format!("{error:#}").contains("failed to force push PR branch"),
             "{error:#}"
         );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn github_cleans_up_temporary_branch_when_graphql_commit_fails() {
+        test_logs::init();
+        let temporary = tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        let base_sha = repo.current_commit_hash().unwrap();
+        prepare_release_changes(&repo);
+        let server = MockServer::start().await;
+        let graphql_error = ResponseTemplate::new(200).set_body_json(json!({
+            "errors": [{"message": "expectedHeadOid does not match"}]
+        }));
+        mock_github_push(&server, &base_sha, graphql_error, None).await;
+
+        let error = github_force_push(
+            &github_client(&server),
+            "release-plz-test",
+            "chore: release v0.2.0",
+            &repo,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("failed to create commit via graphql"),
+            "{error:#}"
+        );
+        server.verify().await;
     }
 }
