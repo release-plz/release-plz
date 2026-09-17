@@ -955,10 +955,14 @@ fn contains_executable(package: &Package) -> bool {
 }
 
 fn contains_library(package: &Package) -> bool {
-    // Explicit Rust library crate types also expose an API to downstream Rust crates.
-    [TargetKind::Lib, TargetKind::RLib, TargetKind::DyLib]
-        .iter()
-        .any(|kind| contains_target_kind(package, kind))
+    // `rlib` and `dylib` are Rust libraries like `lib`: downstream Rust crates can depend on
+    // them, so their API is subject to semver. `cdylib` and `staticlib` only expose a C ABI.
+    // We use target `kind` because target `crate_types` contains "Bin" if the kind is "Test".
+    package.targets.iter().any(|t| {
+        t.kind
+            .iter()
+            .any(|kind| matches!(kind, TargetKind::Lib | TargetKind::RLib | TargetKind::DyLib))
+    })
 }
 
 fn contains_target_kind(package: &Package, target_kind: &TargetKind) -> bool {
