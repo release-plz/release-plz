@@ -31,7 +31,7 @@ To learn more, run `release-plz release --help`.
 
 `release-plz release` supports detached Git HEADs, including
 [colocated jj repositories](https://docs.jj-vcs.dev/latest/git-compatibility/#colocated-jujutsugit-workspaces).
-It uses Git's `HEAD` as the starting commit for the release.
+It releases from the commit checked out in Git's `HEAD`.
 
 Before releasing with jj, create an empty working-copy change on top of the
 commit you want to release, for example with `jj new <revision>`.
@@ -149,7 +149,7 @@ or if you are the only maintainer of your repository.
 
 To avoid race conditions when the release PR is merged,
 `release-plz release` does a `git checkout` to the latest commit of the PR
-before releasing (if the commit of the PR is an ancestor of the starting commit).
+before releasing (if the commit of the PR is an ancestor of the checked-out commit).
 Afterwards, it restores the original checkout, including a detached HEAD.
 
 Depending on the merge strategy you use, this can have different effects:
