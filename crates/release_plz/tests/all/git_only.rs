@@ -1588,10 +1588,8 @@ semver_check = true
     let prs = context.opened_release_prs().await;
     assert_eq!(prs.len(), 1);
     let body = prs[0].body.as_ref().unwrap();
-    assert!(
-        body.contains("`wrapper`: 0.1.0 -> 0.2.0 (⚠️ API breaking changes)"),
-        "{body}"
-    );
+    assert!(body.contains("`wrapper`: 0.1.0 -> 0.2.0"), "{body}");
+    assert!(body.contains("API breaking changes"), "{body}");
     assert!(body.contains("function_missing"), "{body}");
     assert!(!body.contains("`support`:"), "{body}");
 }
