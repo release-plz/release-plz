@@ -331,6 +331,14 @@ async fn update_pr(
     new_pr: &Pr,
     branch_prefix: &str,
 ) -> anyhow::Result<()> {
+    // sanity check to avoid doing bad things on non-release-plz branches
+    anyhow::ensure!(
+        opened_pr.branch().starts_with(branch_prefix)
+            || opened_pr.branch().starts_with(DEFAULT_BRANCH_PREFIX)
+            || opened_pr.branch().starts_with(OLD_BRANCH_PREFIX),
+        "wrong branch name"
+    );
+
     // The commit message comes from the new PR, while the branch comes from the opened one:
     // `opened_pr.title` still contains the version calculated by the previous release-plz run,
     // which we are about to replace below.
@@ -340,14 +348,12 @@ async fn update_pr(
         // fetching the old PR branch would require separate git credentials.
         github_force_push(git_client, opened_pr.branch(), &new_pr.title, repository).await?;
     } else {
-        update_pr_branch(commits_number, opened_pr, repository, branch_prefix).with_context(
-            || {
-                format!(
-                    "failed to update pr branch with changes from `{}` branch",
-                    repository.original_branch()
-                )
-            },
-        )?;
+        update_pr_branch(commits_number, opened_pr, repository).with_context(|| {
+            format!(
+                "failed to update pr branch with changes from `{}` branch",
+                repository.original_branch()
+            )
+        })?;
         force_push(opened_pr.branch(), &new_pr.title, repository)?;
     }
     let pr_edit = {
@@ -378,12 +384,11 @@ fn update_pr_branch(
     commits_number: usize,
     opened_pr: &GitPr,
     repository: &Repo,
-    branch_prefix: &str,
 ) -> anyhow::Result<()> {
     // save local work
     repository.git(&["stash", "--include-untracked"])?;
 
-    reset_branch(opened_pr, commits_number, repository, branch_prefix).inspect_err(|_e| {
+    reset_branch(opened_pr, commits_number, repository).inspect_err(|_e| {
         // restore local work
         if let Err(e) = repository.stash_pop() {
             tracing::error!("cannot restore local work: {:?}", e);
@@ -393,20 +398,7 @@ fn update_pr_branch(
     Ok(())
 }
 
-fn reset_branch(
-    pr: &GitPr,
-    commits_number: usize,
-    repository: &Repo,
-    branch_prefix: &str,
-) -> anyhow::Result<()> {
-    // sanity check to avoid doing bad things on non-release-plz branches
-    anyhow::ensure!(
-        pr.branch().starts_with(branch_prefix)
-            || pr.branch().starts_with(DEFAULT_BRANCH_PREFIX)
-            || pr.branch().starts_with(OLD_BRANCH_PREFIX),
-        "wrong branch name"
-    );
-
+fn reset_branch(pr: &GitPr, commits_number: usize, repository: &Repo) -> anyhow::Result<()> {
     if repository.checkout(pr.branch()).is_err() {
         repository.git(&["pull"])?;
         repository.checkout(pr.branch())?;
