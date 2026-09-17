@@ -685,8 +685,12 @@ impl Updater<'_> {
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     // Stop this ancestry, but keep independent sibling branches.
-                    // The commit ordering never yields a commit before all of its
-                    // children, so these ancestors have not been visited yet.
+                    // `--date-order` doesn't yield a commit before its children, so
+                    // these ancestors are usually still ahead of the walk. That only
+                    // holds for the simplified history `commits` traverses, though,
+                    // which is why the ancestry is collected with `--full-history`:
+                    // an ancestor only reachable through an edge that simplification
+                    // severed has to be pruned as well.
                     // Only commits in `commits` are ever looked up, so restrict the
                     // ancestry to the same paths instead of dumping every hash.
                     released_ancestors.extend(
