@@ -346,6 +346,7 @@ async fn update_pr(
         // The temporary repository already contains the release changes on the
         // checked-out base commit. Rebuild the PR from there using the API;
         // fetching the old PR branch would require separate git credentials.
+        // See https://github.com/release-plz/release-plz/issues/2957
         github_force_push(git_client, opened_pr.branch(), &new_pr.title, repository).await?;
     } else {
         update_pr_branch(commits_number, opened_pr, repository).with_context(|| {
@@ -452,8 +453,6 @@ async fn github_force_push(
     let force_push_result: anyhow::Result<()> = async {
         let sha =
             github_commit_changes(client, repository, &tmp_release_branch, commit_message).await?;
-        // The API returned the new commit's SHA, so updating the PR ref doesn't
-        // require fetching the temporary branch into the local repository.
         client
             .patch_github_ref(&format!("heads/{branch}"), &sha)
             .await
