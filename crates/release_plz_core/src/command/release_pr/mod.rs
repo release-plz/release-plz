@@ -644,14 +644,8 @@ mod tests {
         test_logs::init();
         let temporary = tempdir().unwrap();
         let repo = Repo::init(temporary.path());
+        crate::test_utils::write_package(repo.directory(), "test-package", "0.1.0", "");
         let manifest = repo.directory().join(CARGO_TOML);
-        fs_err::write(
-            &manifest,
-            "[package]\nname = \"test-package\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
-             [lib]\npath = \"lib.rs\"\n",
-        )
-        .unwrap();
-        fs_err::write(repo.directory().join("lib.rs"), "").unwrap();
         let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
         repo.add_all_and_commit("feat: initial package").unwrap();
         repo.git(&["checkout", "--detach"]).unwrap();

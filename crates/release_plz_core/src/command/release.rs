@@ -1372,14 +1372,8 @@ mod tests {
         let forge_server = wiremock::MockServer::start().await;
         let temporary = tempfile::tempdir().unwrap();
         let repo = Repo::init(temporary.path());
-        let manifest = repo.directory().join("Cargo.toml");
-        fs_err::write(
-            &manifest,
-            "[package]\nname = \"test-package\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
-             [lib]\npath = \"lib.rs\"\n",
-        )
-        .unwrap();
-        fs_err::write(repo.directory().join("lib.rs"), "").unwrap();
+        crate::test_utils::write_package(repo.directory(), "test-package", "0.1.0", "");
+        let manifest = repo.directory().join(cargo_utils::CARGO_TOML);
         let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
         repo.add_all_and_commit("feat: initial package").unwrap();
         repo.git(&["checkout", "--detach"]).unwrap();
