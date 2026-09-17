@@ -1,5 +1,7 @@
 use std::{fmt::Write as _, path::Path};
 
+use cargo_metadata::camino::Utf8Component;
+
 use super::*;
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
@@ -136,7 +138,9 @@ impl RetainedChanges {
         let mainline = u32::from(commit.parent_count() > 1);
         let index = self.repo.revert_commit(commit, target, mainline, None)?;
         let tree = target.tree()?;
-        let mut changed = false;
+        let readme_changed = self.readme_changed(&tree, &index);
+        let readme_unchanged = readme_changed == Some(false);
+        let mut changed = readme_changed == Some(true);
         for conflict in index.conflicts()? {
             let conflict = conflict?;
             let changes_file_presence = conflict.our.as_ref().map(|entry| &entry.path)
@@ -150,7 +154,14 @@ impl RetainedChanges {
             .flatten()
             .any(|entry| {
                 std::str::from_utf8(&entry.path)
-                    .map(|path| self.includes(Path::new(path), changes_file_presence, &tree))
+                    .map(|path| {
+                        self.includes(
+                            Path::new(path),
+                            changes_file_presence,
+                            &tree,
+                            readme_unchanged,
+                        )
+                    })
                     .unwrap_or(true)
             });
             if affects_package {
@@ -194,7 +205,7 @@ impl RetainedChanges {
             [delta.old_file().path(), delta.new_file().path()]
                 .into_iter()
                 .flatten()
-                .any(|path| self.includes(path, changes_file_presence, &tree))
+                .any(|path| self.includes(path, changes_file_presence, &tree, readme_unchanged))
         });
         Ok(if changed {
             Contribution::Present
@@ -257,12 +268,110 @@ impl RetainedChanges {
         })
     }
 
-    fn includes(&self, path: &Path, changes_file_presence: bool, target: &git2::Tree<'_>) -> bool {
+    /// README equality follows symlinks. Different link spellings can therefore
+    /// undo to exactly the same contents, including in a pointer-only conflict.
+    fn readme_changed(&self, target: &git2::Tree<'_>, reverted: &git2::Index) -> Option<bool> {
+        let readme = self.readme.as_deref()?;
+        let target = self.readme_blob(readme, |path| {
+            let entry = target.get_path(path.as_std_path()).ok()?;
+            Some((entry.id(), entry.filemode().try_into().ok()?))
+        })?;
+        let mut conflicted = false;
+        let reverted = self.readme_blob(readme, |path| {
+            let entry = match reverted.get_path(path.as_std_path(), 0) {
+                Some(entry) => entry,
+                // All three stages at this path establish a content conflict,
+                // rather than an addition, deletion or rename. The inverse's
+                // candidate can still read the same bytes as the current alias.
+                None if path == readme
+                    && reverted.get_path(path.as_std_path(), 1).is_some()
+                    && reverted.get_path(path.as_std_path(), 2).is_some() =>
+                {
+                    conflicted = true;
+                    reverted.get_path(path.as_std_path(), 3)?
+                }
+                None => {
+                    if (1..=3).any(|stage| reverted.get_path(path.as_std_path(), stage).is_some()) {
+                        return None;
+                    }
+                    // Indices store files rather than directories. A resolved
+                    // descendant proves this prefix is a real directory.
+                    let prefix =
+                        format!("{}/", path.as_str().replace(std::path::MAIN_SEPARATOR, "/"));
+                    let child = reverted.get(reverted.find_prefix(prefix.as_str()).ok()?)?;
+                    let child_path = Path::new(std::str::from_utf8(&child.path).ok()?);
+                    reverted.get_path(child_path, 0)?;
+                    return Some((git2::Oid::ZERO_SHA1, 0o040_000));
+                }
+            };
+            Some((entry.id, entry.mode))
+        })?;
+        if target == reverted {
+            Some(false)
+        } else if conflicted {
+            // A differing conflict candidate is not the resolved inverse. Keep
+            // the ordinary text-conflict refinement instead of claiming a change.
+            None
+        } else {
+            Some(true)
+        }
+    }
+
+    /// Resolve only repository-relative links in Git objects, never on disk.
+    /// Missing, cyclic, absolute or escaping links leave the check conservative.
+    fn readme_blob(
+        &self,
+        readme: &Utf8Path,
+        mut lookup: impl FnMut(&Utf8Path) -> Option<(git2::Oid, u32)>,
+    ) -> Option<git2::Oid> {
+        let mut path = readme.to_path_buf();
+        for _ in 0..40 {
+            if path.as_str().is_empty() {
+                return None;
+            }
+            let (id, mode) = lookup(&path)?;
+            match mode {
+                0o100_644 | 0o100_755 => return Some(id),
+                0o120_000 => {
+                    let blob = self.repo.find_blob(id).ok()?;
+                    let target = std::str::from_utf8(blob.content()).ok()?;
+                    if target.is_empty() || target.contains('\0') {
+                        return None;
+                    }
+                    let mut resolved = path.parent()?.to_path_buf();
+                    for component in Utf8Path::new(target).components() {
+                        match component {
+                            Utf8Component::Normal(name) => resolved.push(name),
+                            Utf8Component::CurDir => {}
+                            // `link/..` follows the directory link before moving
+                            // up, so lexical normalization would be incorrect.
+                            Utf8Component::ParentDir
+                                if !resolved.as_str().is_empty()
+                                    && lookup(&resolved)?.1 == 0o040_000
+                                    && resolved.pop() => {}
+                            _ => return None,
+                        }
+                    }
+                    path = resolved;
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    fn includes(
+        &self,
+        path: &Path,
+        changes_file_presence: bool,
+        target: &git2::Tree<'_>,
+        readme_unchanged: bool,
+    ) -> bool {
         let Some(path) = Utf8Path::from_path(path) else {
             return true;
         };
         if self.readme.as_deref() == Some(path) {
-            return true;
+            return !readme_unchanged;
         }
         // Match package equality: generated files are ignored at the package root.
         let package_relative_path = self

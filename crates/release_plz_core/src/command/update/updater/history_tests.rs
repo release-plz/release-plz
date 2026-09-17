@@ -782,7 +782,10 @@ fn symlink_presence_changes_keep_their_breaking_change_marker() {
 fn readme_symlink_changes_keep_their_breaking_change_marker() {
     use std::os::unix::fs::symlink;
 
-    for package_dir in ["", "app"] {
+    for (package_dir, readme_link) in [("", "API.md"), ("app", "API.md"), ("", "docs/current.md")] {
+        let target_prefix = if readme_link == "API.md" { "" } else { "../" };
+        let old_target = format!("{target_prefix}old.md");
+        let new_target = format!("{target_prefix}new.md");
         let ignored = Utf8Path::new(package_dir).join("src/Cargo.lock");
         let history = History::with_packages(|root| {
             let readme = if package_dir.is_empty() {
@@ -801,18 +804,22 @@ fn readme_symlink_changes_keep_their_breaking_change_marker() {
             for target in ["old.md", "new.md"] {
                 fs_err::write(root.join(target), target).unwrap();
             }
-            symlink("old.md", root.join("API.md")).unwrap();
+            if readme_link != "API.md" {
+                fs_err::create_dir(root.join("docs")).unwrap();
+                symlink(readme_link, root.join("API.md")).unwrap();
+            }
+            symlink(&old_target, root.join(readme_link)).unwrap();
         });
-        let readme = history.repo.directory().join("API.md");
+        let readme = history.repo.directory().join(readme_link);
         fs_err::remove_file(&readme).unwrap();
-        symlink("new.md", &readme).unwrap();
+        symlink(&new_target, &readme).unwrap();
         let breaking = history.write_commit(ignored.as_str(), "changed\n", "feat!: documented API");
         let sibling = history.merge_ignored_change(
             Utf8Path::new(package_dir).join("src/fix.rs").as_str(),
             |root| {
-                let readme = root.join("API.md");
+                let readme = root.join(readme_link);
                 fs_err::remove_file(&readme).unwrap();
-                symlink("old.md", readme).unwrap();
+                symlink(&old_target, readme).unwrap();
                 // Keep the equal snapshot in the package's path-filtered history
                 // even when its README link lives outside the package directory.
                 fs_err::write(root.join(&ignored), "reverted\n").unwrap();
@@ -821,11 +828,115 @@ fn readme_symlink_changes_keep_their_breaking_change_marker() {
         let diff = history.diff(None);
         assert!(
             HashSet::from([breaking.as_str(), sibling.as_str()]).is_subset(&commit_ids(&diff)),
-            "package_dir={package_dir}: {:?}",
+            "package_dir={package_dir}, readme_link={readme_link}: {:?}",
             diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 2, 0));
     }
+}
+
+#[test]
+fn sequential_readme_edits_keep_their_breaking_change_marker() {
+    let history = History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
+        fs_err::write(root.join("API.md"), BASE_API).unwrap();
+    });
+    let implementation = BASE_API.replace("api() {}", "api() { /* implementation */ }");
+    history.write_commit("API.md", &implementation, "chore: clarify documentation");
+    let breaking = history.write_commit(
+        "API.md",
+        &implementation.replace("api()", "api(_: bool)"),
+        "feat!: documented API",
+    );
+    history.merge_ignored_revert("API.md", Some(BASE_API));
+    let diff = history.diff(None);
+    assert!(commit_ids(&diff).contains(breaking.as_str()));
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[cfg(unix)]
+#[test]
+fn equivalent_readme_symlinks_do_not_hide_a_retained_api_change() {
+    use std::os::unix::fs::symlink;
+
+    for conflicting in [false, true] {
+        let history = History::with_packages(|root| {
+            write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+            for target in ["a.md", "b.md", "c.md"] {
+                fs_err::write(root.join(target), "# API\n").unwrap();
+            }
+            fs_err::create_dir(root.join("docs")).unwrap();
+            symlink("../a.md", root.join("docs/current.md")).unwrap();
+            symlink("docs/current.md", root.join("API.md")).unwrap();
+        });
+        let readme = history.repo.directory().join("API.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink("./docs/../b.md", &readme).unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        if conflicting {
+            // The inverse link edit conflicts, but every alias still reads the
+            // same README bytes. Its spelling must not hide the API contribution.
+            fs_err::remove_file(&readme).unwrap();
+            symlink("c.md", &readme).unwrap();
+            history
+                .repo
+                .add_all_and_commit("chore: another README alias")
+                .unwrap();
+        }
+        history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(None);
+        assert!(
+            commit_ids(&diff).contains(breaking.as_str()),
+            "conflicting={conflicting}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let diff = history.diff(None);
+        assert!(
+            !commit_ids(&diff).contains(breaking.as_str()),
+            "conflicting={conflicting}"
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn readme_parent_symlinks_are_not_collapsed_lexically() {
+    use std::os::unix::fs::symlink;
+
+    let history = History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
+        fs_err::create_dir(root.join("docs")).unwrap();
+        fs_err::create_dir_all(root.join("alt/subdir")).unwrap();
+        fs_err::write(root.join("old.md"), "old\n").unwrap();
+        fs_err::write(root.join("docs/b.md"), "old\n").unwrap();
+        fs_err::write(root.join("alt/b.md"), "new\n").unwrap();
+        fs_err::write(root.join("alt/subdir/keep"), "").unwrap();
+        symlink("../alt/subdir", root.join("docs/link")).unwrap();
+        symlink("old.md", root.join("API.md")).unwrap();
+    });
+    let readme = history.repo.directory().join("API.md");
+    fs_err::remove_file(&readme).unwrap();
+    symlink("docs/link/../b.md", &readme).unwrap();
+    // Following the directory link reaches alt/b.md, not docs/b.md.
+    assert_eq!(fs_err::read_to_string(&readme).unwrap(), "new\n");
+    let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
+    let breaking = history.write_commit(
+        "Cargo.lock",
+        &format!("{lock}# changed\n"),
+        "feat!: documented API",
+    );
+    history.merge_ignored_change("src/fix.rs", |root| {
+        let readme = root.join("API.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink("old.md", readme).unwrap();
+    });
+    let diff = history.diff(None);
+    assert!(commit_ids(&diff).contains(breaking.as_str()));
+    assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
 #[test]
