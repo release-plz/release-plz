@@ -1174,7 +1174,7 @@ mod tests {
 
     #[test]
     fn only_rust_library_targets_are_libraries() {
-        // (target kind, downstream Rust crates can depend on it)
+        // (target kind, is semver-checked as a Rust library)
         for (kind, is_library) in [
             ("lib", true),
             ("rlib", true),
