@@ -243,9 +243,12 @@ impl Repo {
     /// List commits touching `paths`, newest descendants before their ancestors.
     ///
     /// Walk from `head` once so checking out individual commits cannot hide sibling
-    /// branches. Exclude release boundaries and their ancestors only when the
-    /// boundary is reachable from `head`; a release on another branch must not
-    /// exclude shared history. `u32::MAX` means no commit limit.
+    /// branches. Release boundaries and their ancestors are excluded, even when the
+    /// boundary itself isn't reachable from `head`: the history it shares with `head`
+    /// was already released. A boundary that doesn't exist in this repository is
+    /// ignored, so a commit hash recorded by a release that happened in another
+    /// repository, or missing from a shallow clone, is not fatal.
+    /// `u32::MAX` means no commit limit.
     pub fn commits_at_paths_since(
         &self,
         head: &str,
@@ -255,7 +258,7 @@ impl Repo {
     ) -> anyhow::Result<Vec<String>> {
         let exclusions: Vec<String> = release_boundaries
             .iter()
-            .filter(|commit| self.is_ancestor(commit, head))
+            .filter(|commit| self.commit_exists(commit))
             .map(|commit| format!("^{commit}"))
             .collect();
         let limit = (max_commits != u32::MAX).then(|| format!("--max-count={max_commits}"));
@@ -373,6 +376,17 @@ impl Repo {
             "--is-ancestor",
             maybe_ancestor_commit,
             descendant_commit,
+        ])
+        .is_ok()
+    }
+
+    /// Whether `object` resolves to a commit in this repository.
+    fn commit_exists(&self, object: &str) -> bool {
+        self.git(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{object}^{{commit}}"),
         ])
         .is_ok()
     }
@@ -573,7 +587,7 @@ mod tests {
     }
 
     #[test]
-    fn commit_range_ignores_unreachable_release_boundaries() {
+    fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
         let path = Path::new("file.rs");
@@ -589,13 +603,26 @@ mod tests {
         fs_err::write(directory.path().join(path), "local change").unwrap();
         repo.add_all_and_commit("local change").unwrap();
         let local = repo.current_commit_hash().unwrap();
-        for boundary in [release.as_str(), "0000000000000000000000000000000000000000"] {
-            assert_eq!(
-                repo.commits_at_paths_since("HEAD", &[boundary], &[path], u32::MAX)
-                    .unwrap(),
-                [local.clone(), shared.clone()]
-            );
-        }
+
+        // A boundary that doesn't exist locally can't exclude anything.
+        assert_eq!(
+            repo.commits_at_paths_since(
+                "HEAD",
+                &["0000000000000000000000000000000000000000"],
+                &[path],
+                u32::MAX,
+            )
+            .unwrap(),
+            [local.clone(), shared.clone()]
+        );
+
+        // A boundary on a divergent branch still excludes the history it shares
+        // with `head`: those changes were already released.
+        assert_eq!(
+            repo.commits_at_paths_since("HEAD", &[&release], &[path], u32::MAX)
+                .unwrap(),
+            [local]
+        );
     }
 
     #[test]
