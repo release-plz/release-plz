@@ -146,7 +146,7 @@ impl RetainedChanges {
             && self.survives(commit).unwrap_or_else(|error| {
                 // Shallow histories may not contain the parent required for a
                 // revert. Then there is no evidence to override ancestry pruning.
-                debug!("cannot check retained changes in {commit}: {error:#}");
+                warn!("cannot check retained changes in {commit}: {error:#}");
                 false
             })
     }
