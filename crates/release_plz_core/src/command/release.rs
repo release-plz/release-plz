@@ -801,7 +801,7 @@ async fn should_release(
                         // I need to checkout the last commit of the PR if it exists
                         Ok(ShouldRelease::YesWithCommit(commit.sha.clone()))
                     } else {
-                        // The commit is not in the starting commit's history, probably the PR was squashed
+                        // The commit is not in HEAD's history, probably the PR was squashed
                         Ok(ShouldRelease::Yes)
                     }
                 }
