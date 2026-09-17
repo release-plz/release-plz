@@ -526,6 +526,48 @@ mod tests {
             .unwrap();
     }
 
+    /// [`Repo::ancestors_at_paths`] exists to not simplify history: a "keep mine"
+    /// merge is TREESAME to its first parent, so git drops the branch the merge
+    /// discarded from every simplified walk through it, although those commits are
+    /// real ancestors of the merge.
+    #[test]
+    fn full_history_ancestors_keep_the_parent_a_simplified_walk_drops() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        commit_file_at(&repo, path, "discarded", "2024-01-01T00:00:01 +0000");
+        let discarded = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_file_at(&repo, path, "mine", "2024-01-01T00:00:02 +0000");
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2024-01-01T00:00:03 +0000",
+        )
+        .unwrap();
+
+        assert!(
+            repo.is_ancestor(&discarded, "HEAD"),
+            "the discarded commit must be a real ancestor of the merge"
+        );
+        assert!(
+            repo.ancestors_at_paths("HEAD", &[path])
+                .unwrap()
+                .contains(&discarded)
+        );
+        assert!(
+            !repo
+                .commits_at_paths("HEAD", &[], &[path], None)
+                .unwrap()
+                .contains(&discarded),
+            "the simplified walk is supposed to miss it: that's why the two differ"
+        );
+    }
+
     #[test]
     fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
         test_logs::init();
