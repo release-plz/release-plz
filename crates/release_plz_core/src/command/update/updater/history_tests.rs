@@ -594,7 +594,7 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
     repo.git(&["checkout", "-b", "equal"]).unwrap();
     history.write_commit("src/lib.rs", BASE_API, "revert: breaking API");
     repo.checkout_head().unwrap();
-    history.write_commit(
+    let prepared = history.write_commit(
         "src/lib.rs",
         &BASE_API.replace("api()", "api(_: u8)"),
         "chore: prepare merge",
@@ -603,9 +603,9 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
         repo.git(&["merge", "--no-ff", "--no-commit", "equal"])
             .is_err()
     );
-    history.write_commit("src/lib.rs", BREAKING_API, "merge resolved");
+    let resolved = history.write_commit("src/lib.rs", BREAKING_API, "merge resolved");
     repo.git(&["checkout", "equal"]).unwrap();
-    history.write_commit(
+    let sibling = history.write_commit(
         "src/lib.rs",
         &format!("{BASE_API}pub fn extra() {{}}\n"),
         "fix: sibling",
@@ -613,12 +613,25 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
     repo.checkout_head().unwrap();
     repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
         .unwrap();
+    let merge = repo.current_commit_hash().unwrap();
     assert_eq!(
         fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
         format!("{BREAKING_API}pub fn extra() {{}}\n")
     );
     let diff = history.diff(None);
-    assert!(commit_ids(&diff).contains(breaking.as_str()));
+    // Both merges resolve `src/lib.rs` to contents that differ from all their parents.
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([
+            breaking.as_str(),
+            prepared.as_str(),
+            resolved.as_str(),
+            sibling.as_str(),
+            merge.as_str(),
+        ]),
+        "{:?}",
+        diff.commits
+    );
     assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
@@ -701,12 +714,13 @@ fn executable_bit_changes_do_not_hide_a_retained_package_change() {
             .repo
             .git(&["config", "core.filemode", "true"])
             .unwrap();
-        let implementation = if sequential {
+        let (implementation, implementation_commit) = if sequential {
             let implementation = implemented_api();
-            history.write_commit("src/lib.rs", &implementation, "chore: implementation");
-            implementation
+            let commit =
+                history.write_commit("src/lib.rs", &implementation, "chore: implementation");
+            (implementation, Some(commit))
         } else {
-            BASE_API.to_owned()
+            (BASE_API.to_owned(), None)
         };
         fs_err::set_permissions(
             history.repo.directory().join("src/lib.rs"),
@@ -718,20 +732,26 @@ fn executable_bit_changes_do_not_hide_a_retained_package_change() {
             &implementation.replace("api()", "api(_: bool)"),
             "feat!: breaking API and set executable bit",
         );
-        history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
         let diff = history.diff(None);
-        assert!(
-            commit_ids(&diff).contains(breaking.as_str()),
-            "sequential={sequential}"
+        let mut expected = HashSet::from([breaking.as_str(), sibling.as_str()]);
+        expected.extend(implementation_commit.as_deref());
+        assert_eq!(
+            commit_ids(&diff),
+            expected,
+            "sequential={sequential}: {:?}",
+            diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 2, 0));
 
         // Keeping only the executable bit must not retain the breaking marker.
-        history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
         let diff = history.diff(None);
-        assert!(
-            !commit_ids(&diff).contains(breaking.as_str()),
-            "sequential={sequential}"
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([restore.as_str(), sibling.as_str()]),
+            "sequential={sequential}: {:?}",
+            diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 1, 1));
     }
@@ -785,26 +805,33 @@ fn materialized_symlink_files_keep_their_breaking_change_marker() {
                     .starts_with("120000 ")
             );
         }
-        let contents = if sequential {
-            history.write_commit(path, "old-target.txt-extra", "chore: pointer suffix");
-            "new-target.txt-extra"
+        let (contents, suffix) = if sequential {
+            let suffix =
+                history.write_commit(path, "old-target.txt-extra", "chore: pointer suffix");
+            ("new-target.txt-extra", Some(suffix))
         } else {
-            "new-target.txt"
+            ("new-target.txt", None)
         };
         let breaking = history.write_commit(path, contents, "feat!: pointer format");
         let sibling = history.merge_ignored_revert(path, Some("old-target.txt"));
         let diff = history.diff(None);
-        assert!(
-            HashSet::from([breaking.as_str(), sibling.as_str()]).is_subset(&commit_ids(&diff)),
-            "path={path}, sequential={sequential}"
+        let mut expected = HashSet::from([breaking.as_str(), sibling.as_str()]);
+        expected.extend(suffix.as_deref());
+        assert_eq!(
+            commit_ids(&diff),
+            expected,
+            "path={path}, sequential={sequential}: {:?}",
+            diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 2, 0));
 
-        history.write_commit(path, "old-target.txt", "fix: restore pointer");
+        let restore = history.write_commit(path, "old-target.txt", "fix: restore pointer");
         let diff = history.diff(None);
-        assert!(
-            !commit_ids(&diff).contains(breaking.as_str()),
-            "path={path}, sequential={sequential}"
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([restore.as_str(), sibling.as_str()]),
+            "path={path}, sequential={sequential}: {:?}",
+            diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 1, 1));
     }
@@ -842,19 +869,24 @@ fn symlink_target_changes_do_not_hide_a_retained_package_change() {
                 .add_all_and_commit("chore: retarget link")
                 .unwrap();
         }
-        history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
         let diff = history.diff(None);
-        assert!(
-            commit_ids(&diff).contains(breaking.as_str()),
-            "was_symlink={was_symlink}, conflicting={conflicting}"
+        // Equality ignores the link's target, so retargeting it alone is not retained.
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "was_symlink={was_symlink}, conflicting={conflicting}: {:?}",
+            diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 2, 0));
 
-        history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
         let diff = history.diff(None);
-        assert!(
-            !commit_ids(&diff).contains(breaking.as_str()),
-            "was_symlink={was_symlink}, conflicting={conflicting}"
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([restore.as_str(), sibling.as_str()]),
+            "was_symlink={was_symlink}, conflicting={conflicting}: {:?}",
+            diff.commits
         );
         assert_next_version(&diff, &Version::new(0, 1, 1));
     }
@@ -946,6 +978,8 @@ fn readme_symlink_changes_keep_their_breaking_change_marker() {
             },
         );
         let diff = history.diff(None);
+        // A README outside the package directory can't be listed as a package
+        // file, and that failure counts every visited commit, the merge included.
         assert!(
             HashSet::from([breaking.as_str(), sibling.as_str()]).is_subset(&commit_ids(&diff)),
             "package_dir={package_dir}: {:?}",
@@ -962,15 +996,20 @@ fn sequential_readme_edits_keep_their_breaking_change_marker() {
         fs_err::write(root.join("API.md"), BASE_API).unwrap();
     });
     let implementation = implemented_api();
-    history.write_commit("API.md", &implementation, "chore: clarify documentation");
+    let clarified = history.write_commit("API.md", &implementation, "chore: clarify documentation");
     let breaking = history.write_commit(
         "API.md",
         &implementation.replace("api()", "api(_: bool)"),
         "feat!: documented API",
     );
-    history.merge_ignored_revert("API.md", Some(BASE_API));
+    let sibling = history.merge_ignored_revert("API.md", Some(BASE_API));
     let diff = history.diff(None);
-    assert!(commit_ids(&diff).contains(breaking.as_str()));
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([clarified.as_str(), breaking.as_str(), sibling.as_str()]),
+        "{:?}",
+        diff.commits
+    );
     assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
@@ -1061,18 +1100,23 @@ fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
 fn a_retained_change_can_move_to_a_different_file() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
     history
         .repo
         .git(&["mv", "src/lib.rs", "src/api.rs"])
         .unwrap();
-    history.write_commit(
+    let moved = history.write_commit(
         "src/lib.rs",
         "mod api;\npub use api::*;\n",
         "chore: move API",
     );
     let diff = history.diff(None);
-    assert!(commit_ids(&diff).contains(breaking.as_str()));
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([breaking.as_str(), sibling.as_str(), moved.as_str()]),
+        "{:?}",
+        diff.commits
+    );
     assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
