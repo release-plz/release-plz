@@ -1371,7 +1371,7 @@ git_release_name = "{{ package }}-v{{ version }}"
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn git_only_workspace_with_versionless_private_dependencies() {
+async fn git_only_releases_workspace_with_versionless_private_dependencies() {
     let context = released_private_workspace().await;
     let root_manifest_path = context.repo_dir().join("Cargo.toml");
 
