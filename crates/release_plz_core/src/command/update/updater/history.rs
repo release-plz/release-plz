@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt::Write as _, path::Path};
 
 use super::*;
 
@@ -9,6 +9,8 @@ use super::*;
 /// snapshots. For ancestors reachable through another lineage, revert the change
 /// in memory to distinguish surviving contributions from discarded merge parents.
 /// A revert that leaves the release unchanged proves a change was absent there.
+/// Compare conflicting text at character granularity so independent edits to the
+/// same line do not obscure that proof.
 pub(super) struct RetainedChanges {
     /// The walked repository, opened in memory: no snapshot is ever checked out.
     repo: git2::Repository,
@@ -177,7 +179,14 @@ impl RetainedChanges {
                     .map(|path| self.includes(Path::new(path)))
                     .unwrap_or(true)
             });
-            if affects_package {
+            if affects_package
+                && self
+                    .refine_text_conflict(&conflict)
+                    .unwrap_or_else(|error| {
+                        debug!("cannot refine retained text changes: {error:#}");
+                        true
+                    })
+            {
                 return Ok(true);
             }
         }
@@ -185,11 +194,70 @@ impl RetainedChanges {
             .repo
             .diff_tree_to_index(Some(&tree), Some(&index), None)?;
         Ok(diff.deltas().any(|delta| {
+            // Conflicts were classified above without changing the in-memory
+            // index; do not count a refined no-op again as a changed file.
+            if delta.status() == git2::Delta::Conflicted {
+                return false;
+            }
             [delta.old_file().path(), delta.new_file().path()]
                 .into_iter()
                 .flatten()
                 .any(|path| self.includes(path))
         }))
+    }
+
+    /// Whether a text conflict still carries a change. Only a character-level
+    /// three-way merge that resolves to `ours` proves the contribution absent.
+    fn refine_text_conflict(&self, conflict: &git2::IndexConflict) -> anyhow::Result<bool> {
+        let (Some(ancestor), Some(ours), Some(theirs)) =
+            (&conflict.ancestor, &conflict.our, &conflict.their)
+        else {
+            return Ok(true);
+        };
+        if ancestor.path != ours.path
+            || ancestor.path != theirs.path
+            || ![ancestor.mode, ours.mode, theirs.mode]
+                .into_iter()
+                .all(Self::is_regular_file_in_checkout)
+        {
+            return Ok(true);
+        }
+        let blobs = [
+            self.repo.find_blob(ancestor.id)?,
+            self.repo.find_blob(ours.id)?,
+            self.repo.find_blob(theirs.id)?,
+        ];
+        // Character-per-line inputs expand the diff's working set. Keep large
+        // or binary conflicts unresolved instead of allocating unbounded tokens.
+        if blobs.iter().map(git2::Blob::size).sum::<usize>() > 1024 * 1024
+            || blobs.iter().any(|blob| blob.content().contains(&0))
+        {
+            return Ok(true);
+        }
+        let mut encoded = Vec::with_capacity(blobs.len());
+        for blob in &blobs {
+            let Ok(contents) = std::str::from_utf8(blob.content()) else {
+                return Ok(true);
+            };
+            let mut characters = String::with_capacity(contents.len() * 3);
+            for character in contents.chars() {
+                // Encoding preserves newlines and Unicode scalars as individual,
+                // unambiguous lines for libgit2's existing three-way text merge.
+                writeln!(characters, "{:x}", u32::from(character))?;
+            }
+            encoded.push(characters);
+        }
+        let [mut ancestor, mut ours, mut theirs] =
+            std::array::from_fn(|_| git2::MergeFileInput::new());
+        ancestor.content(encoded[0].as_bytes());
+        ours.content(encoded[1].as_bytes());
+        theirs.content(encoded[2].as_bytes());
+        let merged = git2::merge_file(&ancestor, &ours, &theirs, None)?;
+        Ok(!merged.is_automergeable() || merged.content() != encoded[1].as_bytes())
+    }
+
+    fn is_regular_file_in_checkout(mode: u32) -> bool {
+        matches!(mode, 0o100_644 | 0o100_755)
     }
 
     fn includes(&self, path: &Path) -> bool {
