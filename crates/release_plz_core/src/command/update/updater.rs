@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
     sync::{Mutex, Once},
     thread,
 };
@@ -600,21 +599,6 @@ impl Updater<'_> {
             .context("can't checkout head to calculate diff")?;
         let registry_package = registry_packages.get_registry_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
-        let pathbufs_to_check = pathbufs_to_check(&package_path, package)?;
-        let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        repository
-            .checkout_last_commit_at_paths(&paths_to_check)
-            .map_err(|err| {
-                if err
-                    .to_string()
-                    .contains("Your local changes to the following files would be overwritten")
-                {
-                    err.context("The allow-dirty option can't be used in this case")
-                } else {
-                    err.context("Failed to retrieve the last commit of local repository.")
-                }
-            })?;
-
         let git_tag = self
             .project
             .git_tag(&package.name, &package.version.to_string())?;
@@ -647,9 +631,6 @@ impl Updater<'_> {
             &mut diff,
         )?;
 
-        repository
-            .checkout_head()
-            .context("can't checkout to head after calculating diff")?;
         Ok(diff)
     }
 
@@ -662,107 +643,97 @@ impl Updater<'_> {
         tag_commit: Option<&str>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
-        let pathbufs_to_check = pathbufs_to_check(package_path, package)?;
-        let paths_to_check: Vec<&Path> = pathbufs_to_check.iter().map(|p| p.as_ref()).collect();
-        let max_analyze_commits = if registry_package.is_none() {
-            match self.req.max_analyze_commits() {
-                0 => u32::MAX,
-                n => n,
-            }
-        } else {
-            u32::MAX
-        };
-        // The released package doesn't change while we walk the local history.
         let released_package_files = ReleasedPackageFiles::default();
-
-        for _ in 0..max_analyze_commits {
-            let current_commit_message = repository.current_commit_message()?;
-            let current_commit_hash = repository.current_commit_hash()?;
-
-            // Check if files changed in git commit belong to the current package.
-            // This is required because a package can contain another package in a subdirectory.
-            let are_changed_files_in_pkg = || {
-                self.are_changed_files_in_package(package_path, repository, &current_commit_hash)
-            };
-
-            if let Some(registry_package) = registry_package {
-                debug!(
-                    "package {} found in cargo registry",
-                    registry_package.package.name
-                );
-                let registry_package_path = registry_package.package.package_path()?;
-
+        // The released package, paired with the path of its extracted sources.
+        let released = registry_package
+            .map(|p| p.package.package_path().map(|path| (p, path)))
+            .transpose()?;
+        let paths_to_check = paths_to_check(package_path, package)?;
+        let max_analyze_commits = released
+            .is_none()
+            .then(|| self.req.max_analyze_commits())
+            // 0 means "no limit"
+            .filter(|&n| n != 0);
+        let release_boundaries: Vec<&str> = tag_commit
+            .into_iter()
+            .chain(released.and_then(|(p, _)| p.published_at_sha1()))
+            .collect();
+        // Enumerate from the branch tip before checking out any historical snapshot.
+        let commits = repository.commits_at_paths(
+            "HEAD",
+            &release_boundaries,
+            &paths_to_check,
+            max_analyze_commits,
+        )?;
+        let mut released_ancestors = HashSet::new();
+        for current_commit_hash in commits {
+            // Optimization only: an already pruned commit would be checked out and
+            // `cargo package`d for nothing. The `retain` after the loop is what keeps
+            // these out of the diff — the walk can reach them before the snapshot that
+            // prunes them, so this check alone can't be relied on.
+            if released_ancestors.contains(&current_commit_hash) {
+                continue;
+            }
+            checkout_commit(repository, &current_commit_hash)?;
+            if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
                     package,
                     package_path,
-                    registry_package,
-                    registry_package_path,
+                    released_package,
+                    released_path,
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                let commit_too_old = || {
-                    is_commit_too_old(
-                        repository,
-                        tag_commit,
-                        registry_package.published_at_sha1(),
-                        &current_commit_hash,
-                    )
-                };
-                if are_packages_equal || commit_too_old() {
-                    debug!(
-                        "next version calculated starting from commits after `{current_commit_hash}`"
+                if are_packages_equal {
+                    // Prune every ancestor of this released snapshot.
+                    // `--full-history` is what makes the set complete: git's
+                    // default simplification drops the second parent of a "keep
+                    // mine" merge, hiding real ancestors. The paths are the same
+                    // as the outer walk's, since only its commits are probed.
+                    // "Ancestor of a released snapshot" only coincides with
+                    // "already released" while merges don't invert tree order: a
+                    // `merge -s ours` can keep an ancestor's tree alive at HEAD.
+                    released_ancestors.extend(
+                        repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
                     );
-                    if diff.commits.is_empty() {
-                        // Even if the packages are equal, the Cargo.lock or Cargo.toml of the
-                        // workspace might have changed.
-                        // If the dependencies changed, we add a commit to the diff.
-                        self.add_dependencies_update_if_any(
-                            diff,
-                            registry_package,
-                            package,
-                            registry_package_path,
-                        )?;
-                    }
-                    // The local package is identical to the registry one, which means that
-                    // the package was published at this commit, so we will not count this commit
-                    // as part of the release.
-                    // We can process the next package.
-                    break;
-                } else {
-                    // When version is already bumped, we still collect commits to update the changelog,
-                    // but mark that version should not be bumped further.
-                    if package.version > registry_package.package.version
-                        && diff.is_version_published
-                    {
-                        info!(
-                            "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
-                            package.name, package.version, registry_package.package.version
-                        );
-                        diff.set_version_unpublished(registry_package.package.version.clone());
-                    }
-                    if are_changed_files_in_pkg()? {
-                        debug!("packages contain different files");
-                        // At this point of the git history, the two packages are different,
-                        // which means that this commit is not present in the published package.
-                        diff.commits.push(Commit::new(
-                            current_commit_hash,
-                            current_commit_message.clone(),
-                        ));
-                    }
+                    continue;
                 }
-            } else if are_changed_files_in_pkg()? {
+                // An already bumped version still needs its changelog updated.
+                if package.version > released_package.package.version && diff.is_version_published {
+                    info!(
+                        "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
+                        package.name, package.version, released_package.package.version
+                    );
+                    diff.set_version_unpublished(released_package.package.version.clone());
+                }
+            }
+            // A package can contain another package in a subdirectory, so only count
+            // commits that touch files Cargo would package for this package.
+            if self.are_changed_files_in_package(package_path, repository, &current_commit_hash)? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
-                    current_commit_message.clone(),
+                    repository.current_commit_message()?,
                 ));
             }
-            // Go back to the previous commit.
-            // Keep in mind that the info contained in `package` might be outdated,
-            // because commits could contain changes to Cargo.toml.
-            if let Err(_err) = repository.checkout_previous_commit_at_paths(&paths_to_check) {
-                debug!("there are no other commits");
-                break;
-            }
+        }
+
+        // This, not the skip at the top of the loop, is what keeps released ancestors
+        // out of the diff. `--date-order` only orders the simplified history the walk
+        // traverses, so an ancestor hidden behind a severed merge edge can be visited
+        // before the snapshot that prunes it. Drop it here rather than relying on the
+        // order.
+        diff.commits
+            .retain(|commit| !released_ancestors.contains(&commit.id));
+
+        repository
+            .checkout_head()
+            .context("can't checkout head to compare dependencies")?;
+        // The range can be empty when only workspace Cargo.toml or Cargo.lock
+        // changed. Dependency updates must not depend on visiting a package commit.
+        if diff.commits.is_empty()
+            && let Some((released_package, released_path)) = released
+        {
+            self.add_dependencies_update_if_any(diff, released_package, package, released_path)?;
         }
         Ok(())
     }
@@ -784,24 +755,14 @@ impl Updater<'_> {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
-        // We run `cargo package` when comparing packages, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let are_packages_equal = crate::package_compare::are_packages_equal_cached(
-            package_path,
-            registry_package_path,
-            released_package_files,
-        )
-        .context("cannot compare packages")?;
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
-        Ok(are_packages_equal)
+        self.with_cargo_lock_restored(repository, || {
+            crate::package_compare::are_packages_equal_cached(
+                package_path,
+                registry_package_path,
+                released_package_files,
+            )
+        })?
+        .context("cannot compare packages")
     }
 
     /// If the dependencies changed, add a commit to the diff.
@@ -861,6 +822,26 @@ impl Updater<'_> {
         }
     }
 
+    /// Run `f`, which inspects the package with `cargo package`, then revert the
+    /// edits `cargo package` can make to files such as `Cargo.lock`.
+    fn with_cargo_lock_restored<T>(
+        &self,
+        repository: &Repo,
+        f: impl FnOnce() -> T,
+    ) -> anyhow::Result<T> {
+        // Store the path before `f` runs so it can be reverted afterwards.
+        let cargo_lock_path = self
+            .get_cargo_lock_path(repository)
+            .context("failed to determine Cargo.lock path")?;
+        let result = f();
+        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
+            repository
+                .checkout(cargo_lock_path)
+                .context("cannot revert changes introduced when comparing packages")?;
+        }
+        Ok(result)
+    }
+
     fn get_next_version(
         &self,
         new_workspace_version: Option<&Version>,
@@ -902,18 +883,8 @@ impl Updater<'_> {
         repository: &Repo,
         hash: &str,
     ) -> anyhow::Result<bool> {
-        // We run `cargo package` to get package files, which can edit files, such as `Cargo.lock`.
-        // Store its path so it can be reverted after comparison.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let package_files_res = get_package_files(package_path, repository);
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            // Revert any changes to `Cargo.lock`
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
+        let package_files_res = self
+            .with_cargo_lock_restored(repository, || get_package_files(package_path, repository))?;
         let Ok(package_files) = package_files_res.inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
@@ -928,6 +899,22 @@ impl Updater<'_> {
         };
         Ok(!package_files.is_disjoint(&changed_files))
     }
+}
+
+/// Checkout a commit of the history we are walking, hinting at `--allow-dirty` when
+/// uncommitted changes are what stopped the checkout.
+fn checkout_commit(repository: &Repo, commit: &str) -> anyhow::Result<()> {
+    repository.checkout(commit).map_err(|err| {
+        // git reports this in the stderr of the innermost error, so look at the
+        // whole chain rather than at the outermost context.
+        if format!("{err:#}")
+            .contains("Your local changes to the following files would be overwritten")
+        {
+            err.context("The allow-dirty option can't be used in this case")
+        } else {
+            err.context(format!("failed to checkout commit {commit}"))
+        }
+    })
 }
 
 /// Check if release-plz should check the semver compatibility of the package.
@@ -993,41 +980,7 @@ fn get_package_files(
         .collect()
 }
 
-/// Check if commit belongs to a previous version of the package.
-/// `tag_commit` is the commit hash of the tag of the previous version.
-/// `published_at_commit` is the commit hash where `cargo publish` ran.
-fn is_commit_too_old(
-    repository: &Repo,
-    tag_commit: Option<&str>,
-    published_at_commit: Option<&str>,
-    current_commit_hash: &str,
-) -> bool {
-    if let Some(tag_commit) = tag_commit.as_ref()
-        && repository.is_ancestor(current_commit_hash, tag_commit)
-    {
-        debug!(
-            "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) tagged with the previous version.",
-            current_commit_hash, tag_commit
-        );
-        return true;
-    }
-
-    if let Some(published_commit) = published_at_commit.as_ref()
-        && repository.is_ancestor(current_commit_hash, published_commit)
-    {
-        debug!(
-            "stopping looking at git history because the current commit ({}) is an ancestor of the commit ({}) where the previous version was published.",
-            current_commit_hash, published_commit
-        );
-        return true;
-    }
-    false
-}
-
-fn pathbufs_to_check(
-    package_path: &Utf8Path,
-    package: &Package,
-) -> anyhow::Result<Vec<Utf8PathBuf>> {
+fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Vec<Utf8PathBuf>> {
     let mut paths = vec![package_path.to_path_buf()];
     if let Some(readme_path) = crate::local_readme_override(package, package_path)? {
         paths.push(readme_path);
@@ -1167,6 +1120,9 @@ fn get_repo_path(
 
     Ok(result_path)
 }
+
+#[cfg(test)]
+mod history_tests;
 
 #[cfg(test)]
 mod tests {
