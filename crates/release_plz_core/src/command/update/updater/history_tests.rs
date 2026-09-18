@@ -27,6 +27,18 @@ impl History {
         Self::init(local_dir, repo_dir, None, write_packages)
     }
 
+    /// Like [`Self::with_packages`], but the walked repository is addressed through
+    /// a symlink to the project directory, like the temporary copy `release-plz
+    /// update` walks when `tempfile` returns a non-canonical path (`/var` on macOS).
+    #[cfg(unix)]
+    fn with_repo_through_symlink(write_packages: impl Fn(&Utf8Path)) -> Self {
+        let local_dir = tempfile::tempdir().unwrap();
+        let link_dir = tempfile::tempdir().unwrap();
+        let link = canonicalize(&link_dir).join("link");
+        std::os::unix::fs::symlink(canonicalize(&local_dir), &link).unwrap();
+        Self::init(local_dir, link, Some(link_dir), write_packages)
+    }
+
     fn init(
         local_dir: tempfile::TempDir,
         repo_dir: Utf8PathBuf,
@@ -688,6 +700,380 @@ fn a_merge_commit_whose_resolution_survives_is_retained() {
 }
 
 #[test]
+fn ignored_file_changes_do_not_hide_a_retained_package_change() {
+    for ignored in [
+        "ignored.txt",
+        "Cargo.lock",
+        "src/Cargo.lock",
+        "src/Cargo.toml.orig",
+    ] {
+        let history = History::with_packages(|root| {
+            write_package(root, PACKAGE, "0.1.0", "exclude = [\"ignored.txt\"]\n");
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+            fs_err::write(root.join("ignored.txt"), "original\n").unwrap();
+            for nested in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+                fs_err::write(root.join(nested), "original\n").unwrap();
+            }
+        });
+        let path = history.repo.directory().join(ignored);
+        let old = fs_err::read_to_string(&path).unwrap();
+        fs_err::write(path, format!("{old}# changed\n")).unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "ignored={ignored}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn executable_bit_changes_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for sequential in [false, true] {
+        let history = api_history();
+        history
+            .repo
+            .git(&["config", "core.filemode", "true"])
+            .unwrap();
+        let (implementation, implementation_commit) = if sequential {
+            let implementation = implemented_api();
+            let commit =
+                history.write_commit("src/lib.rs", &implementation, "chore: implementation");
+            (implementation, Some(commit))
+        } else {
+            (BASE_API.to_owned(), None)
+        };
+        fs_err::set_permissions(
+            history.repo.directory().join("src/lib.rs"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            &implementation.replace("api()", "api(_: bool)"),
+            "feat!: breaking API and set executable bit",
+        );
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(None);
+        let mut expected = HashSet::from([breaking.as_str(), sibling.as_str()]);
+        expected.extend(implementation_commit.as_deref());
+        assert_eq!(
+            commit_ids(&diff),
+            expected,
+            "sequential={sequential}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        // Keeping only the executable bit must not retain the breaking marker.
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([restore.as_str(), sibling.as_str()]),
+            "sequential={sequential}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
+#[test]
+fn materialized_symlink_files_keep_their_breaking_change_marker() {
+    for (path, sequential) in [
+        ("src/link.txt", false),
+        ("src/link.txt", true),
+        ("API.md", false),
+        ("API.md", true),
+    ] {
+        let history = History::with_packages(|root| {
+            let readme = if path == "API.md" {
+                "readme = \"API.md\"\n"
+            } else {
+                ""
+            };
+            write_package(root, PACKAGE, "0.1.0", readme);
+            fs_err::write(root.join(path), "old-target.txt").unwrap();
+            for target in [
+                "old-target.txt",
+                "new-target.txt",
+                "old-target.txt-extra",
+                "new-target.txt-extra",
+            ] {
+                fs_err::write(
+                    root.join(path).parent().unwrap().join(target),
+                    "# same contents\n",
+                )
+                .unwrap();
+            }
+        });
+        for repo in [&history.repo, &history.registry] {
+            repo.git(&["config", "core.symlinks", "false"]).unwrap();
+            let blob = repo.git(&["hash-object", "-w", "--", path]).unwrap();
+            repo.git(&[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("120000,{blob},{path}"),
+            ])
+            .unwrap();
+            repo.git(&["commit", "-m", "chore: materialized link baseline"])
+                .unwrap();
+            assert!(!repo.directory().join(path).is_symlink());
+            assert!(
+                repo.git(&["ls-files", "--stage", "--", path])
+                    .unwrap()
+                    .starts_with("120000 ")
+            );
+        }
+        let (contents, suffix) = if sequential {
+            let suffix =
+                history.write_commit(path, "old-target.txt-extra", "chore: pointer suffix");
+            ("new-target.txt-extra", Some(suffix))
+        } else {
+            ("new-target.txt", None)
+        };
+        let breaking = history.write_commit(path, contents, "feat!: pointer format");
+        let sibling = history.merge_ignored_revert(path, Some("old-target.txt"));
+        let diff = history.diff(None);
+        let mut expected = HashSet::from([breaking.as_str(), sibling.as_str()]);
+        expected.extend(suffix.as_deref());
+        assert_eq!(
+            commit_ids(&diff),
+            expected,
+            "path={path}, sequential={sequential}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        let restore = history.write_commit(path, "old-target.txt", "fix: restore pointer");
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([restore.as_str(), sibling.as_str()]),
+            "path={path}, sequential={sequential}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_target_changes_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::symlink;
+
+    for (was_symlink, conflicting) in [(false, false), (true, false), (true, true)] {
+        let history = History::with_packages(|root| {
+            write_package(root, PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+            for target in ["a.txt", "b.txt", "c.txt"] {
+                fs_err::write(root.join("src").join(target), target).unwrap();
+            }
+            let link = root.join("src/link.txt");
+            if was_symlink {
+                symlink("a.txt", link).unwrap();
+            } else {
+                fs_err::write(link, "original\n").unwrap();
+            }
+        });
+        let link = history.repo.directory().join("src/link.txt");
+        fs_err::remove_file(&link).unwrap();
+        symlink("b.txt", &link).unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        if conflicting {
+            // Undoing a -> b at c conflicts even though equality ignores the link.
+            fs_err::remove_file(&link).unwrap();
+            symlink("c.txt", &link).unwrap();
+            history
+                .repo
+                .add_all_and_commit("chore: retarget link")
+                .unwrap();
+        }
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(None);
+        // Equality ignores the link's target, so retargeting it alone is not retained.
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "was_symlink={was_symlink}, conflicting={conflicting}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([restore.as_str(), sibling.as_str()]),
+            "was_symlink={was_symlink}, conflicting={conflicting}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_presence_changes_keep_their_breaking_change_marker() {
+    use std::os::unix::fs::symlink;
+
+    for added in [false, true] {
+        let history = History::with_packages(|root| {
+            write_package(root, PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("src/target.txt"), "fixture\n").unwrap();
+            if !added {
+                symlink("target.txt", root.join("src/link.txt")).unwrap();
+            }
+        });
+        let link = history.repo.directory().join("src/link.txt");
+        if added {
+            symlink("target.txt", &link).unwrap();
+        } else {
+            fs_err::remove_file(&link).unwrap();
+        }
+        // Include a regular packaged path in the commit; its contents are ignored.
+        let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
+        let breaking = history.write_commit(
+            "Cargo.lock",
+            &format!("{lock}# changed\n"),
+            "feat!: fixture paths",
+        );
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            let link = root.join("src/link.txt");
+            if added {
+                fs_err::remove_file(link).unwrap();
+            } else {
+                symlink("target.txt", link).unwrap();
+            }
+        });
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "added={added}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn readme_symlink_changes_keep_their_breaking_change_marker() {
+    use std::os::unix::fs::symlink;
+
+    for package_dir in ["", "app"] {
+        let ignored = Utf8Path::new(package_dir).join("src/Cargo.lock");
+        let history = History::with_packages(|root| {
+            let readme = if package_dir.is_empty() {
+                "API.md"
+            } else {
+                fs_err::write(root.join(CARGO_TOML), "[workspace]\nmembers = [\"app\"]\n").unwrap();
+                "../API.md"
+            };
+            write_package(
+                &root.join(package_dir),
+                PACKAGE,
+                "0.1.0",
+                &format!("readme = {readme:?}\n"),
+            );
+            fs_err::write(root.join(&ignored), "original\n").unwrap();
+            for target in ["old.md", "new.md"] {
+                fs_err::write(root.join(target), target).unwrap();
+            }
+            symlink("old.md", root.join("API.md")).unwrap();
+        });
+        let readme = history.repo.directory().join("API.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink("new.md", &readme).unwrap();
+        let breaking = history.write_commit(ignored.as_str(), "changed\n", "feat!: documented API");
+        let sibling = history.merge_ignored_change(
+            Utf8Path::new(package_dir).join("src/fix.rs").as_str(),
+            |root| {
+                let readme = root.join("API.md");
+                fs_err::remove_file(&readme).unwrap();
+                symlink("old.md", readme).unwrap();
+                // Keep the equal snapshot in the package's path-filtered history
+                // even when its README link lives outside the package directory.
+                fs_err::write(root.join(&ignored), "reverted\n").unwrap();
+            },
+        );
+        let diff = history.diff(None);
+        // A README outside the package directory can't be listed as a package
+        // file, and that failure counts every visited commit, the merge included.
+        assert!(
+            HashSet::from([breaking.as_str(), sibling.as_str()]).is_subset(&commit_ids(&diff)),
+            "package_dir={package_dir}: {:?}",
+            diff.commits
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
+fn sequential_readme_edits_keep_their_breaking_change_marker() {
+    let history = History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
+        fs_err::write(root.join("API.md"), BASE_API).unwrap();
+    });
+    let implementation = implemented_api();
+    let clarified = history.write_commit("API.md", &implementation, "chore: clarify documentation");
+    let breaking = history.write_commit(
+        "API.md",
+        &implementation.replace("api()", "api(_: bool)"),
+        "feat!: documented API",
+    );
+    let sibling = history.merge_ignored_revert("API.md", Some(BASE_API));
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([clarified.as_str(), breaking.as_str(), sibling.as_str()]),
+        "{:?}",
+        diff.commits
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
+    let path = "src/.cargo_vcs_info.json";
+    let history = History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "");
+        fs_err::write(root.join(path), "{}\n").unwrap();
+    });
+    let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
+    let sibling = history.merge_ignored_revert(path, Some("{}\n"));
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([breaking.as_str(), sibling.as_str()])
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = History::new();
+        let breaking = history.write_commit(path, "fixture\n", "feat!: fixture format");
+        let sibling = history.merge_ignored_revert(path, None);
+        let diff = history.diff(None);
+        assert_eq!(
+            commit_ids(&diff),
+            HashSet::from([breaking.as_str(), sibling.as_str()]),
+            "path={path}"
+        );
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
@@ -1105,4 +1491,19 @@ fn a_tip_matching_the_release_releases_nothing_although_its_branches_differ() {
         .add_all_and_commit("published release")
         .unwrap();
     assert!(history.diff(None).commits.is_empty());
+}
+
+/// `release-plz update` walks a temporary copy of the project whose path is
+/// whatever `tempfile` returns (`/var/folders/...` on macOS resolves to
+/// `/private/var/...`), while the configured README paths are canonicalized.
+#[cfg(unix)]
+#[test]
+fn retained_changes_are_checked_when_the_repository_path_is_not_canonical() {
+    let history = History::with_repo_through_symlink(|root| {
+        write_package(root, PACKAGE, "0.1.0", "readme = \"API.md\"\n");
+        fs_err::write(root.join("API.md"), "# API\n").unwrap();
+    });
+    let feature = history.write_commit("src/lib.rs", "pub fn api() {}\n", "feat: api");
+    let diff = history.diff(None);
+    assert_eq!(commit_ids(&diff), HashSet::from([feature.as_str()]));
 }
