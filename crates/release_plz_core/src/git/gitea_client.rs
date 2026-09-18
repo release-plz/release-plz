@@ -22,8 +22,8 @@ pub(crate) fn authenticated_repo(repo: Repo, remote: &Remote) -> anyhow::Result<
     {
         return Ok(repo);
     }
-    // Credentials in the URL are not part of the scope, and must not appear in arguments.
-    url.set_username("").expect("HTTP URLs support usernames");
+    // Keep the username so this scope overrides username-specific checkout headers.
+    // The scope is passed through the environment because usernames can contain tokens.
     url.set_password(None).expect("HTTP URLs support passwords");
     url.set_query(None);
     url.set_fragment(None);
