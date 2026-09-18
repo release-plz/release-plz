@@ -4,11 +4,11 @@ mod cmd;
 #[cfg(feature = "test_fixture")]
 pub mod test_fixture;
 
-use std::{collections::HashSet, path::Path, process::Command};
+use std::{collections::HashSet, process::Command};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
-use tracing::{Span, debug, instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
 /// Repository
 #[derive(Debug)]
@@ -205,29 +205,6 @@ impl Repo {
         Ok(())
     }
 
-    /// Checkout to the latest commit.
-    pub fn checkout_last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let previous_commit = self.last_commit_at_paths(paths)?;
-        self.checkout(&previous_commit)?;
-        Ok(())
-    }
-
-    fn last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(1, paths)
-            .context("failed to get message of last commit")
-    }
-
-    fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(2, paths)
-            .context("failed to get message of previous commit")
-    }
-
-    pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let commit = self.previous_commit_at_paths(paths)?;
-        self.checkout(&commit)?;
-        Ok(())
-    }
-
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         self.git(&["checkout", object])
@@ -251,35 +228,8 @@ impl Repo {
         Ok(())
     }
 
-    /// Get `nth` commit starting from `1`.
-    #[instrument(
-        skip(self)
-        fields(
-            nth_commit = tracing::field::Empty,
-        )
-    )]
-    fn nth_commit_at_paths(&self, nth: usize, paths: &[&Path]) -> anyhow::Result<String> {
-        let nth_str = nth.to_string();
-
-        let git_args = {
-            let mut git_args = vec!["log", "--format=%H", "-n", &nth_str, "--"];
-            for p in paths {
-                let path = p.to_str().expect("invalid path");
-                git_args.push(path);
-            }
-            git_args
-        };
-
-        let commit_list = self.git(&git_args)?;
-        let mut commits = commit_list.lines();
-        let last_commit = commits.nth(nth - 1).context("not enough commits")?;
-
-        Span::current().record("nth_commit", last_commit);
-        debug!("nth_commit found");
-        Ok(last_commit.to_string())
-    }
-
-    /// Commits reachable from `head` that touch `paths`, ordered with `--date-order`.
+    /// Commits reachable from `head` that touch `paths`, descendants before
+    /// ancestors in the simplified history this walks.
     ///
     /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
     /// doesn't exist in this repository is ignored, so a commit hash recorded by a
@@ -296,44 +246,39 @@ impl Repo {
         paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
+        let exclusions: Vec<String> = exclude
+            .iter()
+            .filter(|commit| self.commit_exists(commit))
+            .map(|commit| format!("^{commit}"))
+            .collect();
         let limit = max_commits.map(|n| format!("--max-count={n}"));
         let mut args = vec!["--date-order", head];
+        args.extend(exclusions.iter().map(String::as_str));
         args.extend(limit.as_deref());
-        self.rev_list(&args, exclude, paths)
+        self.rev_list(&args, paths)
     }
 
-    /// Commits reachable from `commit` that touch `paths`.
-    ///
-    /// As in [`Repo::commits_at_paths`], `exclude` commits and their ancestors are
-    /// dropped, and missing exclusions are ignored.
+    /// Commits reachable from `commit` that touch `paths`, including `commit` itself.
     ///
     /// Unlike [`Repo::commits_at_paths`], this doesn't simplify history: every
     /// parent of a merge is followed, so the result is a superset of the commits any
-    /// simplified walk can reach through `commit` with the same exclusions.
+    /// simplified walk can reach through `commit`.
     pub fn ancestors_at_paths(
         &self,
         commit: &str,
-        exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<String>> {
-        self.rev_list(&["--full-history", commit], exclude, paths)
+        self.rev_list(&["--full-history", commit], paths)
     }
 
     /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
     fn rev_list(
         &self,
         args: &[&str],
-        exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<String>> {
-        let exclusions: Vec<String> = exclude
-            .iter()
-            .filter(|commit| self.commit_exists(commit))
-            .map(|commit| format!("^{commit}"))
-            .collect();
         let mut rev_list = vec!["rev-list"];
         rev_list.extend(args);
-        rev_list.extend(exclusions.iter().map(String::as_str));
         rev_list.push("--");
         rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
         let output = self.git(&rev_list)?;
@@ -621,7 +566,7 @@ mod tests {
             "the discarded commit must be a real ancestor of the merge"
         );
         assert!(
-            repo.ancestors_at_paths("HEAD", &[], &[path])
+            repo.ancestors_at_paths("HEAD", &[path])
                 .unwrap()
                 .contains(&discarded)
         );
@@ -631,55 +576,6 @@ mod tests {
                 .unwrap()
                 .contains(&discarded),
             "the simplified walk is supposed to miss it: that's why the two differ"
-        );
-    }
-
-    #[test]
-    fn full_history_ancestors_exclude_each_release_boundary() {
-        test_logs::init();
-        let directory = tempdir().unwrap();
-        let repo = Repo::init(&directory);
-        let path = Utf8Path::new("pkg");
-        fs_err::create_dir(directory.path().join(path)).unwrap();
-        let main_branch = repo.original_branch().to_string();
-        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
-        repo.git(&["branch", "feature"]).unwrap();
-
-        // The tag and published SHA can be on different branches. Both release
-        // boundaries and their shared history must be excluded from the walk.
-        commit_file_at(&repo, path, "tagged", "2024-01-01T00:00:01 +0000");
-        let tagged = repo.current_commit_hash().unwrap();
-        commit_file_at(&repo, path, "mine", "2024-01-01T00:00:02 +0000");
-        let mine = repo.current_commit_hash().unwrap();
-        repo.git(&["checkout", "feature"]).unwrap();
-        commit_file_at(&repo, path, "published", "2024-01-01T00:00:03 +0000");
-        let published = repo.current_commit_hash().unwrap();
-        commit_file_at(&repo, path, "discarded", "2024-01-01T00:00:04 +0000");
-        let discarded = repo.current_commit_hash().unwrap();
-        repo.git(&["checkout", &main_branch]).unwrap();
-        repo.git_at(
-            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
-            "2024-01-01T00:00:05 +0000",
-        )
-        .unwrap();
-        let merge = repo.current_commit_hash().unwrap();
-
-        let missing = "0000000000000000000000000000000000000000";
-        assert_eq!(
-            repo.ancestors_at_paths("HEAD", &[missing], &[path])
-                .unwrap(),
-            repo.ancestors_at_paths("HEAD", &[], &[path]).unwrap(),
-            "a missing release boundary must leave history available"
-        );
-        let ancestors: HashSet<_> = repo
-            .ancestors_at_paths("HEAD", &[&tagged, &published, missing], &[path])
-            .unwrap()
-            .into_iter()
-            .collect();
-        assert_eq!(
-            ancestors,
-            HashSet::from([merge, mine, discarded]),
-            "only unreleased ancestors remain, including the discarded merge parent"
         );
     }
 
@@ -733,34 +629,6 @@ mod tests {
         let repo = Repo::new(repo.directory()).unwrap();
         assert_eq!(repo.original_remote(), "upstream");
         assert_eq!(repo.original_branch(), "release/stable");
-    }
-
-    #[test]
-    fn inexistent_previous_commit_detected() {
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let file1 = repository_dir.as_ref().join("file1.txt");
-        repo.checkout_previous_commit_at_paths(&[&file1])
-            .unwrap_err();
-    }
-
-    #[test]
-    fn previous_commit_is_retrieved() {
-        test_logs::init();
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let file1 = repository_dir.as_ref().join("file1.txt");
-        let file2 = repository_dir.as_ref().join("file2.txt");
-        {
-            fs_err::write(&file2, b"Hello, file2!-1").unwrap();
-            repo.add_all_and_commit("file2-1").unwrap();
-            fs_err::write(file1, b"Hello, file1!").unwrap();
-            repo.add_all_and_commit("file1").unwrap();
-            fs_err::write(&file2, b"Hello, file2!-2").unwrap();
-            repo.add_all_and_commit("file2-2").unwrap();
-        }
-        repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
-        assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
     }
 
     #[test]
