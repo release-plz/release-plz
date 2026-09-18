@@ -76,11 +76,14 @@ impl RetainedChanges {
             .collect();
         // The walked repository can be a temporary copy at a non-canonical path,
         // such as `/var` on macOS, while the README paths were canonicalized.
+        // Canonicalization is best effort: the raw path is tried first anyway.
         let directory = repository.directory();
-        let canonical_directory = crate::fs_utils::canonicalize_utf8(directory)?;
+        let canonical_directory = crate::fs_utils::canonicalize_utf8(directory).ok();
         let relativize = |path: &Utf8Path| {
-            path.strip_prefix(directory)
-                .or_else(|_| path.strip_prefix(&canonical_directory))
+            [Some(directory), canonical_directory.as_deref()]
+                .into_iter()
+                .flatten()
+                .find_map(|base| path.strip_prefix(base).ok())
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
