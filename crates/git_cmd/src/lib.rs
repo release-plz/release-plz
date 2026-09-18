@@ -4,11 +4,11 @@ mod cmd;
 #[cfg(feature = "test_fixture")]
 pub mod test_fixture;
 
-use std::{collections::HashSet, path::Path, process::Command};
+use std::{collections::HashSet, process::Command};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
-use tracing::{Span, debug, instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
 /// Repository
 #[derive(Debug)]
@@ -205,29 +205,6 @@ impl Repo {
         Ok(())
     }
 
-    /// Checkout to the latest commit.
-    pub fn checkout_last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let previous_commit = self.last_commit_at_paths(paths)?;
-        self.checkout(&previous_commit)?;
-        Ok(())
-    }
-
-    fn last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(1, paths)
-            .context("failed to get message of last commit")
-    }
-
-    fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(2, paths)
-            .context("failed to get message of previous commit")
-    }
-
-    pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let commit = self.previous_commit_at_paths(paths)?;
-        self.checkout(&commit)?;
-        Ok(())
-    }
-
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         self.git(&["checkout", object])
@@ -251,32 +228,61 @@ impl Repo {
         Ok(())
     }
 
-    /// Get `nth` commit starting from `1`.
-    #[instrument(
-        skip(self)
-        fields(
-            nth_commit = tracing::field::Empty,
-        )
-    )]
-    fn nth_commit_at_paths(&self, nth: usize, paths: &[&Path]) -> anyhow::Result<String> {
-        let nth_str = nth.to_string();
+    /// Commits reachable from `head` that touch `paths`, descendants before
+    /// ancestors in the simplified history this walks.
+    ///
+    /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
+    /// doesn't exist in this repository is ignored, so a commit hash recorded by a
+    /// release that happened in another repository, or missing from a shallow clone,
+    /// is not fatal.
+    ///
+    /// Commits are ordered by date rather than topologically: `--topo-order` emits
+    /// whole lineages contiguously, so combining it with `max_commits` would keep the
+    /// oldest commits of one branch instead of the newest commits overall.
+    pub fn commits_at_paths(
+        &self,
+        head: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+        max_commits: Option<u32>,
+    ) -> anyhow::Result<Vec<String>> {
+        let exclusions: Vec<String> = exclude
+            .iter()
+            .filter(|commit| self.commit_exists(commit))
+            .map(|commit| format!("^{commit}"))
+            .collect();
+        let limit = max_commits.map(|n| format!("--max-count={n}"));
+        let mut args = vec!["--date-order", head];
+        args.extend(exclusions.iter().map(String::as_str));
+        args.extend(limit.as_deref());
+        self.rev_list(&args, paths)
+    }
 
-        let git_args = {
-            let mut git_args = vec!["log", "--format=%H", "-n", &nth_str, "--"];
-            for p in paths {
-                let path = p.to_str().expect("invalid path");
-                git_args.push(path);
-            }
-            git_args
-        };
+    /// Commits reachable from `commit` that touch `paths`, including `commit` itself.
+    ///
+    /// Unlike [`Repo::commits_at_paths`], this doesn't simplify history: every
+    /// parent of a merge is followed, so the result is a superset of the commits any
+    /// simplified walk can reach through `commit`.
+    pub fn ancestors_at_paths(
+        &self,
+        commit: &str,
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
+        self.rev_list(&["--full-history", commit], paths)
+    }
 
-        let commit_list = self.git(&git_args)?;
-        let mut commits = commit_list.lines();
-        let last_commit = commits.nth(nth - 1).context("not enough commits")?;
-
-        Span::current().record("nth_commit", last_commit);
-        debug!("nth_commit found");
-        Ok(last_commit.to_string())
+    /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
+    fn rev_list(
+        &self,
+        args: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
+        let mut rev_list = vec!["rev-list"];
+        rev_list.extend(args);
+        rev_list.push("--");
+        rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
+        let output = self.git(&rev_list)?;
+        Ok(output.lines().map(str::to_owned).collect())
     }
 
     /// Commits reachable from `head` that touch `paths`, ordered with `--date-order`.
@@ -682,31 +688,63 @@ mod tests {
     }
 
     #[test]
-    fn inexistent_previous_commit_detected() {
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let file1 = repository_dir.as_ref().join("file1.txt");
-        repo.checkout_previous_commit_at_paths(&[&file1])
-            .unwrap_err();
+    fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file.rs");
+        fs_err::write(directory.path().join(path), "shared").unwrap();
+        repo.add_all_and_commit("shared change").unwrap();
+        let shared = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "release"]).unwrap();
+        fs_err::write(directory.path().join(path), "other branch").unwrap();
+        repo.add_all_and_commit("release on another branch")
+            .unwrap();
+        let release = repo.current_commit_hash().unwrap();
+        repo.checkout_head().unwrap();
+        fs_err::write(directory.path().join(path), "local change").unwrap();
+        repo.add_all_and_commit("local change").unwrap();
+        let local = repo.current_commit_hash().unwrap();
+
+        // A boundary that doesn't exist locally can't exclude anything.
+        assert_eq!(
+            repo.commits_at_paths(
+                "HEAD",
+                &["0000000000000000000000000000000000000000"],
+                &[path],
+                None,
+            )
+            .unwrap(),
+            [local.clone(), shared.clone()]
+        );
+
+        // A boundary on a divergent branch still excludes the history it shares
+        // with `head`: those changes were already released.
+        assert_eq!(
+            repo.commits_at_paths("HEAD", &[&release], &[path], None)
+                .unwrap(),
+            [local]
+        );
     }
 
     #[test]
-    fn previous_commit_is_retrieved() {
+    fn commit_range_uses_the_given_tip_and_exclusions() {
         test_logs::init();
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let file1 = repository_dir.as_ref().join("file1.txt");
-        let file2 = repository_dir.as_ref().join("file2.txt");
-        {
-            fs_err::write(&file2, b"Hello, file2!-1").unwrap();
-            repo.add_all_and_commit("file2-1").unwrap();
-            fs_err::write(file1, b"Hello, file1!").unwrap();
-            repo.add_all_and_commit("file1").unwrap();
-            fs_err::write(&file2, b"Hello, file2!-2").unwrap();
-            repo.add_all_and_commit("file2-2").unwrap();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file.rs");
+        let mut commits = Vec::new();
+        for message in ["tagged", "published", "unreleased"] {
+            fs_err::write(directory.path().join(path), message).unwrap();
+            repo.add_all_and_commit(message).unwrap();
+            commits.push(repo.current_commit_hash().unwrap());
         }
-        repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
-        assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
+        repo.checkout(&commits[0]).unwrap();
+        assert_eq!(
+            repo.commits_at_paths(&commits[2], &[&commits[0], &commits[1]], &[path], None)
+                .unwrap(),
+            [commits[2].clone()]
+        );
     }
 
     #[test]
