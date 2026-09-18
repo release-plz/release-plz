@@ -279,6 +279,62 @@ impl Repo {
         Ok(last_commit.to_string())
     }
 
+    /// Commits reachable from `head` that touch `paths`, ordered with `--date-order`.
+    ///
+    /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
+    /// doesn't exist in this repository is ignored, so a commit hash recorded by a
+    /// release that happened in another repository, or missing from a shallow clone,
+    /// is not fatal.
+    ///
+    /// Commits are ordered by date rather than topologically: `--topo-order` emits
+    /// whole lineages contiguously, so combining it with `max_commits` would keep the
+    /// oldest commits of one branch instead of the newest commits overall.
+    pub fn commits_at_paths(
+        &self,
+        head: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+        max_commits: Option<u32>,
+    ) -> anyhow::Result<Vec<String>> {
+        let exclusions: Vec<String> = exclude
+            .iter()
+            .filter(|commit| self.commit_exists(commit))
+            .map(|commit| format!("^{commit}"))
+            .collect();
+        let limit = max_commits.map(|n| format!("--max-count={n}"));
+        let mut args = vec!["--date-order", head];
+        args.extend(exclusions.iter().map(String::as_str));
+        args.extend(limit.as_deref());
+        self.rev_list(&args, paths)
+    }
+
+    /// Commits reachable from `commit` that touch `paths`, including `commit` itself.
+    ///
+    /// Unlike [`Repo::commits_at_paths`], this doesn't simplify history: every
+    /// parent of a merge is followed, so the result is a superset of the commits any
+    /// simplified walk can reach through `commit`.
+    pub fn ancestors_at_paths(
+        &self,
+        commit: &str,
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
+        self.rev_list(&["--full-history", commit], paths)
+    }
+
+    /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
+    fn rev_list(
+        &self,
+        args: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
+        let mut rev_list = vec!["rev-list"];
+        rev_list.extend(args);
+        rev_list.push("--");
+        rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
+        let output = self.git(&rev_list)?;
+        Ok(output.lines().map(str::to_owned).collect())
+    }
+
     pub fn current_commit_message(&self) -> anyhow::Result<String> {
         self.git(&["log", "-1", "--pretty=format:%B"])
     }
@@ -358,6 +414,17 @@ impl Repo {
         .is_ok()
     }
 
+    /// Whether `object` resolves to a commit in this repository.
+    fn commit_exists(&self, object: &str) -> bool {
+        self.git(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{object}^{{commit}}"),
+        ])
+        .is_ok()
+    }
+
     /// Name of the remote when the [`Repo`] was created.
     pub fn original_remote(&self) -> &str {
         &self.original_remote
@@ -401,11 +468,21 @@ fn changed_files(output: &str, filter: impl FnMut(&&str) -> bool) -> Vec<String>
 
 #[instrument]
 pub fn git_in_dir(dir: &Utf8Path, args: &[&str]) -> anyhow::Result<String> {
+    git_in_dir_with_env(dir, args, &[])
+}
+
+/// Like [`git_in_dir`], but with `envs` added to the environment of the git process.
+pub(crate) fn git_in_dir_with_env(
+    dir: &Utf8Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> anyhow::Result<String> {
     let args: Vec<&str> = args.iter().map(|s| s.trim()).collect();
     let output = Command::new("git")
         .arg("-C")
         .arg(dir)
         .args(&args)
+        .envs(envs.iter().copied())
         .output()
         .with_context(|| {
             format!("error while running git in directory `{dir:?}` with args `{args:?}`")
@@ -451,6 +528,106 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    /// `git rev-list --topo-order` emits whole lineages contiguously, so combining
+    /// it with `--max-count` returns the oldest commits of one branch instead of the
+    /// newest commits overall. Every mainline commit would be dropped from a first
+    /// release limited by `max_analyze_commits`.
+    #[test]
+    fn commit_limit_keeps_the_newest_commit_of_every_branch() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+
+        // Interleave the commit dates of the two branches, so taking the newest
+        // three commits must take from both sides.
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["branch", "other"]).unwrap();
+        for (name, date) in [
+            ("a1", "2024-01-01T00:00:01 +0000"),
+            ("a2", "2024-01-01T00:00:03 +0000"),
+            ("a3", "2024-01-01T00:00:05 +0000"),
+        ] {
+            commit_file_at(&repo, path, name, date);
+        }
+        let a3 = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "other"]).unwrap();
+        for (name, date) in [
+            ("b1", "2024-01-01T00:00:02 +0000"),
+            ("b2", "2024-01-01T00:00:04 +0000"),
+            ("b3", "2024-01-01T00:00:06 +0000"),
+        ] {
+            commit_file_at(&repo, path, name, date);
+        }
+        let b3 = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_merge_at(&repo, "other", "2024-01-01T00:00:07 +0000");
+        let merge = repo.current_commit_hash().unwrap();
+
+        assert_eq!(
+            repo.commits_at_paths("HEAD", &[], &[path], Some(3))
+                .unwrap(),
+            [merge, b3, a3]
+        );
+    }
+
+    fn commit_file_at(repo: &Repo, directory: &Utf8Path, name: &str, date: &str) {
+        let file = repo.directory().join(directory).join(name);
+        fs_err::write(file, name).unwrap();
+        repo.git(&["add", "."]).unwrap();
+        repo.git_at(&["commit", "-m", name], date).unwrap();
+    }
+
+    fn commit_merge_at(repo: &Repo, branch: &str, date: &str) {
+        let message = format!("merge {branch}");
+        repo.git_at(&["merge", "--no-ff", "-m", &message, branch], date)
+            .unwrap();
+    }
+
+    /// [`Repo::ancestors_at_paths`] exists to not simplify history: a "keep mine"
+    /// merge is TREESAME to its first parent, so git drops the branch the merge
+    /// discarded from every simplified walk through it, although those commits are
+    /// real ancestors of the merge.
+    #[test]
+    fn full_history_ancestors_keep_the_parent_a_simplified_walk_drops() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        commit_file_at(&repo, path, "discarded", "2024-01-01T00:00:01 +0000");
+        let discarded = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_file_at(&repo, path, "mine", "2024-01-01T00:00:02 +0000");
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2024-01-01T00:00:03 +0000",
+        )
+        .unwrap();
+
+        assert!(
+            repo.is_ancestor(&discarded, "HEAD"),
+            "the discarded commit must be a real ancestor of the merge"
+        );
+        assert!(
+            repo.ancestors_at_paths("HEAD", &[path])
+                .unwrap()
+                .contains(&discarded)
+        );
+        assert!(
+            !repo
+                .commits_at_paths("HEAD", &[], &[path], None)
+                .unwrap()
+                .contains(&discarded),
+            "the simplified walk is supposed to miss it: that's why the two differ"
+        );
+    }
 
     #[test]
     fn detached_head_is_restored_after_checking_out_history() {
@@ -530,6 +707,66 @@ mod tests {
         }
         repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
         assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
+    }
+
+    #[test]
+    fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file.rs");
+        fs_err::write(directory.path().join(path), "shared").unwrap();
+        repo.add_all_and_commit("shared change").unwrap();
+        let shared = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "release"]).unwrap();
+        fs_err::write(directory.path().join(path), "other branch").unwrap();
+        repo.add_all_and_commit("release on another branch")
+            .unwrap();
+        let release = repo.current_commit_hash().unwrap();
+        repo.checkout_head().unwrap();
+        fs_err::write(directory.path().join(path), "local change").unwrap();
+        repo.add_all_and_commit("local change").unwrap();
+        let local = repo.current_commit_hash().unwrap();
+
+        // A boundary that doesn't exist locally can't exclude anything.
+        assert_eq!(
+            repo.commits_at_paths(
+                "HEAD",
+                &["0000000000000000000000000000000000000000"],
+                &[path],
+                None,
+            )
+            .unwrap(),
+            [local.clone(), shared.clone()]
+        );
+
+        // A boundary on a divergent branch still excludes the history it shares
+        // with `head`: those changes were already released.
+        assert_eq!(
+            repo.commits_at_paths("HEAD", &[&release], &[path], None)
+                .unwrap(),
+            [local]
+        );
+    }
+
+    #[test]
+    fn commit_range_uses_the_given_tip_and_exclusions() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file.rs");
+        let mut commits = Vec::new();
+        for message in ["tagged", "published", "unreleased"] {
+            fs_err::write(directory.path().join(path), message).unwrap();
+            repo.add_all_and_commit(message).unwrap();
+            commits.push(repo.current_commit_hash().unwrap());
+        }
+        repo.checkout(&commits[0]).unwrap();
+        assert_eq!(
+            repo.commits_at_paths(&commits[2], &[&commits[0], &commits[1]], &[path], None)
+                .unwrap(),
+            [commits[2].clone()]
+        );
     }
 
     #[test]
