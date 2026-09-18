@@ -602,10 +602,6 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         input,
     )?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
-    anyhow::ensure!(
-        !repo.is_head_detached()?,
-        "release requires a branch. Check out the target branch instead of a detached HEAD"
-    );
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
     debug!("should release: {should_release:?}");
@@ -622,21 +618,22 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
                 debug!("checking out commit {commit}");
                 checkout_done = true;
             }
-            // The commit does not exist if the PR was squashed.
-            Err(_) => trace!("checkout failed; continuing"),
+            // Not expected to fail because `should_release` only returns commits in
+            // HEAD's history.
+            Err(e) => {
+                warn!("failed to checkout commit {commit}: {e:#}. Releasing from HEAD.");
+            }
         }
     }
 
     // Don't return the error immediately because we want to go back to the previous commit if needed
     let release = release_packages(input, &project, &repo, &git_client).await;
 
-    if let ShouldRelease::YesWithCommit(_) = should_release {
-        // Go back to the previous commit so that the user finds
-        // the repository in the same commit they launched release-plz.
-        if checkout_done {
-            repo.checkout("-")?;
-            trace!("restored previous commit after release");
-        }
+    // Go back to the previous commit so that the user finds
+    // the repository in the same commit they launched release-plz.
+    if checkout_done {
+        repo.checkout("-")?;
+        trace!("restored previous commit after release");
     }
 
     release
@@ -802,11 +799,11 @@ async fn should_release(
             // Get the last commit of the PR, i.e. the last commit that was pushed before the PR was merged
             match pr_commits.last() {
                 Some(commit) if commit.sha != last_commit => {
-                    if is_pr_commit_in_original_branch(repo, commit) {
-                        // I need to checkout the last commit of the PR if it exists
+                    if repo.is_ancestor(&commit.sha, &last_commit) {
+                        // Checkout the last commit of the PR
                         Ok(ShouldRelease::YesWithCommit(commit.sha.clone()))
                     } else {
-                        // The commit is not in the original branch, probably the PR was squashed
+                        // The commit is not in HEAD's history, probably the PR was squashed
                         Ok(ShouldRelease::Yes)
                     }
                 }
@@ -824,15 +821,6 @@ async fn should_release(
                 Ok(ShouldRelease::No)
             }
         }
-    }
-}
-
-fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::forge::PrCommit) -> bool {
-    let branches_of_commit = repo.get_branches_of_commit(&commit.sha);
-    if let Ok(branches) = branches_of_commit {
-        branches.contains(&repo.original_branch().to_string())
-    } else {
-        false
     }
 }
 
@@ -1328,9 +1316,14 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 #[cfg(test)]
 mod tests {
     use secrecy::ExposeSecret as _;
+    use serde_json::json;
     use std::env;
     use std::ffi::OsStr;
     use std::sync::{LazyLock, Mutex};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_partial_json, method, path},
+    };
 
     use fake_package::{FakePackage, metadata::fake_metadata};
 
@@ -1366,38 +1359,204 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn release_rejects_detached_head_before_accessing_forge() {
-        test_logs::init();
-        let forge_server = wiremock::MockServer::start().await;
+    fn release_fixture(server: &MockServer) -> (tempfile::TempDir, Repo, ReleaseRequest) {
         let temporary = tempfile::tempdir().unwrap();
         let repo = Repo::init(temporary.path());
         crate::test_utils::write_package(repo.directory(), "test-package", "0.1.0", "");
         let manifest = repo.directory().join(cargo_utils::CARGO_TOML);
         let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
         repo.add_all_and_commit("feat: initial package").unwrap();
-        repo.git(&["checkout", "--detach"]).unwrap();
-        let original_head = repo.current_commit_hash().unwrap();
-        let original_refs = repo.git(&["show-ref"]).unwrap();
         let github = crate::GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
-            .with_base_url(forge_server.uri().parse().unwrap());
+            .with_base_url(server.uri().parse().unwrap());
         let request = ReleaseRequest::new(metadata)
-            .with_token("token")
+            .with_default_package_config(ReleaseConfig::default().with_git_only(true))
             .with_git_release(GitRelease {
                 forge: GitForge::Github(github),
             });
+        (temporary, repo, request)
+    }
 
-        let error = release(&request).await.unwrap_err();
+    async fn mock_release_pr(server: &MockServer, head: &str, pr_commit: Option<&str>) {
+        let prs = match pr_commit {
+            Some(commit) => json!([{
+                "number": 1,
+                "user": {"id": 1, "login": "release-plz"},
+                "html_url": "https://github.com/owner/repo/pull/1",
+                "head": {"ref": "release-plz-test", "sha": commit},
+                "title": "chore: release",
+                "labels": [],
+            }]),
+            None => json!([]),
+        };
+        Mock::given(method("GET"))
+            .and(path(format!("/repos/owner/repo/commits/{head}/pulls")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(prs))
+            .expect(1)
+            .mount(server)
+            .await;
+        if let Some(commit) = pr_commit {
+            Mock::given(method("GET"))
+                .and(path("/repos/owner/repo/pulls/1/commits"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"sha": commit}])))
+                .expect(1)
+                .mount(server)
+                .await;
+        }
+    }
 
-        assert!(
-            error.to_string().contains("release requires a branch"),
-            "{error:#}"
-        );
-        assert!(forge_server.received_requests().await.unwrap().is_empty());
-        assert_eq!(repo.current_commit_hash().unwrap(), original_head);
-        assert!(repo.is_head_detached().unwrap());
-        assert_eq!(repo.git(&["show-ref"]).unwrap(), original_refs);
-        repo.is_clean().unwrap();
+    /// Mock the GitHub requests made when creating a git release.
+    /// The tag ref and the release are only created when the tag creation succeeds.
+    async fn mock_git_release(server: &MockServer, commit: &str, tag_status: u16) {
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/git/tags"))
+            .and(body_partial_json(
+                json!({"tag": "v0.1.0", "object": commit}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(tag_status).set_body_json(json!({"sha": "tag-sha"})),
+            )
+            .expect(1)
+            .mount(server)
+            .await;
+        let follow_up_requests: u64 = if tag_status == 201 { 1 } else { 0 };
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/git/refs"))
+            .and(body_partial_json(
+                json!({"ref": "refs/tags/v0.1.0", "sha": "tag-sha"}),
+            ))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(follow_up_requests)
+            .mount(server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/releases"))
+            .and(body_partial_json(json!({"tag_name": "v0.1.0"})))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(follow_up_requests)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn release_with_detached_head_respects_release_always() {
+        for release_always in [true, false] {
+            let context = format!("release_always: {release_always}");
+            let server = MockServer::start().await;
+            let (_temporary, repo, request) = release_fixture(&server);
+            // Model a colocated jj repository without requiring jj in CI.
+            repo.git(&["checkout", "--detach"]).unwrap();
+            let head = repo.current_commit_hash().unwrap();
+            let refs = repo.git(&["show-ref"]).unwrap();
+            mock_release_pr(&server, &head, None).await;
+            if release_always {
+                mock_git_release(&server, &head, 201).await;
+            }
+
+            let outcome = release(&request.with_release_always(release_always))
+                .await
+                .unwrap();
+
+            assert_eq!(outcome.is_some(), release_always, "{context}");
+            assert_eq!(
+                server.received_requests().await.unwrap().len(),
+                if release_always { 4 } else { 1 },
+                "{context}"
+            );
+            assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+            assert!(repo.is_head_detached().unwrap(), "{context}");
+            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
+            repo.is_clean().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn release_uses_prepared_commit_and_restores_checkout() {
+        for detached in [false, true] {
+            for tag_status in [201, 403] {
+                let context = format!("detached: {detached}, tag status: {tag_status}");
+                let server = MockServer::start().await;
+                let (_temporary, repo, request) = release_fixture(&server);
+                if detached {
+                    repo.git(&["checkout", "--detach"]).unwrap();
+                }
+                // The prepared commit need not belong to any named branch.
+                repo.git(&["commit", "--allow-empty", "-m", "chore: release"])
+                    .unwrap();
+                let prepared_commit = repo.current_commit_hash().unwrap();
+                fs_err::write(
+                    repo.directory().join("src/lib.rs"),
+                    "// Unreleased change\n",
+                )
+                .unwrap();
+                repo.add_all_and_commit("feat: unreleased change").unwrap();
+                let head = repo.current_commit_hash().unwrap();
+                let branch = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
+                let refs = repo.git(&["show-ref"]).unwrap();
+                mock_release_pr(&server, &head, Some(&prepared_commit)).await;
+                mock_git_release(&server, &prepared_commit, tag_status).await;
+
+                let outcome = release(&request.with_release_always(false)).await;
+
+                if tag_status == 201 {
+                    assert_eq!(outcome.unwrap().unwrap().releases.len(), 1, "{context}");
+                } else {
+                    let error = outcome.unwrap_err();
+                    assert!(
+                        format!("{error:#}").contains("failed to create tag"),
+                        "{context}: {error:#}"
+                    );
+                }
+                assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+                assert_eq!(
+                    repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap(),
+                    branch,
+                    "{context}"
+                );
+                assert_eq!(repo.is_head_detached().unwrap(), detached, "{context}");
+                assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
+                // Checkout can convert line endings when core.autocrlf is enabled.
+                assert_eq!(
+                    fs_err::read_to_string(repo.directory().join("src/lib.rs"))
+                        .unwrap()
+                        .replace("\r\n", "\n"),
+                    "// Unreleased change\n",
+                    "{context}"
+                );
+                repo.is_clean().unwrap();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn release_ignores_pr_commits_outside_detached_history() {
+        for missing_commit in [false, true] {
+            let context = format!("missing commit: {missing_commit}");
+            let server = MockServer::start().await;
+            let (_temporary, repo, request) = release_fixture(&server);
+            let head = repo.current_commit_hash().unwrap();
+            // The PR commit is either a newer commit on the original branch, outside
+            // detached HEAD's history, or a commit that doesn't exist locally,
+            // e.g. because the PR was squashed.
+            repo.git(&["commit", "--allow-empty", "-m", "chore: release"])
+                .unwrap();
+            let pr_commit = if missing_commit {
+                "0123456789012345678901234567890123456789".to_string()
+            } else {
+                repo.current_commit_hash().unwrap()
+            };
+            repo.git(&["checkout", "--detach", &head]).unwrap();
+            let refs = repo.git(&["show-ref"]).unwrap();
+            mock_release_pr(&server, &head, Some(&pr_commit)).await;
+            mock_git_release(&server, &head, 201).await;
+
+            let outcome = release(&request.with_release_always(false)).await.unwrap();
+
+            assert_eq!(outcome.unwrap().releases.len(), 1, "{context}");
+            assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+            assert!(repo.is_head_detached().unwrap(), "{context}");
+            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
+            repo.is_clean().unwrap();
+        }
     }
 
     #[tokio::test]
