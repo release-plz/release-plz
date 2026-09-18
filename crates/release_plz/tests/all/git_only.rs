@@ -318,6 +318,68 @@ release_commits = "^feat:"
     assert_eq!(opened_prs.len(), 1);
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_release_commits_does_not_bump_inherited_workspace_version() {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    let root_manifest_path = context.repo_dir().join("Cargo.toml");
+    let workspace_version = || {
+        LocalManifest::try_new(&root_manifest_path)
+            .unwrap()
+            .get_workspace_version()
+            .unwrap()
+            .to_string()
+    };
+
+    // Both packages inherit the version from the workspace.
+    let mut root = LocalManifest::try_new(&root_manifest_path).unwrap();
+    root.data["workspace"]["package"]["version"] = "0.1.0".into();
+    root.write().unwrap();
+    for name in ["one", "two"] {
+        let mut manifest =
+            LocalManifest::try_new(&context.package_path(name).join("Cargo.toml")).unwrap();
+        manifest.data["package"]["version"] = toml_edit::Item::None;
+        manifest.data["package"]["version"]["workspace"] = true.into();
+        manifest.write().unwrap();
+    }
+    context.run_cargo_check();
+    context.push_all_changes("chore: inherit workspace version");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+git_tag_name = "v{{ version }}"
+release_commits = "^feat:"
+"#,
+    );
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    // This commit doesn't match the regex, so there is nothing to release.
+    fs_err::write(
+        context.package_path("one").join("src").join("notes.rs"),
+        "// notes",
+    )
+    .unwrap();
+    context.push_all_changes("chore: housekeeping");
+    context.run_update().success();
+    assert_eq!(workspace_version(), "0.1.0");
+    context.repo.is_clean().unwrap();
+
+    // A matching commit still bumps it.
+    fs_err::write(
+        context.package_path("one").join("src").join("feature.rs"),
+        "// new feature",
+    )
+    .unwrap();
+    context.push_all_changes("feat: add new feature");
+    context.run_update().success();
+    assert_eq!(workspace_version(), "0.1.1");
+}
+
 // ============================================================================
 // Workspace vs Package-Level Config
 // ============================================================================

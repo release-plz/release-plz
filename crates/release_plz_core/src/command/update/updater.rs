@@ -85,6 +85,7 @@ impl Updater<'_> {
             local_manifest_path,
             &packages_diffs,
             &workspace_version_pkgs,
+            &version_groups_with_release_commit,
         )?;
         if let Some(new_workspace_version) = &new_workspace_version {
             packages_to_update.with_workspace_version(new_workspace_version.clone());
@@ -92,17 +93,7 @@ impl Updater<'_> {
 
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
-            let group_has_release_commit = || {
-                self.req
-                    .get_package_config(&p.name)
-                    .version_group
-                    .as_ref()
-                    .is_some_and(|group| version_groups_with_release_commit.contains(group))
-            };
-            if let Some(release_commits_regex) = self.req.release_commits()
-                && !diff.any_commit_matches(release_commits_regex)
-                && !group_has_release_commit()
-            {
+            if self.is_excluded_by_release_commits(p, &diff, &version_groups_with_release_commit) {
                 info!("{}: no commit matches the `release_commits` regex", p.name);
                 // We need to update this package only if one of its dependencies has changed.
                 packages_to_check_for_deps.push(p);
@@ -218,11 +209,33 @@ impl Updater<'_> {
         groups
     }
 
+    /// Whether the `release_commits` regex excludes this package from the release:
+    /// none of its commits match, and neither does any commit of its version group.
+    fn is_excluded_by_release_commits(
+        &self,
+        package: &Package,
+        diff: &Diff,
+        version_groups_with_release_commit: &HashSet<String>,
+    ) -> bool {
+        let Some(release_commits_regex) = self.req.release_commits() else {
+            return false;
+        };
+        let group_has_release_commit = || {
+            self.req
+                .get_package_config(&package.name)
+                .version_group
+                .as_ref()
+                .is_some_and(|group| version_groups_with_release_commit.contains(group))
+        };
+        !diff.any_commit_matches(release_commits_regex) && !group_has_release_commit()
+    }
+
     fn new_workspace_version(
         &self,
         local_manifest_path: &Utf8Path,
         packages_diffs: &[(&Package, Diff)],
         workspace_version_pkgs: &HashSet<String>,
+        version_groups_with_release_commit: &HashSet<String>,
     ) -> anyhow::Result<Option<Version>> {
         let workspace_version = {
             let local_manifest = LocalManifest::try_new(local_manifest_path)?;
@@ -231,7 +244,15 @@ impl Updater<'_> {
         let mut new_versions = Vec::new();
         for workspace_package in workspace_version_pkgs {
             for (p, diff) in packages_diffs {
-                if *workspace_package == *p.name {
+                // A package that `release_commits` keeps out of the release
+                // must not raise the workspace version either.
+                if *workspace_package == *p.name
+                    && !self.is_excluded_by_release_commits(
+                        p,
+                        diff,
+                        version_groups_with_release_commit,
+                    )
+                {
                     let pkg_config = self.req.get_package_config(&p.name);
                     let version_updater = pkg_config.generic.version_updater()?;
                     let next = p.version.next_from_diff(diff, version_updater);
