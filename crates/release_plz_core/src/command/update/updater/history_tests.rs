@@ -120,7 +120,7 @@ impl History {
     /// as its first parent, discarding the branch's changes. `date` sets the author
     /// and committer date of the merge commit.
     fn merge_ours(&self, branch: &str, message: &str, date: Option<&str>) {
-        let args = ["merge", "--no-ff", "-s", "ours", "-m", message, branch];
+        let args = ["merge", "-s", "ours", "-m", message, branch];
         match date {
             Some(date) => self.repo.git_at(&args, date),
             None => self.repo.git(&args),
