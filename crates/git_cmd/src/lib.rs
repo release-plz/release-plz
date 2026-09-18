@@ -279,8 +279,7 @@ impl Repo {
         Ok(last_commit.to_string())
     }
 
-    /// Commits reachable from `head` that touch `paths`, descendants before
-    /// ancestors in the simplified history this walks.
+    /// Commits reachable from `head` that touch `paths`, ordered with `--date-order`.
     ///
     /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
     /// doesn't exist in this repository is ignored, so a commit hash recorded by a
