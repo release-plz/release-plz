@@ -4,11 +4,11 @@ mod cmd;
 #[cfg(feature = "test_fixture")]
 pub mod test_fixture;
 
-use std::{collections::HashSet, path::Path, process::Command};
+use std::{collections::HashSet, process::Command};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
-use tracing::{Span, debug, instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
 /// Repository
 #[derive(Debug)]
@@ -205,29 +205,6 @@ impl Repo {
         Ok(())
     }
 
-    /// Checkout to the latest commit.
-    pub fn checkout_last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let previous_commit = self.last_commit_at_paths(paths)?;
-        self.checkout(&previous_commit)?;
-        Ok(())
-    }
-
-    fn last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(1, paths)
-            .context("failed to get message of last commit")
-    }
-
-    fn previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<String> {
-        self.nth_commit_at_paths(2, paths)
-            .context("failed to get message of previous commit")
-    }
-
-    pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
-        let commit = self.previous_commit_at_paths(paths)?;
-        self.checkout(&commit)?;
-        Ok(())
-    }
-
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         self.git(&["checkout", object])
@@ -249,34 +226,6 @@ impl Repo {
             .context("failed to remove worktree")?;
 
         Ok(())
-    }
-
-    /// Get `nth` commit starting from `1`.
-    #[instrument(
-        skip(self)
-        fields(
-            nth_commit = tracing::field::Empty,
-        )
-    )]
-    fn nth_commit_at_paths(&self, nth: usize, paths: &[&Path]) -> anyhow::Result<String> {
-        let nth_str = nth.to_string();
-
-        let git_args = {
-            let mut git_args = vec!["log", "--format=%H", "-n", &nth_str, "--"];
-            for p in paths {
-                let path = p.to_str().expect("invalid path");
-                git_args.push(path);
-            }
-            git_args
-        };
-
-        let commit_list = self.git(&git_args)?;
-        let mut commits = commit_list.lines();
-        let last_commit = commits.nth(nth - 1).context("not enough commits")?;
-
-        Span::current().record("nth_commit", last_commit);
-        debug!("nth_commit found");
-        Ok(last_commit.to_string())
     }
 
     /// Commits reachable from `head` that touch `paths`, descendants before
@@ -680,34 +629,6 @@ mod tests {
         let repo = Repo::new(repo.directory()).unwrap();
         assert_eq!(repo.original_remote(), "upstream");
         assert_eq!(repo.original_branch(), "release/stable");
-    }
-
-    #[test]
-    fn inexistent_previous_commit_detected() {
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let file1 = repository_dir.as_ref().join("file1.txt");
-        repo.checkout_previous_commit_at_paths(&[&file1])
-            .unwrap_err();
-    }
-
-    #[test]
-    fn previous_commit_is_retrieved() {
-        test_logs::init();
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let file1 = repository_dir.as_ref().join("file1.txt");
-        let file2 = repository_dir.as_ref().join("file2.txt");
-        {
-            fs_err::write(&file2, b"Hello, file2!-1").unwrap();
-            repo.add_all_and_commit("file2-1").unwrap();
-            fs_err::write(file1, b"Hello, file1!").unwrap();
-            repo.add_all_and_commit("file1").unwrap();
-            fs_err::write(&file2, b"Hello, file2!-2").unwrap();
-            repo.add_all_and_commit("file2-2").unwrap();
-        }
-        repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
-        assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
     }
 
     #[test]
