@@ -14,6 +14,8 @@ use super::*;
 pub(super) struct RetainedChanges {
     /// The walked repository, opened in memory: no snapshot is ever checked out.
     repo: git2::Repository,
+    /// Mirrors `core.symlinks`: whether Git materializes links as links.
+    symlinks: bool,
     /// The branch tip whose surviving changes are being released.
     head: git2::Oid,
     /// The first equal snapshot found by the walk, standing in for the release.
@@ -22,8 +24,13 @@ pub(super) struct RetainedChanges {
     /// `None` when listing failed and every file under `paths` counts.
     package_files: Option<HashSet<Utf8PathBuf>>,
     /// Repository-relative paths: the package directory first, then the canonical
-    /// target of the configured README, if any.
+    /// target of the configured README, if any. [`Self::includes`] relies on that
+    /// order to ignore generated files at the package root and to include a README
+    /// that lives outside the package.
     paths: Vec<Utf8PathBuf>,
+    /// Repository-relative path of the configured README with only its final
+    /// component left unresolved, so that retargeting the README link counts.
+    readme: Option<Utf8PathBuf>,
     /// Git's simplified, path-limited parent graph after release exclusions.
     parents: HashMap<String, Vec<String>>,
     /// First commit of the simplified walk: HEAD only when HEAD touches the package.
@@ -44,6 +51,7 @@ impl RetainedChanges {
         release_boundaries: &[&str],
         package_files: Option<HashSet<Utf8PathBuf>>,
         paths: &[Utf8PathBuf],
+        readme: Option<&Utf8Path>,
     ) -> anyhow::Result<Self> {
         // Match the outer walk's release exclusions, including ignoring commits
         // missing from a shallow clone or rewritten history.
@@ -66,6 +74,11 @@ impl RetainedChanges {
         args.push("--");
         args.extend(paths.iter().map(|path| path.as_str()));
         let graph = repository.git(&args)?;
+        // Match the native Git process that checks out historical snapshots,
+        // including configuration supplied through environment overrides.
+        let symlinks = repository
+            .git(&["config", "--type=bool", "--get", "core.symlinks"])
+            .map_or(true, |value| value == "true");
         let root = graph.split_whitespace().next().map(str::to_owned);
         let parents = graph
             .lines()
@@ -89,6 +102,7 @@ impl RetainedChanges {
         };
         Ok(Self {
             repo: git2::Repository::open(directory)?,
+            symlinks,
             head: git2::Oid::from_str(head)?,
             released: git2::Oid::from_str(released)?,
             package_files,
@@ -96,6 +110,7 @@ impl RetainedChanges {
                 .iter()
                 .map(|path| relativize(path))
                 .collect::<anyhow::Result<_>>()?,
+            readme: readme.map(relativize).transpose()?,
             parents,
             root,
             boundaries: HashSet::new(),
@@ -186,6 +201,8 @@ impl RetainedChanges {
         let tree = target.tree()?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
+            let changes_file_presence = conflict.our.as_ref().map(|entry| &entry.path)
+                != conflict.their.as_ref().map(|entry| &entry.path);
             let affects_package = [
                 conflict.ancestor.as_ref(),
                 conflict.our.as_ref(),
@@ -195,7 +212,7 @@ impl RetainedChanges {
             .flatten()
             .any(|entry| {
                 std::str::from_utf8(&entry.path)
-                    .map(|path| self.includes(Path::new(path)))
+                    .map(|path| self.includes(Path::new(path), changes_file_presence, &tree))
                     .unwrap_or(true)
             });
             if affects_package
@@ -209,19 +226,32 @@ impl RetainedChanges {
                 return Ok(true);
             }
         }
+        // Replacing a regular file with a symlink keeps the same packaged path.
+        let mut options = git2::DiffOptions::new();
+        options.include_typechange(true);
         let diff = self
             .repo
-            .diff_tree_to_index(Some(&tree), Some(&index), None)?;
+            .diff_tree_to_index(Some(&tree), Some(&index), Some(&mut options))?;
         Ok(diff.deltas().any(|delta| {
             // Conflicts were classified above without changing the in-memory
             // index; do not count a refined no-op again as a changed file.
             if delta.status() == git2::Delta::Conflicted {
                 return false;
             }
+            // Package equality compares file contents, not executable bits.
+            if delta.old_file().id() == delta.new_file().id()
+                && [delta.old_file().mode(), delta.new_file().mode()]
+                    .into_iter()
+                    .all(|mode| self.is_regular_file_in_checkout(u32::from(mode)))
+            {
+                return false;
+            }
+            let changes_file_presence =
+                matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted);
             [delta.old_file().path(), delta.new_file().path()]
                 .into_iter()
                 .flatten()
-                .any(|path| self.includes(path))
+                .any(|path| self.includes(path, changes_file_presence, &tree))
         }))
     }
 
@@ -237,7 +267,7 @@ impl RetainedChanges {
             || ancestor.path != theirs.path
             || ![ancestor.mode, ours.mode, theirs.mode]
                 .into_iter()
-                .all(Self::is_regular_file_in_checkout)
+                .all(|mode| self.is_regular_file_in_checkout(mode))
         {
             return Ok(true);
         }
@@ -275,23 +305,56 @@ impl RetainedChanges {
         Ok(!merged.is_automergeable() || merged.content() != encoded[1].as_bytes())
     }
 
-    fn is_regular_file_in_checkout(mode: u32) -> bool {
-        matches!(mode, 0o100_644 | 0o100_755)
+    fn is_regular_file_in_checkout(&self, mode: u32) -> bool {
+        matches!(mode, 0o100_644 | 0o100_755) || (!self.symlinks && mode == 0o120_000)
     }
 
-    fn includes(&self, path: &Path) -> bool {
+    fn includes(&self, path: &Path, changes_file_presence: bool, target: &git2::Tree<'_>) -> bool {
         let Some(path) = Utf8Path::from_path(path) else {
             return true;
         };
+        // Package equality compares the configured README separately, following
+        // links. Any change to it counts, including retargeting the link itself.
+        if self.readme.as_deref() == Some(path) {
+            return true;
+        }
+        // Match package equality: generated files are ignored at the package root.
+        let package_relative_path = self
+            .paths
+            .first()
+            .and_then(|root| path.strip_prefix(root).ok());
         if matches!(
-            path.file_name(),
+            package_relative_path.map(Utf8Path::as_str),
             Some("Cargo.lock" | CARGO_TOML_ORIG | CARGO_VCS_INFO)
         ) {
             return false;
         }
+        // Nested lockfiles and original manifests contribute to the package file
+        // list even though their contents are excluded from equality checks.
+        if !changes_file_presence
+            && matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
+        {
+            return false;
+        }
+        // Equality ignores symlink contents in the local snapshot, but their
+        // addition or deletion still changes the package's file list. The
+        // manifest and configured README are compared separately, following links.
+        if !changes_file_presence
+            && self.symlinks
+            && package_relative_path.map(Utf8Path::as_str) != Some(CARGO_TOML)
+            && target
+                .get_path(path.as_std_path())
+                .is_ok_and(|entry| entry.filemode() == i32::from(git2::FileMode::Link))
+        {
+            return false;
+        }
         if let Some(files) = &self.package_files {
-            files.contains(path) || self.paths.iter().skip(1).any(|readme| path == readme)
+            files.contains(path)
+                // An overridden README can live outside the package directory.
+                || self.paths.iter().skip(1).any(|readme| path == readme)
         } else {
+            // File listing failures already make package commit filtering
+            // conservative; retain that behavior for the content check as well.
             self.paths.iter().any(|root| path.starts_with(root))
         }
     }
