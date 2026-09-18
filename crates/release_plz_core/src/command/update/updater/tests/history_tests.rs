@@ -9,7 +9,10 @@ const PACKAGE: &str = "history-test";
 struct History {
     repo: Repo,
     registry: Repo,
-    _dir: fs_utils::Utf8TempDir,
+    local_dir: tempfile::TempDir,
+    _registry_dir: tempfile::TempDir,
+    /// Keeps the symlink through which `repo` addresses `local_dir` alive.
+    _link_dir: Option<tempfile::TempDir>,
 }
 
 impl History {
@@ -18,13 +21,22 @@ impl History {
     }
 
     fn with_packages(write_packages: impl Fn(&Utf8Path)) -> Self {
-        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        let local_dir = tempfile::tempdir().unwrap();
         // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
-        let root = fs_utils::canonicalize_utf8(dir.path()).unwrap();
-        let [repo, registry] = ["local", "registry"].map(|name| {
-            let path = root.join(name);
-            fs_err::create_dir(&path).unwrap();
-            let repo = Repo::init(path);
+        let repo_dir = canonicalize(&local_dir);
+        Self::init(local_dir, repo_dir, None, write_packages)
+    }
+
+    fn init(
+        local_dir: tempfile::TempDir,
+        repo_dir: Utf8PathBuf,
+        link_dir: Option<tempfile::TempDir>,
+        write_packages: impl Fn(&Utf8Path),
+    ) -> Self {
+        let registry_dir = tempfile::tempdir().unwrap();
+        let repo = Repo::init(repo_dir);
+        let registry = Repo::init(canonicalize(&registry_dir));
+        for repo in [&repo, &registry] {
             // Keep checked-out files byte-identical to the LF-only registry fixtures.
             repo.git(&["config", "core.autocrlf", "false"]).unwrap();
             write_packages(repo.directory());
@@ -32,13 +44,20 @@ impl History {
             generate_lockfile(repo.directory());
             repo.add_all_and_commit("chore: published baseline")
                 .unwrap();
-            repo
-        });
+        }
         Self {
             repo,
             registry,
-            _dir: dir,
+            local_dir,
+            _registry_dir: registry_dir,
+            _link_dir: link_dir,
         }
+    }
+
+    /// The project directory: the canonical path of the repository, which the
+    /// repository itself may address through a symlink.
+    fn project_dir(&self) -> Utf8PathBuf {
+        canonicalize(&self.local_dir)
     }
 
     fn write_commit(&self, path: &str, contents: &str, message: &str) -> String {
@@ -47,17 +66,54 @@ impl History {
         self.repo.current_commit_hash().unwrap()
     }
 
-    /// Set both dates to control the commit's position in the date-ordered walk.
-    fn write_commit_at(&self, path: &str, contents: &str, message: &str, day: u8) -> String {
+    /// Like [`Self::write_commit`], but with an explicit author and committer date,
+    /// so the test controls where the commit lands in the date-ordered walk.
+    fn write_commit_at(&self, path: &str, contents: &str, message: &str, date: &str) -> String {
         fs_err::write(self.repo.directory().join(path), contents).unwrap();
         self.repo.git(&["add", "."]).unwrap();
-        self.repo
-            .git_at(
-                &["commit", "-m", message],
-                &format!("2000-01-{day:02}T00:00:00 +0000"),
-            )
-            .unwrap();
+        self.repo.git_at(&["commit", "-m", message], date).unwrap();
         self.repo.current_commit_hash().unwrap()
+    }
+
+    /// Ignore a revert of the current change, then import a sibling change
+    /// through the reverted branch so that its equal snapshot is also visited.
+    fn merge_ignored_revert(&self, path: &str, contents: Option<&str>) -> String {
+        self.merge_ignored_change("src/fix.rs", |root| {
+            let path = root.join(path);
+            match contents {
+                Some(contents) => fs_err::write(path, contents).unwrap(),
+                None => fs_err::remove_file(path).unwrap(),
+            }
+        })
+    }
+
+    fn merge_ignored_change(&self, sibling_path: &str, revert: impl FnOnce(&Utf8Path)) -> String {
+        self.repo.git(&["checkout", "-b", "equal"]).unwrap();
+        revert(self.repo.directory());
+        self.repo
+            .add_all_and_commit("revert: breaking change")
+            .unwrap();
+        self.repo.checkout_head().unwrap();
+        self.merge_ours("equal", "merge equal", None);
+        self.repo.git(&["checkout", "equal"]).unwrap();
+        let sibling = self.write_commit(sibling_path, "", "fix: sibling");
+        self.repo.checkout_head().unwrap();
+        self.repo
+            .git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
+            .unwrap();
+        sibling
+    }
+
+    /// Merge `branch` with a "keep mine" merge: the merge commit has the same tree
+    /// as its first parent, discarding the branch's changes. `date` sets the author
+    /// and committer date of the merge commit.
+    fn merge_ours(&self, branch: &str, message: &str, date: Option<&str>) {
+        let args = ["merge", "-s", "ours", "-m", message, branch];
+        match date {
+            Some(date) => self.repo.git_at(&args, date),
+            None => self.repo.git(&args),
+        }
+        .unwrap();
     }
 
     /// Two sibling branches off the current commit, each merged back with a
@@ -77,6 +133,61 @@ impl History {
         (baseline, one, two)
     }
 
+    /// A feature branch discarded by a "keep mine" merge, then merged again with a
+    /// `--no-ff` merge that makes its commits reachable from HEAD. `discarded_date`
+    /// places the discarded commit relative to the equal snapshot in the date-ordered
+    /// walk. Returns the discarded, the equal and the unreleased commit.
+    fn feature_discarded_by_a_keep_mine_merge(
+        &self,
+        discarded_date: &str,
+    ) -> (String, String, String) {
+        let repo = &self.repo;
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        let discarded = self.write_commit_at(
+            "src/feature.rs",
+            "",
+            "feat: discarded by the merge",
+            discarded_date,
+        );
+        repo.checkout_head().unwrap();
+        self.write_commit_at(
+            "src/lib.rs",
+            "pub fn temporary() {}\n",
+            "feat: temporary",
+            "2000-01-01T00:00:00 +0000",
+        );
+        // "Keep mine": the merge commit has the same tree as its first parent, which is
+        // what makes git prune the feature branch from walks rooted after it.
+        self.merge_ours(
+            "feature",
+            "merge feature",
+            Some("2000-01-02T00:00:00 +0000"),
+        );
+        // Back to the released tree, so this commit is the equal snapshot.
+        let equal = self.write_commit_at(
+            "src/lib.rs",
+            "",
+            "revert: temporary",
+            "2000-01-03T00:00:00 +0000",
+        );
+        // A second merge of the same branch makes the discarded commit reachable again
+        // from HEAD, this time through a merge that git doesn't simplify away.
+        repo.git(&["checkout", "feature"]).unwrap();
+        let unreleased = self.write_commit_at(
+            "src/feature2.rs",
+            "",
+            "feat: unreleased",
+            "2000-01-06T00:00:00 +0000",
+        );
+        repo.checkout_head().unwrap();
+        repo.git_at(
+            &["merge", "--no-ff", "-m", "merge feature again", "feature"],
+            "2000-01-07T00:00:00 +0000",
+        )
+        .unwrap();
+        (discarded, equal, unreleased)
+    }
+
     /// Every commit in the order `get_diff` visits them, newest date first.
     fn walk_order(&self) -> String {
         self.repo
@@ -94,31 +205,49 @@ impl History {
                 package.clone(),
                 published_at.map(str::to_owned),
             )),
-            &self.request(),
+            None,
         )
-        .unwrap()
     }
 
-    fn request(&self) -> UpdateRequest {
-        let metadata =
-            cargo_utils::get_manifest_metadata(&self.repo.directory().join(CARGO_TOML)).unwrap();
-        UpdateRequest::new(metadata).unwrap()
+    fn diff_with(&self, published: Option<RegistryPackage>, limit: Option<u32>) -> Diff {
+        self.diff_configured(published, limit, |request| request)
     }
 
-    fn diff_with(
+    /// Like [`Self::diff_with`], but with a chance to change the update request.
+    fn diff_configured(
         &self,
         published: Option<RegistryPackage>,
-        request: &UpdateRequest,
-    ) -> anyhow::Result<Diff> {
+        limit: Option<u32>,
+        configure: impl FnOnce(UpdateRequest) -> UpdateRequest,
+    ) -> Diff {
         let tip = self.repo.current_commit_hash().unwrap();
-        let metadata = request.cargo_metadata();
-        let package = cargo_utils::workspace_package(metadata, PACKAGE).unwrap();
+        let diff = self.try_diff_with(published, limit, configure).unwrap();
+        assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
+        diff
+    }
+
+    fn try_diff_with(
+        &self,
+        published: Option<RegistryPackage>,
+        limit: Option<u32>,
+        configure: impl FnOnce(UpdateRequest) -> UpdateRequest,
+    ) -> anyhow::Result<Diff> {
+        let metadata =
+            cargo_utils::get_manifest_metadata(&self.project_dir().join(CARGO_TOML)).unwrap();
+        let package = cargo_utils::workspace_package(&metadata, PACKAGE)
+            .unwrap()
+            .clone();
+        let request = configure(
+            UpdateRequest::new(metadata.clone())
+                .unwrap()
+                .with_max_analyze_commits(limit),
+        );
         let project = Project::new(
             request.local_manifest(),
             None,
             &HashSet::new(),
-            metadata,
-            request,
+            &metadata,
+            &request,
         )
         .unwrap();
         let registry_packages = PackagesCollection::default().with_packages(
@@ -127,29 +256,127 @@ impl History {
                 .map(|p| (p.package.name.to_string(), p))
                 .collect(),
         );
-        let diff = Updater {
+        Updater {
             project: &project,
-            req: request,
+            req: &request,
         }
-        .get_diff(package, &registry_packages, &self.repo)?;
-        assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
-        Ok(diff)
+        .get_diff(&package, &registry_packages, &self.repo)
     }
 }
 
-fn commit_ids(diff: &Diff) -> Vec<&str> {
+fn canonicalize(directory: &tempfile::TempDir) -> Utf8PathBuf {
+    let path = fs_utils::to_utf8_path(directory.path()).unwrap();
+    fs_utils::canonicalize_utf8(path).unwrap()
+}
+
+fn commit_ids(diff: &Diff) -> HashSet<&str> {
     diff.commits
         .iter()
         .map(|commit| commit.id.as_str())
         .collect()
 }
 
-fn assert_commits(diff: &Diff, expected: &[&str]) {
-    let mut actual = commit_ids(diff);
-    actual.sort_unstable();
-    let mut expected = expected.to_vec();
-    expected.sort_unstable();
-    assert_eq!(actual, expected, "{:?}", diff.commits);
+const BASE_API: &str = "pub fn api() {}\n\n\n\n\n\npub fn stable() {}\n";
+const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}\n";
+
+fn api_history() -> History {
+    History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "");
+        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+    })
+}
+
+fn assert_next_version(diff: &Diff, expected: &Version) {
+    assert_eq!(
+        Version::new(0, 1, 0).next_from_diff(diff, next_version::VersionUpdater::default()),
+        *expected
+    );
+}
+
+#[test]
+fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
+    let history = api_history();
+    let repo = &history.repo;
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    repo.git(&["checkout", "-b", "equal"]).unwrap();
+    history.write_commit("src/lib.rs", BASE_API, "revert: breaking API");
+    repo.checkout_head().unwrap();
+    let prepared = history.write_commit(
+        "src/lib.rs",
+        &BASE_API.replace("api()", "api(_: u8)"),
+        "chore: prepare merge",
+    );
+    assert!(
+        repo.git(&["merge", "--no-ff", "--no-commit", "equal"])
+            .is_err()
+    );
+    let resolved = history.write_commit("src/lib.rs", BREAKING_API, "merge resolved");
+    repo.git(&["checkout", "equal"]).unwrap();
+    let sibling = history.write_commit(
+        "src/lib.rs",
+        &format!("{BASE_API}pub fn extra() {{}}\n"),
+        "fix: sibling",
+    );
+    repo.checkout_head().unwrap();
+    repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
+        .unwrap();
+    let merge = repo.current_commit_hash().unwrap();
+    assert_eq!(
+        fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+        format!("{BREAKING_API}pub fn extra() {{}}\n")
+    );
+    let diff = history.diff(None);
+    // Both merges resolve `src/lib.rs` to contents that differ from all their parents.
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([
+            breaking.as_str(),
+            prepared.as_str(),
+            resolved.as_str(),
+            sibling.as_str(),
+            merge.as_str(),
+        ]),
+        "{:?}",
+        diff.commits
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
+    let history = api_history();
+    let breaking = history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([breaking.as_str(), sibling.as_str()])
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn a_retained_change_can_move_to_a_different_file() {
+    let history = api_history();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    history
+        .repo
+        .git(&["mv", "src/lib.rs", "src/api.rs"])
+        .unwrap();
+    let moved = history.write_commit(
+        "src/lib.rs",
+        "mod api;\npub use api::*;\n",
+        "chore: move API",
+    );
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([breaking.as_str(), sibling.as_str(), moved.as_str()]),
+        "{:?}",
+        diff.commits
+    );
+    assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
 #[test]
@@ -158,15 +385,17 @@ fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
     let repo = &history.repo;
     let (baseline, one, two) = history.two_merged_siblings();
     repo.git(&["tag", "v0.1.0", &baseline]).unwrap();
-    let expected = [one.as_str(), two.as_str()];
-    assert_commits(&history.diff(None), &expected);
+    let expected = HashSet::from([one.as_str(), two.as_str()]);
+    assert_eq!(commit_ids(&history.diff(None)), expected);
     repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
     for published_at in [Some(baseline.as_str()), None] {
-        assert_commits(&history.diff(published_at), &expected);
+        assert_eq!(commit_ids(&history.diff(published_at)), expected);
     }
 }
 
-/// A release from a dirty tree can differ from every committed snapshot.
+/// The registry records the commit a package was published from. It bounds the
+/// walk on its own: the published sources can differ from every local snapshot,
+/// for instance when the release was built from a modified working tree.
 #[test]
 fn the_published_commit_bounds_the_walk_without_an_equal_snapshot() {
     let history = History::new();
@@ -182,17 +411,25 @@ fn the_published_commit_bounds_the_walk_without_an_equal_snapshot() {
         .unwrap();
     let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
     // No local snapshot equals the release, so nothing else bounds the walk.
-    assert!(commit_ids(&history.diff(None)).contains(&published.as_str()));
-    assert_commits(&history.diff(Some(&published)), &[&unreleased]);
+    assert!(commit_ids(&history.diff(None)).contains(published.as_str()));
+    assert_eq!(
+        commit_ids(&history.diff(Some(&published))),
+        HashSet::from([unreleased.as_str()])
+    );
 }
 
-/// A history rewrite can remove the published commit; ignore that boundary.
+/// The published commit can be missing locally, for instance after a history
+/// rewrite or when the release was published from another clone. Excluding it
+/// would make git fail, so the walk proceeds as if the registry recorded none.
 #[test]
 fn a_published_commit_missing_from_the_repository_is_ignored() {
     let history = History::new();
     let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
     let missing = "0".repeat(40);
-    assert_commits(&history.diff(Some(&missing)), &[&unreleased]);
+    assert_eq!(
+        commit_ids(&history.diff(Some(&missing))),
+        HashSet::from([unreleased.as_str()])
+    );
 }
 
 #[test]
@@ -212,7 +449,10 @@ fn late_merge_keeps_mainline_changes_after_the_release() {
     let mainline = history.write_commit("src/mainline.rs", "", "fix: mainline");
     repo.git(&["merge", "--no-ff", "-m", "merge old branch", "old-branch"])
         .unwrap();
-    assert_commits(&history.diff(None), &[&branch, &mainline]);
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([branch.as_str(), mainline.as_str()])
+    );
 }
 
 #[test]
@@ -237,32 +477,55 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
     repo.checkout_head().unwrap();
     // Date the sibling before the branch, so the walk reaches the equal snapshot
     // first: that's the order in which stopping there would lose the sibling.
-    let sibling = history.write_commit_at("src/sibling.rs", "", "fix: sibling", 2);
+    let sibling = history.write_commit_at(
+        "src/sibling.rs",
+        "",
+        "fix: sibling",
+        "2000-01-01T00:00:00 +0000",
+    );
     repo.git(&["merge", "--no-ff", "-m", "merge branch", "branch"])
         .unwrap();
+    // Exercise the order where stopping at the equal snapshot would lose its sibling.
     let order = history.walk_order();
     assert!(order.find(&equal).unwrap() < order.find(&sibling).unwrap());
-    assert_commits(&history.diff(None), &[&branch, &sibling]);
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([branch.as_str(), sibling.as_str()])
+    );
 }
 
-/// Each branch reverts to the released tree before contributing a fix.
+/// Every lineage stops at its own equal snapshot, and a later snapshot must keep
+/// the pruning of the earlier one: two feature branches each revert their change
+/// before contributing a fix, so each revert equals the release on its own.
 #[test]
 fn every_lineage_stops_at_its_own_equal_snapshot() {
     let history = History::new();
     let repo = &history.repo;
     let baseline = repo.current_commit_hash().unwrap();
     repo.git(&["checkout", "-b", "one"]).unwrap();
-    let reverted_one = history.write_commit_at("src/lib.rs", "pub fn one() {}\n", "feat: one", 2);
-    let equal_one = history.write_commit_at("src/lib.rs", "", "revert: one", 4);
-    let one = history.write_commit_at("src/one.rs", "", "fix: one", 6);
+    let reverted_one = history.write_commit_at(
+        "src/lib.rs",
+        "pub fn one() {}\n",
+        "feat: one",
+        "2000-01-01T00:00:00 +0000",
+    );
+    let equal_one =
+        history.write_commit_at("src/lib.rs", "", "revert: one", "2000-01-03T00:00:00 +0000");
+    let one = history.write_commit_at("src/one.rs", "", "fix: one", "2000-01-05T00:00:00 +0000");
     repo.git(&["checkout", "-b", "two", &baseline]).unwrap();
-    let reverted_two = history.write_commit_at("src/lib.rs", "pub fn two() {}\n", "feat: two", 1);
-    let equal_two = history.write_commit_at("src/lib.rs", "", "revert: two", 3);
-    let two = history.write_commit_at("src/two.rs", "", "fix: two", 5);
+    let reverted_two = history.write_commit_at(
+        "src/lib.rs",
+        "pub fn two() {}\n",
+        "feat: two",
+        "1999-12-31T00:00:00 +0000",
+    );
+    let equal_two =
+        history.write_commit_at("src/lib.rs", "", "revert: two", "2000-01-02T00:00:00 +0000");
+    let two = history.write_commit_at("src/two.rs", "", "fix: two", "2000-01-04T00:00:00 +0000");
     repo.checkout_head().unwrap();
     for (branch, date) in [
-        ("one", "2000-01-07T00:00:00 +0000"),
-        ("two", "2000-01-08T00:00:00 +0000"),
+        ("one", "2000-01-06T00:00:00 +0000"),
+        ("two", "2000-01-07T00:00:00 +0000"),
     ] {
         repo.git_at(&["merge", "--no-ff", "-m", "merge fix", branch], date)
             .unwrap();
@@ -273,7 +536,7 @@ fn every_lineage_stops_at_its_own_equal_snapshot() {
         "src/lib.rs",
         "pub fn unreleased() {}\n",
         "feat: unreleased",
-        9,
+        "2000-01-08T00:00:00 +0000",
     );
     // The dates make the walk find the first equal snapshot before the second, and
     // the second before the change reverted by the first: the second snapshot must
@@ -282,56 +545,70 @@ fn every_lineage_stops_at_its_own_equal_snapshot() {
     assert!(order.find(&equal_one).unwrap() < order.find(&equal_two).unwrap());
     assert!(order.find(&equal_two).unwrap() < order.find(&reverted_one).unwrap());
     assert!(order.find(&equal_two).unwrap() < order.find(&reverted_two).unwrap());
-    assert_commits(&history.diff(None), &[&one, &two, &unreleased]);
+    let diff = history.diff(None);
+    assert_eq!(
+        commit_ids(&diff),
+        HashSet::from([one.as_str(), two.as_str(), unreleased.as_str()]),
+        "{:?}",
+        diff.commits
+    );
 }
 
-/// History simplification hides one parent of an "ours" merge. Pruning an equal
-/// snapshot must still remove that ancestor, whichever one the walk visits first.
+/// Git's default history simplification prunes a merge's other parent when the
+/// merge is TREESAME to one of them, so the commits reachable through that parent
+/// are missing from a walk rooted at one of its descendants, even though they are
+/// real ancestors of it. The pruning of an equal snapshot must not miss them:
+/// otherwise a branch discarded by a "keep mine" merge resurfaces in the changelog
+/// of every later release once a second merge makes it reachable again.
 #[test]
-fn discarded_ancestors_are_pruned_in_either_visit_order() {
-    for (discarded_day, discarded_first) in [(1, false), (6, true)] {
-        let history = History::new();
-        let repo = &history.repo;
-        repo.git(&["checkout", "-b", "feature"]).unwrap();
-        let discarded = history.write_commit_at(
-            "src/feature.rs",
-            "",
-            "feat: discarded by the merge",
-            discarded_day,
-        );
-        repo.checkout_head().unwrap();
-        history.write_commit_at(
-            "src/lib.rs",
-            "pub fn temporary() {}\n",
-            "feat: temporary",
-            2,
-        );
-        // Keep the mainline tree, discarding the feature branch's changes.
-        repo.git_at(
-            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
-            "2000-01-03T00:00:00 +0000",
-        )
-        .unwrap();
-        let equal = history.write_commit_at("src/lib.rs", "", "revert: temporary", 4);
-        // A second merge makes the discarded commit visible in the walk again.
-        repo.git(&["checkout", "feature"]).unwrap();
-        let unreleased = history.write_commit_at("src/feature2.rs", "", "feat: unreleased", 7);
-        repo.checkout_head().unwrap();
-        repo.git_at(
-            &["merge", "--no-ff", "-m", "merge feature again", "feature"],
-            "2000-01-08T00:00:00 +0000",
-        )
-        .unwrap();
+fn a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot() {
+    let history = History::new();
+    let (discarded, equal, unreleased) =
+        history.feature_discarded_by_a_keep_mine_merge("1999-12-31T00:00:00 +0000");
+    assert!(
+        history.repo.is_ancestor(&discarded, &equal),
+        "the discarded commit must be a real ancestor of the equal snapshot"
+    );
+    // Exercise the order where the equal snapshot is visited before the commit it
+    // has to prune.
+    let order = history.walk_order();
+    assert!(
+        order.find(&equal).unwrap() < order.find(&discarded).unwrap(),
+        "{order}"
+    );
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([unreleased.as_str()]),
+        "an ancestor of the equal snapshot was released again"
+    );
+}
 
-        assert!(repo.is_ancestor(&discarded, &equal));
-        let order = history.walk_order();
-        assert_eq!(
-            order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
-            discarded_first,
-            "{order}"
-        );
-        assert_commits(&history.diff(None), &[&unreleased]);
-    }
+/// The mirror image of
+/// [`a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot`]: here the
+/// discarded commit is dated after the equal snapshot, so the walk reaches it first.
+/// `--date-order` can't prevent that, because simplification severed the only edge
+/// that connects the two, so pruning must not depend on the visit order.
+#[test]
+fn an_ancestor_visited_before_the_equal_snapshot_is_still_pruned() {
+    let history = History::new();
+    let (discarded, equal, unreleased) =
+        history.feature_discarded_by_a_keep_mine_merge("2000-01-05T00:00:00 +0000");
+    assert!(
+        history.repo.is_ancestor(&discarded, &equal),
+        "the discarded commit must be a real ancestor of the equal snapshot"
+    );
+    // Exercise the unfavourable order: the walk this simplifies exactly like the
+    // diff's own one has to reach the discarded commit before the equal snapshot.
+    let order = history.walk_order();
+    assert!(
+        order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
+        "{order}"
+    );
+    assert_eq!(
+        commit_ids(&history.diff(None)),
+        HashSet::from([unreleased.as_str()]),
+        "an ancestor of the equal snapshot was released again"
+    );
 }
 
 #[test]
@@ -402,28 +679,47 @@ fn first_release_respects_the_commit_limit() {
         .unwrap();
     let one = history.write_commit("src/one.rs", "", "fix: one");
     let two = history.write_commit("src/two.rs", "", "fix: two");
-    // Zero means no limit. Commits must be collected newest first.
-    let expected: [&str; 4] = [&two, &one, &baseline, &readme];
-    for (limit, expected) in [(1, &expected[..1]), (2, &expected[..2]), (0, &expected[..])] {
-        let request = history.request().with_max_analyze_commits(Some(limit));
-        let diff = history.diff_with(None, &request).unwrap();
-        assert_eq!(commit_ids(&diff), expected, "commit limit: {limit}");
-    }
+    assert_eq!(
+        commit_ids(&history.diff_with(None, Some(1))),
+        HashSet::from([two.as_str()])
+    );
+    assert_eq!(
+        commit_ids(&history.diff_with(None, Some(2))),
+        HashSet::from([one.as_str(), two.as_str()])
+    );
+    // Zero means no limit. The commits are collected newest first, which is the
+    // order the changelog renders them in.
+    let diff = history.diff_with(None, Some(0));
+    assert_eq!(
+        diff.commits
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            two.as_str(),
+            one.as_str(),
+            baseline.as_str(),
+            readme.as_str()
+        ]
+    );
 }
 
-/// Unpublished packages have only the tag to bound their history.
+/// The git tag bounds the history of packages that aren't in the registry too.
+/// It's the only release boundary a `publish = false` or `git_only` package has:
+/// without it, every release would repeat the whole history in its changelog.
 #[test]
 fn a_tag_bounds_the_history_of_a_package_that_is_not_published() {
     let history = History::new();
     history.write_commit("src/released.rs", "", "feat: released by the tag");
     history.repo.tag_lightweight("v0.1.0").unwrap();
     let unreleased = history.write_commit("src/unreleased.rs", "", "feat: after the tag");
-    let request = history.request().with_default_package_config(UpdateConfig {
-        publish: false,
-        ..UpdateConfig::default()
+    let diff = history.diff_configured(None, None, |request| {
+        request.with_default_package_config(UpdateConfig {
+            publish: false,
+            ..UpdateConfig::default()
+        })
     });
-    let diff = history.diff_with(None, &request).unwrap();
-    assert_commits(&diff, &[&unreleased]);
+    assert_eq!(commit_ids(&diff), HashSet::from([unreleased.as_str()]));
 }
 
 #[test]
@@ -439,7 +735,9 @@ fn a_blocking_dirty_working_tree_hints_at_the_allow_dirty_option() {
     .unwrap();
     let error = format!(
         "{:#}",
-        history.diff_with(None, &history.request()).unwrap_err()
+        history
+            .try_diff_with(None, None, |request| request)
+            .unwrap_err()
     );
     assert!(
         error.contains("The allow-dirty option can't be used in this case"),
