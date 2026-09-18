@@ -1122,6 +1122,9 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
+mod history_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
