@@ -43,12 +43,6 @@ pub(super) struct RetainedChanges {
     released_ancestors: HashSet<String>,
 }
 
-enum Contribution {
-    Absent,
-    Present,
-    Conflict,
-}
-
 impl RetainedChanges {
     pub(super) fn new(
         repository: &Repo,
@@ -165,33 +159,27 @@ impl RetainedChanges {
         let released = self.repo.find_commit(self.released)?;
         // A conflict against the release does not establish that the commit's
         // contribution was absent from it. Preserve the existing pruning then.
-        let absent_from_release = matches!(
-            self.undo_changes_package(&commit, &released)?,
-            Contribution::Absent
-        );
-        if !absent_from_release {
+        if self.undo_changes_package(&commit, &released)? {
             return Ok(false);
         }
         let head = self.repo.find_commit(self.head)?;
         // Once absence from the release is established, a conflict at HEAD is
         // ambiguous: keep the commit rather than losing a breaking-change marker.
-        Ok(!matches!(
-            self.undo_changes_package(&commit, &head)?,
-            Contribution::Absent
-        ))
+        self.undo_changes_package(&commit, &head)
     }
 
+    /// Whether undoing `commit` on `target` changes the packaged files. A conflict
+    /// counts as a change: it does not prove that the contribution was absent.
     fn undo_changes_package(
         &self,
         commit: &git2::Commit<'_>,
         target: &git2::Commit<'_>,
-    ) -> anyhow::Result<Contribution> {
+    ) -> anyhow::Result<bool> {
         // For merge commits, undo the change relative to the first parent, as
         // `git revert -m 1` does. Root commits are handled by libgit2's empty base.
         let mainline = u32::from(commit.parent_count() > 1);
         let index = self.repo.revert_commit(commit, target, mainline, None)?;
         let tree = target.tree()?;
-        let mut changed = false;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
             let changes_file_presence = conflict.our.as_ref().map(|entry| &entry.path)
@@ -208,18 +196,15 @@ impl RetainedChanges {
                     .map(|path| self.includes(Path::new(path), changes_file_presence, &tree))
                     .unwrap_or(true)
             });
-            if affects_package {
-                let refined = self
+            if affects_package
+                && self
                     .refine_text_conflict(&conflict)
                     .unwrap_or_else(|error| {
                         debug!("cannot refine retained text changes: {error:#}");
-                        Contribution::Conflict
-                    });
-                match refined {
-                    Contribution::Absent => {}
-                    Contribution::Present => changed = true,
-                    Contribution::Conflict => return Ok(Contribution::Conflict),
-                }
+                        true
+                    })
+            {
+                return Ok(true);
             }
         }
         // Replacing a regular file with a symlink keeps the same packaged path.
@@ -228,7 +213,7 @@ impl RetainedChanges {
         let diff = self
             .repo
             .diff_tree_to_index(Some(&tree), Some(&index), Some(&mut options))?;
-        changed |= diff.deltas().any(|delta| {
+        Ok(diff.deltas().any(|delta| {
             // Conflicts were classified above without changing the in-memory
             // index; do not count a refined no-op again as a changed file.
             if delta.status() == git2::Delta::Conflicted {
@@ -248,19 +233,16 @@ impl RetainedChanges {
                 .into_iter()
                 .flatten()
                 .any(|path| self.includes(path, changes_file_presence, &tree))
-        });
-        Ok(if changed {
-            Contribution::Present
-        } else {
-            Contribution::Absent
-        })
+        }))
     }
 
-    fn refine_text_conflict(&self, conflict: &git2::IndexConflict) -> anyhow::Result<Contribution> {
+    /// Whether a text conflict still carries a change. Only a character-level
+    /// three-way merge that resolves to `ours` proves the contribution absent.
+    fn refine_text_conflict(&self, conflict: &git2::IndexConflict) -> anyhow::Result<bool> {
         let (Some(ancestor), Some(ours), Some(theirs)) =
             (&conflict.ancestor, &conflict.our, &conflict.their)
         else {
-            return Ok(Contribution::Conflict);
+            return Ok(true);
         };
         if ancestor.path != ours.path
             || ancestor.path != theirs.path
@@ -268,7 +250,7 @@ impl RetainedChanges {
                 .into_iter()
                 .all(|mode| self.is_regular_file_in_checkout(mode))
         {
-            return Ok(Contribution::Conflict);
+            return Ok(true);
         }
         let blobs = [
             self.repo.find_blob(ancestor.id)?,
@@ -280,12 +262,12 @@ impl RetainedChanges {
         if blobs.iter().map(git2::Blob::size).sum::<usize>() > 1024 * 1024
             || blobs.iter().any(|blob| blob.content().contains(&0))
         {
-            return Ok(Contribution::Conflict);
+            return Ok(true);
         }
         let mut encoded = Vec::with_capacity(blobs.len());
         for blob in &blobs {
             let Ok(contents) = std::str::from_utf8(blob.content()) else {
-                return Ok(Contribution::Conflict);
+                return Ok(true);
             };
             let mut characters = String::with_capacity(contents.len() * 3);
             for character in contents.chars() {
@@ -301,13 +283,7 @@ impl RetainedChanges {
         ours.content(encoded[1].as_bytes());
         theirs.content(encoded[2].as_bytes());
         let merged = git2::merge_file(&ancestor, &ours, &theirs, None)?;
-        Ok(if !merged.is_automergeable() {
-            Contribution::Conflict
-        } else if merged.content() == encoded[1].as_bytes() {
-            Contribution::Absent
-        } else {
-            Contribution::Present
-        })
+        Ok(!merged.is_automergeable() || merged.content() != encoded[1].as_bytes())
     }
 
     fn is_regular_file_in_checkout(&self, mode: u32) -> bool {
