@@ -8,6 +8,7 @@ use std::{collections::HashSet, path::Path, process::Command};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{Span, debug, instrument, trace, warn};
 
 /// Repository
@@ -19,6 +20,13 @@ pub struct Repo {
     original_branch: String,
     /// Remote name before running any git operation
     original_remote: String,
+    http_extra_header: Option<HttpExtraHeader>,
+}
+
+#[derive(Debug)]
+struct HttpExtraHeader {
+    url: String,
+    header: SecretString,
 }
 
 impl Repo {
@@ -34,11 +42,37 @@ impl Repo {
             directory: directory.as_ref().to_path_buf(),
             original_branch: current_branch,
             original_remote: current_remote,
+            http_extra_header: None,
         })
     }
 
     pub fn directory(&self) -> &Utf8Path {
         &self.directory
+    }
+
+    /// Send an HTTP header to this URL when fetching, pulling or pushing.
+    /// The header is passed through the command environment, never stored in git config.
+    pub fn with_http_extra_header(mut self, url: String, header: SecretString) -> Self {
+        self.http_extra_header = Some(HttpExtraHeader { url, header });
+        self
+    }
+
+    fn git_remote(&self, args: &[&str]) -> anyhow::Result<String> {
+        let Some(auth) = &self.http_extra_header else {
+            return self.git(args);
+        };
+        let key = format!("http.{}.extraHeader", auth.url);
+        // Clear inherited headers for this URL (e.g. actions/checkout credentials)
+        // before adding our header. Keep its value out of command arguments and logs.
+        let reset_header = format!("{key}=");
+        let set_header = format!("--config-env={key}=RELEASE_PLZ_GIT_HTTP_HEADER");
+        let mut configured_args = vec!["-c", &reset_header, &set_header];
+        configured_args.extend_from_slice(args);
+        git_in_dir_with_env(
+            &self.directory,
+            &configured_args,
+            &[("RELEASE_PLZ_GIT_HTTP_HEADER", auth.header.expose_secret())],
+        )
     }
 
     fn get_current_remote_and_branch(
@@ -156,13 +190,18 @@ impl Repo {
     }
 
     pub fn push(&self, obj: &str) -> anyhow::Result<()> {
-        self.git(&["push", &self.original_remote, obj])?;
+        self.git_remote(&["push", &self.original_remote, obj])?;
         Ok(())
     }
 
     pub fn fetch(&self, obj: &str) -> anyhow::Result<()> {
-        self.git(&["fetch", &self.original_remote, obj])
+        self.git_remote(&["fetch", &self.original_remote, obj])
             .with_context(|| format!("failed to fetch {obj}"))?;
+        Ok(())
+    }
+
+    pub fn pull(&self) -> anyhow::Result<()> {
+        self.git_remote(&["pull"])?;
         Ok(())
     }
 
@@ -172,7 +211,7 @@ impl Repo {
         // In other words, it will only push if no one else has pushed changes to the remote
         // branch since you last pulled. If someone else has pushed changes, the command will fail,
         // preventing you from accidentally overwriting someone else's work.
-        self.git(&["push", &self.original_remote, obj, "--force-with-lease"])
+        self.git_remote(&["push", &self.original_remote, obj, "--force-with-lease"])
             .with_context(|| format!("failed to force-push {obj}"))?;
         Ok(())
     }
@@ -526,8 +565,62 @@ fn get_current_branch(directory: impl AsRef<Utf8Path>) -> anyhow::Result<String>
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
     use super::*;
+
+    #[tokio::test]
+    async fn http_header_is_scoped_to_remote_commands_and_repository_url() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let url = format!("{}/owner/repo.git", server.uri());
+        repo.git(&["remote", "add", "origin", &url]).unwrap();
+        // actions/checkout can leave a host-wide authentication header behind.
+        let checkout_key = format!("http.{}/.extraHeader", server.uri());
+        repo.git(&["config", &checkout_key, "Authorization: Basic checkout"])
+            .unwrap();
+        let header = "Authorization: Basic secret";
+        let repo = repo.with_http_extra_header(url, SecretString::from(header));
+        assert!(!format!("{repo:?}").contains(header));
+        for error in [
+            repo.fetch("main").unwrap_err(),
+            repo.push("HEAD:main").unwrap_err(),
+            repo.force_push("HEAD:main").unwrap_err(),
+            repo.pull().unwrap_err(),
+        ] {
+            assert!(!format!("{error:?}").contains(header));
+        }
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 4);
+        for request in requests {
+            let authorization: Vec<_> = request.headers.get_all("authorization").iter().collect();
+            assert_eq!(authorization, ["Basic secret"]);
+        }
+
+        // The provided header is never persisted, and local commands don't receive it.
+        let config = repo.git(&["config", "--list"]).unwrap();
+        assert!(!config.contains("secret"));
+        assert!(config.contains("Authorization: Basic checkout"));
+        repo.git(&["config", "--unset-all", &checkout_key]).unwrap();
+
+        // Another repository on the same host must not receive the secret.
+        repo.git(&[
+            "remote",
+            "set-url",
+            "origin",
+            &format!("{}/owner/other.git", server.uri()),
+        ])
+        .unwrap();
+        repo.fetch("main").unwrap_err();
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 5);
+        assert!(!requests[4].headers.contains_key("authorization"));
+    }
 
     /// `git rev-list --topo-order` emits whole lineages contiguously, so combining
     /// it with `--max-count` returns the oldest commits of one branch instead of the
