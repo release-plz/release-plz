@@ -28,8 +28,8 @@ pub(super) struct RetainedChanges {
     /// order to ignore generated files at the package root and to include a README
     /// that lives outside the package.
     paths: Vec<Utf8PathBuf>,
-    /// Repository-relative path of the configured README, links unresolved, so
-    /// that retargeting a README link counts as a change.
+    /// Repository-relative path of the configured README with only its final
+    /// component left unresolved, so that retargeting the README link counts.
     readme: Option<Utf8PathBuf>,
     /// Git's simplified, path-limited parent graph of the walk.
     parents: HashMap<String, Vec<String>>,
