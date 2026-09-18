@@ -24,12 +24,12 @@ pub(super) struct RetainedChanges {
     /// `None` when listing failed and every file under `paths` counts.
     package_files: Option<HashSet<Utf8PathBuf>>,
     /// Repository-relative paths: the package directory first, then the canonical
-    /// target of the configured README when it lives outside the package.
-    /// [`Self::includes`] relies on that order to ignore generated files at the
-    /// package root and to include an overridden README.
+    /// target of the configured README, if any. [`Self::includes`] relies on that
+    /// order to ignore generated files at the package root and to include a README
+    /// that lives outside the package.
     paths: Vec<Utf8PathBuf>,
-    /// Repository-relative path of the configured README link itself, kept next
-    /// to its canonical target in `paths` so that a link retarget counts.
+    /// Repository-relative path of the configured README, links unresolved, so
+    /// that retargeting a README link counts as a change.
     readme: Option<Utf8PathBuf>,
     /// Git's simplified, path-limited parent graph of the walk.
     parents: HashMap<String, Vec<String>>,
