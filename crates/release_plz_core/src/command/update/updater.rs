@@ -1122,6 +1122,7 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
+#[path = "../../../tests/unit/history_tests.rs"]
 mod history_tests;
 
 #[cfg(test)]
