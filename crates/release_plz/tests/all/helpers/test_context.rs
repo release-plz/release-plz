@@ -184,17 +184,14 @@ impl TestContext {
     }
 
     pub fn run_update(&self) -> Assert {
-        self.update_command()
-            .args(["--registry", TEST_REGISTRY])
-            .assert()
-    }
-
-    pub fn update_command(&self) -> assert_cmd::Command {
-        let mut cmd = super::cmd::release_plz_cmd(&self.cargo_target_dir());
-        cmd.current_dir(self.repo_dir())
+        super::cmd::release_plz_cmd(&self.cargo_target_dir())
+            .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
-            .args(["update", "--verbose"]);
-        cmd
+            .arg("update")
+            .arg("--verbose")
+            .arg("--registry")
+            .arg(TEST_REGISTRY)
+            .assert()
     }
 
     pub fn run_release_pr(&self) -> Assert {

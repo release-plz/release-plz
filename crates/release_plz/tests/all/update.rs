@@ -4,8 +4,6 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::cmd::release_plz_cmd;
 
-mod history;
-
 #[test]
 fn update_workspace_with_detached_head() {
     update_detached_workspace(None);
