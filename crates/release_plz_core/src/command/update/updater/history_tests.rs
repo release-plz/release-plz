@@ -200,6 +200,13 @@ impl History {
         (discarded, equal, unreleased)
     }
 
+    /// Every commit in the order `get_diff` visits them, newest date first.
+    fn walk_order(&self) -> String {
+        self.repo
+            .git(&["rev-list", "--date-order", "HEAD", "--", "."])
+            .unwrap()
+    }
+
     fn diff(&self, published_at: Option<&str>) -> Diff {
         let metadata =
             cargo_utils::get_manifest_metadata(&self.registry.directory().join(CARGO_TOML))
@@ -392,9 +399,7 @@ fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                 // The equal branch descends from the breaking change, so the walk visits
                 // the equal snapshot first whatever the skew: dates out of topological
                 // order must not change the outcome.
-                let order = repo
-                    .git(&["rev-list", "--date-order", "HEAD", "--", "."])
-                    .unwrap();
+                let order = history.walk_order();
                 assert!(
                     order.find(&equal).unwrap() < order.find(&breaking).unwrap(),
                     "skew={skew}: {order}"
@@ -483,9 +488,7 @@ fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
                 fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
                 format!("{BASE_API}pub fn extra() {{}}\n")
             );
-            let order = repo
-                .git(&["rev-list", "--date-order", "HEAD", "--", "."])
-                .unwrap();
+            let order = history.walk_order();
             assert_eq!(
                 order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
                 discarded_first,
@@ -1214,9 +1217,7 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
     repo.git(&["merge", "--no-ff", "-m", "merge branch", "branch"])
         .unwrap();
     // Exercise the order where stopping at the equal snapshot would lose its sibling.
-    let order = repo
-        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
-        .unwrap();
+    let order = history.walk_order();
     assert!(order.find(&equal).unwrap() < order.find(&sibling).unwrap());
     assert_eq!(
         commit_ids(&history.diff(None)),
@@ -1271,9 +1272,7 @@ fn every_lineage_stops_at_its_own_equal_snapshot() {
     // The dates make the walk find the first equal snapshot before the second, and
     // the second before the change reverted by the first: the second snapshot must
     // neither forget the first one nor keep the lineages it stopped.
-    let order = repo
-        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
-        .unwrap();
+    let order = history.walk_order();
     assert!(order.find(&equal_one).unwrap() < order.find(&equal_two).unwrap());
     assert!(order.find(&equal_two).unwrap() < order.find(&reverted_one).unwrap());
     assert!(order.find(&equal_two).unwrap() < order.find(&reverted_two).unwrap());
@@ -1303,10 +1302,7 @@ fn a_merge_discarding_a_branch_still_prunes_it_with_the_equal_snapshot() {
     );
     // Exercise the order where the equal snapshot is visited before the commit it
     // has to prune.
-    let order = history
-        .repo
-        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
-        .unwrap();
+    let order = history.walk_order();
     assert!(
         order.find(&equal).unwrap() < order.find(&discarded).unwrap(),
         "{order}"
@@ -1334,10 +1330,7 @@ fn an_ancestor_visited_before_the_equal_snapshot_is_still_pruned() {
     );
     // Exercise the unfavourable order: the walk this simplifies exactly like the
     // diff's own one has to reach the discarded commit before the equal snapshot.
-    let order = history
-        .repo
-        .git(&["rev-list", "--date-order", "HEAD", "--", "."])
-        .unwrap();
+    let order = history.walk_order();
     assert!(
         order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
         "{order}"
