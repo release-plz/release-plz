@@ -21,9 +21,12 @@ anyhow.workspace = true
 camino.workspace = true
 tracing.workspace = true
 fs-err.workspace = true
+secrecy.workspace = true
 
 [dev-dependencies]
 git_cmd = { path = ".", features = ["test_fixture"]}
 test_logs = { path = "../test_logs" }
 
 tempfile.workspace = true
+tokio = { workspace = true, features = ["macros"] }
+wiremock.workspace = true
