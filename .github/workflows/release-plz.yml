@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-26.04
     if: ${{ github.repository_owner == 'release-plz' }}
     environment: release-plz
+    outputs:
+      release-tag: ${{ steps.release-tag.outputs.tag }}
     permissions:
       contents: read
       id-token: write # Required for trusted publishing
@@ -35,11 +37,29 @@ jobs:
           # pull-requests permission is not needed for the `release` command, so restricting it to contents only
           permission-contents: write
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@d6c56271d640b6c1b61d1e00593641c400a9f4bd # v0.5.138
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+      - name: Read binary release tag
+        id: release-tag
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: |
+          tag=$(jq -r '.[] | select(.package_name == "release-plz") | .tag' <<< "$RELEASES")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release-binaries:
+    name: Release binaries
+    needs: release-plz-release
+    if: needs.release-plz-release.outputs.release-tag != ''
+    permissions:
+      contents: write # CD uploads assets and publishes the draft release
+    uses: $/.github/workflows/cd.yml
+    with:
+      tag: ${{ needs.release-plz-release.outputs.release-tag }}
 
   release-plz-pr:
     name: Release-plz PR

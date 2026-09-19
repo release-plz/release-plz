@@ -27,8 +27,7 @@ release-plz released the new version of your project.
 If you are using release-plz to release your project, you can
 run a CI job on the "tag" or "release" events to build and release the binaries.
 
-Here is an example based on release-plz's own
-[`cd.yml` workflow](https://github.com/release-plz/release-plz/blob/main/.github/workflows/cd.yml):
+Here is an example using `upload-rust-binary-action`:
 
 :::info
 To use this in your project, change:
@@ -112,14 +111,56 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+:::caution
+To trigger this workflow on a release event, the release-plz GitHub Action needs to
+[trigger further workflow runs](../github/token.md).
+:::
+
+## Using cargo-dist with a draft release
+
+Release-plz itself uses [cargo-dist](https://axodotdev.github.io/cargo-dist/) to
+build binaries before publishing its GitHub release. See its
+[`release-plz.yml`](https://github.com/release-plz/release-plz/blob/main/.github/workflows/release-plz.yml),
+[`cd.yml`](https://github.com/release-plz/release-plz/blob/main/.github/workflows/cd.yml),
+and [`dist-workspace.toml`](https://github.com/release-plz/release-plz/blob/main/dist-workspace.toml).
+
+The sequence is:
+
+1. Release-plz publishes the crates, pushes tags, and creates a draft GitHub release
+   with `git_release_draft = true` and `git_release_latest = false`.
+2. The release workflow reads the binary package's tag from release-plz's
+   [`releases` output](../github/output.md) and passes it to the reusable CD workflow.
+   Draft releases do not trigger GitHub Actions release events. Calling CD after
+   release-plz finishes also avoids racing the draft creation on a tag-push event.
+3. Cargo-dist builds archives from that tag. Once every build succeeds, CD uploads
+   all artifacts, appends cargo-dist's download table to release-plz's changelog and
+   contributors, and publishes the draft. Stable releases are marked latest;
+   prereleases retain their prerelease status.
+
+The CD workflow is maintained manually (`ci = []` in the dist configuration) to
+coordinate the draft release, compatibility archives, and announcement. Cargo-dist
+handles the build plan, supported binary builds, archives, checksums, and download
+table. FreeBSD retains `upload-rust-binary-action` because cargo-dist cannot
+cross-compile that target.
+
+Existing release-plz downloads keep their `release-plz-v<version>` tags and
+`release-plz-<target>.tar.gz` / `.zip` filenames. The `.tar.gz` archives still contain
+the binary at the archive root, including on Windows. Windows `.zip` archives also
+keep the executable at the root. Cargo-dist's additional `.tar.xz` archives contain
+a directory, and its checksums are published alongside them. Existing
+`cargo-binstall` metadata continues to use the compatible archives.
+
+If a build or upload fails, the GitHub release stays draft. Maintainers can rerun
+the failed jobs or dispatch **CD** with the existing release tag. The publish step
+can replace partially uploaded draft assets, but refuses to change an already
+published release. The social announcement runs after publication within CD,
+because publishing with `GITHUB_TOKEN` does not trigger another release workflow.
+
+## Other tools
+
 Some projects to consider for this task:
 
 - [upload-rust-binary-action](https://github.com/taiki-e/upload-rust-binary-action):
   GitHub Action for building and uploading Rust binary to GitHub Releases.
 - [cargo-dist](https://crates.io/crates/cargo-dist):
   shippable application packaging for Rust.
-
-:::caution
-To release a binary after release, the release-plz GitHub Action needs to
-[trigger further workflow runs](../github/token.md).
-:::
