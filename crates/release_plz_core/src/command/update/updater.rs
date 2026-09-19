@@ -86,10 +86,6 @@ impl Updater<'_> {
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
-        if let Some(new_workspace_version) = &new_workspace_version {
-            packages_to_update.with_workspace_version(new_workspace_version.clone());
-        }
-
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
             let group_has_release_commit = || {
@@ -167,6 +163,19 @@ impl Updater<'_> {
         let dependent_packages =
             self.dependent_packages_update(&packages_to_check_for_deps, &changed_packages)?;
         packages_to_update.updates_mut().extend(dependent_packages);
+
+        // Release commit filtering can exclude all packages inheriting the workspace version.
+        // Only record the new workspace version if one of those packages is actually being updated.
+        // This must run after `dependent_packages_update`, because a filtered package can still be
+        // updated as a dependent.
+        if let Some(new_workspace_version) = new_workspace_version
+            && packages_to_update
+                .updates()
+                .iter()
+                .any(|(p, _)| workspace_version_pkgs.contains(p.name.as_str()))
+        {
+            packages_to_update.with_workspace_version(new_workspace_version);
+        }
         Ok(packages_to_update)
     }
 
