@@ -76,10 +76,12 @@ jobs:
         with:
           cache: false
       - name: Install cargo-dist
-        if: matrix.target != 'x86_64-unknown-freebsd'
-        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
-        with:
-          tool: cargo-dist@0.33.0
+        if: matrix.target != 'x86_64-unknown-freebsd' && runner.os != 'Windows'
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh | sh
+      - name: Install cargo-dist on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: irm https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.ps1 | iex
       - name: Install musl tools
         if: contains(matrix.target, '-musl')
         run: sudo apt-get update && sudo apt-get install --yes musl-tools
@@ -136,9 +138,7 @@ jobs:
           ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
       - name: Install cargo-dist
-        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
-        with:
-          tool: cargo-dist@0.33.0
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh | sh
       - name: Download all binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

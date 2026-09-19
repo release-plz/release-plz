@@ -32,9 +32,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-dist
-        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
-        with:
-          tool: cargo-dist@0.33.0
+        # bash enables pipefail so a failed download also fails the step.
+        shell: bash
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh | sh
       - name: Check distribution plan and release handling
         run: |
           # Mock binaries let us check every archive format without cross-compiling.
