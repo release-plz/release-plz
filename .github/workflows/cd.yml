@@ -1,10 +1,23 @@
 name: CD # Continuous Deployment
 
+# Draft releases do not trigger release workflows. Call this after release-plz
+# finishes creating the draft, rather than racing its tag-push event.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: The release-plz tag whose draft release will receive binaries
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release-plz tag (also used to retry a failed release)
+        required: true
+        type: string
 
 env:
+  RELEASE_TAG: ${{ inputs.tag }}
   CARGO_INCREMENTAL: 0
   CARGO_NET_GIT_FETCH_WITH_CLI: true
   CARGO_NET_RETRY: 10
@@ -16,7 +29,7 @@ env:
 permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: cd-${{ inputs.tag }}
   cancel-in-progress: false
 
 defaults:
@@ -24,15 +37,13 @@ defaults:
     shell: bash
 
 jobs:
-  upload-assets:
+  build:
     name: ${{ matrix.target }}
     permissions:
-      contents: write # to upload release assets
-    if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
+      contents: read
+    if: github.repository_owner == 'release-plz' && startsWith(inputs.tag, 'release-plz-v')
     runs-on: ${{ matrix.os }}
     strategy:
-      # Run all jobs to completion regardless of errors.
-      # This is useful because sometimes we fail to compile for a certain target.
       fail-fast: false
       matrix:
         include:
@@ -54,43 +65,106 @@ jobs:
             os: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - name: Checkout repository
+      - name: Checkout release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ inputs.tag }}
           persist-credentials: false
-      # Don't cache when uploading artifacts for security.
+      # Don't cache when building release artifacts for security.
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           cache: false
-          # Set build-warnings to warn for aarch64-unknown-linux-musl.
-          # Cross's ARM64 musl linker wrapper emits shell traces as linker warnings.
-          # RUSTFLAGS still denies compiler warnings for this target.
-          build-warnings: ${{ matrix.target == 'aarch64-unknown-linux-musl' && 'warn' || 'deny' }}
-      - uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
+      - name: Install cargo-dist
+        if: matrix.target != 'x86_64-unknown-freebsd'
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
         with:
-          target: ${{ matrix.target }}
-        if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
-        with:
-          tool: cross
+          tool: cargo-dist@0.33.0
+      - name: Install musl tools
         if: contains(matrix.target, '-musl')
-      - run: echo "RUSTFLAGS=${RUSTFLAGS} -C target-feature=+crt-static" >> "${GITHUB_ENV}"
-        if: endsWith(matrix.target, 'windows-msvc')
-      - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - name: Install Linux cross compiler
+        if: startsWith(matrix.target, 'aarch64-unknown-linux-')
+        run: pip3 install cargo-zigbuild==0.23.4 ziglang==0.16.0
+      - name: Build with cargo-dist
+        if: matrix.target != 'x86_64-unknown-freebsd'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          dist build --artifacts=local --target "$TARGET" --tag "$RELEASE_TAG" --output-format=json > dist-manifest.json
+          python3 .github/scripts/stage-dist.py dist-manifest.json artifacts
+          cp dist-manifest.json "artifacts/$TARGET-dist-manifest.json"
+      # cargo-dist cannot cross-compile FreeBSD. Keep the working builder and
+      # stage its archive alongside dist's artifacts before publishing anything.
+      - name: Install FreeBSD cross compiler
+        if: matrix.target == 'x86_64-unknown-freebsd'
+        uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
+        with:
+          target: x86_64-unknown-freebsd
+      - name: Build FreeBSD archive
+        if: matrix.target == 'x86_64-unknown-freebsd'
+        uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: release-plz
-          target: ${{ matrix.target }}
+          target: x86_64-unknown-freebsd
           tar: all
-          zip: windows
-          token: ${{ secrets.GITHUB_TOKEN }}
+          zip: none
+          dry-run: true
+      - name: Stage FreeBSD archive
+        if: matrix.target == 'x86_64-unknown-freebsd'
+        run: |
+          mkdir -p artifacts
+          cp release-plz-x86_64-unknown-freebsd.tar.gz artifacts/
+      - name: Store artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: binaries-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write # Upload release assets and publish the existing draft
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Install cargo-dist
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
+        with:
+          tool: cargo-dist@0.33.0
+      - name: Download all binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: binaries-*
+          path: target/distrib
+          merge-multiple: true
+      - name: Build global artifacts
+        run: |
+          dist build --artifacts=global --tag "$RELEASE_TAG"
+          # As in dist's generated CI, host assembles the complete manifest.
+          # For GitHub hosting the actual upload is performed in the next step.
+          dist host --steps=upload --steps=release --tag "$RELEASE_TAG" --output-format=json > dist-manifest.json
+          cp dist-manifest.json target/distrib/dist-manifest.json
+          rm target/distrib/*-dist-manifest.json
+      - name: Upload binaries and publish draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/publish-dist.py target/distrib
 
   draft-announcement:
     name: Draft social media announcement
-    needs: upload-assets
-    if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
+    needs: publish
     runs-on: ubuntu-26.04
     environment: announce
+    permissions:
+      contents: read
     steps:
       # We use typefully to cross-post the release announcement
       # to release-plz social media accounts.
@@ -98,11 +172,15 @@ jobs:
       # typefully to do manual edits (if required) and send the announcement.
       - name: Draft announcement
         env:
-          RELEASE_NAME: ${{ github.event.release.name }}
-          RELEASE_BODY: ${{ github.event.release.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TYPEFULLY_API_KEY: ${{ secrets.TYPEFULLY_API_KEY }}
         run: |
           set -euo pipefail
+
+          release=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json name,body)
+          RELEASE_NAME=$(jq -r '.name' <<< "$release")
+          # Announce the changelog without the binary download table.
+          RELEASE_BODY=$(jq -r '.body | split("<!-- cargo-dist -->")[0]' <<< "$release")
 
           # Typefully v2 API expects explicit per-platform payloads.
           long_text=$(printf '🤖 New release: %s\n\n%s\n' "$RELEASE_NAME" "$RELEASE_BODY")
