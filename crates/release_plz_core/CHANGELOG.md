@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.5...release_plz_core-v0.38.6) - 2026-09-19
+
+### Fixed
+
+- avoid workspace bumps when releases are filtered out ([#3091](https://github.com/release-plz/release-plz/pull/3091))
+- support detached HEAD in release-plz release ([#3074](https://github.com/release-plz/release-plz/pull/3074))
+- support detached HEAD in release-plz update ([#3072](https://github.com/release-plz/release-plz/pull/3072))
+
 ## [0.38.5](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.4...release_plz_core-v0.38.5) - 2026-09-17
 
 ### Fixed

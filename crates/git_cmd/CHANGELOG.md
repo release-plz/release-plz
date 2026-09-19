@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.29...git_cmd-v0.7.0) - 2026-09-19
+
+### Added
+
+- *(git_cmd)* add bounded path history walks ([#3077](https://github.com/release-plz/release-plz/pull/3077))
+
+### Fixed
+
+- support detached HEAD in release-plz release ([#3074](https://github.com/release-plz/release-plz/pull/3074))
+- support detached HEAD in release-plz update ([#3072](https://github.com/release-plz/release-plz/pull/3072))
+
 ## [0.6.29](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.28...git_cmd-v0.6.29) - 2026-09-10
 
 ### Other
