@@ -71,7 +71,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+      - uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
         with:
           tool: cross
         if: contains(matrix.target, '-musl')
@@ -89,7 +89,7 @@ jobs:
     name: Draft social media announcement
     needs: upload-assets
     if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     environment: announce
     steps:
       # We use typefully to cross-post the release announcement
