@@ -1,3 +1,4 @@
+use cargo_metadata::camino::Utf8Path;
 use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
@@ -87,4 +88,163 @@ fn update_detached_workspace(repo_url: Option<&str>) {
     }
     assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
     assert!(repo.is_head_detached().unwrap());
+}
+
+#[test]
+fn release_commits_leaves_filtered_workspace_unchanged() {
+    let (temp_dir, repo) = workspace_with_release_commits(&[
+        ("one", "version.workspace = true\n"),
+        ("two", "version.workspace = true\n"),
+    ]);
+    change_package(&repo, "one", "fix: update one");
+    change_package(&repo, "two", "chore: update two");
+    let manifest_before = fs_err::read(repo.directory().join("Cargo.toml")).unwrap();
+    let lock_before = fs_err::read(repo.directory().join("Cargo.lock")).unwrap();
+
+    run_workspace_update(&temp_dir, &repo);
+
+    assert_eq!(
+        fs_err::read(repo.directory().join("Cargo.toml")).unwrap(),
+        manifest_before
+    );
+    assert_eq!(
+        fs_err::read(repo.directory().join("Cargo.lock")).unwrap(),
+        lock_before
+    );
+    repo.is_clean().unwrap();
+    assert_locked_versions(repo.directory(), &[("one", "1.0.0"), ("two", "1.0.0")]);
+}
+
+#[test]
+fn release_commits_preserves_shared_workspace_version_calculation() {
+    let (temp_dir, repo) = workspace_with_release_commits(&[
+        ("one", "version.workspace = true\n"),
+        ("two", "version.workspace = true\n"),
+    ]);
+    change_package(&repo, "one", "feat: update one");
+    change_package(&repo, "two", "fix!: update two");
+
+    run_workspace_update(&temp_dir, &repo);
+
+    // Changing the shared version also changes the filtered sibling's version,
+    // so its breaking change still determines the workspace version.
+    assert_locked_versions(repo.directory(), &[("one", "2.0.0"), ("two", "2.0.0")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("## [2.0.0]"), "{changelog}");
+}
+
+#[test]
+fn release_commits_does_not_bump_workspace_for_independent_release() {
+    let (temp_dir, repo) = workspace_with_release_commits(&[
+        ("one", "version.workspace = true\n"),
+        ("two", "version = \"1.0.0\"\n"),
+    ]);
+    change_package(&repo, "one", "fix: update one");
+    change_package(&repo, "two", "feat: update two");
+    let manifest_before = fs_err::read(repo.directory().join("Cargo.toml")).unwrap();
+
+    run_workspace_update(&temp_dir, &repo);
+
+    assert_eq!(
+        fs_err::read(repo.directory().join("Cargo.toml")).unwrap(),
+        manifest_before
+    );
+    assert_locked_versions(repo.directory(), &[("one", "1.0.0"), ("two", "1.1.0")]);
+    assert!(!repo.directory().join("one/CHANGELOG.md").exists());
+    assert!(repo.directory().join("two/CHANGELOG.md").exists());
+}
+
+#[test]
+fn release_commits_keeps_workspace_bump_for_dependency_updates() {
+    let (temp_dir, repo) = workspace_with_release_commits(&[
+        (
+            "one",
+            "version.workspace = true\n[dependencies]\ntwo = { path = \"../two\", version = \"=1.0.0\" }\n",
+        ),
+        ("two", "version = \"1.0.0\"\n"),
+    ]);
+    change_package(&repo, "one", "fix: update one");
+    change_package(&repo, "two", "feat: update two");
+
+    run_workspace_update(&temp_dir, &repo);
+
+    // Although its own commits are filtered out, `one` must be updated because
+    // its dependency requirement changes when `two` is released.
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.1.0")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+}
+
+fn workspace_with_release_commits(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {
+    let temp_dir = Utf8TempDir::new().unwrap();
+    let project_dir = temp_dir.path().join("project");
+    let registry_dir = temp_dir.path().join("registry");
+    let members: Vec<_> = packages.iter().map(|(name, _)| name).collect();
+    for dir in [&project_dir, &registry_dir] {
+        fs_err::create_dir(dir).unwrap();
+        fs_err::write(
+            dir.join("Cargo.toml"),
+            format!(
+                "[workspace]\nmembers = {members:?}\nresolver = \"3\"\n\n[workspace.package]\nversion = \"1.0.0\"\n"
+            ),
+        )
+        .unwrap();
+        for (name, manifest) in packages {
+            let package_dir = dir.join(name);
+            fs_err::create_dir_all(package_dir.join("src")).unwrap();
+            fs_err::write(
+                package_dir.join("Cargo.toml"),
+                format!("[package]\nname = {name:?}\nedition = \"2024\"\n{manifest}"),
+            )
+            .unwrap();
+            fs_err::write(package_dir.join("src/lib.rs"), "// Initial release\n").unwrap();
+        }
+        assert_cmd::Command::new("cargo")
+            .current_dir(dir)
+            .args(["generate-lockfile", "--offline"])
+            .assert()
+            .success();
+    }
+    fs_err::write(
+        project_dir.join("release-plz.toml"),
+        "[workspace]\nsemver_check = false\nrelease_commits = \"^feat:\"\n",
+    )
+    .unwrap();
+    let repo = Repo::init(&project_dir);
+    repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
+        .unwrap();
+    for (name, _) in packages {
+        repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
+    }
+    (temp_dir, repo)
+}
+
+fn change_package(repo: &Repo, name: &str, commit_message: &str) {
+    fs_err::write(
+        repo.directory().join(name).join("src/lib.rs"),
+        format!("// Updated {name}\n"),
+    )
+    .unwrap();
+    repo.add_all_and_commit(commit_message).unwrap();
+}
+
+fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo) {
+    release_plz_cmd(&temp_dir.path().join("target"))
+        .current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        .assert()
+        .success();
+}
+
+fn assert_locked_versions(project_dir: &Utf8Path, expected_versions: &[(&str, &str)]) {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .current_dir(project_dir)
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap();
+    for (name, version) in expected_versions {
+        let package = metadata.packages.iter().find(|p| p.name == *name).unwrap();
+        assert_eq!(package.version.to_string(), *version, "package: {name}");
+    }
 }
