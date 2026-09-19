@@ -165,7 +165,9 @@ impl Updater<'_> {
         packages_to_update.updates_mut().extend(dependent_packages);
 
         // Release commit filtering can exclude all packages inheriting the workspace version.
-        // Only apply it if one of those packages is actually being updated, including dependents.
+        // Only record the new workspace version if one of those packages is actually being updated.
+        // This must run after `dependent_packages_update`, because a filtered package can still be
+        // updated as a dependent.
         if let Some(new_workspace_version) = new_workspace_version
             && packages_to_update
                 .updates()
