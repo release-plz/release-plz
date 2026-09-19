@@ -17,6 +17,94 @@ fn assert_cargo_semver_checks_is_installed() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_creates_and_updates_gitea_pr_without_git_credentials() {
+    use base64::Engine as _;
+
+    let context = TestContext::new().await;
+    context.gitea.make_repo_private().await;
+    let mut url = url::Url::parse(&context.gitea.repo_clone_url()).unwrap();
+    url.set_username("").unwrap();
+    url.set_password(None).unwrap();
+    // Disable inherited credential helpers, as with a checkout that doesn't persist credentials.
+    context
+        .repo
+        .git(&["config", "credential.helper", ""])
+        .unwrap();
+    let run_without_credentials = || {
+        context
+            .repo
+            .git(&["remote", "set-url", "origin", url.as_str()])
+            .unwrap();
+        let result = context.run_release_pr_with_log("trace").success();
+        let output = result.get_output();
+        let encoded = base64::engine::general_purpose::STANDARD
+            .encode(format!("x-access-token:{}", context.gitea.token));
+        for bytes in [&output.stdout, &output.stderr] {
+            let text = String::from_utf8_lossy(bytes);
+            assert!(!text.contains(&context.gitea.token));
+            assert!(!text.contains(&encoded));
+        }
+        let config = context.repo.git(&["config", "--local", "--list"]).unwrap();
+        assert!(!config.contains(&context.gitea.token));
+        assert!(!config.contains(&encoded));
+    };
+
+    run_without_credentials();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let original_pr = &prs[0];
+
+    // Simulate a new commit arriving on the base branch, using separate setup credentials.
+    context
+        .repo
+        .git(&[
+            "remote",
+            "set-url",
+            "origin",
+            &context.gitea.repo_clone_url(),
+        ])
+        .unwrap();
+    let source = "pub fn new_feature() {}\n";
+    fs_err::write(context.repo_dir().join("src/lib.rs"), source).unwrap();
+    context.push_all_changes("feat: new feature");
+
+    run_without_credentials();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    assert_eq!(
+        prs[0].number, original_pr.number,
+        "the existing PR must stay open"
+    );
+
+    // Read the resulting branch using setup credentials, independently of release-plz.
+    context
+        .repo
+        .git(&[
+            "remote",
+            "set-url",
+            "origin",
+            &context.gitea.repo_clone_url(),
+        ])
+        .unwrap();
+    context.repo.fetch(prs[0].branch()).unwrap();
+    assert_eq!(
+        context
+            .repo
+            .git(&["show", "FETCH_HEAD:src/lib.rs"])
+            .unwrap(),
+        source.trim()
+    );
+    assert_eq!(
+        context
+            .repo
+            .git(&["log", "-1", "--format=%s", "FETCH_HEAD"])
+            .unwrap(),
+        prs[0].title
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_default_config() {
     let context = TestContext::new().await;
 
