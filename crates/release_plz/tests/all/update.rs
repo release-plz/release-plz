@@ -61,7 +61,7 @@ fn update_detached_workspace(repo_url: Option<&str>) {
 
 #[test]
 fn release_commits_leaves_filtered_workspace_unchanged() {
-    let (temp_dir, repo) = workspace_with_release_commits_filter(&[
+    let (temp_dir, repo) = workspace_with_feat_release_commits_filter(&[
         ("one", "version.workspace = true\n"),
         ("two", "version.workspace = true\n"),
     ]);
@@ -78,7 +78,7 @@ fn release_commits_leaves_filtered_workspace_unchanged() {
 
 #[test]
 fn release_commits_preserves_shared_workspace_version_calculation() {
-    let (temp_dir, repo) = workspace_with_release_commits_filter(&[
+    let (temp_dir, repo) = workspace_with_feat_release_commits_filter(&[
         ("one", "version.workspace = true\n"),
         ("two", "version.workspace = true\n"),
     ]);
@@ -96,7 +96,7 @@ fn release_commits_preserves_shared_workspace_version_calculation() {
 
 #[test]
 fn release_commits_does_not_bump_workspace_for_independent_release() {
-    let (temp_dir, repo) = workspace_with_release_commits_filter(&[
+    let (temp_dir, repo) = workspace_with_feat_release_commits_filter(&[
         ("one", "version.workspace = true\n"),
         ("two", "version = \"1.0.0\"\n"),
     ]);
@@ -114,7 +114,7 @@ fn release_commits_does_not_bump_workspace_for_independent_release() {
 
 #[test]
 fn release_commits_keeps_workspace_bump_for_dependency_updates() {
-    let (temp_dir, repo) = workspace_with_release_commits_filter(&[
+    let (temp_dir, repo) = workspace_with_feat_release_commits_filter(&[
         (
             "one",
             "version.workspace = true\n[dependencies]\ntwo = { path = \"../two\", version = \"=1.0.0\" }\n",
@@ -135,7 +135,7 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
 
 /// Creates a workspace at `1.0.0` whose packages are already tagged as released
 /// and whose config only treats `feat:` commits as release commits.
-fn workspace_with_release_commits_filter(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {
+fn workspace_with_feat_release_commits_filter(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {
     let (temp_dir, repo) = init_workspace(
         packages,
         "\n[workspace.package]\nversion = \"1.0.0\"\n",
