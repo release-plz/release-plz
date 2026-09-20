@@ -57,7 +57,7 @@ jobs:
     if: needs.release-plz-release.outputs.release-tag != ''
     permissions:
       contents: write # CD uploads assets and publishes the draft release
-    uses: ./.github/workflows/cd.yml
+    uses: $/.github/workflows/cd.yml
     with:
       tag: ${{ needs.release-plz-release.outputs.release-tag }}
 
