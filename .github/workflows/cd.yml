@@ -63,8 +63,6 @@ jobs:
             os: macos-14
           - target: x86_64-apple-darwin
             os: macos-15-intel
-          - target: x86_64-unknown-freebsd
-            os: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - name: Checkout release tag
@@ -78,7 +76,7 @@ jobs:
         with:
           cache: false
       - name: Install cargo-dist
-        if: matrix.target != 'x86_64-unknown-freebsd' && runner.os != 'Windows'
+        if: runner.os != 'Windows'
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh | sh
       - name: Install cargo-dist on Windows
         if: runner.os == 'Windows'
@@ -91,39 +89,24 @@ jobs:
         if: startsWith(matrix.target, 'aarch64-unknown-linux-')
         run: pip3 install cargo-zigbuild==0.23.4 ziglang==0.16.0
       - name: Build with cargo-dist
-        if: matrix.target != 'x86_64-unknown-freebsd'
+        id: build
         env:
           TARGET: ${{ matrix.target }}
         run: |
           dist build --artifacts=local --target "$TARGET" --tag "$RELEASE_TAG" --output-format=json > dist-manifest.json
-          python3 .github/scripts/stage-dist.py dist-manifest.json artifacts
-          cp dist-manifest.json "artifacts/$TARGET-dist-manifest.json"
-      # cargo-dist cannot cross-compile FreeBSD. Keep the working builder and
-      # stage its archive alongside dist's artifacts before publishing anything.
-      - name: Install FreeBSD cross compiler
-        if: matrix.target == 'x86_64-unknown-freebsd'
-        uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
-        with:
-          target: x86_64-unknown-freebsd
-      - name: Build FreeBSD archive
-        if: matrix.target == 'x86_64-unknown-freebsd'
-        uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
-        with:
-          bin: release-plz
-          target: x86_64-unknown-freebsd
-          tar: all
-          zip: none
-          dry-run: true
-      - name: Stage FreeBSD archive
-        if: matrix.target == 'x86_64-unknown-freebsd'
-        run: |
-          mkdir -p artifacts
-          cp release-plz-x86_64-unknown-freebsd.tar.gz artifacts/
+          cp dist-manifest.json "target/distrib/$TARGET-dist-manifest.json"
+          {
+            echo "paths<<EOF"
+            jq -r '.upload_files[]' dist-manifest.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - name: Store artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: binaries-${{ matrix.target }}
-          path: artifacts/*
+          path: |
+            ${{ steps.build.outputs.paths }}
+            target/distrib/*-dist-manifest.json
           if-no-files-found: error
 
   publish:

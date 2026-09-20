@@ -138,17 +138,12 @@ The sequence is:
    prereleases retain their prerelease status.
 
 The CD workflow is maintained manually (`ci = []` in the dist configuration) to
-coordinate the draft release, compatibility archives, and announcement. Cargo-dist
-handles the build plan, supported binary builds, archives, checksums, and download
-table. FreeBSD retains `upload-rust-binary-action` because cargo-dist cannot
-cross-compile that target.
-
-Existing release-plz downloads keep their `release-plz-v<version>` tags and
-`release-plz-<target>.tar.gz` / `.zip` filenames. The `.tar.gz` archives still contain
-the binary at the archive root, including on Windows. Windows `.zip` archives also
-keep the executable at the root. Cargo-dist's additional `.tar.xz` archives contain
-a directory, and its checksums are published alongside them. Existing
-`cargo-binstall` metadata continues to use the compatible archives.
+coordinate the draft release and announcement. Cargo-dist handles the build plan,
+binary builds, archives, checksums, and download table for Linux, macOS, and Windows.
+Release-plz uses cargo-dist's default archive formats and directory layout:
+`.tar.xz` archives contain a directory on Unix, and Windows `.zip` archives contain
+the executable at the root. `cargo-binstall` discovers the format and layout using
+the configured `release-plz-v<version>` download URL.
 
 If a build or upload fails, the GitHub release stays draft. Maintainers can rerun
 the failed jobs or dispatch **CD** with the existing release tag. The publish step
