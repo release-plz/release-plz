@@ -61,6 +61,8 @@ jobs:
             os: ubuntu-22.04
           - target: aarch64-apple-darwin
             os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
           - target: x86_64-unknown-freebsd
             os: ubuntu-22.04
     timeout-minutes: 60
