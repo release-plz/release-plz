@@ -41,13 +41,6 @@ separately. Release-plz fails if it is missing or a different version is install
 
 ## Distribution workflow
 
-:::info
-This integration requires a release-plz version containing the `dist` commands.
-Replace `VERSION_WITH_DIST` below with that version, and pin the action to a
-revision containing this feature. The distribution action currently lives in this
-repository; `release-plz/action@v0.5` does not accept the new commands yet.
-:::
-
 Add `.github/workflows/dist.yml` on your default branch:
 
 ```yaml
@@ -81,22 +74,22 @@ jobs:
         os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: release-plz/release-plz/.github/actions/dist@main
+      - uses: release-plz/action@v0.5
         with:
-          version: VERSION_WITH_DIST
+          command: dist build
 
   publish:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-      - uses: release-plz/release-plz/.github/actions/dist@main
+      - uses: release-plz/action@v0.5
         with:
-          version: VERSION_WITH_DIST
-          command: finalize
+          command: dist finalize
 ```
 
-The action checks out the release tag, installs release-plz and the pinned
-cargo-dist version, and passes the matrix context to release-plz. The Rust code
+For `dist build` and `dist finalize`, the action checks out the release tag from
+the dispatch event, installs release-plz and the pinned cargo-dist version, and
+passes the matrix context to release-plz. The Rust code
 uploads archives, checksums, and build manifests directly to the draft release.
 The finalizer collects those manifests, generates shell/PowerShell installers
 where supported, appends cargo-dist's installation instructions and download
