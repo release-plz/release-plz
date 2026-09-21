@@ -900,14 +900,32 @@ impl GitClient {
             return Ok(RemoteCommit { username: None });
         }
 
-        let remote_commit: GitHubCommit = response
-            .successful_status()
-            .await?
-            .json()
-            .await
-            .context("can't parse commits")?;
+        let username = match self.forge {
+            ForgeType::Github | ForgeType::Gitea => {
+                let remote_commit: GitHubCommit = response
+                    .successful_status()
+                    .await?
+                    .json()
+                    .await
+                    .context("can't parse commits")?;
 
-        let username = remote_commit.author.and_then(|author| author.login);
+                remote_commit.author.and_then(|author| author.login)
+            }
+            ForgeType::Gitlab => {
+                let remote_commit: GitLabCommit = response
+                    .successful_status()
+                    .await?
+                    .json()
+                    .await
+                    .context("can't parse commits")?;
+
+                // The author_name is the git name of the author, not the GitLab username.
+                // There is currently no way to get the GitLab user from the commit API.
+                // <https://gitlab.com/gitlab-org/gitlab/-/work_items/20924>
+                Some(remote_commit.author_name)
+            }
+        };
+
         Ok(RemoteCommit { username })
     }
 
@@ -918,9 +936,7 @@ impl GitClient {
                 format!("git/{commits_path}")
             }
             ForgeType::Github => commits_path.to_string(),
-            ForgeType::Gitlab => {
-                unimplemented!("Gitlab support for `release-plz release-pr is not implemented yet")
-            }
+            ForgeType::Gitlab => format!("repository/{commits_path}"),
         };
         format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
@@ -1171,6 +1187,17 @@ pub struct GitHubCommit {
 pub struct GitHubCommitAuthor {
     /// Username.
     pub login: Option<String>,
+}
+
+/// Representation of a single commit in GitLab.
+///
+/// <https://docs.gitlab.com/api/commits/#retrieve-a-commit>
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GitLabCommit {
+    /// SHA.
+    pub id: String,
+    /// Author of the commit.
+    pub author_name: String,
 }
 
 /// Returns the list of contributors for the given commits,
