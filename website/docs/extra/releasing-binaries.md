@@ -1,26 +1,180 @@
 # Releasing binaries
 
-## Why release-plz doesn't release binaries
+Set `dist = true` for each binary package you want release-plz to distribute:
 
-> Since release-plz already publishes GitHub releases, would it
-> make sense for it to build the binaries of the project and publish
-> them to the release assets? 🤔
+```toml
+[[package]]
+name = "my-cli"
+dist = true
+```
 
-Not really. Releasing binaries requires setting a CI job different
-from the one used to run `release-plz release` because:
+For a binary that is not published to a Cargo registry, also set `git_only = true`.
+Keep your usual release-plz release workflow. It will create a draft GitHub release
+and dispatch the distribution workflow below for each enabled package.
+You do not need to run `cargo dist init`, maintain a cargo-dist configuration file,
+or let cargo-dist generate a workflow.
 
-- `release-plz release` should run once (for example on an `ubuntu` CI image);
-- building binaries requires a different CI image for each platform
-  (e.g. `ubuntu`, `macos`, `windows`).
+## Build prerequisites
 
-Since users have to set up an additional CI job to build binaries, using release-plz
-would not be more convenient than using a different tool.
-Plus, releasing binaries is a complex task, which is already well-handled by
-other tools in the Rust ecosystem.
-For these reasons, release-plz doesn't build and release binaries.
+Add this profile to the **workspace root `Cargo.toml`**, or to your package's
+`Cargo.toml` if it is not in a workspace:
 
-The next section explains how to use other tools to build and release binaries after
-release-plz released the new version of your project.
+```toml
+[profile.dist]
+inherits = "release"
+lto = "thin"
+```
+
+- `inherits = "release"` starts from your release profile's optimized build settings.
+  Cargo requires an `inherits` field for custom profiles.
+- `lto = "thin"` is the suggested optimization setting. It enables link-time
+  optimization across crates with a lower build-time cost than full LTO. It is
+  optional; you can keep your own profile settings.
+
+Release-plz requires this profile and never creates or changes it for you.
+Commit it before creating the release tag.
+
+The runner also needs **cargo-dist 0.33.0**, with its `dist` executable on `PATH`.
+The GitHub action installs it for distribution commands. For direct CLI use,
+[install cargo-dist](https://axodotdev.github.io/cargo-dist/book/install.html)
+separately. Release-plz fails if it is missing or a different version is installed.
+
+## Distribution workflow
+
+:::info
+This integration requires a release-plz version containing the `dist` commands.
+Replace `VERSION_WITH_DIST` below with that version, and pin the action to a
+revision containing this feature. The distribution action currently lives in this
+repository; `release-plz/action@v0.5` does not accept the new commands yet.
+:::
+
+Add `.github/workflows/dist.yml` on your default branch:
+
+```yaml
+name: Distribute binaries
+
+on:
+  repository_dispatch:
+    types: [release-plz-dist]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing draft release tag
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-plz-dist-${{ github.event.client_payload.tag || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: release-plz/release-plz/.github/actions/dist@main
+        with:
+          version: VERSION_WITH_DIST
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: release-plz/release-plz/.github/actions/dist@main
+        with:
+          version: VERSION_WITH_DIST
+          command: finalize
+```
+
+The action checks out the release tag, installs release-plz and the pinned
+cargo-dist version, and passes the matrix context to release-plz. The Rust code
+uploads archives, checksums, and build manifests directly to the draft release.
+The finalizer collects those manifests, generates shell/PowerShell installers
+where supported, appends cargo-dist's installation instructions and download
+table to the existing changelog, and publishes the release.
+There are no upload-artifact/download-artifact steps to configure.
+The runner must have Rust and the native build dependencies your application needs.
+
+Each build defaults to the host target reported by `rustc -vV`. To cross-compile,
+you can use a `target` field in your existing matrix; the action forwards it
+automatically. You still need to install the target's toolchain, linker, and any
+system dependencies. Runner labels alone are not interpreted as target triples.
+Use one matrix job per distinct target.
+
+GitHub [does not start workflows for draft release events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#release),
+so this integration uses an explicit `repository_dispatch` event. It
+[works with the ordinary GITHUB_TOKEN](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+with `contents: write`. A successful dispatch does not guarantee that a matching
+workflow is installed: add the workflow before enabling `dist`.
+
+## Recovery and CLI
+
+A failed build, upload, or installer generation leaves the release in draft.
+Rerun failed jobs in the same workflow run to reuse successful builds, or manually
+start this workflow with the draft's tag to rebuild the whole matrix.
+The finalizer rejects missing matrix jobs, receipts from a different run/commit,
+and assets deleted or replaced since a job completed. Keep the concurrency group
+and `needs: build`; do not use `always()` or `continue-on-error` to publish failed builds.
+If the dispatch itself fails after draft creation, use the manual trigger.
+Rerunning `release-plz release` is not a redispatch mechanism.
+
+The action wraps these commands:
+
+```sh
+release-plz dist build
+release-plz dist finalize
+```
+
+Both accept `--tag`, `--manifest-path`, `--config`, `--repo-url`, and `--git-token`.
+The tag defaults to the dispatch event and the token defaults to `GITHUB_TOKEN`.
+They require `GITHUB_RUN_ID` and a clean checkout at the release tag with tags fetched.
+When invoking the binary directly in a matrix, provide its context:
+
+```yaml
+- run: release-plz dist build
+  env:
+    RELEASE_PLZ_DIST_MATRIX: ${{ toJSON(matrix) }}
+    RELEASE_PLZ_DIST_JOB_INDEX: ${{ strategy.job-index }}
+    RELEASE_PLZ_DIST_JOB_TOTAL: ${{ strategy.job-total }}
+```
+
+These variables are supplied internally by the action. Without matrix context,
+a direct CLI invocation represents one native build. Run the finalizer in the
+same workflow run. An already published release is left unchanged.
+
+## Scope
+
+The integration builds one package per release, including packages containing
+multiple binaries, and keeps release-plz's existing registry publication behavior.
+It uses cargo-dist 0.33.0 through its CLI and creates its configuration in a temporary
+copy of the repository. The original manifests and workflows remain unchanged.
+The CLI requires that version to be installed; it does not install tools.
+The action installs a prebuilt cargo-dist before invoking the CLI.
+
+Cargo-dist's shell and PowerShell installers are included where supported.
+Homebrew, npm, signing, attestations, custom installers, custom cargo-dist settings,
+and feature matrices are outside this integration. It uses Cargo's default build
+features; `publish_features` configures registry publication only.
+Existing cargo-dist configuration is rejected rather than merged. Tags must be
+understood by cargo-dist (such as `v1.2.3` and `my-cli-v1.2.3`); opaque custom tag
+formats and sharing one tag across multiple distributed packages are unsupported.
+Standard native runners are the supported starting point. Cross targets require
+user-provided build dependencies, and older Linux compatibility is determined by
+the runner you select.
+
+Per-job JSON receipts remain release assets alongside cargo-dist's combined
+`dist-manifest.json`. They contain the run ID, commit, target and artifact metadata,
+and allow failed jobs to be retried without an Actions artifact store.
+For more advanced packaging, use cargo-dist independently as described below.
 
 ## Releasing binaries after release
 
