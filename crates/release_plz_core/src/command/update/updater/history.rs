@@ -16,8 +16,9 @@ pub(super) struct RetainedChanges {
     head: git2::Oid,
     /// The first equal snapshot found by the walk, standing in for the release.
     released: git2::Oid,
-    /// Repository-relative files Cargo packages at HEAD and at the release, or
-    /// `None` when listing failed and every file under `paths` counts.
+    /// Repository-relative files Cargo packages at the release and, once
+    /// [`Self::add_package_files`] ran, at HEAD. `None` when a listing failed:
+    /// every file under `paths` counts then.
     package_files: Option<HashSet<Utf8PathBuf>>,
     /// Repository-relative paths: the package directory first, then the canonical
     /// target of the configured README, if any.
@@ -35,10 +36,13 @@ pub(super) struct RetainedChanges {
 }
 
 impl RetainedChanges {
+    /// Start from the first equal snapshot `released` and its full-history
+    /// `ancestors`, as in [`Self::add_boundary`].
     pub(super) fn new(
         repository: &Repo,
         head: &str,
         released: &str,
+        ancestors: Vec<String>,
         release_boundaries: &[&str],
         package_files: Option<HashSet<Utf8PathBuf>>,
         paths: &[Utf8PathBuf],
@@ -58,7 +62,7 @@ impl RetainedChanges {
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
-        Ok(Self {
+        let mut changes = Self {
             repo: git2::Repository::open(directory)?,
             head: git2::Oid::from_str(head)?,
             released: git2::Oid::from_str(released)?,
@@ -72,7 +76,9 @@ impl RetainedChanges {
             boundaries: HashSet::new(),
             reachable: HashSet::new(),
             released_ancestors: HashSet::new(),
-        })
+        };
+        changes.add_boundary(released, ancestors);
+        Ok(changes)
     }
 
     /// Register an equal snapshot together with its full-history `ancestors`.
@@ -93,6 +99,20 @@ impl RetainedChanges {
                 pending.extend(parents.iter().map(String::as_str));
             }
         }
+    }
+
+    /// Add the files Cargo packages at another snapshot, typically HEAD: a file
+    /// added or removed since the release is only listed on one side. A failed
+    /// listing (`None`) makes every file under `paths` count.
+    pub(super) fn add_package_files(&mut self, files: Option<HashSet<Utf8PathBuf>>) {
+        self.package_files = self
+            .package_files
+            .take()
+            .zip(files)
+            .map(|(mut all, files)| {
+                all.extend(files);
+                all
+            });
     }
 
     /// Whether the walk can skip `commit` without inspecting it: it is an
@@ -298,6 +318,7 @@ mod tests {
                 &repo,
                 &changed,
                 &released,
+                vec![released.clone()],
                 &[],
                 None,
                 &[repo.directory().to_path_buf()],
