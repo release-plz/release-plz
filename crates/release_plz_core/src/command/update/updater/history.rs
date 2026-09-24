@@ -10,7 +10,8 @@ use super::*;
 /// in memory to distinguish surviving contributions from discarded merge parents.
 /// A revert that leaves the release unchanged proves a change was absent there.
 pub(super) struct RetainedChanges {
-    /// The walked repository, opened in memory: no snapshot is ever checked out.
+    /// The walked repository, opened without a worktree: no snapshot is ever
+    /// checked out and no snapshot's `.gitattributes` applies.
     repo: git2::Repository,
     /// The branch tip whose surviving changes are being released.
     head: git2::Oid,
@@ -61,8 +62,16 @@ impl RetainedChanges {
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
+        // libgit2 resolves merge drivers such as `merge=union` from the
+        // `.gitattributes` of the worktree or index, which would make the content
+        // check depend on the snapshot checked out when it runs. Only trees are
+        // needed: reopen the git directory without a worktree and with an empty
+        // index, so text conflicts always use the default driver.
+        let git_dir = git2::Repository::open(directory)?.path().to_path_buf();
+        let repo = git2::Repository::open_bare(git_dir)?;
+        repo.set_index(&mut git2::Index::new()?)?;
         let mut changes = Self {
-            repo: git2::Repository::open(directory)?,
+            repo,
             head: git2::Oid::from_str(head)?,
             released: git2::Oid::from_str(released)?,
             package_files,

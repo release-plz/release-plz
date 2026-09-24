@@ -262,6 +262,34 @@ fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
 }
 
 #[test]
+fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
+    let history = api_history();
+    let released_api = BASE_API.replace("api()", "api(_: u8)");
+    fs_err::write(
+        history.registry.directory().join("src/lib.rs"),
+        &released_api,
+    )
+    .unwrap();
+    history
+        .registry
+        .add_all_and_commit("published different API")
+        .unwrap();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+    history.write_commit(
+        ".gitattributes",
+        "src/lib.rs merge=union\n",
+        "chore: merge attributes",
+    );
+
+    // libgit2 resolves merge drivers from `.gitattributes` even for in-memory
+    // reverts. The union rule at HEAD must not mask the release-side API conflict.
+    let diff = history.diff(None);
+    assert!(commit_ids(&diff).contains(&breaking.as_str()));
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
 fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
     let history = api_history();
     let released_api = BREAKING_API.replace(
