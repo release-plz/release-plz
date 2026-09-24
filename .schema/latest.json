@@ -177,6 +177,13 @@
             "null"
           ]
         },
+        "continue": {
+          "description": "Whether to continue applying subsequent parsers after this one matches.\nDefaults to `false`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "default_scope": {
           "description": "Default scope of the commit.",
           "type": [
