@@ -10,16 +10,16 @@ use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::{Package, semver::Version};
+use cargo_utils::CARGO_TOML;
 use cargo_utils::LocalManifest;
-use cargo_utils::{CARGO_TOML, upgrade_requirement};
 use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
-use std::iter;
 use tracing::{info, warn};
 use update_request::UpdateRequest;
 
 use tracing::{debug, instrument};
 
+use package_dependencies::LocalDependenciesUpdateStrategy;
 pub use packages_update::*;
 pub use update_config::*;
 
@@ -232,51 +232,11 @@ pub(super) fn update_dependencies(
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    // Only scan members with a path dependency on the package being updated.
-    // Cargo metadata includes normal, dev, build and target-specific dependencies;
-    // dep.name is the actual package name, even when the dependency is renamed.
-    //
-    // Match by name here because release-pr reuses metadata from the original
-    // checkout while editing a temporary copy: dep.path points to the original
-    // checkout, but package_path points to the copy, so the paths would not match.
-    //
-    // Always scan the workspace manifest once because cargo metadata omits
-    // [workspace.dependencies] entries that no member inherits.
-    let all_manifests = iter::once(workspace_manifest).chain(
-        all_packages
-            .iter()
-            .filter(|pkg| pkg.manifest_path != workspace_manifest)
-            .filter(|pkg| {
-                pkg.dependencies
-                    .iter()
-                    .any(|dep| dep.path.is_some() && dep.name == package_name)
-            })
-            .map(|pkg| pkg.manifest_path.as_path()),
-    );
-    for manifest in all_manifests {
-        let mut local_manifest = LocalManifest::try_new(manifest)?;
-        let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
-        let deps_to_update = local_manifest
-            .get_dependency_tables_mut()
-            .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
-            .filter(|d| d.contains_key("version"))
-            .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
-
-        let mut changed = false;
-        for dep in deps_to_update {
-            let old_req = dep
-                .get("version")
-                .expect("filter ensures this")
-                .as_str()
-                .unwrap_or("*");
-            if let Some(new_req) = upgrade_requirement(old_req, version)? {
-                dep.insert("version", toml_edit::value(new_req));
-                changed = true;
-            }
-        }
-        if changed {
-            local_manifest.write()?;
-        }
-    }
-    Ok(())
+    LocalDependenciesUpdateStrategy::Always.update_dependencies(
+        all_packages,
+        version,
+        package_name,
+        package_path,
+        workspace_manifest,
+    )
 }
