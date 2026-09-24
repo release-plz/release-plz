@@ -832,8 +832,8 @@ impl Updater<'_> {
         }
     }
 
-    /// Run `f`, which inspects the package with `cargo package`, then revert the
-    /// edits `cargo package` can make to files such as `Cargo.lock`.
+    /// Run `f`, then revert the edits.
+    /// Useful when `f` edits the file, eg to run `cargo package`.
     fn with_cargo_lock_restored<T>(
         &self,
         repository: &Repo,
