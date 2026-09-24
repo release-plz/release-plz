@@ -10,7 +10,7 @@ use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::{Package, semver::Version};
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use cargo_utils::LocalManifest;
 use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -47,7 +47,7 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
     // workspace dependencies.
     let all_packages: Vec<Package> = cargo_utils::workspace_members(&local_metadata)?.collect();
     let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
-    update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
+    update_manifests(input, &packages_to_update, &all_packages_ref)?;
     update_changelogs(input, &packages_to_update)?;
     if !packages_to_update.updates().is_empty() {
         let local_manifest_dir = input.local_manifest_dir()?;
@@ -64,61 +64,37 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
 }
 
 fn update_manifests(
+    input: &UpdateRequest,
     packages_to_update: &PackagesUpdate,
-    local_manifest_path: &Utf8Path,
     all_packages: &[&Package],
 ) -> anyhow::Result<()> {
-    // Distinguish packages type to avoid updating the version of packages that inherit the workspace version
-    let (workspace_pkgs, independent_pkgs): (PackagesToUpdate, PackagesToUpdate) =
-        packages_to_update
-            .updates_clone()
-            .into_iter()
-            .partition(|(p, _)| {
-                let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
-                let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
-                local_manifest.version_is_inherited()
-            });
+    let local_manifest_path = input.local_manifest();
+    let policy = LocalDependenciesUpdateStrategy::Always;
 
-    if let Some(new_workspace_version) = packages_to_update.workspace_version() {
-        let mut local_manifest = LocalManifest::try_new(local_manifest_path)?;
-        local_manifest.set_workspace_version(new_workspace_version);
-        local_manifest
-            .write()
-            .context("can't update workspace version")?;
-
-        for (pkg, _) in workspace_pkgs {
-            let package_path = pkg.package_path()?;
-            update_dependencies(
-                all_packages,
-                new_workspace_version,
-                package_path,
-                local_manifest_path,
-            )?;
-        }
+    if let Some(version) = packages_to_update.workspace_version() {
+        let mut manifest = LocalManifest::try_new(local_manifest_path)?;
+        manifest.set_workspace_version(version);
+        manifest.write().context("can't update workspace version")?;
     }
 
-    update_versions(
-        all_packages,
-        &PackagesUpdate::new(independent_pkgs),
-        local_manifest_path,
-    )?;
-    Ok(())
-}
-
-#[instrument(skip_all)]
-fn update_versions(
-    all_packages: &[&Package],
-    packages_to_update: &PackagesUpdate,
-    workspace_manifest: &Utf8Path,
-) -> anyhow::Result<()> {
     for (package, update) in packages_to_update.updates() {
-        let package_path = package.package_path()?;
-        set_version(
-            all_packages,
-            package_path,
-            &update.version,
-            workspace_manifest,
-        )?;
+        let mut manifest = LocalManifest::try_new(&package.manifest_path)?;
+        let version = if manifest.version_is_inherited() {
+            // The shared version is authoritative for inheriting packages. If it
+            // did not change, neither should their dependency requirements.
+            let Some(version) = packages_to_update.workspace_version() else {
+                continue;
+            };
+            version
+        } else {
+            manifest.set_package_version(&update.version);
+            manifest
+                .write()
+                .with_context(|| format!("cannot update manifest {:?}", manifest.path))?;
+            &update.version
+        };
+        let package_path = package.canonical_path()?;
+        policy.update_dependencies(all_packages, version, &package_path, local_manifest_path)?;
     }
     Ok(())
 }
