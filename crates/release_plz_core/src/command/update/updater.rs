@@ -729,8 +729,8 @@ impl Updater<'_> {
             }
         }
 
-        // This, not the skip at the top of the loop, is what keeps released ancestors
-        // out of the diff. `--date-order` only orders the simplified history the walk
+        // Keep released ancestors out of the diff.
+        // `--date-order` only orders the simplified history the walk
         // traverses, so an ancestor hidden behind a severed merge edge can be visited
         // before the snapshot that prunes it. Drop it here rather than relying on the
         // order.
