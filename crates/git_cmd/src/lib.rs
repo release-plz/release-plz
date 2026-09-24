@@ -296,39 +296,44 @@ impl Repo {
         paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
-        let exclusions: Vec<String> = exclude
-            .iter()
-            .filter(|commit| self.commit_exists(commit))
-            .map(|commit| format!("^{commit}"))
-            .collect();
         let limit = max_commits.map(|n| format!("--max-count={n}"));
         let mut args = vec!["--date-order", head];
-        args.extend(exclusions.iter().map(String::as_str));
         args.extend(limit.as_deref());
-        self.rev_list(&args, paths)
+        self.rev_list(&args, exclude, paths)
     }
 
-    /// Commits reachable from `commit` that touch `paths`, including `commit` itself.
+    /// Commits reachable from `commit` that touch `paths`.
+    ///
+    /// As in [`Repo::commits_at_paths`], `exclude` commits and their ancestors are
+    /// dropped, and missing exclusions are ignored.
     ///
     /// Unlike [`Repo::commits_at_paths`], this doesn't simplify history: every
     /// parent of a merge is followed, so the result is a superset of the commits any
-    /// simplified walk can reach through `commit`.
+    /// simplified walk can reach through `commit` with the same exclusions.
     pub fn ancestors_at_paths(
         &self,
         commit: &str,
+        exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<String>> {
-        self.rev_list(&["--full-history", commit], paths)
+        self.rev_list(&["--full-history", commit], exclude, paths)
     }
 
     /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
     fn rev_list(
         &self,
         args: &[&str],
+        exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<String>> {
+        let exclusions: Vec<String> = exclude
+            .iter()
+            .filter(|commit| self.commit_exists(commit))
+            .map(|commit| format!("^{commit}"))
+            .collect();
         let mut rev_list = vec!["rev-list"];
         rev_list.extend(args);
+        rev_list.extend(exclusions.iter().map(String::as_str));
         rev_list.push("--");
         rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
         let output = self.git(&rev_list)?;
@@ -616,7 +621,7 @@ mod tests {
             "the discarded commit must be a real ancestor of the merge"
         );
         assert!(
-            repo.ancestors_at_paths("HEAD", &[path])
+            repo.ancestors_at_paths("HEAD", &[], &[path])
                 .unwrap()
                 .contains(&discarded)
         );
@@ -626,6 +631,55 @@ mod tests {
                 .unwrap()
                 .contains(&discarded),
             "the simplified walk is supposed to miss it: that's why the two differ"
+        );
+    }
+
+    #[test]
+    fn full_history_ancestors_exclude_each_release_boundary() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["branch", "feature"]).unwrap();
+
+        // The tag and published SHA can be on different branches. Both release
+        // boundaries and their shared history must be excluded from the walk.
+        commit_file_at(&repo, path, "tagged", "2024-01-01T00:00:01 +0000");
+        let tagged = repo.current_commit_hash().unwrap();
+        commit_file_at(&repo, path, "mine", "2024-01-01T00:00:02 +0000");
+        let mine = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "feature"]).unwrap();
+        commit_file_at(&repo, path, "published", "2024-01-01T00:00:03 +0000");
+        let published = repo.current_commit_hash().unwrap();
+        commit_file_at(&repo, path, "discarded", "2024-01-01T00:00:04 +0000");
+        let discarded = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2024-01-01T00:00:05 +0000",
+        )
+        .unwrap();
+        let merge = repo.current_commit_hash().unwrap();
+
+        let missing = "0000000000000000000000000000000000000000";
+        assert_eq!(
+            repo.ancestors_at_paths("HEAD", &[missing], &[path])
+                .unwrap(),
+            repo.ancestors_at_paths("HEAD", &[], &[path]).unwrap(),
+            "a missing release boundary must leave history available"
+        );
+        let ancestors: HashSet<_> = repo
+            .ancestors_at_paths("HEAD", &[&tagged, &published, missing], &[path])
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(
+            ancestors,
+            HashSet::from([merge, mine, discarded]),
+            "only unreleased ancestors remain, including the discarded merge parent"
         );
     }
 
