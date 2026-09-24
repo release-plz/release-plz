@@ -709,6 +709,7 @@ impl Updater<'_> {
                             repository,
                             &head,
                             &current_commit_hash,
+                            &release_boundaries,
                             package_files,
                             &paths_to_check,
                         )?);
