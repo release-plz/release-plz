@@ -161,23 +161,24 @@ impl RetainedChanges {
         let released = self.repo.find_commit(self.released)?;
         // Resolve supported text conflicts in favor of the release: an
         // overwritten change can be absent even when its inverse conflicts.
-        if self.undo_changes_package(&commit, &released, true)? {
+        if self.undo_changes_package(&commit, &released, git2::FileFavor::Ours)? {
             return Ok(false);
         }
         let head = self.repo.find_commit(self.head)?;
-        // Once absence from the release is established, a conflict at HEAD is
-        // ambiguous: keep the commit rather than losing a breaking-change marker.
-        self.undo_changes_package(&commit, &head, false)
+        // At HEAD, a clean character-level merge can establish that the change
+        // was already undone despite later edits on the same line. Keep actual
+        // character conflicts: an evolved change may still require its marker.
+        self.undo_changes_package(&commit, &head, git2::FileFavor::Normal)
     }
 
     /// Whether undoing `commit` on `target` changes the packaged files. Unresolved
-    /// conflicts count as changes. For the release, supported text conflicts can
-    /// establish absence by resolving them in favor of the target's content.
+    /// conflicts count as changes. Supported text conflicts are retried at
+    /// character granularity, favoring the target only for the release check.
     fn undo_changes_package(
         &self,
         commit: &git2::Commit<'_>,
         target: &git2::Commit<'_>,
-        resolve_text_conflicts: bool,
+        text_conflict_favor: git2::FileFavor,
     ) -> anyhow::Result<bool> {
         // For merge commits, undo the change relative to the first parent, as
         // `git revert -m 1` does. Root commits are handled by libgit2's empty base.
@@ -199,7 +200,7 @@ impl RetainedChanges {
                     .unwrap_or(true)
             });
             if affects_package
-                && (!resolve_text_conflicts || !self.conflict_leaves_file_unchanged(&conflict)?)
+                && !self.conflict_leaves_file_unchanged(&conflict, text_conflict_favor)?
             {
                 return Ok(true);
             }
@@ -220,13 +221,14 @@ impl RetainedChanges {
             }))
     }
 
-    /// Whether a text conflict's inverse leaves the release unchanged when its
-    /// conflicting characters keep the release's content. Independent edits on
-    /// the same line still apply, so already released changes remain excluded.
+    /// Whether a text conflict's inverse leaves the target unchanged. Independent
+    /// edits on the same line still apply; conflicting characters keep the
+    /// target's content only when checking the release.
     /// Binary, large, rename, deletion, and mode conflicts cannot establish absence.
     fn conflict_leaves_file_unchanged(
         &self,
         conflict: &git2::IndexConflict,
+        favor: git2::FileFavor,
     ) -> anyhow::Result<bool> {
         let (Some(ancestor), Some(ours), Some(theirs)) =
             (&conflict.ancestor, &conflict.our, &conflict.their)
@@ -272,7 +274,7 @@ impl RetainedChanges {
         ours.content(encoded[1].as_bytes());
         theirs.content(encoded[2].as_bytes());
         let mut options = git2::MergeFileOptions::new();
-        options.favor(git2::FileFavor::Ours);
+        options.favor(favor);
         let merged = git2::merge_file(&ancestor, &ours, &theirs, Some(&mut options))?;
         Ok(merged.is_automergeable() && merged.content() == encoded[1].as_bytes())
     }
