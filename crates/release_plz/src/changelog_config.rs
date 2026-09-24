@@ -116,6 +116,9 @@ pub struct CommitParser {
     pub scope: Option<String>,
     /// Whether to skip this commit group.
     pub skip: Option<bool>,
+    /// Whether to continue applying subsequent parsers after this one matches.
+    /// Defaults to `false`.
+    pub r#continue: Option<bool>,
     /// Field name of the commit to match the regex against.
     pub field: Option<String>,
     /// Regex for matching the field value.
@@ -135,7 +138,7 @@ impl TryFrom<CommitParser> for git_cliff_core::config::CommitParser {
             default_scope: cfg.default_scope,
             scope: cfg.scope,
             skip: cfg.skip,
-            r#continue: None,
+            r#continue: cfg.r#continue,
             field: cfg.field,
             pattern: to_opt_regex(cfg.pattern.as_deref(), "pattern")?,
             sha: cfg.sha,
@@ -251,7 +254,7 @@ mod tests {
             ]
 
             commit_parsers = [
-                { message = "message", body = "body", footer = "footer", group = "group", default_scope = "default_scope", scope = "scope", skip = true, field = "field", pattern = "pattern"}
+                { message = "message", body = "body", footer = "footer", group = "group", default_scope = "default_scope", scope = "scope", skip = true, continue = true, field = "field", pattern = "pattern"}
             ]
 
             link_parsers = [
@@ -295,7 +298,7 @@ mod tests {
                     default_scope: Some("default_scope".to_string()),
                     scope: Some("scope".to_string()),
                     skip: Some(true),
-                    r#continue: None,
+                    r#continue: Some(true),
                     field: Some("field".to_string()),
                     pattern: Some(regex::Regex::new("pattern").unwrap()),
                     sha: None,
@@ -326,5 +329,40 @@ mod tests {
         dbg!(&actual_cliff_config);
         let actual_cliff_toml = toml::to_string(&actual_cliff_config).unwrap();
         assert_eq!(expected_cliff_toml, actual_cliff_toml);
+    }
+
+    #[test]
+    fn test_commit_parser_continue() {
+        for (continue_field, expected_continue, expected_group) in [
+            ("", None, None),
+            (", continue = false", Some(false), None),
+            (", continue = true", Some(true), Some("Features")),
+        ] {
+            let toml = format!(
+                r#"
+                [changelog]
+                commit_parsers = [
+                    {{ footer = "^Component: ?Billing$", scope = "billing"{continue_field} }},
+                    {{ message = "^feat", group = "Features" }},
+                    {{ message = ".*", group = "Other", scope = "other" }},
+                ]
+                "#
+            );
+            let cfg: Config = toml::from_str(&toml).unwrap();
+            let cliff_config = to_git_cliff_config(cfg.changelog, None).unwrap();
+            assert_eq!(
+                cliff_config.git.commit_parsers[0].r#continue,
+                expected_continue
+            );
+
+            let commit = git_cliff_core::commit::Commit::from(
+                "feat: add invoices\n\nComponent: Billing".to_string(),
+            )
+            .process(&cliff_config.git)
+            .unwrap();
+
+            assert_eq!(commit.group.as_deref(), expected_group, "{continue_field}");
+            assert_eq!(commit.scope.as_deref(), Some("billing"), "{continue_field}");
+        }
     }
 }
