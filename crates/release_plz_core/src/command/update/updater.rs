@@ -1131,12 +1131,10 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/unit/history_tests.rs"]
-mod history_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    mod history_tests;
 
     #[test]
     fn only_rust_library_targets_are_libraries() {
