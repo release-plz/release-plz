@@ -87,7 +87,6 @@ impl Updater<'_> {
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
-
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
             let group_has_release_commit = || {
@@ -1173,12 +1172,10 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
-#[path = "updater/tests/history_tests.rs"]
-mod history_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    mod history_tests;
 
     #[test]
     fn only_rust_library_targets_are_libraries() {
