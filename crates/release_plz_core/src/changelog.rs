@@ -76,11 +76,18 @@ impl Changelog<'_> {
 
         // Preserve the exact formatting of headers without a git-cliff marker.
         // Let git-cliff replace marked headers so dynamic content can be updated.
-        let header_marker = &config.changelog.header_marker;
-        if let Some(header) = old_header
-            && (header_marker.is_empty() || !old_changelog.contains(header_marker))
-        {
-            return compose_changelog(&old_changelog, &changelog, &header);
+        if let Some(header) = old_header {
+            let header_marker = &config.changelog.header_marker;
+            // The parsed header stops at the Unreleased heading, so the marker
+            // can also appear immediately after it, separated by whitespace.
+            let has_header_marker = !header_marker.is_empty()
+                && (header.contains(header_marker)
+                    || old_changelog
+                        .strip_prefix(&header)
+                        .is_some_and(|body| body.trim_start().starts_with(header_marker)));
+            if !has_header_marker {
+                return compose_changelog(&old_changelog, &changelog, &header);
+            }
         }
 
         let mut out = Vec::new();
@@ -707,6 +714,43 @@ mod tests {
             assert_eq!(new.matches("# Changelog").count(), 1);
             assert!(new.contains("\n## [1.1.0]"));
             assert!(new.ends_with(old_body));
+        }
+    }
+
+    #[test]
+    fn changelog_with_header_marker_in_release_preserves_history() {
+        for marker in [
+            ChangelogConfig::default().header_marker,
+            "<!-- custom header boundary -->".to_string(),
+        ] {
+            for unreleased in ["", "\r\n## [Unreleased]\r\n"] {
+                let header = format!("# Changelog\r\n\r\n  My custom header  \r\n{unreleased}");
+                let old_body = format!(
+                    "## [1.0.0]\r\n\r\n- Previous changes\r\n\r\n\
+                     ## [0.9.0]\r\n\r\n- Document the `{marker}` marker\r\n"
+                );
+                let old = format!("{header}\r\n{old_body}");
+                let commits = vec![Commit::new(
+                    NO_COMMIT_ID.to_string(),
+                    "fix: myfix".to_string(),
+                )];
+                let new = ChangelogBuilder::new(commits, "1.1.0", "my_pkg")
+                    .with_config(Config {
+                        changelog: ChangelogConfig {
+                            header_marker: marker.clone(),
+                            ..default_changelog_config(None)
+                        },
+                        ..default_git_cliff_config()
+                    })
+                    .build()
+                    .prepend(old)
+                    .unwrap();
+
+                assert!(new.ends_with(&old_body));
+                assert!(new.starts_with(&header));
+                assert!(new.contains("\n## [1.1.0]"));
+                assert_eq!(new.matches(&marker).count(), 1);
+            }
         }
     }
 
