@@ -1181,6 +1181,7 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
+#[path = "updater/tests/history_tests.rs"]
 mod history_tests;
 
 #[cfg(test)]
