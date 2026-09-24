@@ -663,6 +663,8 @@ impl Updater<'_> {
             .then(|| self.req.max_analyze_commits())
             // 0 means "no limit"
             .filter(|&n| n != 0);
+        // Exclude already released history using both the release tag and the registry's
+        // published commit, when available. The walk skips these commits and their ancestors.
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
