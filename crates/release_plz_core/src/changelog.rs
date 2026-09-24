@@ -456,8 +456,16 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
 fn commit_parser(regex: &str, group: &str) -> CommitParser {
     CommitParser {
         message: Regex::new(regex).ok(),
+        body: None,
         group: Some(group.to_string()),
-        ..Default::default()
+        default_scope: None,
+        scope: None,
+        skip: None,
+        r#continue: None,
+        field: None,
+        pattern: None,
+        sha: None,
+        footer: None,
     }
 }
 

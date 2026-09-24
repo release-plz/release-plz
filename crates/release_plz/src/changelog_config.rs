@@ -135,11 +135,11 @@ impl TryFrom<CommitParser> for git_cliff_core::config::CommitParser {
             default_scope: cfg.default_scope,
             scope: cfg.scope,
             skip: cfg.skip,
+            r#continue: None,
             field: cfg.field,
             pattern: to_opt_regex(cfg.pattern.as_deref(), "pattern")?,
             sha: cfg.sha,
             footer: to_opt_regex(cfg.footer.as_deref(), "footer")?,
-            ..Default::default()
         })
     }
 }
@@ -295,10 +295,11 @@ mod tests {
                     default_scope: Some("default_scope".to_string()),
                     scope: Some("scope".to_string()),
                     skip: Some(true),
+                    r#continue: None,
                     field: Some("field".to_string()),
                     pattern: Some(regex::Regex::new("pattern").unwrap()),
+                    sha: None,
                     footer: Some(regex::Regex::new("footer").unwrap()),
-                    ..Default::default()
                 }],
                 link_parsers: vec![git_cliff_core::config::LinkParser {
                     pattern: regex::Regex::new("pattern").unwrap(),
