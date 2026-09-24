@@ -262,6 +262,32 @@ fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
 }
 
 #[test]
+fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
+    let history = api_history();
+    let released_api = BREAKING_API.replace(
+        "api(_: bool) {}",
+        "api(_: bool) { /* published implementation */ }",
+    );
+    fs_err::write(
+        history.registry.directory().join("src/lib.rs"),
+        &released_api,
+    )
+    .unwrap();
+    history
+        .registry
+        .add_all_and_commit("published implementation")
+        .unwrap();
+    history.write_commit("src/lib.rs", BREAKING_API, "feat!: already released API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+
+    // The release already contains the breaking signature. Its later body edit
+    // must not make a line-level revert conflict look like an absent signature.
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&sibling]);
+    assert_next_version(&diff, &Version::new(0, 1, 1));
+}
+
+#[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     for boundary in ["tag", "published", "missing", "equality"] {
         let history = api_history();
