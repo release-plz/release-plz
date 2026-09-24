@@ -928,6 +928,11 @@ impl Updater<'_> {
         Ok(!package_files.is_disjoint(&changed_files))
     }
 
+    /// List the package files in the current checkout as repository-relative paths
+    /// for history comparisons, restoring any existing Cargo.lock after listing.
+    ///
+    /// Return `None` if listing fails, so history comparisons fall back to all
+    /// files under the checked paths.
     fn history_package_files(
         &self,
         package_path: &Utf8Path,
