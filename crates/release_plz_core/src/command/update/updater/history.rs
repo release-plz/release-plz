@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt::Write as _, path::Path};
 
 use super::*;
 
@@ -221,8 +221,9 @@ impl RetainedChanges {
     }
 
     /// Whether a text conflict's inverse leaves the release unchanged when its
-    /// conflicting hunks keep the release's content. Clean hunks still apply.
-    /// Binary, rename, deletion, and mode conflicts cannot establish absence.
+    /// conflicting characters keep the release's content. Independent edits on
+    /// the same line still apply, so already released changes remain excluded.
+    /// Binary, large, rename, deletion, and mode conflicts cannot establish absence.
     fn conflict_leaves_file_unchanged(
         &self,
         conflict: &git2::IndexConflict,
@@ -240,19 +241,39 @@ impl RetainedChanges {
         {
             return Ok(false);
         }
-        let ours_blob = self.repo.find_blob(ours.id)?;
-        if ours_blob.is_binary()
-            || self.repo.find_blob(ancestor.id)?.is_binary()
-            || self.repo.find_blob(theirs.id)?.is_binary()
+        let blobs = [
+            self.repo.find_blob(ancestor.id)?,
+            self.repo.find_blob(ours.id)?,
+            self.repo.find_blob(theirs.id)?,
+        ];
+        // One character per line lets libgit2 distinguish independent edits on
+        // the same source line. Bound the expanded input and leave binary or
+        // non-UTF-8 content unresolved.
+        if blobs.iter().map(git2::Blob::size).sum::<usize>() > 1024 * 1024
+            || blobs.iter().any(|blob| blob.content().contains(&0))
         {
             return Ok(false);
         }
+        let mut encoded = Vec::with_capacity(blobs.len());
+        for blob in &blobs {
+            let Ok(contents) = std::str::from_utf8(blob.content()) else {
+                return Ok(false);
+            };
+            let mut characters = String::with_capacity(contents.len() * 3);
+            for character in contents.chars() {
+                writeln!(characters, "{:x}", u32::from(character))?;
+            }
+            encoded.push(characters);
+        }
+        let [mut ancestor, mut ours, mut theirs] =
+            std::array::from_fn(|_| git2::MergeFileInput::new());
+        ancestor.content(encoded[0].as_bytes());
+        ours.content(encoded[1].as_bytes());
+        theirs.content(encoded[2].as_bytes());
         let mut options = git2::MergeFileOptions::new();
         options.favor(git2::FileFavor::Ours);
-        let merged = self
-            .repo
-            .merge_file_from_index(ancestor, ours, theirs, Some(&mut options))?;
-        Ok(merged.is_automergeable() && merged.content() == ours_blob.content())
+        let merged = git2::merge_file(&ancestor, &ours, &theirs, Some(&mut options))?;
+        Ok(merged.is_automergeable() && merged.content() == encoded[1].as_bytes())
     }
 
     fn includes(&self, path: &Path) -> bool {
