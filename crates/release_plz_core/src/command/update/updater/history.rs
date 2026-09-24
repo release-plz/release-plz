@@ -10,8 +10,8 @@ use super::*;
 /// in memory to distinguish surviving contributions from discarded merge parents.
 /// A revert that leaves the release unchanged proves a change was absent there.
 pub(super) struct RetainedChanges {
-    /// The walked repository, opened without a worktree: no snapshot is ever
-    /// checked out and no snapshot's `.gitattributes` applies.
+    /// The walked object database, with an isolated configuration and index so
+    /// snapshots and user merge drivers cannot affect the content check.
     repo: git2::Repository,
     /// The branch tip whose surviving changes are being released.
     head: git2::Oid,
@@ -62,14 +62,21 @@ impl RetainedChanges {
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
-        // libgit2 resolves merge drivers such as `merge=union` from the
-        // `.gitattributes` of the worktree or index, which would make the content
-        // check depend on the snapshot checked out when it runs. Only trees are
-        // needed: reopen the git directory without a worktree and with an empty
-        // index, so text conflicts always use the default driver.
-        let git_dir = git2::Repository::open(directory)?.path().to_path_buf();
-        let repo = git2::Repository::open_bare(git_dir)?;
-        repo.set_index(&mut git2::Index::new()?)?;
+        // Only objects are needed. Wrapping the database removes the worktree
+        // and git directory, including `info/attributes`. An empty configuration
+        // excludes `merge.default` and `core.attributesFile`. Force the built-in
+        // text driver through a synthetic index, overriding even system/global
+        // attributes without changing the user's index, config, or attribute files.
+        let source = git2::Repository::open(directory)?;
+        let repo = git2::Repository::from_odb(source.odb()?)?;
+        repo.set_config(&git2::Config::new()?)?;
+        let mut index = git2::Index::new()?;
+        {
+            let mut tree = repo.treebuilder(None)?;
+            tree.insert(".gitattributes", repo.blob(b"* merge=text\n")?, 0o100_644)?;
+            index.read_tree(&repo.find_tree(tree.write()?)?)?;
+        }
+        repo.set_index(&mut index)?;
         let mut changes = Self {
             repo,
             head: git2::Oid::from_str(head)?,
@@ -299,6 +306,55 @@ impl RetainedChanges {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_configuration_is_isolated_without_changing_worktree_indexes() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        fs_err::create_dir(dir.path().join("main")).unwrap();
+        let repo = Repo::init(dir.path().join("main"));
+        let commit_file = |contents: &str| {
+            fs_err::write(repo.directory().join("file"), contents).unwrap();
+            repo.add_all_and_commit("change file").unwrap();
+            repo.current_commit_hash().unwrap()
+        };
+        commit_file("a\n");
+        let changed = commit_file("b\n");
+        let released = commit_file("c\n");
+        fs_err::write(repo.directory().join(".gitattributes"), "* merge=union\n").unwrap();
+        repo.add_all_and_commit("merge attributes").unwrap();
+        repo.git(&["config", "merge.default", "union"]).unwrap();
+        let attributes_path = repo.directory().join(".git/info/attributes");
+        fs_err::write(&attributes_path, "* merge=union\n").unwrap();
+        let config_path = repo.directory().join(".git/config");
+        let config_before = fs_err::read(&config_path).unwrap();
+        let linked = dir.path().join("linked");
+        repo.git(&["worktree", "add", "--detach", linked.as_str()])
+            .unwrap();
+
+        for path in [repo.directory(), &linked] {
+            let source = Repo::new(path).unwrap();
+            let index_path = git2::Repository::open(path).unwrap().path().join("index");
+            let index_before = fs_err::read(&index_path).unwrap();
+            let changes = RetainedChanges::new(
+                &source,
+                &changed,
+                &released,
+                vec![released.clone()],
+                &[],
+                None,
+                &[path.to_path_buf()],
+            )
+            .unwrap();
+
+            assert!(changes.survives(&changed).unwrap());
+            assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
+        }
+        assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
+        assert_eq!(
+            fs_err::read_to_string(attributes_path).unwrap(),
+            "* merge=union\n"
+        );
+    }
 
     #[test]
     fn release_conflicts_do_not_prove_partly_released_or_binary_changes_absent() {
