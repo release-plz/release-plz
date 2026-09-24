@@ -661,6 +661,23 @@ impl Updater<'_> {
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
         let paths_to_check = paths_to_check(package_path, package)?;
+        // README equality follows links even though ordinary package-file equality
+        // does not, so `paths_to_check` holds the canonical target. Also keep the
+        // configured path itself, canonicalizing only its parent: that turns
+        // `package_path.join("../API.md")` into the git path `API.md` (normalizing
+        // `..` and symlinked directories) while leaving the final component
+        // unresolved, so retargeting a README link is a change under its own path.
+        let readme = package
+            .readme
+            .as_ref()
+            .map(|readme| package_path.join(readme))
+            .filter(|readme| readme.exists())
+            .map(|readme| -> anyhow::Result<_> {
+                let parent = readme.parent().context("README has no parent")?;
+                let name = readme.file_name().context("README has no file name")?;
+                Ok(fs_utils::canonicalize_utf8(parent)?.join(name))
+            })
+            .transpose()?;
         let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
@@ -724,6 +741,7 @@ impl Updater<'_> {
                             &release_boundaries,
                             package_files,
                             &paths_to_check,
+                            readme.as_deref(),
                         )?);
                     }
                     if let Some(changes) = &mut retained_changes {
