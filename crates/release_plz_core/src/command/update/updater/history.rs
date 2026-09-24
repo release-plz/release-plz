@@ -22,7 +22,7 @@ pub(super) struct RetainedChanges {
     /// Repository-relative paths: the package directory first, then the canonical
     /// target of the configured README, if any.
     paths: Vec<Utf8PathBuf>,
-    /// Git's simplified, path-limited parent graph of the walk.
+    /// Git's simplified, path-limited parent graph after release exclusions.
     parents: HashMap<String, Vec<String>>,
     /// First commit of the simplified walk: HEAD only when HEAD touches the package.
     root: Option<String>,
@@ -39,10 +39,29 @@ impl RetainedChanges {
         repository: &Repo,
         head: &str,
         released: &str,
+        release_boundaries: &[&str],
         package_files: Option<HashSet<Utf8PathBuf>>,
         paths: &[Utf8PathBuf],
     ) -> anyhow::Result<Self> {
-        let mut args = vec!["rev-list", "--parents", "--date-order", head, "--"];
+        // Match the outer walk's release exclusions, including ignoring commits
+        // missing from a shallow clone or rewritten history.
+        let exclusions: Vec<_> = release_boundaries
+            .iter()
+            .filter_map(|boundary| {
+                repository
+                    .git(&[
+                        "rev-parse",
+                        "--verify",
+                        "--quiet",
+                        &format!("{boundary}^{{commit}}"),
+                    ])
+                    .ok()
+            })
+            .map(|commit| format!("^{commit}"))
+            .collect();
+        let mut args = vec!["rev-list", "--parents", "--date-order", head];
+        args.extend(exclusions.iter().map(String::as_str));
+        args.push("--");
         args.extend(paths.iter().map(|path| path.as_str()));
         let graph = repository.git(&args)?;
         let root = graph.split_whitespace().next().map(str::to_owned);
@@ -207,5 +226,57 @@ impl RetainedChanges {
         } else {
             self.paths.iter().any(|root| path.starts_with(root))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn history_graph_excludes_release_boundaries() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        let repo = Repo::init(dir.path());
+        let commit_file = |name: &str| {
+            fs_err::write(repo.directory().join(name), name).unwrap();
+            repo.add_all_and_commit(name).unwrap();
+            repo.current_commit_hash().unwrap()
+        };
+        let baseline = commit_file("baseline.rs");
+        repo.git(&["branch", "published"]).unwrap();
+        let tagged = commit_file("tagged.rs");
+        repo.tag("v0.1.0", "release").unwrap();
+        let mainline = commit_file("mainline.rs");
+        repo.git(&["checkout", "published"]).unwrap();
+        let published = commit_file("published.rs");
+        let sibling = commit_file("sibling.rs");
+        repo.checkout_head().unwrap();
+        repo.git(&["merge", "--no-ff", "-m", "merge published", "published"])
+            .unwrap();
+        let head = repo.current_commit_hash().unwrap();
+        let graph_commits = |boundaries: &[&str]| {
+            RetainedChanges::new(
+                &repo,
+                &head,
+                &tagged,
+                boundaries,
+                None,
+                &[repo.directory().to_path_buf()],
+            )
+            .unwrap()
+            .parents
+            .into_keys()
+            .collect::<HashSet<_>>()
+        };
+        let missing = "0".repeat(40);
+        let unbounded = graph_commits(&[]);
+        assert!(unbounded.contains(&baseline));
+        assert_eq!(graph_commits(&[&missing]), unbounded);
+        // The tag and published SHA can bound different branches. Keep both
+        // unreleased lineages while excluding both releases and shared ancestry.
+        assert_eq!(
+            graph_commits(&["v0.1.0", &published, &missing]),
+            HashSet::from([head, mainline, sibling])
+        );
     }
 }
