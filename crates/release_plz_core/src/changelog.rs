@@ -7,6 +7,7 @@ use git_cliff_core::{
     contributor::RemoteContributor,
     release::Release,
 };
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag};
 use regex::Regex;
 use serde::Serialize;
 use tracing::warn;
@@ -76,18 +77,10 @@ impl Changelog<'_> {
 
         // Preserve the exact formatting of headers without a git-cliff marker.
         // Let git-cliff replace marked headers so dynamic content can be updated.
-        if let Some(header) = old_header {
-            let header_marker = &config.changelog.header_marker;
-            // The parsed header stops at the Unreleased heading, so the marker
-            // can also appear immediately after it, separated by whitespace.
-            let has_header_marker = !header_marker.is_empty()
-                && (header.contains(header_marker)
-                    || old_changelog
-                        .strip_prefix(&header)
-                        .is_some_and(|body| body.trim_start().starts_with(header_marker)));
-            if !has_header_marker {
-                return compose_changelog(&old_changelog, &changelog, &header);
-            }
+        if let Some(header) = old_header
+            && !has_header_marker(&old_changelog, &header, &config.changelog.header_marker)
+        {
+            return compose_changelog(&old_changelog, &changelog, &header);
         }
 
         let mut out = Vec::new();
@@ -119,6 +112,90 @@ impl Changelog<'_> {
             bump: Bump::default(),
         }
     }
+}
+
+fn has_header_marker(changelog: &str, header: &str, marker: &str) -> bool {
+    if marker.is_empty() {
+        return false;
+    }
+    // git-cliff removes everything through the first occurrence, so a later
+    // standalone marker cannot make an earlier inline mention safe.
+    let Some((before, after)) = changelog.split_once(marker) else {
+        return false;
+    };
+    // A generated marker ends the header. The parser stops at Unreleased,
+    // so also allow the marker directly after that heading.
+    let at_header_end = header
+        .split_once(marker)
+        .is_some_and(|(_, tail)| tail.trim().is_empty())
+        || before
+            .strip_prefix(header)
+            .is_some_and(|gap| gap.trim().is_empty());
+    // git-cliff emits the configured marker at the start of a line. Extra
+    // indentation could put a quoted marker inside a code block or list.
+    let starts_line = before.ends_with('\n');
+    let ends_line = after
+        .split('\n')
+        .next()
+        .is_some_and(|line| line.trim().is_empty());
+    if !at_header_end || !starts_line || !ends_line {
+        return false;
+    }
+    // parse_header can include history when notes quote Unreleased. Use Markdown
+    // boundaries to distinguish real releases and markers from quoted examples.
+    let marker_offset = before.len();
+    let mut depth = 0;
+    let mut heading = None::<String>;
+    for (event, range) in Parser::new(changelog).into_offset_iter() {
+        if range.start >= marker_offset {
+            break;
+        }
+        match event {
+            Event::Start(tag) => {
+                // The marker itself may be HTML. Only reject a code/HTML block
+                // that started earlier and contains it.
+                if matches!(tag, Tag::CodeBlock(_) | Tag::HtmlBlock)
+                    && range.contains(&marker_offset)
+                {
+                    return false;
+                }
+                if depth == 0
+                    && matches!(
+                        tag,
+                        Tag::Heading {
+                            level: HeadingLevel::H2,
+                            ..
+                        }
+                    )
+                {
+                    heading = Some(String::new());
+                }
+                depth += 1;
+            }
+            Event::End(_) => {
+                depth -= 1;
+                if depth == 0
+                    && let Some(title) = heading.take()
+                    && !title.trim().eq_ignore_ascii_case("unreleased")
+                    && !title.trim().eq_ignore_ascii_case("[unreleased]")
+                {
+                    return false;
+                }
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some(title) = &mut heading {
+                    title.push_str(&text);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(title) = &mut heading {
+                    title.push(' ');
+                }
+            }
+            _ => {}
+        }
+    }
+    true
 }
 
 fn compose_changelog(
@@ -646,7 +723,15 @@ mod tests {
             ChangelogConfig::default().header_marker,
             "<!-- custom header boundary -->".to_string(),
         ] {
-            for unreleased in ["", "\n## [Unreleased]\n"] {
+            for unreleased in [
+                "",
+                "\n## [Unreleased]\n",
+                "\n## [unreleased](https://example.com/compare)\n",
+                "\n```markdown\n## [0.9.0]\n```\n\n## [Unreleased]\n",
+                "\n~~~markdown\n## [0.9.0]\n~~~\n\n## [Unreleased]\n",
+                "\n<pre>\n## [0.9.0]\n</pre>\n\n## [Unreleased]\n",
+                "\n> ## [0.9.0]\n\n## [Unreleased]\n",
+            ] {
                 let config = Config {
                     changelog: ChangelogConfig {
                         header: Some(format!(
@@ -748,6 +833,147 @@ mod tests {
 
                 assert!(new.ends_with(&old_body));
                 assert!(new.starts_with(&header));
+                assert!(new.contains("\n## [1.1.0]"));
+                assert_eq!(new.matches(&marker).count(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn quoted_header_marker_preserves_header_and_notes() {
+        for marker in [
+            ChangelogConfig::default().header_marker,
+            "<!-- custom header boundary -->".to_string(),
+        ] {
+            for (description, notes) in [
+                (format!("Document the `{marker}` marker."), String::new()),
+                (
+                    "My custom header".to_string(),
+                    format!("{marker} is documented here.\n"),
+                ),
+                (
+                    format!("Document the `{marker}` marker."),
+                    format!("{marker}\n"),
+                ),
+                (
+                    format!(
+                        "Document the marker:\n\n```markdown\n{marker}\n```\n\nKeep this header."
+                    ),
+                    String::new(),
+                ),
+            ] {
+                let header = format!("# Changelog\n\n{description}\n\n## [Unreleased]\n");
+                let old_body = format!("\n{notes}\n## [1.0.0]\n\n- Previous changes\n");
+                let old = format!("{header}{old_body}");
+                let commits = vec![Commit::new(
+                    NO_COMMIT_ID.to_string(),
+                    "fix: myfix".to_string(),
+                )];
+                let new = ChangelogBuilder::new(commits, "1.1.0", "my_pkg")
+                    .with_config(Config {
+                        changelog: ChangelogConfig {
+                            header_marker: marker.clone(),
+                            ..default_changelog_config(None)
+                        },
+                        ..default_git_cliff_config()
+                    })
+                    .build()
+                    .prepend(&old)
+                    .unwrap();
+
+                assert!(new.starts_with(&header));
+                assert!(new.ends_with(&old_body));
+                assert_eq!(new.matches("## [Unreleased]").count(), 1);
+                assert_eq!(new.matches(&marker).count(), old.matches(&marker).count());
+            }
+        }
+    }
+
+    #[test]
+    fn historical_header_marker_before_or_after_unreleased_example_preserves_history() {
+        for marker in [
+            ChangelogConfig::default().header_marker,
+            "<!-- custom header boundary -->".to_string(),
+        ] {
+            for example in [
+                format!("{marker}\n\n```markdown\n## [Unreleased]\n```\n"),
+                format!("```markdown\n## [Unreleased]\n{marker}\n```\n"),
+            ] {
+                let history = "\n## [1.0.0]\n\n- Previous changes\n\n\
+                               ## [0.9.0]\n\n- Document the changelog format:\n\n";
+                let old = format!("{CHANGELOG_HEADER}{history}{example}");
+                let commits = vec![Commit::new(
+                    NO_COMMIT_ID.to_string(),
+                    "fix: myfix".to_string(),
+                )];
+                let new = ChangelogBuilder::new(commits, "1.1.0", "my_pkg")
+                    .with_config(Config {
+                        changelog: ChangelogConfig {
+                            header: Some(CHANGELOG_HEADER.to_string()),
+                            header_marker: marker.clone(),
+                            ..default_changelog_config(None)
+                        },
+                        ..default_git_cliff_config()
+                    })
+                    .build()
+                    .prepend(old)
+                    .unwrap();
+
+                assert!(new.contains(history));
+                assert!(new.contains("\n## [1.1.0]"));
+                assert_eq!(new.matches(&marker).count(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn header_marker_in_code_example_preserves_header() {
+        for marker in [
+            ChangelogConfig::default().header_marker,
+            "<!-- custom header boundary -->".to_string(),
+        ] {
+            for (example, marker_indent, closing) in [
+                ("```markdown\n## [Unreleased]\n", "", "```"),
+                ("~~~markdown\n## [Unreleased]\n", "", "~~~"),
+                ("````markdown\n```\n## [Unreleased]\n", "", "````"),
+                ("~~~markdown\n```\n## [Unreleased]\n", "", "~~~"),
+                ("```markdown\n    ```\n## [Unreleased]\n", "", "```"),
+                (
+                    "```markdown\n```not a closing fence\n## [Unreleased]\n",
+                    "",
+                    "```",
+                ),
+                ("    ## [Unreleased]\n", "    ", ""),
+                ("\t## [Unreleased]\n", "\t", ""),
+                ("- ```markdown\n  ## [Unreleased]\n", "  ", "  ```"),
+                ("<pre>\n## [Unreleased]\n", "", "</pre>"),
+                ("<script>\n## [Unreleased]\n", "", "</script>"),
+                ("<!--\n## [Unreleased]\n", "", "-->"),
+            ] {
+                let header =
+                    format!("# Changelog\n\nMy manual header documents this format:\n\n{example}");
+                let old_body = format!(
+                    "{marker_indent}{marker}\n{closing}\n\n## [1.0.0]\n\n- Previous changes\n"
+                );
+                let commits = vec![Commit::new(
+                    NO_COMMIT_ID.to_string(),
+                    "fix: myfix".to_string(),
+                )];
+                let new = ChangelogBuilder::new(commits, "1.1.0", "my_pkg")
+                    .with_config(Config {
+                        changelog: ChangelogConfig {
+                            header: Some(CHANGELOG_HEADER.to_string()),
+                            header_marker: marker.clone(),
+                            ..default_changelog_config(None)
+                        },
+                        ..default_git_cliff_config()
+                    })
+                    .build()
+                    .prepend(format!("{header}{old_body}"))
+                    .unwrap();
+
+                assert!(new.starts_with(&header), "{example:?}\n{new}");
+                assert!(new.ends_with(&old_body));
                 assert!(new.contains("\n## [1.1.0]"));
                 assert_eq!(new.matches(&marker).count(), 1);
             }
