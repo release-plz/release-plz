@@ -23,13 +23,12 @@ pub(super) struct RetainedChanges {
     /// Repository-relative paths: the package directory first, then the canonical
     /// target of the configured README, if any.
     paths: Vec<Utf8PathBuf>,
-    /// Git's simplified, path-limited parent graph after release exclusions.
+    /// Git's simplified, path-limited parent graph after release exclusions,
+    /// with equal snapshot nodes removed to stop traversal at those boundaries.
     parents: HashMap<String, Vec<String>>,
     /// First commit of the simplified walk: HEAD only when HEAD touches the package.
     root: Option<String>,
-    /// Equal snapshots found so far; every lineage stops there.
-    boundaries: HashSet<String>,
-    /// Commits reachable from `root` without passing a boundary.
+    /// Commits reachable from `root` through the remaining parent graph.
     reachable: HashSet<String>,
     /// Full-history ancestors of every boundary: candidates for pruning.
     released_ancestors: HashSet<String>,
@@ -73,7 +72,6 @@ impl RetainedChanges {
                 .collect::<anyhow::Result<_>>()?,
             root: graph.first().map(|(commit, _)| commit.clone()),
             parents: graph.into_iter().collect(),
-            boundaries: HashSet::new(),
             reachable: HashSet::new(),
             released_ancestors: HashSet::new(),
         };
@@ -87,17 +85,20 @@ impl RetainedChanges {
     /// nevertheless survive through another lineage; lineage reachability and the
     /// content check of [`Self::retains`] preserve them.
     pub(super) fn add_boundary(&mut self, commit: &str, ancestors: Vec<String>) {
-        self.boundaries.insert(commit.to_owned());
+        // Remove only the boundary: its ancestors may still be reachable through
+        // another lineage, which must remain available for the content check.
+        self.parents.remove(commit);
         self.released_ancestors.extend(ancestors);
         self.reachable.clear();
         let mut pending: Vec<_> = self.root.iter().map(String::as_str).collect();
         while let Some(commit) = pending.pop() {
-            if self.boundaries.contains(commit) || !self.reachable.insert(commit.to_owned()) {
+            let Some(parents) = self.parents.get(commit) else {
+                continue;
+            };
+            if !self.reachable.insert(commit.to_owned()) {
                 continue;
             }
-            if let Some(parents) = self.parents.get(commit) {
-                pending.extend(parents.iter().map(String::as_str));
-            }
+            pending.extend(parents.iter().map(String::as_str));
         }
     }
 
@@ -120,7 +121,7 @@ impl RetainedChanges {
     /// passing one. This is only an optimization; [`Self::retains`] makes the
     /// final decision with every discovered boundary.
     pub(super) fn skips(&self, commit: &str) -> bool {
-        self.released_ancestors.contains(commit) && !self.reaches(commit)
+        self.released_ancestors.contains(commit) && !self.reachable.contains(commit)
     }
 
     /// Whether `commit` stays in the diff: either it is not an ancestor of an
@@ -134,17 +135,13 @@ impl RetainedChanges {
         // A sibling editing the same lines as a reverted commit can make its
         // undo conflict. Reachability ensures another lineage reaches the commit
         // without passing an equal package snapshot before trusting that.
-        self.reaches(commit)
+        self.reachable.contains(commit)
             && self.survives(commit).unwrap_or_else(|error| {
                 // Shallow histories may not contain the parent required for a
                 // revert. Then there is no evidence to override ancestry pruning.
                 warn!("cannot check retained changes in {commit}: {error:#}");
                 false
             })
-    }
-
-    fn reaches(&self, commit: &str) -> bool {
-        self.reachable.contains(commit)
     }
 
     /// Whether the change of `commit` was absent from the release and is still
