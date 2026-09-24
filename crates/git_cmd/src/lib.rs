@@ -319,6 +319,29 @@ impl Repo {
         self.rev_list(&["--full-history", commit], exclude, paths)
     }
 
+    /// The commits of [`Repo::commits_at_paths`], each paired with its parents.
+    ///
+    /// Parents are rewritten as `git rev-list --parents` does: a parent dropped by
+    /// history simplification is replaced by the nearest ancestor that is kept.
+    /// Excluded commits can still appear as parents, but never as entries. The
+    /// first entry is the tip of the graph, since `--date-order` never lists a
+    /// parent before its children.
+    pub fn parents_at_paths(
+        &self,
+        head: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<(String, Vec<String>)>> {
+        let lines = self.rev_list(&["--parents", "--date-order", head], exclude, paths)?;
+        Ok(lines
+            .iter()
+            .filter_map(|line| {
+                let mut ids = line.split_whitespace();
+                Some((ids.next()?.to_owned(), ids.map(str::to_owned).collect()))
+            })
+            .collect())
+    }
+
     /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
     fn rev_list(
         &self,
@@ -631,6 +654,40 @@ mod tests {
                 .unwrap()
                 .contains(&discarded),
             "the simplified walk is supposed to miss it: that's why the two differ"
+        );
+    }
+
+    /// [`Repo::parents_at_paths`] follows the simplification of
+    /// [`Repo::commits_at_paths`]: the "keep mine" merge is dropped, so the graph
+    /// starts at its first parent, and exclusions remove entries but not parents.
+    #[test]
+    fn simplified_parents_start_at_the_first_kept_commit() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        let base = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        commit_file_at(&repo, path, "discarded", "2024-01-01T00:00:01 +0000");
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_file_at(&repo, path, "mine", "2024-01-01T00:00:02 +0000");
+        let mine = repo.current_commit_hash().unwrap();
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2024-01-01T00:00:03 +0000",
+        )
+        .unwrap();
+
+        assert_eq!(
+            repo.parents_at_paths("HEAD", &[], &[path]).unwrap(),
+            [(mine.clone(), vec![base.clone()]), (base.clone(), vec![])]
+        );
+        assert_eq!(
+            repo.parents_at_paths("HEAD", &[&base], &[path]).unwrap(),
+            [(mine, vec![base])]
         );
     }
 
