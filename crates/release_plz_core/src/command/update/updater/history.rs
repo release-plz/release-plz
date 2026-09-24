@@ -159,23 +159,25 @@ impl RetainedChanges {
     fn survives(&self, commit: &str) -> anyhow::Result<bool> {
         let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
         let released = self.repo.find_commit(self.released)?;
-        // A conflict against the release does not establish that the commit's
-        // contribution was absent from it. Preserve the existing pruning then.
-        if self.undo_changes_package(&commit, &released)? {
+        // Resolve supported text conflicts in favor of the release: an
+        // overwritten change can be absent even when its inverse conflicts.
+        if self.undo_changes_package(&commit, &released, true)? {
             return Ok(false);
         }
         let head = self.repo.find_commit(self.head)?;
         // Once absence from the release is established, a conflict at HEAD is
         // ambiguous: keep the commit rather than losing a breaking-change marker.
-        self.undo_changes_package(&commit, &head)
+        self.undo_changes_package(&commit, &head, false)
     }
 
-    /// Whether undoing `commit` on `target` changes the packaged files. A conflict
-    /// counts as a change: it does not prove that the contribution was absent.
+    /// Whether undoing `commit` on `target` changes the packaged files. Unresolved
+    /// conflicts count as changes. For the release, supported text conflicts can
+    /// establish absence by resolving them in favor of the target's content.
     fn undo_changes_package(
         &self,
         commit: &git2::Commit<'_>,
         target: &git2::Commit<'_>,
+        resolve_text_conflicts: bool,
     ) -> anyhow::Result<bool> {
         // For merge commits, undo the change relative to the first parent, as
         // `git revert -m 1` does. Root commits are handled by libgit2's empty base.
@@ -196,19 +198,61 @@ impl RetainedChanges {
                     .map(|path| self.includes(Path::new(path)))
                     .unwrap_or(true)
             });
-            if affects_package {
+            if affects_package
+                && (!resolve_text_conflicts || !self.conflict_leaves_file_unchanged(&conflict)?)
+            {
                 return Ok(true);
             }
         }
         let diff = self
             .repo
             .diff_tree_to_index(Some(&tree), Some(&index), None)?;
-        Ok(diff.deltas().any(|delta| {
-            [delta.old_file().path(), delta.new_file().path()]
-                .into_iter()
-                .flatten()
-                .any(|path| self.includes(path))
-        }))
+        Ok(diff
+            .deltas()
+            // Conflicted paths were checked above, including any nonconflicting
+            // hunks in the same file. Only clean index changes remain to check.
+            .filter(|delta| delta.status() != git2::Delta::Conflicted)
+            .any(|delta| {
+                [delta.old_file().path(), delta.new_file().path()]
+                    .into_iter()
+                    .flatten()
+                    .any(|path| self.includes(path))
+            }))
+    }
+
+    /// Whether a text conflict's inverse leaves the release unchanged when its
+    /// conflicting hunks keep the release's content. Clean hunks still apply.
+    /// Binary, rename, deletion, and mode conflicts cannot establish absence.
+    fn conflict_leaves_file_unchanged(
+        &self,
+        conflict: &git2::IndexConflict,
+    ) -> anyhow::Result<bool> {
+        let (Some(ancestor), Some(ours), Some(theirs)) =
+            (&conflict.ancestor, &conflict.our, &conflict.their)
+        else {
+            return Ok(false);
+        };
+        if ancestor.path != ours.path
+            || theirs.path != ours.path
+            || ancestor.mode != ours.mode
+            || theirs.mode != ours.mode
+            || !matches!(ours.mode, 0o100_644 | 0o100_755)
+        {
+            return Ok(false);
+        }
+        let ours_blob = self.repo.find_blob(ours.id)?;
+        if ours_blob.is_binary()
+            || self.repo.find_blob(ancestor.id)?.is_binary()
+            || self.repo.find_blob(theirs.id)?.is_binary()
+        {
+            return Ok(false);
+        }
+        let mut options = git2::MergeFileOptions::new();
+        options.favor(git2::FileFavor::Ours);
+        let merged = self
+            .repo
+            .merge_file_from_index(ancestor, ours, theirs, Some(&mut options))?;
+        Ok(merged.is_automergeable() && merged.content() == ours_blob.content())
     }
 
     fn includes(&self, path: &Path) -> bool {
@@ -232,6 +276,41 @@ impl RetainedChanges {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_conflicts_do_not_prove_partly_released_or_binary_changes_absent() {
+        for (base, changed, released) in [
+            (
+                "a\n1\n2\n3\n4\n5\n6\n7\n8\n9\nx\n",
+                "b\n1\n2\n3\n4\n5\n6\n7\n8\n9\ny\n",
+                "c\n1\n2\n3\n4\n5\n6\n7\n8\n9\ny\n",
+            ),
+            ("a\0", "b\0", "c\0"),
+        ] {
+            let dir = fs_utils::Utf8TempDir::new().unwrap();
+            let repo = Repo::init(dir.path());
+            let commit_file = |contents: &str| {
+                fs_err::write(repo.directory().join("file"), contents).unwrap();
+                repo.add_all_and_commit("change file").unwrap();
+                repo.current_commit_hash().unwrap()
+            };
+            commit_file(base);
+            let changed = commit_file(changed);
+            let released = commit_file(released);
+            let changes = RetainedChanges::new(
+                &repo,
+                &changed,
+                &released,
+                &[],
+                None,
+                &[repo.directory().to_path_buf()],
+            )
+            .unwrap();
+            // A nonconflicting hunk still undoes a released change. Binary
+            // conflicts cannot establish absence by choosing the release's bytes.
+            assert!(!changes.survives(&changed).unwrap());
+        }
+    }
 
     #[test]
     fn history_graph_excludes_release_boundaries() {
