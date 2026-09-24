@@ -70,6 +70,8 @@ the following sections:
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
+  - [`local_dependencies_update_strategy`](#the-local_dependencies_update_strategy-field)
+    — Update local requirements.
   - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field)
     — Custom regex for major version increments.
   - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
@@ -220,6 +222,48 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 - If `true`, update all the dependencies in the `Cargo.lock` file by running `cargo update`.
 - If `false`, only update the workspace packages by running `cargo update --workspace`. *(Default)*.
+
+#### The `local_dependencies_update_strategy` field
+
+Controls when release-plz rewrites version requirements on local workspace dependencies in
+`Cargo.toml`, including inherited `[workspace.dependencies]` requirements.
+
+- `"always"`: Update requirements using their existing version precision. *(Default)*.
+- `"if-needed"`: Only update a requirement when it does not accept the dependency's new version.
+- `"never"`: Preserve all requirements, even when they do not accept the new version.
+
+```toml
+[workspace]
+local_dependencies_update_strategy = "if-needed"
+```
+
+For example, `"0.6.7"` already accepts `0.6.8`. With `"if-needed"`, the requirement stays `"0.6.7"`,
+retaining its minimum without triggering a dependent release solely for that dependency update.
+A release of `0.7.0` still updates the requirement and triggers a dependent release. Exact
+requirements such as `"=0.6.7"` still update for a patch release. Cargo's prerelease matching rules
+also apply. Requirements that need rewriting use the same supported operators as `"always"`;
+unsupported ranges still produce an error when they need rewriting.
+
+With `"never"`, release-plz leaves even incompatible requirements unchanged and does not trigger
+releases solely to rewrite them. Use this when managing local requirements separately, and update
+incompatible requirements yourself before releasing. Otherwise, Cargo may reject the workspace or
+the published package may depend on an older library version. Versionless Git-only dependencies
+still propagate releases because they have no requirement to preserve.
+
+The `"if-needed"` strategy uses the same requirement-preservation approach as Dependabot's
+[`versioning-strategy: increase-if-necessary`][dependabot-versioning-strategy], whose Cargo support
+was requested in [dependabot/dependabot-core#4009][dependabot-cargo-strategy]. Renovate offers a
+similar [`rangeStrategy: "replace"`][renovate-range-strategy]: retain a range that accepts the new
+version and replace it when the version falls outside it. Renovate's `"update-lockfile"` strategy
+also updates the lockfile for versions within the range. These settings belong to their respective
+tools; they do not configure release-plz.
+
+When opting in, raise minimum requirements manually when a package needs a newer dependency API
+or fix. Users with older lockfiles will not be forced to update compatible dependencies until you
+raise those minimums. This option does not weaken existing minimums or prevent releases for other
+changes. It applies to `update` and `release-pr`; explicit `set-version` keeps its existing behavior.
+The [`dependencies_update`](#the-dependencies_update-field) option separately controls lockfile
+updates.
 
 #### The `custom_major_increment_regex` field
 
@@ -1241,3 +1285,7 @@ link_parsers = [
 ```
 
 The extracted links can be used in the [body](#the-body-field) with the `commits.links` variable.
+
+[dependabot-versioning-strategy]: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#versioning-strategy--
+[dependabot-cargo-strategy]: https://github.com/dependabot/dependabot-core/issues/4009
+[renovate-range-strategy]: https://docs.renovatebot.com/configuration-options/#rangestrategy

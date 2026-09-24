@@ -350,6 +350,62 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_preserves_compatible_local_requirements() {
+    let library = "library";
+    let facade = "facade";
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(facade)
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec![format!("../{library}")]),
+        TestPackage::new(library).with_type(PackageType::Lib),
+    ])
+    .await;
+    context.write_release_plz_toml(
+        r#"[workspace]
+semver_check = false
+local_dependencies_update_strategy = "if-needed"
+"#,
+    );
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    let facade_manifest = context.package_path(facade).join(CARGO_TOML);
+    let original_manifest = fs_err::read_to_string(&facade_manifest).unwrap();
+    let original_changelog =
+        fs_err::read_to_string(context.package_path(facade).join("CHANGELOG.md")).unwrap();
+    let lib_file = context.package_path(library).join("src/lib.rs");
+    let source = fs_err::read_to_string(&lib_file).unwrap();
+    fs_err::write(&lib_file, format!("{source}\n// Compatible fix\n")).unwrap();
+    context.push_all_changes("fix: update library");
+
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_deref().unwrap();
+    assert!(body.contains("0.1.0 -> 0.1.1"), "{body}");
+    assert!(!body.contains(facade), "{body}");
+
+    // Check the generated PR's files as well as its summary. Filtering the facade
+    // from the PR body alone would still allow unwanted requirement/changelog edits.
+    context.merge_release_pr().await;
+    assert_eq!(
+        fs_err::read_to_string(facade_manifest).unwrap(),
+        original_manifest
+    );
+    assert_eq!(
+        fs_err::read_to_string(context.package_path(facade).join("CHANGELOG.md")).unwrap(),
+        original_changelog
+    );
+    context.run_release().success();
+
+    // A subsequent run against the newly published library must not start a cascade.
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_updates_binary_when_library_changes() {
     let binary = "binary";
     let library1 = "library1";

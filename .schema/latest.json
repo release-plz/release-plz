@@ -52,6 +52,7 @@
         "git_release_type": null,
         "git_tag_enable": null,
         "git_tag_name": null,
+        "local_dependencies_update_strategy": "always",
         "max_analyze_commits": 1000,
         "pr_body": null,
         "pr_branch_prefix": null,
@@ -271,6 +272,26 @@
       "required": [
         "pattern",
         "href"
+      ]
+    },
+    "LocalDependenciesUpdateStrategy": {
+      "description": "When to update local dependency requirements in Cargo.toml.",
+      "oneOf": [
+        {
+          "description": "Rewrite requirements to the new version using their existing precision.",
+          "type": "string",
+          "const": "always"
+        },
+        {
+          "description": "Only rewrite requirements that do not accept the new version.",
+          "type": "string",
+          "const": "if-needed"
+        },
+        {
+          "description": "Preserve all requirements, even when they do not accept the new version.",
+          "type": "string",
+          "const": "never"
+        }
       ]
     },
     "PackageSpecificConfigWithName": {
@@ -694,6 +715,12 @@
             "string",
             "null"
           ]
+        },
+        "local_dependencies_update_strategy": {
+          "title": "Local Dependencies Update Strategy",
+          "description": "When to rewrite version requirements on local workspace dependencies.",
+          "$ref": "#/$defs/LocalDependenciesUpdateStrategy",
+          "default": "always"
         },
         "max_analyze_commits": {
           "description": "Maximum number of commits to analyze when the package hasn't been published yet.\nDefault: 1000.",

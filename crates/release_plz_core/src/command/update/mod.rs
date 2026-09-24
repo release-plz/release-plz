@@ -18,7 +18,7 @@ use update_request::UpdateRequest;
 
 use tracing::{debug, instrument};
 
-use package_dependencies::LocalDependenciesUpdateStrategy;
+pub use package_dependencies::LocalDependenciesUpdateStrategy;
 pub use packages_update::*;
 pub use update_config::*;
 
@@ -69,7 +69,7 @@ fn update_manifests(
     all_packages: &[&Package],
 ) -> anyhow::Result<()> {
     let local_manifest_path = input.local_manifest();
-    let policy = LocalDependenciesUpdateStrategy::Always;
+    let policy = input.local_dependencies_update_strategy();
 
     if let Some(version) = packages_to_update.workspace_version() {
         let mut manifest = LocalManifest::try_new(local_manifest_path)?;
@@ -182,6 +182,7 @@ pub(super) fn update_dependencies(
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
+    // Explicit set-version always advances requirements, independent of update configuration.
     LocalDependenciesUpdateStrategy::Always.update_dependencies(
         all_packages,
         version,
