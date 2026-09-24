@@ -4505,7 +4505,6 @@ dependencies = [
  "ignore",
  "next_version 0.3.2",
  "parse-changelog",
- "pulldown-cmark",
  "regex",
  "reqwest",
  "reqwest-middleware",

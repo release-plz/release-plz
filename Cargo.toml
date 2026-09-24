@@ -25,7 +25,6 @@ git-cliff-core = { version = "2.14.2", default-features = false }
 git-conventional = "1.0.0"
 ignore = "0.4.23"
 parse-changelog = { version = "0.6.13", default-features = false }
-pulldown-cmark = { version = "0.13.4", default-features = false }
 regex = "1.11.2"
 reqwest = "0.13.1"
 reqwest-middleware = { version = "0.5.0", features = ["json"] }
