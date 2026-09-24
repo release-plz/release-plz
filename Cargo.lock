@@ -1598,9 +1598,9 @@ dependencies = [
 
 [[package]]
 name = "git-cliff-core"
-version = "2.14.1"
+version = "2.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eab5c623118da18329dc1ae86d6075f622dbd1e694795a7e977125fca8d9331"
+checksum = "02f20f21c9560139e9ac425762783d2c7ef31492d2924e0851e48afc18eaf9ef"
 dependencies = [
  "bincode",
  "cacache",
