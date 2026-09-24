@@ -10,16 +10,15 @@ use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::{Package, semver::Version};
-use cargo_utils::LocalManifest;
-use cargo_utils::{CARGO_TOML, upgrade_requirement};
+use cargo_utils::{CARGO_TOML, LocalManifest};
 use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
-use std::iter;
 use tracing::{info, warn};
 use update_request::UpdateRequest;
 
 use tracing::{debug, instrument};
 
+use package_dependencies::LocalDependenciesUpdateStrategy;
 pub use packages_update::*;
 pub use update_config::*;
 
@@ -176,8 +175,7 @@ pub fn set_version(
         .with_context(|| format!("cannot update manifest {:?}", local_manifest.path))?;
 
     let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
-    update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
-    Ok(())
+    update_dependencies(all_packages, version, &package_path, workspace_manifest)
 }
 
 /// Update the package version in the dependencies of the other packages.
@@ -208,28 +206,10 @@ pub(super) fn update_dependencies(
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    let all_manifests = iter::once(workspace_manifest)
-        .chain(all_packages.iter().map(|pkg| pkg.manifest_path.as_path()));
-    for manifest in all_manifests {
-        let mut local_manifest = LocalManifest::try_new(manifest)?;
-        let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
-        let deps_to_update = local_manifest
-            .get_dependency_tables_mut()
-            .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
-            .filter(|d| d.contains_key("version"))
-            .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
-
-        for dep in deps_to_update {
-            let old_req = dep
-                .get("version")
-                .expect("filter ensures this")
-                .as_str()
-                .unwrap_or("*");
-            if let Some(new_req) = upgrade_requirement(old_req, version)? {
-                dep.insert("version", toml_edit::value(new_req));
-            }
-        }
-        local_manifest.write()?;
-    }
-    Ok(())
+    LocalDependenciesUpdateStrategy::Always.update_dependencies(
+        all_packages,
+        version,
+        package_path,
+        workspace_manifest,
+    )
 }

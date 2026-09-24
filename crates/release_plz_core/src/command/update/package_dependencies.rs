@@ -1,24 +1,73 @@
+use std::iter;
+
 use cargo_metadata::{Package, camino::Utf8Path, semver::Version};
 use cargo_utils::{DepKind, LocalManifest};
 use toml_edit::TableLike;
 
 use crate::PackagePath as _;
 
-pub trait PackageDependencies {
-    /// Returns the `updated_packages` which should be updated in the dependencies of the package.
-    /// Git-only releases also propagate changes through dependencies without version requirements.
-    fn dependencies_to_update<'a>(
-        &self,
-        updated_packages: &'a [(&Package, Version)],
-        workspace_dependencies: Option<&dyn TableLike>,
-        workspace_dir: &Utf8Path,
-        include_versionless: bool,
-    ) -> anyhow::Result<Vec<&'a Package>>;
+/// Updates local dependency requirements and identifies affected packages.
+///
+/// For versioned dependencies, release detection and manifest writing use the
+/// same requirement calculation so the release plan agrees with the edits.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum LocalDependenciesUpdateStrategy {
+    #[default]
+    Always,
 }
 
-impl PackageDependencies for Package {
-    fn dependencies_to_update<'a>(
-        &self,
+impl LocalDependenciesUpdateStrategy {
+    /// Rewrite references to a local package in member and workspace manifests.
+    pub(super) fn update_dependencies(
+        self,
+        all_packages: &[&Package],
+        version: &Version,
+        package_path: &Utf8Path,
+        workspace_manifest: &Utf8Path,
+    ) -> anyhow::Result<()> {
+        let all_manifests = iter::once(workspace_manifest)
+            .chain(all_packages.iter().map(|pkg| pkg.manifest_path.as_path()));
+        for manifest in all_manifests {
+            let mut local_manifest = LocalManifest::try_new(manifest)?;
+            let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
+            let deps_to_update = local_manifest
+                .get_dependency_tables_mut()
+                .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
+                .filter(|d| d.contains_key("version"))
+                .filter(|d| {
+                    crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path)
+                });
+
+            for dep in deps_to_update {
+                let old_req = dep
+                    .get("version")
+                    .expect("filter ensures this")
+                    .as_str()
+                    .unwrap_or("*");
+                if let Some(new_req) = self.upgrade_requirement(old_req, version)? {
+                    dep.insert("version", toml_edit::value(new_req));
+                }
+            }
+            local_manifest.write()?;
+        }
+        Ok(())
+    }
+
+    fn upgrade_requirement(
+        self,
+        requirement: &str,
+        version: &Version,
+    ) -> anyhow::Result<Option<String>> {
+        match self {
+            Self::Always => cargo_utils::upgrade_requirement(requirement, version),
+        }
+    }
+
+    /// Find dependencies whose new versions require a dependent release.
+    /// Git-only releases also propagate through versionless non-dev dependencies.
+    pub(super) fn dependencies_to_update<'a>(
+        self,
+        package: &Package,
         updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
@@ -26,10 +75,10 @@ impl PackageDependencies for Package {
     ) -> anyhow::Result<Vec<&'a Package>> {
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
-        let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
+        let package_manifest = LocalManifest::try_new(&package.manifest_path)?;
         let package_dir = crate::manifest_dir(&package_manifest.path)?;
 
-        let mut deps_to_update: Vec<&Self> = vec![];
+        let mut deps_to_update = vec![];
         for (p, next_ver) in updated_packages {
             let canonical_path = p.canonical_path()?;
             // Find the dependencies that have the same path as the updated package.
@@ -64,8 +113,8 @@ impl PackageDependencies for Package {
                 .map(|(kind, _, dep)| (kind, dep));
 
             for (kind, dep) in matching_deps {
-                if should_update_dependency(dep, kind, next_ver, include_versionless)? {
-                    deps_to_update.push(p);
+                if should_update_dependency(dep, kind, next_ver, include_versionless, self)? {
+                    deps_to_update.push(*p);
                     // A package can declare the same dependency in several tables
                     // (for example `[dependencies]` and `[dev-dependencies]`).
                     // It still needs a single release.
@@ -98,12 +147,13 @@ fn should_update_dependency(
     kind: DepKind,
     next_ver: &Version,
     include_versionless: bool,
+    policy: LocalDependenciesUpdateStrategy,
 ) -> anyhow::Result<bool> {
     let Some(old_req) = dep.get("version") else {
         return Ok(include_versionless && kind != DepKind::Development);
     };
     let old_req = old_req.as_str().unwrap_or("*");
-    let should_update_dep = cargo_utils::upgrade_requirement(old_req, next_ver)?.is_some();
+    let should_update_dep = policy.upgrade_requirement(old_req, next_ver)?.is_some();
     Ok(should_update_dep)
 }
 
@@ -175,8 +225,9 @@ mod tests {
                 let updated = [(support, Version::new(0, 2, 0))];
                 for name in ["root-app", "consumer"] {
                     let package = metadata.packages.iter().find(|p| p.name == name).unwrap();
-                    let dependencies = package
+                    let dependencies = LocalDependenciesUpdateStrategy::Always
                         .dependencies_to_update(
+                            package,
                             &updated,
                             manifest.get_workspace_dependency_table(),
                             root,

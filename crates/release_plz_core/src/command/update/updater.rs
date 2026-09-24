@@ -37,7 +37,7 @@ use crate::{
 };
 
 use super::{
-    PackagesToUpdate, PackagesUpdate, package_dependencies::PackageDependencies as _,
+    LocalDependenciesUpdateStrategy, PackagesToUpdate, PackagesUpdate,
     update_request::UpdateRequest,
 };
 
@@ -411,6 +411,7 @@ impl Updater<'_> {
         // Keep a copy of all packages that have changed so far
         let mut all_changed_packages: Vec<(&Package, Version)> = initial_changed_packages.to_vec();
 
+        let dependency_strategy = LocalDependenciesUpdateStrategy::Always;
         // Continue updating packages until no more dependencies to update are found
         loop {
             let mut any_package_updated = false;
@@ -422,7 +423,8 @@ impl Updater<'_> {
                 }
 
                 // Check if this package depends on any changed package
-                if let Ok(deps) = p.dependencies_to_update(
+                if let Ok(deps) = dependency_strategy.dependencies_to_update(
+                    p,
                     &all_changed_packages,
                     workspace_dependencies,
                     workspace_dir,
