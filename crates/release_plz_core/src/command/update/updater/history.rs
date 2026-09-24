@@ -246,10 +246,11 @@ impl RetainedChanges {
             self.repo.find_blob(ours.id)?,
             self.repo.find_blob(theirs.id)?,
         ];
+        let max_conflict_input_bytes = 1024 * 1024; // 1 MiB across all three snapshots.
         // One character per line lets libgit2 distinguish independent edits on
         // the same source line. Bound the expanded input and leave binary or
         // non-UTF-8 content unresolved.
-        if blobs.iter().map(git2::Blob::size).sum::<usize>() > 1024 * 1024
+        if blobs.iter().map(git2::Blob::size).sum::<usize>() > max_conflict_input_bytes
             || blobs.iter().any(|blob| blob.content().contains(&0))
         {
             return Ok(false);
