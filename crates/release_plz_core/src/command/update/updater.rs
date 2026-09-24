@@ -714,6 +714,12 @@ impl Updater<'_> {
                         )?);
                     }
                     if let Some(changes) = &mut retained_changes {
+                        // Collect pruning candidates with full history: a "keep mine"
+                        // merge can hide real ancestors from a simplified walk.
+                        // Reuse the outer walk's paths and release boundaries to avoid
+                        // collecting history already excluded from consideration.
+                        // RetainedChanges preserves candidates whose changes survive
+                        // through another lineage.
                         changes.add_boundary(
                             &current_commit_hash,
                             repository.ancestors_at_paths(
