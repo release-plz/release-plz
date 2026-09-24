@@ -900,14 +900,20 @@ impl GitClient {
             return Ok(RemoteCommit { username: None });
         }
 
-        let remote_commit: GitHubCommit = response
-            .successful_status()
-            .await?
-            .json()
-            .await
-            .context("can't parse commits")?;
+        let username = match self.forge {
+            ForgeType::Github | ForgeType::Gitea => {
+                let remote_commit: GitHubCommit = response
+                    .successful_status()
+                    .await?
+                    .json()
+                    .await
+                    .context("can't parse commits")?;
 
-        let username = remote_commit.author.and_then(|author| author.login);
+                remote_commit.author.and_then(|author| author.login)
+            }
+            ForgeType::Gitlab => None,
+        };
+
         Ok(RemoteCommit { username })
     }
 
@@ -918,9 +924,7 @@ impl GitClient {
                 format!("git/{commits_path}")
             }
             ForgeType::Github => commits_path.to_string(),
-            ForgeType::Gitlab => {
-                unimplemented!("Gitlab support for `release-plz release-pr is not implemented yet")
-            }
+            ForgeType::Gitlab => format!("repository/{commits_path}"),
         };
         format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
