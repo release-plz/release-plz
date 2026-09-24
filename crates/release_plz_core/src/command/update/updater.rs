@@ -678,10 +678,8 @@ impl Updater<'_> {
         )?;
         let mut released_ancestors = HashSet::new();
         for current_commit_hash in commits {
-            // Optimization only: an already pruned commit would be checked out and
-            // `cargo package`d for nothing. The `retain` after the loop is what keeps
-            // these out of the diff — the walk can reach them before the snapshot that
-            // prunes them, so this check alone can't be relied on.
+            // Skip unnecessary checkout and packaging for commits already known to be
+            // pruned (i.e. excluded from the diff).
             if released_ancestors.contains(&current_commit_hash) {
                 continue;
             }
