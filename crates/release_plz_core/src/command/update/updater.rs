@@ -87,7 +87,6 @@ impl Updater<'_> {
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
-
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
             let group_has_release_commit = || {
@@ -671,11 +670,6 @@ impl Updater<'_> {
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
         let head = repository.current_commit_hash()?;
-        let mut package_files = released
-            .is_some()
-            .then(|| self.history_package_files(package_path, repository))
-            .transpose()?
-            .flatten();
         // Enumerate from the branch tip before checking out any historical snapshot.
         let commits = repository.commits_at_paths(
             "HEAD",
@@ -705,42 +699,30 @@ impl Updater<'_> {
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    if retained_changes.is_none() {
-                        // Both file lists are needed: a file added or removed since
-                        // the release is only listed on one side.
-                        let package_files = match package_files.take() {
-                            Some(mut files) => self
-                                .history_package_files(package_path, repository)?
-                                .map(|released_files| {
-                                    files.extend(released_files);
-                                    files
-                                }),
-                            None => None,
-                        };
-                        retained_changes = Some(history::RetainedChanges::new(
-                            repository,
-                            &head,
-                            &current_commit_hash,
-                            &release_boundaries,
-                            package_files,
-                            &paths_to_check,
-                        )?);
-                    }
-                    if let Some(changes) = &mut retained_changes {
-                        // Collect pruning candidates with full history: a "keep mine"
-                        // merge can hide real ancestors from a simplified walk.
-                        // Reuse the outer walk's paths and release boundaries to avoid
-                        // collecting history already excluded from consideration.
-                        // RetainedChanges preserves candidates whose changes survive
-                        // through another lineage.
-                        changes.add_boundary(
-                            &current_commit_hash,
-                            repository.ancestors_at_paths(
+                    // Collect pruning candidates with full history: a "keep mine"
+                    // merge can hide real ancestors from a simplified walk. Reuse
+                    // the outer walk's paths and release boundaries to avoid
+                    // collecting history already excluded from consideration.
+                    // RetainedChanges preserves candidates whose changes survive
+                    // through another lineage.
+                    let ancestors = repository.ancestors_at_paths(
+                        &current_commit_hash,
+                        &release_boundaries,
+                        &paths_to_check,
+                    )?;
+                    match &mut retained_changes {
+                        Some(changes) => changes.add_boundary(&current_commit_hash, ancestors),
+                        None => {
+                            retained_changes = Some(history::RetainedChanges::new(
+                                repository,
+                                &head,
                                 &current_commit_hash,
+                                ancestors,
                                 &release_boundaries,
+                                self.history_package_files(package_path, repository)?,
                                 &paths_to_check,
-                            )?,
-                        );
+                            )?);
+                        }
                     }
                     continue;
                 }
@@ -762,19 +744,18 @@ impl Updater<'_> {
                 ));
             }
         }
-
-        // A simplified walk can visit an ancestor before the equal snapshot that
-        // prunes it. Make the final decision with every discovered boundary, keeping
-        // only ancestors whose changes survive through another lineage.
-        diff.commits.retain(|commit| {
-            retained_changes
-                .as_ref()
-                .is_none_or(|changes| changes.retains(&commit.id))
-        });
-
         repository
             .checkout_head()
             .context("can't checkout head to compare dependencies")?;
+        if let Some(mut changes) = retained_changes {
+            // Both file lists are needed: a file added or removed since the release
+            // is only listed on one side.
+            changes.add_package_files(self.history_package_files(package_path, repository)?);
+            // A simplified walk can visit an ancestor before the equal snapshot that
+            // prunes it. Make the final decision with every discovered boundary,
+            // keeping only ancestors whose changes survive through another lineage.
+            diff.commits.retain(|commit| changes.retains(&commit.id));
+        }
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
@@ -1191,12 +1172,10 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
-#[path = "updater/tests/history_tests.rs"]
-mod history_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    mod history_tests;
 
     #[test]
     fn only_rust_library_targets_are_libraries() {
