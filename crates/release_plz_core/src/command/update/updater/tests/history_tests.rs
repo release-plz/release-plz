@@ -47,6 +47,37 @@ impl History {
         self.repo.current_commit_hash().unwrap()
     }
 
+    /// Ignore a revert of the current change, then import a sibling change
+    /// through the reverted branch so that its equal snapshot is also visited.
+    fn merge_ignored_revert(&self, path: &str, contents: Option<&str>) -> String {
+        self.merge_ignored_change("src/fix.rs", |root| {
+            let path = root.join(path);
+            match contents {
+                Some(contents) => fs_err::write(path, contents).unwrap(),
+                None => fs_err::remove_file(path).unwrap(),
+            }
+        })
+    }
+
+    fn merge_ignored_change(&self, sibling_path: &str, revert: impl FnOnce(&Utf8Path)) -> String {
+        self.repo.git(&["checkout", "-b", "equal"]).unwrap();
+        revert(self.repo.directory());
+        self.repo
+            .add_all_and_commit("revert: breaking change")
+            .unwrap();
+        self.repo.checkout_head().unwrap();
+        self.repo
+            .git(&["merge", "-s", "ours", "-m", "merge equal", "equal"])
+            .unwrap();
+        self.repo.git(&["checkout", "equal"]).unwrap();
+        let sibling = self.write_commit(sibling_path, "", "fix: sibling");
+        self.repo.checkout_head().unwrap();
+        self.repo
+            .git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
+            .unwrap();
+        sibling
+    }
+
     /// Set both dates to control the commit's position in the date-ordered walk.
     fn write_commit_at(&self, path: &str, contents: &str, message: &str, day: u8) -> String {
         fs_err::write(self.repo.directory().join(path), contents).unwrap();
@@ -150,6 +181,104 @@ fn assert_commits(diff: &Diff, expected: &[&str]) {
     let mut expected = expected.to_vec();
     expected.sort_unstable();
     assert_eq!(actual, expected, "{:?}", diff.commits);
+}
+
+const BASE_API: &str = "pub fn api() {}\n\n\n\n\n\npub fn stable() {}\n";
+const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}\n";
+
+fn api_history() -> History {
+    History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "");
+        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+    })
+}
+
+fn assert_next_version(diff: &Diff, expected: &Version) {
+    assert_eq!(
+        Version::new(0, 1, 0).next_from_diff(diff, next_version::VersionUpdater::default()),
+        *expected
+    );
+}
+
+#[test]
+fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
+    let history = api_history();
+    let repo = &history.repo;
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    repo.git(&["checkout", "-b", "equal"]).unwrap();
+    history.write_commit("src/lib.rs", BASE_API, "revert: breaking API");
+    repo.checkout_head().unwrap();
+    let prepared = history.write_commit(
+        "src/lib.rs",
+        &BASE_API.replace("api()", "api(_: u8)"),
+        "chore: prepare merge",
+    );
+    assert!(
+        repo.git(&["merge", "--no-ff", "--no-commit", "equal"])
+            .is_err()
+    );
+    let resolved = history.write_commit("src/lib.rs", BREAKING_API, "merge resolved");
+    repo.git(&["checkout", "equal"]).unwrap();
+    let sibling = history.write_commit(
+        "src/lib.rs",
+        &format!("{BASE_API}pub fn extra() {{}}\n"),
+        "fix: sibling",
+    );
+    repo.checkout_head().unwrap();
+    repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
+        .unwrap();
+    let merge = repo.current_commit_hash().unwrap();
+    assert_eq!(
+        fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+        format!("{BREAKING_API}pub fn extra() {{}}\n")
+    );
+    let diff = history.diff(None);
+    // Both merges resolve `src/lib.rs` to contents that differ from all their parents.
+    assert_commits(&diff, &[&breaking, &prepared, &resolved, &sibling, &merge]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
+    for boundary in ["tag", "published", "missing", "equality"] {
+        let history = api_history();
+        let baseline = history.repo.current_commit_hash().unwrap();
+        let missing = "0".repeat(40);
+        let published_at = match boundary {
+            "tag" => {
+                history.repo.tag_lightweight("v0.1.0").unwrap();
+                None
+            }
+            "published" => Some(baseline.as_str()),
+            "missing" => Some(missing.as_str()),
+            _ => None,
+        };
+        let breaking =
+            history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let diff = history.diff(published_at);
+        assert_commits(&diff, &[&breaking, &sibling]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
+fn a_retained_change_can_move_to_a_different_file() {
+    let history = api_history();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    history
+        .repo
+        .git(&["mv", "src/lib.rs", "src/api.rs"])
+        .unwrap();
+    let moved = history.write_commit(
+        "src/lib.rs",
+        "mod api;\npub use api::*;\n",
+        "chore: move API",
+    );
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling, &moved]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
 #[test]

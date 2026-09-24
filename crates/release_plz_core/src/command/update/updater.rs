@@ -41,6 +41,8 @@ use super::{
     update_request::UpdateRequest,
 };
 
+mod history;
+
 static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
 
 #[derive(Debug)]
@@ -85,6 +87,7 @@ impl Updater<'_> {
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
+
         let mut old_changelogs = OldChangelogs::new();
         for (p, diff) in packages_diffs {
             let group_has_release_commit = || {
@@ -663,12 +666,16 @@ impl Updater<'_> {
             .then(|| self.req.max_analyze_commits())
             // 0 means "no limit"
             .filter(|&n| n != 0);
-        // Exclude already released history using both the release tag and the registry's
-        // published commit, when available. The walk skips these commits and their ancestors.
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
+        let head = repository.current_commit_hash()?;
+        let mut package_files = released
+            .is_some()
+            .then(|| self.history_package_files(package_path, repository))
+            .transpose()?
+            .flatten();
         // Enumerate from the branch tip before checking out any historical snapshot.
         let commits = repository.commits_at_paths(
             "HEAD",
@@ -676,11 +683,15 @@ impl Updater<'_> {
             &paths_to_check,
             max_analyze_commits,
         )?;
-        let mut released_ancestors = HashSet::new();
+        let mut retained_changes: Option<history::RetainedChanges> = None;
         for current_commit_hash in commits {
-            // Skip unnecessary checkout and packaging for commits already known to be
-            // pruned (i.e. excluded from the diff).
-            if released_ancestors.contains(&current_commit_hash) {
+            // Stop lineages that have reached an equal snapshot. Still inspect
+            // ancestors reachable through another lineage: they can contain
+            // surviving changes or another equal snapshot that bounds that lineage.
+            if retained_changes
+                .as_ref()
+                .is_some_and(|changes| changes.skips(&current_commit_hash))
+            {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
@@ -694,20 +705,43 @@ impl Updater<'_> {
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    // Prune every ancestor of this released snapshot.
-                    // `--full-history` is what makes the set complete: git's
-                    // default simplification drops the second parent of a "keep
-                    // mine" merge, hiding real ancestors. Reuse the outer walk's
-                    // paths and release boundaries to avoid collecting history
-                    // already excluded from the candidate commits.
-                    // "Ancestor of a released snapshot" only coincides with
-                    // "already released" while merges don't invert tree order: a
-                    // `merge -s ours` can keep an ancestor's tree alive at HEAD.
-                    released_ancestors.extend(repository.ancestors_at_paths(
-                        &current_commit_hash,
-                        &release_boundaries,
-                        &paths_to_check,
-                    )?);
+                    if retained_changes.is_none() {
+                        // Both file lists are needed: a file added or removed since
+                        // the release is only listed on one side.
+                        let package_files = match package_files.take() {
+                            Some(mut files) => self
+                                .history_package_files(package_path, repository)?
+                                .map(|released_files| {
+                                    files.extend(released_files);
+                                    files
+                                }),
+                            None => None,
+                        };
+                        retained_changes = Some(history::RetainedChanges::new(
+                            repository,
+                            &head,
+                            &current_commit_hash,
+                            &release_boundaries,
+                            package_files,
+                            &paths_to_check,
+                        )?);
+                    }
+                    if let Some(changes) = &mut retained_changes {
+                        // Collect pruning candidates with full history: a "keep mine"
+                        // merge can hide real ancestors from a simplified walk.
+                        // Reuse the outer walk's paths and release boundaries to avoid
+                        // collecting history already excluded from consideration.
+                        // RetainedChanges preserves candidates whose changes survive
+                        // through another lineage.
+                        changes.add_boundary(
+                            &current_commit_hash,
+                            repository.ancestors_at_paths(
+                                &current_commit_hash,
+                                &release_boundaries,
+                                &paths_to_check,
+                            )?,
+                        );
+                    }
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
@@ -728,12 +762,15 @@ impl Updater<'_> {
                 ));
             }
         }
-        // Git can skip a merge's parent connection when simplifying history, so even
-        // with `--date-order`, an ancestor reached through another branch can appear
-        // before the released snapshot that excludes it. Remove those commits here
-        // in case they were added before the loop knew to skip them.
-        diff.commits
-            .retain(|commit| !released_ancestors.contains(&commit.id));
+
+        // A simplified walk can visit an ancestor before the equal snapshot that
+        // prunes it. Make the final decision with every discovered boundary, keeping
+        // only ancestors whose changes survive through another lineage.
+        diff.commits.retain(|commit| {
+            retained_changes
+                .as_ref()
+                .is_none_or(|changes| changes.retains(&commit.id))
+        });
 
         repository
             .checkout_head()
@@ -832,8 +869,8 @@ impl Updater<'_> {
         }
     }
 
-    /// Run `f`, then revert the edits.
-    /// Useful when `f` edits the file, eg to run `cargo package`.
+    /// Run `f`, which inspects the package with `cargo package`, then revert the
+    /// edits `cargo package` can make to files such as `Cargo.lock`.
     fn with_cargo_lock_restored<T>(
         &self,
         repository: &Repo,
@@ -908,6 +945,28 @@ impl Updater<'_> {
             return Ok(true);
         };
         Ok(!package_files.is_disjoint(&changed_files))
+    }
+
+    /// List the package files in the current checkout as repository-relative paths
+    /// for history comparisons, restoring any existing Cargo.lock after listing.
+    ///
+    /// Return `None` if listing fails, so history comparisons fall back to all
+    /// files under the checked paths.
+    fn history_package_files(
+        &self,
+        package_path: &Utf8Path,
+        repository: &Repo,
+    ) -> anyhow::Result<Option<HashSet<Utf8PathBuf>>> {
+        let package_files = self.with_cargo_lock_restored(repository, || {
+            crate::get_cargo_package_files(package_path)
+        })?;
+        let relative = package_path.strip_prefix(repository.directory())?;
+        // Cargo also lists generated files that do not exist in the checkout.
+        // Tree comparisons only need their names, not canonicalized files.
+        Ok(package_files
+            .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
+            .ok()
+            .map(|files| files.into_iter().map(|path| relative.join(path)).collect()))
     }
 }
 
@@ -1132,10 +1191,12 @@ fn get_repo_path(
 }
 
 #[cfg(test)]
+#[path = "updater/tests/history_tests.rs"]
+mod history_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    mod history_tests;
 
     #[test]
     fn only_rust_library_targets_are_libraries() {
