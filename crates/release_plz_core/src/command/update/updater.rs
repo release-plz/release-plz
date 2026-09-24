@@ -728,12 +728,10 @@ impl Updater<'_> {
                 ));
             }
         }
-
-        // Keep released ancestors out of the diff.
-        // `--date-order` only orders the simplified history the walk
-        // traverses, so an ancestor hidden behind a severed merge edge can be visited
-        // before the snapshot that prunes it. Drop it here rather than relying on the
-        // order.
+        // Git can skip a merge's parent connection when simplifying history, so even
+        // with `--date-order`, an ancestor reached through another branch can appear
+        // before the released snapshot that excludes it. Remove those commits here
+        // in case they were added before the loop knew to skip them.
         diff.commits
             .retain(|commit| !released_ancestors.contains(&commit.id));
 
