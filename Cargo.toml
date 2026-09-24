@@ -21,7 +21,7 @@ expect-test = "1.5.1"
 flate2 = "1.1.10"
 fs-err = "3.1.1"
 git2 = "0.21.0"
-git-cliff-core = { version = "2.10.0", default-features = false }
+git-cliff-core = { version = "2.14.2", default-features = false }
 git-conventional = "1.0.0"
 ignore = "0.4.23"
 parse-changelog = { version = "0.6.13", default-features = false }
