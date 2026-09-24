@@ -288,6 +288,47 @@ fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
 }
 
 #[test]
+fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
+    let history = api_history();
+    history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+    let fixed = history.write_commit(
+        "src/lib.rs",
+        &BASE_API.replace("api() {}", "api() { /* fixed implementation */ }"),
+        "fix: restore compatible API and fix implementation",
+    );
+
+    // The body edit conflicts with a line-level inverse of the breaking commit,
+    // but its signature change has already been undone at HEAD.
+    let diff = history.diff(None);
+    assert_next_version(&diff, &Version::new(0, 1, 1));
+    assert_commits(&diff, &[&sibling, &fixed]);
+}
+
+#[test]
+fn later_api_edits_preserve_a_retained_breaking_change_marker() {
+    for updated_api in [
+        "api(_: u8) {}",
+        "api(_: bool) { /* evolved implementation */ }",
+    ] {
+        let history = api_history();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let evolved = history.write_commit(
+            "src/lib.rs",
+            &BREAKING_API.replace("api(_: bool) {}", updated_api),
+            "chore: evolve API",
+        );
+
+        // Undoing the signature after a body edit is clean but changes HEAD;
+        // an evolved argument leaves a character conflict. Both retain the marker.
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&breaking, &sibling, &evolved]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     for boundary in ["tag", "published", "missing", "equality"] {
         let history = api_history();
