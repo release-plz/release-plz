@@ -911,19 +911,7 @@ impl GitClient {
 
                 remote_commit.author.and_then(|author| author.login)
             }
-            ForgeType::Gitlab => {
-                let remote_commit: GitLabCommit = response
-                    .successful_status()
-                    .await?
-                    .json()
-                    .await
-                    .context("can't parse commits")?;
-
-                // The author_name is the git name of the author, not the GitLab username.
-                // There is currently no way to get the GitLab user from the commit API.
-                // <https://gitlab.com/gitlab-org/gitlab/-/work_items/20924>
-                Some(remote_commit.author_name)
-            }
+            ForgeType::Gitlab => None,
         };
 
         Ok(RemoteCommit { username })
@@ -1187,17 +1175,6 @@ pub struct GitHubCommit {
 pub struct GitHubCommitAuthor {
     /// Username.
     pub login: Option<String>,
-}
-
-/// Representation of a single commit in GitLab.
-///
-/// <https://docs.gitlab.com/api/commits/#retrieve-a-commit>
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GitLabCommit {
-    /// SHA.
-    pub id: String,
-    /// Author of the commit.
-    pub author_name: String,
 }
 
 /// Returns the list of contributors for the given commits,
