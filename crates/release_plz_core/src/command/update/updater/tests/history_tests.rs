@@ -239,6 +239,29 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
 }
 
 #[test]
+fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
+    let history = api_history();
+    let released_api = BASE_API.replace("api()", "api(_: u8)");
+    fs_err::write(
+        history.registry.directory().join("src/lib.rs"),
+        &released_api,
+    )
+    .unwrap();
+    history
+        .registry
+        .add_all_and_commit("published different API")
+        .unwrap();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+
+    // Undoing `api(bool)` to `api()` conflicts with the released `api(u8)`.
+    // HEAD still has `api(bool)`, so its breaking-change marker must survive.
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     for boundary in ["tag", "published", "missing", "equality"] {
         let history = api_history();
