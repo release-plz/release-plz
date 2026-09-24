@@ -697,14 +697,17 @@ impl Updater<'_> {
                     // Prune every ancestor of this released snapshot.
                     // `--full-history` is what makes the set complete: git's
                     // default simplification drops the second parent of a "keep
-                    // mine" merge, hiding real ancestors. The paths are the same
-                    // as the outer walk's, since only its commits are probed.
+                    // mine" merge, hiding real ancestors. Reuse the outer walk's
+                    // paths and release boundaries to avoid collecting history
+                    // already excluded from the candidate commits.
                     // "Ancestor of a released snapshot" only coincides with
                     // "already released" while merges don't invert tree order: a
                     // `merge -s ours` can keep an ancestor's tree alive at HEAD.
-                    released_ancestors.extend(
-                        repository.ancestors_at_paths(&current_commit_hash, &paths_to_check)?,
-                    );
+                    released_ancestors.extend(repository.ancestors_at_paths(
+                        &current_commit_hash,
+                        &release_boundaries,
+                        &paths_to_check,
+                    )?);
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
