@@ -40,6 +40,8 @@ use super::{
     PackagesUpdate, package_dependencies::PackageDependencies as _, update_request::UpdateRequest,
 };
 
+mod history;
+
 static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
 
 #[derive(Debug)]
@@ -1229,8 +1231,6 @@ fn get_repo_path(
 
     Ok(result_path)
 }
-
-mod history;
 
 #[cfg(test)]
 mod history_tests;
