@@ -308,6 +308,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn global_merge_attributes_are_isolated() {
+        let config = fs_utils::Utf8TempDir::new().unwrap();
+        fs_err::create_dir(config.path().join("git")).unwrap();
+        fs_err::write(config.path().join("git/attributes"), "* merge=union\n").unwrap();
+        // Run the existing fixture in a fresh process: libgit2 caches global
+        // attribute paths, and changing this process's environment is not safe.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "command::update::updater::history::tests::merge_configuration_is_isolated_without_changing_worktree_indexes",
+            ])
+            .env("XDG_CONFIG_HOME", config.path())
+            .env("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES", "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success(),
+            "child test failed:\n{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        // An obsolete --exact filter must not silently skip the regression.
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+    }
+
+    #[test]
     fn merge_configuration_is_isolated_without_changing_worktree_indexes() {
         let dir = fs_utils::Utf8TempDir::new().unwrap();
         fs_err::create_dir(dir.path().join("main")).unwrap();
@@ -320,6 +346,20 @@ mod tests {
         commit_file("a\n");
         let changed = commit_file("b\n");
         let released = commit_file("c\n");
+        if std::env::var_os("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES").is_some() {
+            // Confirm the child actually loads the global rule, even with only
+            // an object database and empty configuration and index.
+            let source = git2::Repository::open(repo.directory()).unwrap();
+            let objects = git2::Repository::from_odb(source.odb().unwrap()).unwrap();
+            objects.set_config(&git2::Config::new().unwrap()).unwrap();
+            objects.set_index(&mut git2::Index::new().unwrap()).unwrap();
+            assert_eq!(
+                objects
+                    .get_attr(Path::new("file"), "merge", git2::AttrCheckFlags::INDEX_ONLY)
+                    .unwrap(),
+                Some("union")
+            );
+        }
         fs_err::write(repo.directory().join(".gitattributes"), "* merge=union\n").unwrap();
         repo.add_all_and_commit("merge attributes").unwrap();
         repo.git(&["config", "merge.default", "union"]).unwrap();
