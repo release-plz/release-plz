@@ -320,6 +320,11 @@
             "null"
           ]
         },
+        "dist": {
+          "title": "Dist",
+          "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.",
+          "type": "boolean"
+        },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
           "description": "- If `true`, feature commits will always bump the minor version, even in 0.x releases.\n- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.",
