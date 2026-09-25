@@ -10,7 +10,8 @@ use super::*;
 /// in memory to distinguish surviving contributions from discarded merge parents.
 /// A revert that leaves the release unchanged proves a change was absent there.
 pub(super) struct RetainedChanges {
-    /// The walked repository, opened in memory: no snapshot is ever checked out.
+    /// The walked object database, with an isolated configuration and index so
+    /// snapshots and user merge drivers cannot affect the content check.
     repo: git2::Repository,
     /// The branch tip whose surviving changes are being released.
     head: git2::Oid,
@@ -61,8 +62,23 @@ impl RetainedChanges {
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
+        // Only objects are needed. Wrapping the database removes the worktree
+        // and git directory, including `info/attributes`. An empty configuration
+        // excludes `merge.default` and `core.attributesFile`. Force the built-in
+        // text driver through a synthetic index, overriding even system/global
+        // attributes without changing the user's index, config, or attribute files.
+        let source = git2::Repository::open(directory)?;
+        let repo = git2::Repository::from_odb(source.odb()?)?;
+        repo.set_config(&git2::Config::new()?)?;
+        let mut index = git2::Index::new()?;
+        {
+            let mut tree = repo.treebuilder(None)?;
+            tree.insert(".gitattributes", repo.blob(b"* merge=text\n")?, 0o100_644)?;
+            index.read_tree(&repo.find_tree(tree.write()?)?)?;
+        }
+        repo.set_index(&mut index)?;
         let mut changes = Self {
-            repo: git2::Repository::open(directory)?,
+            repo,
             head: git2::Oid::from_str(head)?,
             released: git2::Oid::from_str(released)?,
             package_files,
@@ -290,6 +306,95 @@ impl RetainedChanges {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn global_merge_attributes_are_isolated() {
+        let config = fs_utils::Utf8TempDir::new().unwrap();
+        fs_err::create_dir(config.path().join("git")).unwrap();
+        fs_err::write(config.path().join("git/attributes"), "* merge=union\n").unwrap();
+        // Run the existing fixture in a fresh process: libgit2 caches global
+        // attribute paths, and changing this process's environment is not safe.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "command::update::updater::history::tests::merge_configuration_is_isolated_without_changing_worktree_indexes",
+            ])
+            .env("XDG_CONFIG_HOME", config.path())
+            .env("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES", "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success(),
+            "child test failed:\n{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        // An obsolete --exact filter must not silently skip the regression.
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+    }
+
+    #[test]
+    fn merge_configuration_is_isolated_without_changing_worktree_indexes() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        fs_err::create_dir(dir.path().join("main")).unwrap();
+        let repo = Repo::init(dir.path().join("main"));
+        let commit_file = |contents: &str| {
+            fs_err::write(repo.directory().join("file"), contents).unwrap();
+            repo.add_all_and_commit("change file").unwrap();
+            repo.current_commit_hash().unwrap()
+        };
+        commit_file("a\n");
+        let changed = commit_file("b\n");
+        let released = commit_file("c\n");
+        if std::env::var_os("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES").is_some() {
+            // Confirm the child actually loads the global rule, even with only
+            // an object database and empty configuration and index.
+            let source = git2::Repository::open(repo.directory()).unwrap();
+            let objects = git2::Repository::from_odb(source.odb().unwrap()).unwrap();
+            objects.set_config(&git2::Config::new().unwrap()).unwrap();
+            objects.set_index(&mut git2::Index::new().unwrap()).unwrap();
+            assert_eq!(
+                objects
+                    .get_attr(Path::new("file"), "merge", git2::AttrCheckFlags::INDEX_ONLY)
+                    .unwrap(),
+                Some("union")
+            );
+        }
+        fs_err::write(repo.directory().join(".gitattributes"), "* merge=union\n").unwrap();
+        repo.add_all_and_commit("merge attributes").unwrap();
+        repo.git(&["config", "merge.default", "union"]).unwrap();
+        let attributes_path = repo.directory().join(".git/info/attributes");
+        fs_err::write(&attributes_path, "* merge=union\n").unwrap();
+        let config_path = repo.directory().join(".git/config");
+        let config_before = fs_err::read(&config_path).unwrap();
+        let linked = dir.path().join("linked");
+        repo.git(&["worktree", "add", "--detach", linked.as_str()])
+            .unwrap();
+
+        for path in [repo.directory(), &linked] {
+            let source = Repo::new(path).unwrap();
+            let index_path = git2::Repository::open(path).unwrap().path().join("index");
+            let index_before = fs_err::read(&index_path).unwrap();
+            let changes = RetainedChanges::new(
+                &source,
+                &changed,
+                &released,
+                vec![released.clone()],
+                &[],
+                None,
+                &[path.to_path_buf()],
+            )
+            .unwrap();
+
+            assert!(changes.survives(&changed).unwrap());
+            assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
+        }
+        assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
+        assert_eq!(
+            fs_err::read_to_string(attributes_path).unwrap(),
+            "* merge=union\n"
+        );
+    }
 
     #[test]
     fn release_conflicts_do_not_prove_partly_released_or_binary_changes_absent() {
