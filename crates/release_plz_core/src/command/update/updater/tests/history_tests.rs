@@ -262,6 +262,82 @@ fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
 }
 
 #[test]
+fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
+    let history = api_history();
+    let released_api = BASE_API.replace("api()", "api(_: u8)");
+    fs_err::write(
+        history.registry.directory().join("src/lib.rs"),
+        &released_api,
+    )
+    .unwrap();
+    history
+        .registry
+        .add_all_and_commit("published different API")
+        .unwrap();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+    history.write_commit(
+        ".gitattributes",
+        "src/lib.rs merge=union\n",
+        "chore: merge attributes",
+    );
+
+    // libgit2 resolves merge drivers from `.gitattributes` even for in-memory
+    // reverts. The union rule at HEAD must not mask the release-side API conflict.
+    let diff = history.diff(None);
+    assert!(commit_ids(&diff).contains(&breaking.as_str()));
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
+    for setting in ["info/attributes", "core.attributesFile", "merge.default"] {
+        let history = api_history();
+        let released_api = BASE_API.replace("api()", "api(_: u8)");
+        fs_err::write(
+            history.registry.directory().join("src/lib.rs"),
+            &released_api,
+        )
+        .unwrap();
+        history
+            .registry
+            .add_all_and_commit("published different API")
+            .unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+        let repo = &history.repo;
+        match setting {
+            "info/attributes" => {
+                fs_err::write(
+                    repo.directory().join(".git/info/attributes"),
+                    "src/lib.rs merge=union\n",
+                )
+                .unwrap();
+            }
+            "core.attributesFile" => {
+                let attributes = repo.directory().with_file_name("attributes");
+                fs_err::write(&attributes, "src/lib.rs merge=union\n").unwrap();
+                repo.git(&["config", setting, attributes.as_str()]).unwrap();
+            }
+            "merge.default" => {
+                repo.git(&["config", setting, "union"]).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        let config_path = repo.directory().join(".git/config");
+        let config_before = fs_err::read(&config_path).unwrap();
+
+        // These sources still apply to a bare repository with an empty index.
+        // A retained-change check must use ordinary text conflicts independently
+        // of both the checked-out snapshot and the user's merge configuration.
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&breaking, &sibling]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+        assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
+    }
+}
+
+#[test]
 fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
     let history = api_history();
     let released_api = BREAKING_API.replace(
