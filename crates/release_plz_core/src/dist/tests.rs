@@ -188,10 +188,11 @@ async fn real_cargo_dist_build_retry_and_finalize() {
     fs_err::create_dir_all(repo.directory().join("src")).unwrap();
     fs_err::write(
         repo.directory().join("src/main.rs"),
-        "fn main() { println!(\"hello\"); }",
+        "#[cfg(not(debug_assertions))]\ncompile_error!(\"must inherit release settings\");\nfn main() { println!(\"hello\"); }",
     )
     .unwrap();
-    fs_err::write(repo.directory().join("Cargo.toml"), "[package]\nname = \"dist-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\npublish = false\n[profile.dist]\ninherits = \"release\"\nlto = \"thin\"\n").unwrap();
+    // No dist profile: both build and finalize must default to the release settings.
+    fs_err::write(repo.directory().join("Cargo.toml"), "[package]\nname = \"dist-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\npublish = false\n[profile.release]\ndebug-assertions = true\n").unwrap();
     fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
     fs_err::write(
         repo.directory().join("CHANGELOG.md"),
@@ -301,16 +302,33 @@ async fn real_cargo_dist_build_retry_and_finalize() {
 #[test]
 #[ignore = "requires cargo-dist 0.33.0 on PATH; builds a real workspace binary"]
 fn real_cargo_dist_selects_only_the_requested_workspace_package() {
+    for profile_path in ["Cargo.toml", ".cargo/config.toml"] {
+        check_workspace_dist_build(profile_path);
+    }
+}
+
+fn check_workspace_dist_build(profile_path: &str) {
     let temporary = tempfile::tempdir().unwrap();
     let repo = Repo::init(temporary.path());
     fs_err::write(
         repo.directory().join("Cargo.toml"),
-        "[workspace]\nmembers = ['app', 'unrelated']\nresolver = '2'\n[profile.dist]\ninherits = 'release'\nlto = 'thin'\n",
+        "[workspace]\nmembers = ['app', 'unrelated']\nresolver = '2'\n",
+    )
+    .unwrap();
+    let profile_path = repo.directory().join(profile_path);
+    fs_err::create_dir_all(profile_path.parent().unwrap()).unwrap();
+    let existing = fs_err::read_to_string(&profile_path).unwrap_or_default();
+    fs_err::write(
+        &profile_path,
+        format!("{existing}\n[profile.dist]\ninherits = 'dev'\nlto = false\n"),
     )
     .unwrap();
     fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
     for (name, source) in [
-        ("app", "fn main() {}"),
+        (
+            "app",
+            "#[cfg(not(debug_assertions))]\ncompile_error!(\"must preserve dist profile inheritance\");\nfn main() {}",
+        ),
         (
             "unrelated",
             "compile_error!(\"must not build this package\");",

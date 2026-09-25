@@ -936,8 +936,10 @@ dist = true
 ```
 
 Requires a binary target, GitHub authentication, and enabled git tags and releases.
-Distribution jobs require cargo-dist 0.33.0 on `PATH` and a `[profile.dist]` in the
-workspace root `Cargo.toml`. For packages with `publish = false` in Cargo.toml,
+Distribution jobs require cargo-dist 0.33.0 on `PATH`. The `dist` Cargo profile is
+optional; distribution builds inherit `release` settings when it is absent.
+See the [recommended profile configuration](extra/releasing-binaries.md#optional-dist-profile)
+to customize distribution builds. For packages with `publish = false` in Cargo.toml,
 also enable `git_only = true`.
 See [Releasing binaries](extra/releasing-binaries.md) for the workflow and limitations.
 

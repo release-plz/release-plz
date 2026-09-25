@@ -16,8 +16,19 @@ or let cargo-dist generate a workflow.
 
 ## Build prerequisites
 
-Add this profile to the **workspace root `Cargo.toml`**, or to your package's
-`Cargo.toml` if it is not in a workspace:
+The runner needs **cargo-dist 0.33.0**, with its `dist` executable on `PATH`.
+The GitHub action installs it for distribution commands. For direct CLI use,
+[install cargo-dist](https://axodotdev.github.io/cargo-dist/book/install.html)
+separately. Release-plz fails if it is missing or a different version is installed.
+
+### Optional dist profile
+
+Release-plz uses your `dist` Cargo profile when configured. Otherwise, distribution
+builds inherit your `release` profile's settings. No additional profile is required.
+
+To optimize distributed binaries separately from ordinary release builds, add this
+recommended configuration to the **workspace root `Cargo.toml`**, or to your
+package's `Cargo.toml` if it is not in a workspace:
 
 ```toml
 [profile.dist]
@@ -31,13 +42,10 @@ lto = "thin"
   optimization across crates with a lower build-time cost than full LTO. It is
   optional; you can keep your own profile settings.
 
-Release-plz requires this profile and never creates or changes it for you.
-Commit it before creating the release tag.
-
-The runner also needs **cargo-dist 0.33.0**, with its `dist` executable on `PATH`.
-The GitHub action installs it for distribution commands. For direct CLI use,
-[install cargo-dist](https://axodotdev.github.io/cargo-dist/book/install.html)
-separately. Release-plz fails if it is missing or a different version is installed.
+Commit any custom profile settings before creating the release tag.
+Existing profile settings and Cargo configuration overrides are respected.
+The default does not enable thin LTO unless it is already enabled in your release
+profile.
 
 ## Distribution workflow
 

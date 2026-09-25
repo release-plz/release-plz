@@ -28,7 +28,6 @@ impl CargoDist {
         repository: &str,
         targets: &[String],
     ) -> anyhow::Result<Self> {
-        check_dist_profile(metadata.workspace_root.join("Cargo.toml").as_std_path())?;
         let executable = PathBuf::from(format!("dist{}", std::env::consts::EXE_SUFFIX));
         check_executable(&executable)?;
         let original_root = root_repo_path_from_manifest_dir(&metadata.workspace_root)?;
@@ -65,6 +64,7 @@ impl CargoDist {
             manifest["package"]["repository"] = value(repository);
             fs_err::write(path, manifest.to_string())?;
         }
+        ensure_dist_profile(root.join("Cargo.toml").as_std_path())?;
         let config = toml::to_string(&serde_json::json!({
             "workspace": {"members": ["cargo:."]},
             "dist": {
@@ -129,16 +129,18 @@ impl CargoDist {
     }
 }
 
-fn check_dist_profile(manifest_path: &Path) -> anyhow::Result<()> {
-    let manifest: DocumentMut = fs_err::read_to_string(manifest_path)?.parse()?;
-    ensure!(
-        manifest
-            .get("profile")
-            .and_then(|p| p.get("dist"))
-            .is_some_and(|p| p.is_table_like()),
-        "missing [profile.dist] in {}; add it with inherits = \"release\" (suggested: lto = \"thin\")",
-        manifest_path.display()
-    );
+fn ensure_dist_profile(manifest_path: &Path) -> anyhow::Result<()> {
+    let mut manifest: DocumentMut = fs_err::read_to_string(manifest_path)?.parse()?;
+    if manifest
+        .get("profile")
+        .and_then(|p| p.get("dist"))
+        .is_none()
+    {
+        // cargo-dist always builds with --profile dist. Define the fallback only in
+        // the temporary manifest so Cargo config and environment overrides still win.
+        manifest["profile"]["dist"]["inherits"] = value("release");
+        fs_err::write(manifest_path, manifest.to_string())?;
+    }
     Ok(())
 }
 
@@ -190,18 +192,29 @@ mod tests {
     }
 
     #[test]
-    fn dist_profile_is_required_and_never_written() {
+    fn missing_dist_profile_inherits_release_without_extra_settings() {
         let temporary = tempfile::tempdir().unwrap();
         let path = temporary.path().join("Cargo.toml");
         for manifest in ["[workspace]\n", "[profile.release]\nlto = true\n"] {
             fs_err::write(&path, manifest).unwrap();
-            let error = check_dist_profile(&path).unwrap_err();
-            assert!(error.to_string().contains("missing [profile.dist]"));
-            assert_eq!(fs_err::read_to_string(&path).unwrap(), manifest);
+            ensure_dist_profile(&path).unwrap();
+            let actual: toml::Value =
+                toml::from_str(&fs_err::read_to_string(&path).unwrap()).unwrap();
+            let expected: toml::Value = toml::from_str(&format!(
+                "{manifest}\n[profile.dist]\ninherits = 'release'\n"
+            ))
+            .unwrap();
+            assert_eq!(actual, expected);
         }
+    }
+
+    #[test]
+    fn existing_dist_profile_is_preserved() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("Cargo.toml");
         let manifest = "[profile.dist]\ninherits = 'release'\nlto = false\ncodegen-units = 4\n";
         fs_err::write(&path, manifest).unwrap();
-        check_dist_profile(&path).unwrap();
+        ensure_dist_profile(&path).unwrap();
         assert_eq!(fs_err::read_to_string(&path).unwrap(), manifest);
     }
 }
