@@ -28,12 +28,7 @@ impl History {
         let [repo, registry] = ["local", "registry"].map(|name| {
             let path = root.join(name);
             fs_err::create_dir(&path).unwrap();
-            git_cmd::git_in_dir(
-                &path,
-                &["init", &format!("--object-format={object_format}")],
-            )
-            .unwrap();
-            let repo = Repo::init(path);
+            let repo = Repo::init_with_object_format(path, object_format);
             // Keep checked-out files byte-identical to the LF-only registry fixtures.
             repo.git(&["config", "core.autocrlf", "false"]).unwrap();
             write_packages(repo.directory());
@@ -246,19 +241,10 @@ fn assert_next_version(diff: &Diff, expected: &Version) {
     );
 }
 
-#[test]
-fn partial_clone_extension_does_not_prevent_updates() {
-    let history = History::new();
-    history
-        .repo
-        .git(&["config", "core.repositoryformatversion", "1"])
-        .unwrap();
-    history
-        .repo
-        .git(&["config", "extensions.partialClone", "origin"])
-        .unwrap();
+/// From a `history` equal to the release, a breaking change reverted on a
+/// merged branch is still reported, with its sibling, as a minor bump.
+fn assert_reverted_change_is_retained(history: &History) {
     assert_commits(&history.diff(None), &[]);
-
     let breaking = history.write_commit(
         "src/lib.rs",
         "pub fn temporary() {}\n",
@@ -271,23 +257,27 @@ fn partial_clone_extension_does_not_prevent_updates() {
 }
 
 #[test]
+fn partial_clone_extension_does_not_prevent_updates() {
+    let history = History::new();
+    history
+        .repo
+        .git(&["config", "core.repositoryformatversion", "1"])
+        .unwrap();
+    history
+        .repo
+        .git(&["config", "extensions.partialClone", "origin"])
+        .unwrap();
+    assert_reverted_change_is_retained(&history);
+}
+
+#[test]
 fn sha256_repositories_retain_changes_reverted_on_another_branch() {
     let history = History::with_packages_in_format(
         |root| write_package(root, PACKAGE, "0.1.0", ""),
         "sha256",
     );
     assert_eq!(history.repo.current_commit_hash().unwrap().len(), 64);
-    assert_commits(&history.diff(None), &[]);
-
-    let breaking = history.write_commit(
-        "src/lib.rs",
-        "pub fn temporary() {}\n",
-        "feat!: temporary API",
-    );
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(""));
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    assert_reverted_change_is_retained(&history);
 }
 
 #[test]
