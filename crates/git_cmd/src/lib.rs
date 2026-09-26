@@ -297,9 +297,8 @@ impl Repo {
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
         let limit = max_commits.map(|n| format!("--max-count={n}"));
-        let mut args = vec!["--date-order", head];
-        args.extend(limit.as_deref());
-        self.rev_list(&args, exclude, paths)
+        let args: Vec<&str> = limit.as_deref().into_iter().collect();
+        self.walk_at_paths(&args, head, exclude, paths)
     }
 
     /// Commits reachable from `commit` that touch `paths`.
@@ -332,7 +331,7 @@ impl Repo {
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<(String, Vec<String>)>> {
-        let lines = self.rev_list(&["--parents", "--date-order", head], exclude, paths)?;
+        let lines = self.walk_at_paths(&["--parents"], head, exclude, paths)?;
         Ok(lines
             .iter()
             .filter_map(|line| {
@@ -340,6 +339,20 @@ impl Repo {
                 Some((ids.next()?.to_owned(), ids.map(str::to_owned).collect()))
             })
             .collect())
+    }
+
+    /// The date-ordered walk from `head` shared by [`Repo::commits_at_paths`] and
+    /// [`Repo::parents_at_paths`], with extra rev-list `args`.
+    fn walk_at_paths(
+        &self,
+        args: &[&str],
+        head: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
+        let mut args = args.to_vec();
+        args.extend(["--date-order", head]);
+        self.rev_list(&args, exclude, paths)
     }
 
     /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.

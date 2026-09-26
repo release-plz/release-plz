@@ -20,17 +20,22 @@ pub(super) struct RetainedChanges<'a> {
     /// disables the content check, see [`Self::replay`].
     replay: OnceCell<Option<ChangeReplay>>,
     head: String,
+    release_boundaries: Vec<String>,
+    /// Absolute paths, as the outer walk limits Git to: the package directory
+    /// first, then the canonical target of the configured README, if any.
+    paths: Vec<Utf8PathBuf>,
+    /// The same paths relative to the repository, as Git reports them.
+    relative_paths: Vec<Utf8PathBuf>,
     /// The first equal snapshot found by the walk, standing in for the release.
-    released: String,
+    /// `None` until [`Self::add_boundary`] records one: nothing is pruned then.
+    released: Option<String>,
     /// Repository-relative files Cargo packages at the release and, once
     /// [`Self::add_package_files`] ran, at HEAD. `None` when a listing failed:
     /// every file under `paths` counts then.
     package_files: Option<HashSet<Utf8PathBuf>>,
-    /// Repository-relative paths: the package directory first, then the canonical
-    /// target of the configured README, if any.
-    paths: Vec<Utf8PathBuf>,
     /// Git's simplified, path-limited parent graph after release exclusions,
     /// with equal snapshot nodes removed to stop traversal at those boundaries.
+    /// Built with the first boundary, since only pruning needs it.
     parents: HashMap<String, Vec<String>>,
     /// First commit of the simplified walk: HEAD only when HEAD touches the package.
     root: Option<String>,
@@ -41,22 +46,15 @@ pub(super) struct RetainedChanges<'a> {
 }
 
 impl<'a> RetainedChanges<'a> {
-    /// Start from the first equal snapshot `released` and its full-history
-    /// `ancestors`, as in [`Self::add_boundary`].
-    ///
-    /// `package_files` are relative to the package directory, as Cargo lists
-    /// them; `paths` are absolute, with the package directory first.
+    /// Prepare to prune the walk from `head` over `paths`, excluding
+    /// `release_boundaries`, once [`Self::add_boundary`] finds an equal snapshot.
+    /// `paths` are absolute, with the package directory first.
     pub(super) fn new(
         repository: &'a Repo,
         head: &str,
-        released: &str,
-        ancestors: Vec<String>,
         release_boundaries: &[&str],
-        package_files: Option<HashSet<Utf8PathBuf>>,
         paths: &[Utf8PathBuf],
     ) -> anyhow::Result<Self> {
-        // Follow the outer walk's simplification and release exclusions.
-        let graph = repository.parents_at_paths(head, release_boundaries, paths)?;
         // The walked repository can be a temporary copy at a non-canonical path,
         // such as `/var` on macOS, while the README paths were canonicalized.
         // Canonicalization is best effort: the raw path is tried first anyway.
@@ -70,42 +68,64 @@ impl<'a> RetainedChanges<'a> {
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
-        let mut changes = Self {
+        Ok(Self {
             repository,
             replay: OnceCell::new(),
             head: head.to_owned(),
-            released: released.to_owned(),
-            package_files: None,
-            paths: paths
+            release_boundaries: release_boundaries
+                .iter()
+                .copied()
+                .map(str::to_owned)
+                .collect(),
+            paths: paths.to_vec(),
+            relative_paths: paths
                 .iter()
                 .map(|path| relativize(path))
                 .collect::<anyhow::Result<_>>()?,
-            root: graph.first().map(|(commit, _)| commit.clone()),
-            parents: graph.into_iter().collect(),
+            released: None,
+            package_files: None,
+            parents: HashMap::new(),
+            root: None,
             reachable: HashSet::new(),
             released_ancestors: HashSet::new(),
-        };
-        changes.package_files = changes.repository_relative(package_files);
-        changes.add_boundary(released, ancestors);
-        Ok(changes)
+        })
     }
 
     /// Join Cargo's package-relative `files` onto the repository-relative
     /// package directory, so they compare with the paths Git reports.
     fn repository_relative(
         &self,
-        files: Option<HashSet<Utf8PathBuf>>,
-    ) -> Option<HashSet<Utf8PathBuf>> {
-        let package = &self.paths[0];
-        files.map(|files| files.into_iter().map(|file| package.join(file)).collect())
+        files: impl IntoIterator<Item = Utf8PathBuf>,
+    ) -> HashSet<Utf8PathBuf> {
+        let package = &self.relative_paths[0];
+        files.into_iter().map(|file| package.join(file)).collect()
     }
 
-    /// Register an equal snapshot together with its full-history `ancestors`.
+    /// Register an equal snapshot together with its full-history `ancestors`
+    /// and the package-relative `package_files` Cargo lists there.
     ///
     /// Full ancestry also includes branches discarded by merges. An ancestor can
     /// nevertheless survive through another lineage; lineage reachability and the
     /// content check of [`Self::retains`] preserve them.
-    pub(super) fn add_boundary(&mut self, commit: &str, ancestors: Vec<String>) {
+    pub(super) fn add_boundary(
+        &mut self,
+        commit: &str,
+        ancestors: Vec<String>,
+        package_files: Vec<Utf8PathBuf>,
+    ) -> anyhow::Result<()> {
+        if self.released.is_none() {
+            // Follow the outer walk's simplification and release exclusions.
+            let exclude: Vec<&str> = self.release_boundaries.iter().map(String::as_str).collect();
+            let graph = self
+                .repository
+                .parents_at_paths(&self.head, &exclude, &self.paths)?;
+            self.root = graph.first().map(|(commit, _)| commit.clone());
+            self.parents = graph.into_iter().collect();
+            // Every equal snapshot packages the same comparable files, so the
+            // first one stands in for the release.
+            self.released = Some(commit.to_owned());
+            self.package_files = Some(self.repository_relative(package_files));
+        }
         // Remove only the boundary: its ancestors may still be reachable through
         // another lineage, which must remain available for the content check.
         self.parents.remove(commit);
@@ -121,18 +141,25 @@ impl<'a> RetainedChanges<'a> {
             }
             pending.extend(parents.iter().map(String::as_str));
         }
+        Ok(())
+    }
+
+    /// Whether [`Self::add_boundary`] recorded an equal snapshot, so that
+    /// [`Self::retains`] can prune.
+    pub(super) fn has_boundary(&self) -> bool {
+        self.released.is_some()
     }
 
     /// Add the package-relative files Cargo packages at another snapshot,
     /// typically HEAD: a file added or removed since the release is only listed
     /// on one side. A failed listing (`None`) makes every file under `paths` count.
-    pub(super) fn add_package_files(&mut self, files: Option<HashSet<Utf8PathBuf>>) {
+    pub(super) fn add_package_files(&mut self, files: Option<Vec<Utf8PathBuf>>) {
         self.package_files = self
             .package_files
             .take()
-            .zip(self.repository_relative(files))
+            .zip(files)
             .map(|(mut all, files)| {
-                all.extend(files);
+                all.extend(self.repository_relative(files));
                 all
             });
     }
@@ -183,6 +210,11 @@ impl<'a> RetainedChanges<'a> {
     /// Whether the change of `commit` was absent from the release and is still
     /// present at HEAD.
     fn survives(&self, replay: &ChangeReplay, commit: &str) -> anyhow::Result<bool> {
+        // Candidates are ancestors of an equal snapshot, so one was recorded.
+        let released = self
+            .released
+            .as_deref()
+            .context("no equal snapshot was recorded")?;
         let change = replay.change(commit)?;
         // Resolve supported text conflicts in favor of the release: an
         // overwritten change can be absent even when its inverse conflicts.
@@ -191,7 +223,7 @@ impl<'a> RetainedChanges<'a> {
         // its content unchanged, and the change counts as absent. A commit also
         // reachable through another lineage can then be re-reported. Accepted:
         // it only reproduces the pre-existing behavior for that commit.
-        if change.undo_changes_package(&self.released, true, |path| self.includes(path))? {
+        if change.undo_changes_package(released, true, |path| self.includes(path))? {
             return Ok(false);
         }
         // At HEAD, a clean token-level merge can establish that the change
@@ -211,9 +243,16 @@ impl<'a> RetainedChanges<'a> {
             return false;
         }
         if let Some(files) = &self.package_files {
-            files.contains(path) || self.paths.iter().skip(1).any(|readme| path == readme)
+            files.contains(path)
+                || self
+                    .relative_paths
+                    .iter()
+                    .skip(1)
+                    .any(|readme| path == readme)
         } else {
-            self.paths.iter().any(|root| path.starts_with(root))
+            self.relative_paths
+                .iter()
+                .any(|root| path.starts_with(root))
         }
     }
 }
@@ -235,23 +274,25 @@ mod tests {
     }
 
     /// Replay `changed` against the single equal snapshot `released`, treating
-    /// the repository root as the package directory.
+    /// the repository root as the package directory. `package_files` are its
+    /// packaged files, or every file when `None`.
     fn replay<'a>(
         repo: &'a Repo,
         changed: &str,
         released: &str,
-        package_files: Option<HashSet<Utf8PathBuf>>,
+        package_files: Option<Vec<Utf8PathBuf>>,
     ) -> RetainedChanges<'a> {
-        RetainedChanges::new(
-            repo,
-            changed,
-            released,
-            vec![released.to_owned()],
-            &[],
-            package_files,
-            &[repo.directory().to_path_buf()],
-        )
-        .unwrap()
+        let paths = [repo.directory().to_path_buf()];
+        let mut changes = RetainedChanges::new(repo, changed, &[], &paths).unwrap();
+        changes
+            .add_boundary(
+                released,
+                vec![released.to_owned()],
+                package_files.clone().unwrap_or_default(),
+            )
+            .unwrap();
+        changes.add_package_files(package_files);
+        changes
     }
 
     #[test]
@@ -407,7 +448,7 @@ mod tests {
                 &repo,
                 &changed,
                 &released,
-                Some(HashSet::from([Utf8PathBuf::from("file")])),
+                Some(vec![Utf8PathBuf::from("file")]),
             );
             // The first parent has the old file. Reverting relative to the
             // second parent would only remove the unrelated mainline file.
@@ -438,7 +479,7 @@ mod tests {
                 &repo,
                 &target,
                 &target,
-                Some(HashSet::from([Utf8PathBuf::from("old/b")])),
+                Some(vec![Utf8PathBuf::from("old/b")]),
             );
             // Undoing the deletion suggests new/b, but only the original old/b
             // is packaged. Git's structural conflict still affects this package.
