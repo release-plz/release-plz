@@ -1,8 +1,9 @@
-use std::{collections::HashMap, fmt::Write as _, path::Path, process::Command};
+use std::{collections::HashMap, fmt::Write as _, process::Command};
 
 use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 
+use super::TokenConflicts;
 use crate::fs_utils;
 
 /// An isolated Git directory reads the source objects and stores replay results
@@ -24,9 +25,9 @@ impl Replay {
             .output()
             .context("cannot run git merge-tree")?;
         anyhow::ensure!(
-            [help.stdout, help.stderr].iter().any(|output| output
-                .windows(b"merge-base".len())
-                .any(|part| part == b"merge-base")),
+            [help.stdout, help.stderr]
+                .iter()
+                .any(|output| String::from_utf8_lossy(output).contains("merge-base")),
             "checking retained changes requires Git 2.40 or newer (git merge-tree --merge-base)"
         );
         replay.git(&[
@@ -148,14 +149,14 @@ pub(in super::super) struct Change<'a> {
 }
 
 impl Change<'_> {
-    /// Whether undoing `commit` on `target` changes the packaged files. Unresolved
-    /// conflicts count as changes. Supported text conflicts are retried at
-    /// token granularity, favoring the target only for the release check.
+    /// Whether undoing `commit` on `target` changes the files `includes` selects.
+    /// Unresolved conflicts count as changes. Supported text conflicts are
+    /// retried at token granularity, resolved as `conflicts` says.
     pub(super) fn undo_changes_package(
         &self,
         target: &str,
-        favor_target: bool,
-        includes: impl Fn(&Path) -> bool,
+        conflicts: TokenConflicts,
+        includes: impl Fn(&str) -> bool,
     ) -> anyhow::Result<bool> {
         let Self {
             replay,
@@ -184,7 +185,7 @@ impl Change<'_> {
         );
         let mut records = output.stdout.split(|byte| *byte == 0);
         let tree = std::str::from_utf8(records.next().context("missing merge tree")?)?;
-        let mut conflicts: HashMap<&[u8], [Option<ConflictEntry>; 3]> = HashMap::new();
+        let mut stages: HashMap<&[u8], [Option<ConflictEntry>; 3]> = HashMap::new();
         for record in records.by_ref().take_while(|record| !record.is_empty()) {
             let separator = record
                 .iter()
@@ -196,16 +197,12 @@ impl Change<'_> {
             let object = metadata.next().context("missing conflict object")?;
             let stage: usize = metadata.next().context("missing conflict stage")?.parse()?;
             anyhow::ensure!((1..=3).contains(&stage), "invalid conflict stage {stage}");
-            conflicts.entry(path).or_default()[stage - 1] = Some(ConflictEntry {
+            stages.entry(path).or_default()[stage - 1] = Some(ConflictEntry {
                 mode,
                 object: object.to_owned(),
             });
         }
-        let includes = |path: &[u8]| {
-            std::str::from_utf8(path)
-                .map(|path| includes(Path::new(path)))
-                .unwrap_or(true)
-        };
+        let includes = |path: &[u8]| super::includes_bytes(&includes, path);
         // Structural conflicts can have no unmerged stages at all (for example
         // a directory rename). Their stable, machine-readable messages also
         // retain the original paths when a rename moved the staged entries.
@@ -222,8 +219,8 @@ impl Change<'_> {
                 return Ok(true);
             }
         }
-        for (path, conflict) in &conflicts {
-            if includes(path) && !self.conflict_leaves_file_unchanged(conflict, favor_target)? {
+        for (path, conflict) in &stages {
+            if includes(path) && !self.conflict_leaves_file_unchanged(conflict, conflicts)? {
                 return Ok(true);
             }
         }
@@ -239,7 +236,7 @@ impl Change<'_> {
         ])?;
         Ok(changed.split(|byte| *byte == 0)
             // Conflicted paths were checked above, including nonconflicting hunks.
-            .filter(|path| !path.is_empty() && !conflicts.contains_key(path))
+            .filter(|path| !path.is_empty() && !stages.contains_key(path))
             .any(includes))
     }
 
@@ -247,7 +244,7 @@ impl Change<'_> {
     fn conflict_leaves_file_unchanged(
         &self,
         conflict: &[Option<ConflictEntry>; 3],
-        favor_target: bool,
+        conflicts: TokenConflicts,
     ) -> anyhow::Result<bool> {
         let [Some(ancestor), Some(ours), Some(theirs)] = conflict else {
             return Ok(false);
@@ -260,7 +257,7 @@ impl Change<'_> {
             self.replay.git(&["cat-file", "blob", &ours.object])?,
             self.replay.git(&["cat-file", "blob", &theirs.object])?,
         ];
-        super::conflict_leaves_file_unchanged(blobs.each_ref().map(Vec::as_slice), favor_target)
+        super::conflict_leaves_file_unchanged(blobs.each_ref().map(Vec::as_slice), conflicts)
     }
 }
 
