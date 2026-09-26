@@ -1,6 +1,6 @@
-use std::path::Path;
-
 use cargo_metadata::camino::Utf8Path;
+
+use super::TokenConflicts;
 
 pub(in super::super) struct Replay {
     repo: git2::Repository,
@@ -45,8 +45,8 @@ impl Change<'_> {
     pub(super) fn undo_changes_package(
         &self,
         target: &str,
-        favor_target: bool,
-        includes: impl Fn(&Path) -> bool,
+        conflicts: TokenConflicts,
+        includes: impl Fn(&str) -> bool,
     ) -> anyhow::Result<bool> {
         let target = self.repo.find_commit(git2::Oid::from_str(target)?)?;
         // For merges, undo the change relative to the first parent, as
@@ -65,12 +65,8 @@ impl Change<'_> {
             ]
             .into_iter()
             .flatten()
-            .any(|entry| {
-                std::str::from_utf8(&entry.path)
-                    .map(|path| includes(Path::new(path)))
-                    .unwrap_or(true)
-            });
-            if affects_package && !self.conflict_leaves_file_unchanged(&conflict, favor_target)? {
+            .any(|entry| super::includes_bytes(&includes, &entry.path));
+            if affects_package && !self.conflict_leaves_file_unchanged(&conflict, conflicts)? {
                 return Ok(true);
             }
         }
@@ -82,10 +78,10 @@ impl Change<'_> {
             // Conflicted paths were checked above, including nonconflicting hunks.
             .filter(|delta| delta.status() != git2::Delta::Conflicted)
             .any(|delta| {
-                [delta.old_file().path(), delta.new_file().path()]
+                [delta.old_file().path_bytes(), delta.new_file().path_bytes()]
                     .into_iter()
                     .flatten()
-                    .any(&includes)
+                    .any(|path| super::includes_bytes(&includes, path))
             }))
     }
 
@@ -93,7 +89,7 @@ impl Change<'_> {
     fn conflict_leaves_file_unchanged(
         &self,
         conflict: &git2::IndexConflict,
-        favor_target: bool,
+        conflicts: TokenConflicts,
     ) -> anyhow::Result<bool> {
         let (Some(ancestor), Some(ours), Some(theirs)) =
             (&conflict.ancestor, &conflict.our, &conflict.their)
@@ -111,9 +107,6 @@ impl Change<'_> {
             self.repo.find_blob(ours.id)?,
             self.repo.find_blob(theirs.id)?,
         ];
-        super::conflict_leaves_file_unchanged(
-            blobs.each_ref().map(git2::Blob::content),
-            favor_target,
-        )
+        super::conflict_leaves_file_unchanged(blobs.each_ref().map(git2::Blob::content), conflicts)
     }
 }
