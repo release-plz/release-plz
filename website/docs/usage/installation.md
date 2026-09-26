@@ -1,6 +1,8 @@
 # Installation
 
-Make sure you have `git` installed when running `release-plz`.
+Make sure you have `git` installed when running `release-plz`. Repositories using the SHA-256
+object format need Git 2.40 or newer to detect changes kept through a reverted branch; with an
+older Git, `release-plz` leaves them out of the changelog as earlier versions did.
 
 `release-plz` is a rust binary that can be installed in different ways.
 
