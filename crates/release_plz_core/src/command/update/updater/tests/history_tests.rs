@@ -223,6 +223,30 @@ fn assert_next_version(diff: &Diff, expected: &Version) {
 }
 
 #[test]
+fn partial_clone_extension_does_not_prevent_updates() {
+    let history = History::new();
+    history
+        .repo
+        .git(&["config", "core.repositoryformatversion", "1"])
+        .unwrap();
+    history
+        .repo
+        .git(&["config", "extensions.partialClone", "origin"])
+        .unwrap();
+    assert_commits(&history.diff(None), &[]);
+
+    let breaking = history.write_commit(
+        "src/lib.rs",
+        "pub fn temporary() {}\n",
+        "feat!: temporary API",
+    );
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(""));
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
 fn sha256_repositories_retain_changes_reverted_on_another_branch() {
     let history = History::with_packages_in_format(
         |root| write_package(root, PACKAGE, "0.1.0", ""),
