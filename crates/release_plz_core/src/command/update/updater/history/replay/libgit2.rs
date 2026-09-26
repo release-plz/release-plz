@@ -1,25 +1,18 @@
 use std::path::Path;
 
-use git_cmd::Repo;
+use cargo_metadata::camino::Utf8Path;
 
 pub(in super::super) struct Replay {
     repo: git2::Repository,
 }
 
 impl Replay {
-    pub(super) fn new(repository: &Repo) -> anyhow::Result<Self> {
-        // Let Git resolve the path: libgit2 cannot open repositories with some
-        // valid extensions, such as extensions.partialClone.
-        let objects = repository.git(&[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "objects",
-        ])?;
+    /// Replay the objects of the SHA-1 database at `objects`.
+    pub(super) fn new(objects: &Utf8Path) -> anyhow::Result<Self> {
         // Alternates are read-only. Store synthetic attributes and replay results
         // in memory so no objects are added to the source, including worktrees.
         let odb = git2::Odb::new()?;
-        odb.add_disk_alternate(&objects)?;
+        odb.add_disk_alternate(objects.as_str())?;
         odb.add_new_mempack_backend(1000)?;
         let repo = git2::Repository::from_odb(odb)?;
         // Remove user configuration and force the built-in text driver through
@@ -109,9 +102,7 @@ impl Change<'_> {
         };
         if ancestor.path != ours.path
             || theirs.path != ours.path
-            || ancestor.mode != ours.mode
-            || theirs.mode != ours.mode
-            || !matches!(ours.mode, 0o100_644 | 0o100_755)
+            || !super::same_regular_file_mode([ancestor.mode, ours.mode, theirs.mode])
         {
             return Ok(false);
         }
