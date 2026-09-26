@@ -21,11 +21,10 @@ pub(super) struct RetainedChanges<'a> {
     replay: OnceCell<Option<ChangeReplay>>,
     head: String,
     release_boundaries: Vec<String>,
-    /// Absolute paths, as the outer walk limits Git to: the package directory
-    /// first, then the canonical target of the configured README, if any.
-    paths: Vec<Utf8PathBuf>,
+    /// Absolute paths, as the outer walk limits Git to.
+    paths: PackagePaths,
     /// The same paths relative to the repository, as Git reports them.
-    relative_paths: Vec<Utf8PathBuf>,
+    relative_paths: PackagePaths,
     /// The first equal snapshot found by the walk, standing in for the release.
     /// `None` until [`Self::add_boundary`] records one: nothing is pruned then.
     released: Option<String>,
@@ -46,14 +45,13 @@ pub(super) struct RetainedChanges<'a> {
 }
 
 impl<'a> RetainedChanges<'a> {
-    /// Prepare to prune the walk from `head` over `paths`, excluding
+    /// Prepare to prune the walk from `head` over the absolute `paths`, excluding
     /// `release_boundaries`, once [`Self::add_boundary`] finds an equal snapshot.
-    /// `paths` are absolute, with the package directory first.
     pub(super) fn new(
         repository: &'a Repo,
         head: &str,
         release_boundaries: &[&str],
-        paths: &[Utf8PathBuf],
+        paths: &PackagePaths,
     ) -> anyhow::Result<Self> {
         // The walked repository can be a temporary copy at a non-canonical path,
         // such as `/var` on macOS, while the README paths were canonicalized.
@@ -77,11 +75,11 @@ impl<'a> RetainedChanges<'a> {
                 .copied()
                 .map(str::to_owned)
                 .collect(),
-            paths: paths.to_vec(),
-            relative_paths: paths
-                .iter()
-                .map(|path| relativize(path))
-                .collect::<anyhow::Result<_>>()?,
+            paths: paths.clone(),
+            relative_paths: PackagePaths {
+                package: relativize(&paths.package)?,
+                readme: paths.readme.as_deref().map(relativize).transpose()?,
+            },
             released: None,
             package_files: None,
             parents: HashMap::new(),
@@ -97,7 +95,7 @@ impl<'a> RetainedChanges<'a> {
         &self,
         files: impl IntoIterator<Item = Utf8PathBuf>,
     ) -> HashSet<Utf8PathBuf> {
-        let package = &self.relative_paths[0];
+        let package = &self.relative_paths.package;
         files.into_iter().map(|file| package.join(file)).collect()
     }
 
@@ -116,9 +114,9 @@ impl<'a> RetainedChanges<'a> {
         if self.released.is_none() {
             // Follow the outer walk's simplification and release exclusions.
             let exclude: Vec<&str> = self.release_boundaries.iter().map(String::as_str).collect();
-            let graph = self
-                .repository
-                .parents_at_paths(&self.head, &exclude, &self.paths)?;
+            let graph =
+                self.repository
+                    .parents_at_paths(&self.head, &exclude, &self.paths.all())?;
             self.root = graph.first().map(|(commit, _)| commit.clone());
             self.parents = graph.into_iter().collect();
             // Every equal snapshot packages the same comparable files, so the
@@ -242,17 +240,14 @@ impl<'a> RetainedChanges<'a> {
         {
             return false;
         }
+        let PackagePaths { package, readme } = &self.relative_paths;
         if let Some(files) = &self.package_files {
-            files.contains(path)
-                || self
-                    .relative_paths
-                    .iter()
-                    .skip(1)
-                    .any(|readme| path == readme)
+            files.contains(path) || readme.as_deref() == Some(path)
         } else {
-            self.relative_paths
-                .iter()
-                .any(|root| path.starts_with(root))
+            path.starts_with(package)
+                || readme
+                    .as_deref()
+                    .is_some_and(|readme| path.starts_with(readme))
         }
     }
 }
@@ -282,7 +277,10 @@ mod tests {
         released: &str,
         package_files: Option<Vec<Utf8PathBuf>>,
     ) -> RetainedChanges<'a> {
-        let paths = [repo.directory().to_path_buf()];
+        let paths = PackagePaths {
+            package: repo.directory().to_path_buf(),
+            readme: None,
+        };
         let mut changes = RetainedChanges::new(repo, changed, &[], &paths).unwrap();
         changes
             .add_boundary(
