@@ -1,4 +1,4 @@
-use std::{fmt::Write as _, path::Path};
+use std::fmt::Write as _;
 
 use anyhow::Context as _;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -40,20 +40,36 @@ pub(super) enum Change<'a> {
 }
 
 impl Change<'_> {
-    /// Whether undoing this change affects packaged files. Unresolved conflicts
-    /// count as changes. Text conflicts are retried at token granularity,
-    /// favoring the target only when checking the release.
+    /// Whether undoing this change affects the files `includes` selects.
+    /// Unresolved conflicts count as changes. Text conflicts are retried at
+    /// token granularity, resolved as `conflicts` says.
     pub(super) fn undo_changes_package(
         &self,
         target: &str,
-        favor_target: bool,
-        includes: impl Fn(&Path) -> bool,
+        conflicts: TokenConflicts,
+        includes: impl Fn(&str) -> bool,
     ) -> anyhow::Result<bool> {
         match self {
-            Self::Libgit2(change) => change.undo_changes_package(target, favor_target, includes),
-            Self::Cli(change) => change.undo_changes_package(target, favor_target, includes),
+            Self::Libgit2(change) => change.undo_changes_package(target, conflicts, includes),
+            Self::Cli(change) => change.undo_changes_package(target, conflicts, includes),
         }
     }
+}
+
+/// How undoing a change treats tokens that conflict with the target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TokenConflicts {
+    /// Keep the target's tokens: an overwritten change can be absent even when
+    /// its inverse conflicts. Only sound when checking the release.
+    FavorTarget,
+    /// Leave them unresolved, so that they count as changes.
+    Keep,
+}
+
+/// Apply `includes` to a path Git reports as bytes. A path that is not UTF-8
+/// cannot match the package's file list, so it counts as packaged.
+fn includes_bytes(includes: impl Fn(&str) -> bool, path: &[u8]) -> bool {
+    std::str::from_utf8(path).map_or(true, includes)
 }
 
 /// The object format of `repository`: `sha1` or `sha256`.
@@ -96,9 +112,12 @@ fn same_regular_file_mode(modes: [u32; 3]) -> bool {
 }
 
 /// Whether undoing a text conflict leaves the target unchanged. Independent
-/// edits on the same line still apply; conflicting tokens keep the target's
-/// content only when checking the release.
-fn conflict_leaves_file_unchanged(blobs: [&[u8]; 3], favor_target: bool) -> anyhow::Result<bool> {
+/// edits on the same line still apply; `conflicts` decides about tokens that
+/// do conflict.
+fn conflict_leaves_file_unchanged(
+    blobs: [&[u8]; 3],
+    conflicts: TokenConflicts,
+) -> anyhow::Result<bool> {
     let Some(encoded) = encode_conflict(blobs)? else {
         return Ok(false);
     };
@@ -107,7 +126,7 @@ fn conflict_leaves_file_unchanged(blobs: [&[u8]; 3], favor_target: bool) -> anyh
     ours.content(encoded[1].as_bytes());
     theirs.content(encoded[2].as_bytes());
     let mut options = git2::MergeFileOptions::new();
-    if favor_target {
+    if conflicts == TokenConflicts::FavorTarget {
         options.favor(git2::FileFavor::Ours);
     }
     let merged = git2::merge_file(&ancestor, &ours, &theirs, Some(&mut options))?;

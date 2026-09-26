@@ -1,10 +1,20 @@
-use std::{cell::OnceCell, path::Path};
+use std::{
+    cell::OnceCell,
+    collections::{HashMap, HashSet},
+};
+
+use anyhow::Context as _;
+use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
+use git_cmd::Repo;
+use tracing::warn;
+
+use crate::{fs_utils, package_compare::is_generated_package_file};
+
+use super::PackagePaths;
 
 mod replay;
 
-use replay::ChangeReplay;
-
-use super::*;
+use replay::{ChangeReplay, TokenConflicts};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
 ///
@@ -57,7 +67,7 @@ impl<'a> RetainedChanges<'a> {
         // such as `/var` on macOS, while the README paths were canonicalized.
         // Canonicalization is best effort: the raw path is tried first anyway.
         let directory = repository.directory();
-        let canonical_directory = crate::fs_utils::canonicalize_utf8(directory).ok();
+        let canonical_directory = fs_utils::canonicalize_utf8(directory).ok();
         let relativize = |path: &Utf8Path| {
             [Some(directory), canonical_directory.as_deref()]
                 .into_iter()
@@ -221,23 +231,20 @@ impl<'a> RetainedChanges<'a> {
         // its content unchanged, and the change counts as absent. A commit also
         // reachable through another lineage can then be re-reported. Accepted:
         // it only reproduces the pre-existing behavior for that commit.
-        if change.undo_changes_package(released, true, |path| self.includes(path))? {
+        if change.undo_changes_package(released, TokenConflicts::FavorTarget, |path| {
+            self.includes(path)
+        })? {
             return Ok(false);
         }
         // At HEAD, a clean token-level merge can establish that the change
         // was already undone despite later edits on the same line. Keep actual
         // token conflicts: an evolved change may still require its marker.
-        change.undo_changes_package(&self.head, false, |path| self.includes(path))
+        change.undo_changes_package(&self.head, TokenConflicts::Keep, |path| self.includes(path))
     }
 
-    fn includes(&self, path: &Path) -> bool {
-        let Some(path) = Utf8Path::from_path(path) else {
-            return true;
-        };
-        if path
-            .file_name()
-            .is_some_and(crate::package_compare::is_generated_package_file)
-        {
+    fn includes(&self, path: &str) -> bool {
+        let path = Utf8Path::new(path);
+        if path.file_name().is_some_and(is_generated_package_file) {
             return false;
         }
         let PackagePaths { package, readme } = &self.relative_paths;
@@ -481,13 +488,11 @@ mod tests {
             );
             // Undoing the deletion suggests new/b, but only the original old/b
             // is packaged. Git's structural conflict still affects this package.
+            let change = changes.replay().unwrap().change(&changed).unwrap();
+            let includes = |path: &str| changes.includes(path);
             assert!(
-                changes
-                    .replay()
-                    .unwrap()
-                    .change(&changed)
-                    .unwrap()
-                    .undo_changes_package(&target, false, |path| changes.includes(path))
+                change
+                    .undo_changes_package(&target, TokenConflicts::Keep, includes)
                     .unwrap()
             );
         }
