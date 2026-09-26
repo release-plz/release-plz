@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.6...release_plz_core-v0.38.7) - 2026-09-26
+
+### Fixed
+
+- *(changelog)* initialize git-cliff continue field explicitly ([#3101](https://github.com/release-plz/release-plz/pull/3101))
+- *(changelog)* collect package history across merged branches ([#3078](https://github.com/release-plz/release-plz/pull/3078))
+
 ## [0.38.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.5...release_plz_core-v0.38.6) - 2026-09-19
 
 ### Fixed

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.7.0...git_cmd-v0.8.0) - 2026-09-26
+
+### Fixed
+
+- *(changelog)* collect package history across merged branches ([#3078](https://github.com/release-plz/release-plz/pull/3078))
+
 ## [0.7.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.29...git_cmd-v0.7.0) - 2026-09-19
 
 ### Added
