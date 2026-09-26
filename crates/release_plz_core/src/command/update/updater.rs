@@ -928,8 +928,8 @@ impl Updater<'_> {
         Ok(!package_files.is_disjoint(&changed_files))
     }
 
-    /// List the package files in the current checkout as repository-relative paths
-    /// for history comparisons, restoring any existing Cargo.lock after listing.
+    /// List the files Cargo packages in the current checkout, relative to the
+    /// package directory, restoring any existing Cargo.lock after listing.
     ///
     /// Return `None` if listing fails, so history comparisons fall back to all
     /// files under the checked paths.
@@ -941,13 +941,12 @@ impl Updater<'_> {
         let package_files = self.with_cargo_lock_restored(repository, || {
             crate::get_cargo_package_files(package_path)
         })?;
-        let relative = package_path.strip_prefix(repository.directory())?;
         // Cargo also lists generated files that do not exist in the checkout.
         // Tree comparisons only need their names, not canonicalized files.
         Ok(package_files
             .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
             .ok()
-            .map(|files| files.into_iter().map(|path| relative.join(path)).collect()))
+            .map(|files| files.into_iter().collect()))
     }
 }
 

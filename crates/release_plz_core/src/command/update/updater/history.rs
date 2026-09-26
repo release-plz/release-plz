@@ -33,6 +33,9 @@ pub(super) struct RetainedChanges {
 impl RetainedChanges {
     /// Start from the first equal snapshot `released` and its full-history
     /// `ancestors`, as in [`Self::add_boundary`].
+    ///
+    /// `package_files` are relative to the package directory, as Cargo lists
+    /// them; `paths` are absolute, with the package directory first.
     pub(super) fn new(
         repository: &Repo,
         head: &str,
@@ -59,7 +62,7 @@ impl RetainedChanges {
         };
         let mut changes = Self {
             replay: ChangeReplay::new(repository, head, released)?,
-            package_files,
+            package_files: None,
             paths: paths
                 .iter()
                 .map(|path| relativize(path))
@@ -69,8 +72,19 @@ impl RetainedChanges {
             reachable: HashSet::new(),
             released_ancestors: HashSet::new(),
         };
+        changes.package_files = changes.repository_relative(package_files);
         changes.add_boundary(released, ancestors);
         Ok(changes)
+    }
+
+    /// Join Cargo's package-relative `files` onto the repository-relative
+    /// package directory, so they compare with the paths Git reports.
+    fn repository_relative(
+        &self,
+        files: Option<HashSet<Utf8PathBuf>>,
+    ) -> Option<HashSet<Utf8PathBuf>> {
+        let package = &self.paths[0];
+        files.map(|files| files.into_iter().map(|file| package.join(file)).collect())
     }
 
     /// Register an equal snapshot together with its full-history `ancestors`.
@@ -96,14 +110,14 @@ impl RetainedChanges {
         }
     }
 
-    /// Add the files Cargo packages at another snapshot, typically HEAD: a file
-    /// added or removed since the release is only listed on one side. A failed
-    /// listing (`None`) makes every file under `paths` count.
+    /// Add the package-relative files Cargo packages at another snapshot,
+    /// typically HEAD: a file added or removed since the release is only listed
+    /// on one side. A failed listing (`None`) makes every file under `paths` count.
     pub(super) fn add_package_files(&mut self, files: Option<HashSet<Utf8PathBuf>>) {
         self.package_files = self
             .package_files
             .take()
-            .zip(files)
+            .zip(self.repository_relative(files))
             .map(|(mut all, files)| {
                 all.extend(files);
                 all
@@ -144,6 +158,11 @@ impl RetainedChanges {
         let parent = self.replay.first_parent(commit)?;
         // Resolve supported text conflicts in favor of the release: an
         // overwritten change can be absent even when its inverse conflicts.
+        // Known limitation: when the release edited tokens adjacent to the
+        // change, the token-level merge conflicts, favoring the release leaves
+        // its content unchanged, and the change counts as absent. A commit also
+        // reachable through another lineage can then be re-reported. Accepted:
+        // it only reproduces the pre-existing behavior for that commit.
         if self.undo_changes_package(commit, &parent, &self.replay.released, true)? {
             return Ok(false);
         }
@@ -325,10 +344,10 @@ impl RetainedChanges {
         let Some(path) = Utf8Path::from_path(path) else {
             return true;
         };
-        if matches!(
-            path.file_name(),
-            Some("Cargo.lock" | CARGO_TOML_ORIG | CARGO_VCS_INFO)
-        ) {
+        if path
+            .file_name()
+            .is_some_and(crate::package_compare::is_generated_package_file)
+        {
             return false;
         }
         if let Some(files) = &self.package_files {
@@ -492,18 +511,47 @@ mod tests {
         Repo::init(path)
     }
 
+    /// Commit `contents` to `file` at the repository root and return the commit hash.
+    fn commit_file(repo: &Repo, contents: &str) -> String {
+        fs_err::write(repo.directory().join("file"), contents).unwrap();
+        repo.add_all_and_commit("change file").unwrap();
+        repo.current_commit_hash().unwrap()
+    }
+
+    /// Replay `changed` against the single equal snapshot `released`, treating
+    /// the repository root as the package directory.
+    fn replay(
+        repo: &Repo,
+        changed: &str,
+        released: &str,
+        package_files: Option<HashSet<Utf8PathBuf>>,
+    ) -> RetainedChanges {
+        RetainedChanges::new(
+            repo,
+            changed,
+            released,
+            vec![released.to_owned()],
+            &[],
+            package_files,
+            &[repo.directory().to_path_buf()],
+        )
+        .unwrap()
+    }
+
     #[test]
     fn global_merge_attributes_are_isolated() {
         let config = fs_utils::Utf8TempDir::new().unwrap();
         fs_err::create_dir(config.path().join("git")).unwrap();
         fs_err::write(config.path().join("git/attributes"), "* merge=union\n").unwrap();
+        // The test harness matches on the path without the crate name.
+        let child = format!(
+            "{}::merge_configuration_is_isolated_without_changing_worktree_indexes",
+            module_path!().split_once("::").unwrap().1
+        );
         // Run the existing fixture in a fresh process: changing this process's
         // environment is not safe while other tests are running.
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "command::update::updater::history::tests::merge_configuration_is_isolated_without_changing_worktree_indexes",
-            ])
+            .args(["--exact", &child])
             .env("XDG_CONFIG_HOME", config.path())
             .env("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES", "1")
             .output()
@@ -524,14 +572,9 @@ mod tests {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
             fs_err::create_dir(dir.path().join("main")).unwrap();
             let repo = init_repo(&dir.path().join("main"), object_format);
-            let commit_file = |contents: &str| {
-                fs_err::write(repo.directory().join("file"), contents).unwrap();
-                repo.add_all_and_commit("change file").unwrap();
-                repo.current_commit_hash().unwrap()
-            };
-            commit_file("a\n");
-            let changed = commit_file("b\n");
-            let released = commit_file("c\n");
+            commit_file(&repo, "a\n");
+            let changed = commit_file(&repo, "b\n");
+            let released = commit_file(&repo, "c\n");
             if std::env::var_os("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES").is_some() {
                 // Confirm the child really loads the global rule in ordinary Git.
                 assert_eq!(
@@ -559,16 +602,7 @@ mod tests {
                 let head_before = source.current_commit_hash().unwrap();
                 let objects_before = source.git(&["count-objects", "-v"]).unwrap();
                 let contents_before = fs_err::read(path.join("file")).unwrap();
-                let changes = RetainedChanges::new(
-                    &source,
-                    &changed,
-                    &released,
-                    vec![released.clone()],
-                    &[],
-                    None,
-                    &[path.to_path_buf()],
-                )
-                .unwrap();
+                let changes = replay(&source, &changed, &released, None);
 
                 assert!(changes.survives(&changed).unwrap());
                 assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
@@ -600,24 +634,10 @@ mod tests {
             ] {
                 let dir = fs_utils::Utf8TempDir::new().unwrap();
                 let repo = init_repo(dir.path(), object_format);
-                let commit_file = |contents: &str| {
-                    fs_err::write(repo.directory().join("file"), contents).unwrap();
-                    repo.add_all_and_commit("change file").unwrap();
-                    repo.current_commit_hash().unwrap()
-                };
-                commit_file(base);
-                let changed = commit_file(changed);
-                let released = commit_file(released);
-                let changes = RetainedChanges::new(
-                    &repo,
-                    &changed,
-                    &released,
-                    vec![released.clone()],
-                    &[],
-                    None,
-                    &[repo.directory().to_path_buf()],
-                )
-                .unwrap();
+                commit_file(&repo, base);
+                let changed = commit_file(&repo, changed);
+                let released = commit_file(&repo, released);
+                let changes = replay(&repo, &changed, &released, None);
                 // A nonconflicting hunk still undoes a released change. Binary
                 // conflicts cannot establish absence by choosing the release's bytes.
                 assert!(!changes.survives(&changed).unwrap());
@@ -635,16 +655,7 @@ mod tests {
             repo.git(&["rm", "README.md"]).unwrap();
             repo.add_all_and_commit("remove root's file").unwrap();
             let released = repo.current_commit_hash().unwrap();
-            let changes = RetainedChanges::new(
-                &repo,
-                &root,
-                &released,
-                vec![released.clone()],
-                &[],
-                None,
-                &[repo.directory().to_path_buf()],
-            )
-            .unwrap();
+            let changes = replay(&repo, &root, &released, None);
             assert!(changes.survives(&root).unwrap());
         }
     }
@@ -668,16 +679,12 @@ mod tests {
             fs_err::write(repo.directory().join("file"), "a\n").unwrap();
             repo.add_all_and_commit("revert merged change").unwrap();
             let released = repo.current_commit_hash().unwrap();
-            let changes = RetainedChanges::new(
+            let changes = replay(
                 &repo,
                 &changed,
                 &released,
-                vec![released.clone()],
-                &[],
                 Some(HashSet::from([Utf8PathBuf::from("file")])),
-                &[repo.directory().to_path_buf()],
-            )
-            .unwrap();
+            );
             // The first parent has the old file. Reverting relative to the
             // second parent would only remove the unrelated mainline file.
             assert!(changes.survives(&changed).unwrap());
@@ -700,16 +707,12 @@ mod tests {
             repo.git(&["mv", "old", "new"]).unwrap();
             repo.add_all_and_commit("rename directory").unwrap();
             let target = repo.current_commit_hash().unwrap();
-            let changes = RetainedChanges::new(
+            let changes = replay(
                 &repo,
                 &target,
                 &target,
-                vec![target.clone()],
-                &[],
                 Some(HashSet::from([Utf8PathBuf::from("old/b")])),
-                &[repo.directory().to_path_buf()],
-            )
-            .unwrap();
+            );
             // Undoing the deletion suggests new/b, but only the original old/b
             // is packaged. Git's structural conflict still affects this package.
             assert!(

@@ -27,6 +27,17 @@ pub(crate) const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
 /// from a Git checkout.
 pub(crate) const CARGO_VCS_INFO: &str = ".cargo_vcs_info.json";
 
+/// Whether a file name is one Cargo generates while packaging rather than a
+/// source file: the packaging markers and Cargo.lock.
+///
+/// Older published libraries may lack Cargo.lock, but modern `cargo package --list`
+/// includes it even when absent, and its contents can differ in workspaces. The
+/// updater separately checks dependency versions for executables when both
+/// lockfiles exist, so content comparisons ignore all three names.
+pub(crate) fn is_generated_package_file(name: &str) -> bool {
+    matches!(name, CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock")
+}
+
 /// Return true if `package` is an extracted registry package rather than a source tree.
 ///
 /// The two are compared differently: an extracted package already contains exactly
@@ -91,17 +102,9 @@ pub(crate) fn are_packages_equal_cached(
     })?;
     let released_package_files = released_package_files.get(registry_package)?;
 
-    // Older published libraries may lack Cargo.lock, but modern `cargo package --list`
-    // includes it even when absent. Ignore its presence to preserve the comparison
-    // behavior from when both sides used Cargo's file list. Its contents can also
-    // differ in workspaces; the updater separately checks dependency versions for
-    // executables when both lockfiles exist.
-    let is_comparable_file = |file: &&Utf8PathBuf| {
-        !matches!(
-            file.as_str(),
-            CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock"
-        )
-    };
+    // Ignoring Cargo.lock's presence preserves the comparison behavior from when
+    // both sides used Cargo's file list.
+    let is_comparable_file = |file: &&Utf8PathBuf| !is_generated_package_file(file.as_str());
     let local_files = local_package_files.iter().filter(is_comparable_file);
 
     let registry_files = released_package_files
