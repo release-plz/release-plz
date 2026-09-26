@@ -677,7 +677,7 @@ impl Updater<'_> {
             &paths_to_check,
             max_analyze_commits,
         )?;
-        let mut retained_changes: Option<history::RetainedChanges> = None;
+        let mut retained_changes: Option<history::RetainedChanges<'_>> = None;
         for current_commit_hash in commits {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
