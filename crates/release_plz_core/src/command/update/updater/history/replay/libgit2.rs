@@ -120,20 +120,9 @@ impl Change<'_> {
             self.repo.find_blob(ours.id)?,
             self.repo.find_blob(theirs.id)?,
         ];
-        let Some(encoded) = super::encode_conflict(blobs.each_ref().map(git2::Blob::content))?
-        else {
-            return Ok(false);
-        };
-        let [mut ancestor, mut ours, mut theirs] =
-            std::array::from_fn(|_| git2::MergeFileInput::new());
-        ancestor.content(encoded[0].as_bytes());
-        ours.content(encoded[1].as_bytes());
-        theirs.content(encoded[2].as_bytes());
-        let mut options = git2::MergeFileOptions::new();
-        if favor_target {
-            options.favor(git2::FileFavor::Ours);
-        }
-        let merged = git2::merge_file(&ancestor, &ours, &theirs, Some(&mut options))?;
-        Ok(merged.is_automergeable() && merged.content() == encoded[1].as_bytes())
+        super::conflict_leaves_file_unchanged(
+            blobs.each_ref().map(git2::Blob::content),
+            favor_target,
+        )
     }
 }

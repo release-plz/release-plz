@@ -53,6 +53,25 @@ impl Change<'_> {
     }
 }
 
+/// Whether undoing a text conflict leaves the target unchanged. Independent
+/// edits on the same line still apply; conflicting tokens keep the target's
+/// content only when checking the release.
+fn conflict_leaves_file_unchanged(blobs: [&[u8]; 3], favor_target: bool) -> anyhow::Result<bool> {
+    let Some(encoded) = encode_conflict(blobs)? else {
+        return Ok(false);
+    };
+    let [mut ancestor, mut ours, mut theirs] = std::array::from_fn(|_| git2::MergeFileInput::new());
+    ancestor.content(encoded[0].as_bytes());
+    ours.content(encoded[1].as_bytes());
+    theirs.content(encoded[2].as_bytes());
+    let mut options = git2::MergeFileOptions::new();
+    if favor_target {
+        options.favor(git2::FileFavor::Ours);
+    }
+    let merged = git2::merge_file(&ancestor, &ours, &theirs, Some(&mut options))?;
+    Ok(merged.is_automergeable() && merged.content() == encoded[1].as_bytes())
+}
+
 /// Put words and individual punctuation/whitespace characters on separate lines.
 /// Keeping identifiers whole avoids aligning their letters with unrelated edits.
 /// Bound the expanded input and leave binary or non-UTF-8 content unresolved.

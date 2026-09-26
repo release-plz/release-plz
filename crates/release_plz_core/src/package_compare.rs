@@ -74,27 +74,29 @@ pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
 ) -> anyhow::Result<bool> {
-    are_packages_equal_cached(
+    Ok(equal_package_files(
         local_package,
         registry_package,
         &ReleasedPackageFiles::default(),
-    )
+    )?
+    .is_some())
 }
 
-/// Same as [`are_packages_equal`], reusing the released package's file list
-/// across the commits of a single history walk.
-pub(crate) fn are_packages_equal_cached(
+/// Return the local package's file list if both packages are equal, reusing the
+/// released package's file list across the commits of a single history walk.
+/// `Some`, even with an empty list, means equal; `None` means different.
+pub(crate) fn equal_package_files(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
     released_package_files: &ReleasedPackageFiles,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
     debug!(
         "compare local package {:?} with registry package {:?}",
         local_package, registry_package
     );
     if !are_cargo_toml_equal(local_package, registry_package) {
         debug!("Cargo.toml is different");
-        return Ok(false);
+        return Ok(None);
     }
 
     let local_package_files = get_cargo_package_files(local_package).with_context(|| {
@@ -116,7 +118,7 @@ pub(crate) fn are_packages_equal_cached(
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
         debug!("cargo package list is different");
-        return Ok(false);
+        return Ok(None);
     }
 
     let local_files = local_files
@@ -141,11 +143,11 @@ pub(crate) fn are_packages_equal_cached(
 
         let registry_path = registry_package.join(relative_path);
         if !are_files_equal(&local_path, &registry_path).context("files are not equal")? {
-            return Ok(false);
+            return Ok(None);
         }
     }
 
-    Ok(true)
+    Ok(Some(local_package_files))
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {

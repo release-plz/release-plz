@@ -248,9 +248,6 @@ impl Change<'_> {
             .any(includes))
     }
 
-    /// Whether a text conflict's inverse leaves the target unchanged. Independent
-    /// edits on the same line still apply; conflicting tokens keep the
-    /// target's content only when checking the release.
     /// Binary, large, rename, deletion, and mode conflicts cannot establish absence.
     fn conflict_leaves_file_unchanged(
         &self,
@@ -271,32 +268,7 @@ impl Change<'_> {
             self.replay.git(&["cat-file", "blob", &ours.object])?,
             self.replay.git(&["cat-file", "blob", &theirs.object])?,
         ];
-        let Some(encoded) = super::encode_conflict(blobs.each_ref().map(Vec::as_slice))? else {
-            return Ok(false);
-        };
-        let files = fs_utils::Utf8TempDir::new()?;
-        let paths = ["ancestor", "ours", "theirs"].map(|name| files.path().join(name));
-        for (path, contents) in paths.iter().zip(&encoded) {
-            fs_err::write(path, contents)?;
-        }
-        let mut command = self.replay.command();
-        command.args(["merge-file", "-p"]);
-        if favor_target {
-            command.arg("--ours");
-        }
-        let output = command
-            .arg("--")
-            .args([&paths[1], &paths[0], &paths[2]])
-            .output()
-            .context("cannot run git merge-file")?;
-        // merge-file returns the number of conflicts, capped at 127; errors
-        // use negative exit codes, represented as 128 or greater by the shell.
-        anyhow::ensure!(
-            matches!(output.status.code(), Some(0..=127)),
-            "git merge-file failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Ok(output.status.success() && output.stdout == encoded[1].as_bytes())
+        super::conflict_leaves_file_unchanged(blobs.each_ref().map(Vec::as_slice), favor_target)
     }
 }
 

@@ -690,7 +690,7 @@ impl Updater<'_> {
             }
             checkout_commit(repository, &current_commit_hash)?;
             if let Some((released_package, released_path)) = released {
-                let are_packages_equal = self.check_package_equality(
+                let equal_package_files = self.equal_package_files(
                     repository,
                     package,
                     package_path,
@@ -698,7 +698,7 @@ impl Updater<'_> {
                     released_path,
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                if are_packages_equal {
+                if let Some(package_files) = equal_package_files {
                     // Collect pruning candidates with full history: a "keep mine"
                     // merge can hide real ancestors from a simplified walk. Reuse
                     // the outer walk's paths and release boundaries to avoid
@@ -719,7 +719,7 @@ impl Updater<'_> {
                                 &current_commit_hash,
                                 ancestors,
                                 &release_boundaries,
-                                self.history_package_files(package_path, repository)?,
+                                Some(package_files.into_iter().collect()),
                                 &paths_to_check,
                             )?);
                         }
@@ -768,7 +768,7 @@ impl Updater<'_> {
         Ok(())
     }
 
-    fn check_package_equality(
+    fn equal_package_files(
         &self,
         repository: &Repo,
         package: &Package,
@@ -776,17 +776,17 @@ impl Updater<'_> {
         registry_package: &RegistryPackage,
         registry_package_path: &Utf8Path,
         released_package_files: &ReleasedPackageFiles,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
             package_path,
             &registry_package.package,
         )? {
             debug!("{}: README updated", package.name);
-            return Ok(false);
+            return Ok(None);
         }
         self.with_cargo_lock_restored(repository, || {
-            crate::package_compare::are_packages_equal_cached(
+            crate::package_compare::equal_package_files(
                 package_path,
                 registry_package_path,
                 released_package_files,
