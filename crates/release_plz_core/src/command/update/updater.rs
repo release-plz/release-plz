@@ -674,7 +674,7 @@ impl Updater<'_> {
         let commits = repository.commits_at_paths(
             "HEAD",
             &release_boundaries,
-            &paths_to_check,
+            &paths_to_check.all(),
             max_analyze_commits,
         )?;
         let mut retained_changes =
@@ -706,7 +706,7 @@ impl Updater<'_> {
                     let ancestors = repository.ancestors_at_paths(
                         &current_commit_hash,
                         &release_boundaries,
-                        &paths_to_check,
+                        &paths_to_check.all(),
                     )?;
                     retained_changes.add_boundary(
                         &current_commit_hash,
@@ -1019,12 +1019,30 @@ fn get_package_files(
         .collect()
 }
 
-fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    let mut paths = vec![package_path.to_path_buf()];
-    if let Some(readme_path) = crate::local_readme_override(package, package_path)? {
-        paths.push(readme_path);
+/// The paths whose history holds a package's changes.
+#[derive(Clone, Debug)]
+struct PackagePaths {
+    /// The package directory.
+    package: Utf8PathBuf,
+    /// The canonical target of the README configured in `Cargo.toml`, when it
+    /// exists: it can live outside the package directory.
+    readme: Option<Utf8PathBuf>,
+}
+
+impl PackagePaths {
+    /// Every path, for path-limited Git commands.
+    fn all(&self) -> Vec<&Utf8Path> {
+        std::iter::once(self.package.as_path())
+            .chain(self.readme.as_deref())
+            .collect()
     }
-    Ok(paths)
+}
+
+fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<PackagePaths> {
+    Ok(PackagePaths {
+        package: package_path.to_path_buf(),
+        readme: crate::local_readme_override(package, package_path)?,
+    })
 }
 
 struct ChangelogRepo<'a> {
