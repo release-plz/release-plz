@@ -10,13 +10,9 @@ use super::*;
 /// in memory to distinguish surviving contributions from discarded merge parents.
 /// A revert that leaves the release unchanged proves a change was absent there.
 pub(super) struct RetainedChanges {
-    /// The walked object database, with an isolated configuration and index so
-    /// snapshots and user merge drivers cannot affect the content check.
-    repo: git2::Repository,
-    /// The branch tip whose surviving changes are being released.
-    head: git2::Oid,
-    /// The first equal snapshot found by the walk, standing in for the release.
-    released: git2::Oid,
+    /// Content replay is unavailable for object formats libgit2 cannot read.
+    /// Those repositories retain the original equality-based ancestry pruning.
+    replay: Option<ChangeReplay>,
     /// Repository-relative files Cargo packages at the release and, once
     /// [`Self::add_package_files`] ran, at HEAD. `None` when a listing failed:
     /// every file under `paths` counts then.
@@ -62,25 +58,8 @@ impl RetainedChanges {
                 .map(Utf8Path::to_path_buf)
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
-        // Only objects are needed. Wrapping the database removes the worktree
-        // and git directory, including `info/attributes`. An empty configuration
-        // excludes `merge.default` and `core.attributesFile`. Force the built-in
-        // text driver through a synthetic index, overriding even system/global
-        // attributes without changing the user's index, config, or attribute files.
-        let source = git2::Repository::open(directory)?;
-        let repo = git2::Repository::from_odb(source.odb()?)?;
-        repo.set_config(&git2::Config::new()?)?;
-        let mut index = git2::Index::new()?;
-        {
-            let mut tree = repo.treebuilder(None)?;
-            tree.insert(".gitattributes", repo.blob(b"* merge=text\n")?, 0o100_644)?;
-            index.read_tree(&repo.find_tree(tree.write()?)?)?;
-        }
-        repo.set_index(&mut index)?;
         let mut changes = Self {
-            repo,
-            head: git2::Oid::from_str(head)?,
-            released: git2::Oid::from_str(released)?,
+            replay: ChangeReplay::new(repository, head, released)?,
             package_files,
             paths: paths
                 .iter()
@@ -135,9 +114,11 @@ impl RetainedChanges {
     /// Whether the walk can skip `commit` without inspecting it: it is an
     /// ancestor of an equal snapshot and no other lineage reaches it without
     /// passing one. This is only an optimization; [`Self::retains`] makes the
-    /// final decision with every discovered boundary.
+    /// final decision with every discovered boundary. When replay is unavailable,
+    /// every ancestor is pruned as before.
     pub(super) fn skips(&self, commit: &str) -> bool {
-        self.released_ancestors.contains(commit) && !self.reachable.contains(commit)
+        self.released_ancestors.contains(commit)
+            && (self.replay.is_none() || !self.reachable.contains(commit))
     }
 
     /// Whether `commit` stays in the diff: either it is not an ancestor of an
@@ -163,25 +144,30 @@ impl RetainedChanges {
     /// Whether the change of `commit` was absent from the release and is still
     /// present at HEAD.
     fn survives(&self, commit: &str) -> anyhow::Result<bool> {
-        let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
-        let released = self.repo.find_commit(self.released)?;
+        let Some(replay) = &self.replay else {
+            return Ok(false);
+        };
+        let repo = &replay.repo;
+        let commit = repo.find_commit(git2::Oid::from_str(commit)?)?;
+        let released = repo.find_commit(replay.released)?;
         // Resolve supported text conflicts in favor of the release: an
         // overwritten change can be absent even when its inverse conflicts.
-        if self.undo_changes_package(&commit, &released, git2::FileFavor::Ours)? {
+        if self.undo_changes_package(repo, &commit, &released, git2::FileFavor::Ours)? {
             return Ok(false);
         }
-        let head = self.repo.find_commit(self.head)?;
-        // At HEAD, a clean character-level merge can establish that the change
+        let head = repo.find_commit(replay.head)?;
+        // At HEAD, a clean token-level merge can establish that the change
         // was already undone despite later edits on the same line. Keep actual
-        // character conflicts: an evolved change may still require its marker.
-        self.undo_changes_package(&commit, &head, git2::FileFavor::Normal)
+        // token conflicts: an evolved change may still require its marker.
+        self.undo_changes_package(repo, &commit, &head, git2::FileFavor::Normal)
     }
 
     /// Whether undoing `commit` on `target` changes the packaged files. Unresolved
     /// conflicts count as changes. Supported text conflicts are retried at
-    /// character granularity, favoring the target only for the release check.
+    /// token granularity, favoring the target only for the release check.
     fn undo_changes_package(
         &self,
+        repo: &git2::Repository,
         commit: &git2::Commit<'_>,
         target: &git2::Commit<'_>,
         text_conflict_favor: git2::FileFavor,
@@ -189,7 +175,7 @@ impl RetainedChanges {
         // For merge commits, undo the change relative to the first parent, as
         // `git revert -m 1` does. Root commits are handled by libgit2's empty base.
         let mainline = u32::from(commit.parent_count() > 1);
-        let index = self.repo.revert_commit(commit, target, mainline, None)?;
+        let index = repo.revert_commit(commit, target, mainline, None)?;
         let tree = target.tree()?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
@@ -206,14 +192,12 @@ impl RetainedChanges {
                     .unwrap_or(true)
             });
             if affects_package
-                && !self.conflict_leaves_file_unchanged(&conflict, text_conflict_favor)?
+                && !Self::conflict_leaves_file_unchanged(repo, &conflict, text_conflict_favor)?
             {
                 return Ok(true);
             }
         }
-        let diff = self
-            .repo
-            .diff_tree_to_index(Some(&tree), Some(&index), None)?;
+        let diff = repo.diff_tree_to_index(Some(&tree), Some(&index), None)?;
         Ok(diff
             .deltas()
             // Conflicted paths were checked above, including any nonconflicting
@@ -228,11 +212,11 @@ impl RetainedChanges {
     }
 
     /// Whether a text conflict's inverse leaves the target unchanged. Independent
-    /// edits on the same line still apply; conflicting characters keep the
+    /// edits on the same line still apply; conflicting tokens keep the
     /// target's content only when checking the release.
     /// Binary, large, rename, deletion, and mode conflicts cannot establish absence.
     fn conflict_leaves_file_unchanged(
-        &self,
+        repo: &git2::Repository,
         conflict: &git2::IndexConflict,
         favor: git2::FileFavor,
     ) -> anyhow::Result<bool> {
@@ -250,13 +234,14 @@ impl RetainedChanges {
             return Ok(false);
         }
         let blobs = [
-            self.repo.find_blob(ancestor.id)?,
-            self.repo.find_blob(ours.id)?,
-            self.repo.find_blob(theirs.id)?,
+            repo.find_blob(ancestor.id)?,
+            repo.find_blob(ours.id)?,
+            repo.find_blob(theirs.id)?,
         ];
         let max_conflict_input_bytes = 1024 * 1024; // 1 MiB across all three snapshots.
-        // One character per line lets libgit2 distinguish independent edits on
-        // the same source line. Bound the expanded input and leave binary or
+        // Put words and individual punctuation/whitespace characters on separate
+        // lines. Keeping identifiers whole avoids aligning their letters with
+        // unrelated later edits. Bound the expanded input and leave binary or
         // non-UTF-8 content unresolved.
         if blobs.iter().map(git2::Blob::size).sum::<usize>() > max_conflict_input_bytes
             || blobs.iter().any(|blob| blob.content().contains(&0))
@@ -268,11 +253,18 @@ impl RetainedChanges {
             let Ok(contents) = std::str::from_utf8(blob.content()) else {
                 return Ok(false);
             };
-            let mut characters = String::with_capacity(contents.len() * 3);
+            let mut tokens = String::with_capacity(contents.len() * 4);
+            let mut in_word = false;
             for character in contents.chars() {
-                writeln!(characters, "{:x}", u32::from(character))?;
+                let is_word = character.is_alphanumeric() || character == '_';
+                if !tokens.is_empty() && !(in_word && is_word) {
+                    tokens.push('\n');
+                }
+                write!(tokens, "{:x},", u32::from(character))?;
+                in_word = is_word;
             }
-            encoded.push(characters);
+            tokens.push('\n');
+            encoded.push(tokens);
         }
         let [mut ancestor, mut ours, mut theirs] =
             std::array::from_fn(|_| git2::MergeFileInput::new());
@@ -300,6 +292,46 @@ impl RetainedChanges {
         } else {
             self.paths.iter().any(|root| path.starts_with(root))
         }
+    }
+}
+
+/// The state needed to replay commits, available only for supported object formats.
+struct ChangeReplay {
+    /// An isolated object database and index prevent worktree attributes or user
+    /// merge drivers from affecting content checks.
+    repo: git2::Repository,
+    head: git2::Oid,
+    /// The first equal snapshot found by the walk, standing in for the release.
+    released: git2::Oid,
+}
+
+impl ChangeReplay {
+    fn new(repository: &Repo, head: &str, released: &str) -> anyhow::Result<Option<Self>> {
+        let object_format = repository.git(&["rev-parse", "--show-object-format"])?;
+        if object_format != "sha1" {
+            debug!("using ancestry pruning for unsupported Git object format {object_format}");
+            return Ok(None);
+        }
+        // Only objects are needed. Wrapping the database removes the worktree
+        // and git directory, including `info/attributes`. An empty configuration
+        // excludes `merge.default` and `core.attributesFile`. Force the built-in
+        // text driver through a synthetic index, overriding even system/global
+        // attributes without changing the user's index, config, or attribute files.
+        let source = git2::Repository::open(repository.directory())?;
+        let repo = git2::Repository::from_odb(source.odb()?)?;
+        repo.set_config(&git2::Config::new()?)?;
+        let mut index = git2::Index::new()?;
+        {
+            let mut tree = repo.treebuilder(None)?;
+            tree.insert(".gitattributes", repo.blob(b"* merge=text\n")?, 0o100_644)?;
+            index.read_tree(&repo.find_tree(tree.write()?)?)?;
+        }
+        repo.set_index(&mut index)?;
+        Ok(Some(Self {
+            repo,
+            head: git2::Oid::from_str(head)?,
+            released: git2::Oid::from_str(released)?,
+        }))
     }
 }
 

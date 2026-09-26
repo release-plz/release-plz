@@ -18,12 +18,21 @@ impl History {
     }
 
     fn with_packages(write_packages: impl Fn(&Utf8Path)) -> Self {
+        Self::with_packages_in_format(write_packages, "sha1")
+    }
+
+    fn with_packages_in_format(write_packages: impl Fn(&Utf8Path), object_format: &str) -> Self {
         let dir = fs_utils::Utf8TempDir::new().unwrap();
         // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
         let root = fs_utils::canonicalize_utf8(dir.path()).unwrap();
         let [repo, registry] = ["local", "registry"].map(|name| {
             let path = root.join(name);
             fs_err::create_dir(&path).unwrap();
+            git_cmd::git_in_dir(
+                &path,
+                &["init", &format!("--object-format={object_format}")],
+            )
+            .unwrap();
             let repo = Repo::init(path);
             // Keep checked-out files byte-identical to the LF-only registry fixtures.
             repo.git(&["config", "core.autocrlf", "false"]).unwrap();
@@ -201,6 +210,28 @@ fn assert_next_version(diff: &Diff, expected: &Version) {
 }
 
 #[test]
+fn sha256_repositories_preserve_equality_ancestry_pruning() {
+    let history = History::with_packages_in_format(
+        |root| write_package(root, PACKAGE, "0.1.0", ""),
+        "sha256",
+    );
+    assert_eq!(history.repo.current_commit_hash().unwrap().len(), 64);
+    assert_commits(&history.diff(None), &[]);
+
+    history.write_commit(
+        "src/lib.rs",
+        "pub fn temporary() {}\n",
+        "feat!: temporary API",
+    );
+    let sibling = history.merge_ignored_revert("src/lib.rs", Some(""));
+    // Retained-change replay cannot inspect SHA-256 objects yet. Preserve the
+    // previous ancestry-based pruning and still release independent fixes.
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&sibling]);
+    assert_next_version(&diff, &Version::new(0, 1, 1));
+}
+
+#[test]
 fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
     let history = api_history();
     let repo = &history.repo;
@@ -339,46 +370,53 @@ fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
 
 #[test]
 fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
-    let history = api_history();
-    let released_api = BREAKING_API.replace(
-        "api(_: bool) {}",
+    for released_api in [
         "api(_: bool) { /* published implementation */ }",
-    );
-    fs_err::write(
-        history.registry.directory().join("src/lib.rs"),
-        &released_api,
-    )
-    .unwrap();
-    history
-        .registry
-        .add_all_and_commit("published implementation")
+        "api(_: bool) { println!(\"hello\"); }",
+    ] {
+        let history = api_history();
+        let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
+        fs_err::write(
+            history.registry.directory().join("src/lib.rs"),
+            &released_api,
+        )
         .unwrap();
-    history.write_commit("src/lib.rs", BREAKING_API, "feat!: already released API");
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+        history
+            .registry
+            .add_all_and_commit("published implementation")
+            .unwrap();
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: already released API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
 
-    // The release already contains the breaking signature. Its later body edit
-    // must not make a line-level revert conflict look like an absent signature.
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&sibling]);
-    assert_next_version(&diff, &Version::new(0, 1, 1));
+        // The release already contains the breaking signature. Its later body edit
+        // must not make a line-level revert conflict look like an absent signature.
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&sibling]);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
 }
 
 #[test]
 fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
-    let history = api_history();
-    history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
-    let fixed = history.write_commit(
-        "src/lib.rs",
-        &BASE_API.replace("api() {}", "api() { /* fixed implementation */ }"),
-        "fix: restore compatible API and fix implementation",
-    );
+    for fixed_api in [
+        "api() { /* fixed implementation */ }",
+        "api() { println!(\"hello\"); }",
+    ] {
+        let history = api_history();
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        let fixed = history.write_commit(
+            "src/lib.rs",
+            &BASE_API.replace("api() {}", fixed_api),
+            "fix: restore compatible API and fix implementation",
+        );
 
-    // The body edit conflicts with a line-level inverse of the breaking commit,
-    // but its signature change has already been undone at HEAD.
-    let diff = history.diff(None);
-    assert_next_version(&diff, &Version::new(0, 1, 1));
-    assert_commits(&diff, &[&sibling, &fixed]);
+        // Body edits conflict with a line-level inverse. Repeated punctuation
+        // in a call must not align with the removed parameter's parentheses.
+        let diff = history.diff(None);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+        assert_commits(&diff, &[&sibling, &fixed]);
+    }
 }
 
 #[test]
@@ -386,6 +424,7 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
     for updated_api in [
         "api(_: u8) {}",
         "api(_: bool) { /* evolved implementation */ }",
+        "api(_: bool) { println!(\"hello\"); }",
     ] {
         let history = api_history();
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
@@ -397,7 +436,7 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
         );
 
         // Undoing the signature after a body edit is clean but changes HEAD;
-        // an evolved argument leaves a character conflict. Both retain the marker.
+        // an evolved argument leaves a token conflict. Both retain the marker.
         let diff = history.diff(None);
         assert_commits(&diff, &[&breaking, &sibling, &evolved]);
         assert_next_version(&diff, &Version::new(0, 2, 0));
