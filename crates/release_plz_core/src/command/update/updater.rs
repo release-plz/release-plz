@@ -722,15 +722,13 @@ impl Updater<'_> {
             &paths_to_check,
             max_analyze_commits,
         )?;
-        let mut retained_changes: Option<history::RetainedChanges<'_>> = None;
+        let mut retained_changes =
+            history::RetainedChanges::new(repository, &head, &release_boundaries, &paths_to_check)?;
         for current_commit_hash in commits {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
-            if retained_changes
-                .as_ref()
-                .is_some_and(|changes| changes.skips(&current_commit_hash))
-            {
+            if retained_changes.skips(&current_commit_hash) {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
@@ -755,20 +753,11 @@ impl Updater<'_> {
                         &release_boundaries,
                         &paths_to_check,
                     )?;
-                    match &mut retained_changes {
-                        Some(changes) => changes.add_boundary(&current_commit_hash, ancestors),
-                        None => {
-                            retained_changes = Some(history::RetainedChanges::new(
-                                repository,
-                                &head,
-                                &current_commit_hash,
-                                ancestors,
-                                &release_boundaries,
-                                Some(package_files.into_iter().collect()),
-                                &paths_to_check,
-                            )?);
-                        }
-                    }
+                    retained_changes.add_boundary(
+                        &current_commit_hash,
+                        ancestors,
+                        package_files,
+                    )?;
                     continue;
                 }
             }
@@ -784,16 +773,16 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to compare dependencies")?;
-        if !diff.commits.is_empty()
-            && let Some(mut changes) = retained_changes
-        {
+        if !diff.commits.is_empty() && retained_changes.has_boundary() {
             // Both file lists are needed: a file added or removed since the release
             // is only listed on one side.
-            changes.add_package_files(self.history_package_files(package_path, repository)?);
+            retained_changes
+                .add_package_files(self.history_package_files(package_path, repository)?);
             // A simplified walk can visit an ancestor before the equal snapshot that
             // prunes it. Make the final decision with every discovered boundary,
             // keeping only ancestors whose changes survive through another lineage.
-            diff.commits.retain(|commit| changes.retains(&commit.id));
+            diff.commits
+                .retain(|commit| retained_changes.retains(&commit.id));
         }
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
@@ -976,7 +965,7 @@ impl Updater<'_> {
         &self,
         package_path: &Utf8Path,
         repository: &Repo,
-    ) -> anyhow::Result<Option<HashSet<Utf8PathBuf>>> {
+    ) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
         let package_files = self.with_cargo_lock_restored(repository, || {
             crate::get_cargo_package_files(package_path)
         })?;
@@ -984,8 +973,7 @@ impl Updater<'_> {
         // Tree comparisons only need their names, not canonicalized files.
         Ok(package_files
             .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
-            .ok()
-            .map(|files| files.into_iter().collect()))
+            .ok())
     }
 }
 
