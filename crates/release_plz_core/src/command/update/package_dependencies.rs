@@ -1,24 +1,100 @@
-use cargo_metadata::{Package, camino::Utf8Path, semver::Version};
+use std::iter;
+
+use cargo_metadata::{
+    Package,
+    camino::Utf8Path,
+    semver::{Version, VersionReq},
+};
 use cargo_utils::{DepKind, LocalManifest};
 use toml_edit::TableLike;
 
 use crate::PackagePath as _;
 
-pub trait PackageDependencies {
-    /// Returns the `updated_packages` which should be updated in the dependencies of the package.
-    /// Git-only releases also propagate changes through dependencies without version requirements.
-    fn dependencies_to_update<'a>(
-        &self,
-        updated_packages: &'a [(&Package, Version)],
-        workspace_dependencies: Option<&dyn TableLike>,
-        workspace_dir: &Utf8Path,
-        include_versionless: bool,
-    ) -> anyhow::Result<Vec<&'a Package>>;
+/// Policy for rewriting version requirements on local workspace dependencies.
+///
+/// The same decision must drive both dependent-release detection and manifest writes:
+/// skipping only the write still schedules unnecessary releases, while skipping only
+/// release detection changes manifests without releasing their dependent packages.
+///
+/// This affects dependent releases triggered by requirement changes. Other release rules
+/// and the size of a dependent's version bump remain unchanged. Workspace-wide configuration
+/// also gives inherited requirements a single policy, even when several packages share the
+/// same workspace dependency.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LocalDependenciesUpdateStrategy {
+    /// Rewrite requirements to the new version using their existing precision.
+    #[default]
+    Always,
+    /// Preserve requirements that already accept the new version.
+    ///
+    /// For example, `0.6.7` accepts `0.6.8` while retaining the intentional `0.6.7` floor.
+    /// Maintainers must raise that floor explicitly when they require a newer API or fix;
+    /// consumers with older lockfiles are otherwise allowed to keep compatible versions.
+    IfNeeded,
+    /// Preserve all requirements, even when they reject the new version.
+    ///
+    /// Maintainers must update incompatible requirements before releasing. Versionless
+    /// Git-only dependencies still propagate releases because there is no requirement to keep.
+    Never,
 }
 
-impl PackageDependencies for Package {
-    fn dependencies_to_update<'a>(
-        &self,
+impl LocalDependenciesUpdateStrategy {
+    /// Rewrite references to a local package in member and workspace manifests.
+    pub(super) fn update_dependencies(
+        self,
+        all_packages: &[&Package],
+        version: &Version,
+        package_path: &Utf8Path,
+        workspace_manifest: &Utf8Path,
+    ) -> anyhow::Result<()> {
+        let all_manifests = iter::once(workspace_manifest)
+            .chain(all_packages.iter().map(|pkg| pkg.manifest_path.as_path()));
+        for manifest in all_manifests {
+            let mut local_manifest = LocalManifest::try_new(manifest)?;
+            let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
+            let deps_to_update = local_manifest
+                .get_dependency_tables_mut()
+                .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
+                .filter(|d| d.contains_key("version"))
+                .filter(|d| {
+                    crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path)
+                });
+
+            for dep in deps_to_update {
+                let old_req = dep
+                    .get("version")
+                    .expect("filter ensures this")
+                    .as_str()
+                    .unwrap_or("*");
+                if let Some(new_req) = self.upgrade_requirement(old_req, version)? {
+                    dep.insert("version", toml_edit::value(new_req));
+                }
+            }
+            local_manifest.write()?;
+        }
+        Ok(())
+    }
+
+    fn upgrade_requirement(
+        self,
+        requirement: &str,
+        version: &Version,
+    ) -> anyhow::Result<Option<String>> {
+        if self == Self::Never
+            || (self == Self::IfNeeded && VersionReq::parse(requirement)?.matches(version))
+        {
+            return Ok(None);
+        }
+        // Reuse the existing rewrite rules for requirements that need changing. In particular,
+        // do not guess how to rewrite unsupported inequalities or compound ranges.
+        cargo_utils::upgrade_requirement(requirement, version)
+    }
+
+    /// Find dependencies whose new versions require a dependent release.
+    /// Git-only releases also propagate through versionless non-dev dependencies.
+    pub(super) fn dependencies_to_update<'a>(
+        self,
+        package: &Package,
         updated_packages: &'a [(&Package, Version)],
         workspace_dependencies: Option<&dyn TableLike>,
         workspace_dir: &Utf8Path,
@@ -26,10 +102,10 @@ impl PackageDependencies for Package {
     ) -> anyhow::Result<Vec<&'a Package>> {
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
-        let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
+        let package_manifest = LocalManifest::try_new(&package.manifest_path)?;
         let package_dir = crate::manifest_dir(&package_manifest.path)?;
 
-        let mut deps_to_update: Vec<&Self> = vec![];
+        let mut deps_to_update = vec![];
         for (p, next_ver) in updated_packages {
             let canonical_path = p.canonical_path()?;
             // Find the dependencies that have the same path as the updated package.
@@ -64,8 +140,8 @@ impl PackageDependencies for Package {
                 .map(|(kind, _, dep)| (kind, dep));
 
             for (kind, dep) in matching_deps {
-                if should_update_dependency(dep, kind, next_ver, include_versionless)? {
-                    deps_to_update.push(p);
+                if should_update_dependency(dep, kind, next_ver, include_versionless, self)? {
+                    deps_to_update.push(*p);
                     // A package can declare the same dependency in several tables
                     // (for example `[dependencies]` and `[dev-dependencies]`).
                     // It still needs a single release.
@@ -98,12 +174,13 @@ fn should_update_dependency(
     kind: DepKind,
     next_ver: &Version,
     include_versionless: bool,
+    policy: LocalDependenciesUpdateStrategy,
 ) -> anyhow::Result<bool> {
     let Some(old_req) = dep.get("version") else {
         return Ok(include_versionless && kind != DepKind::Development);
     };
     let old_req = old_req.as_str().unwrap_or("*");
-    let should_update_dep = cargo_utils::upgrade_requirement(old_req, next_ver)?.is_some();
+    let should_update_dep = policy.upgrade_requirement(old_req, next_ver)?.is_some();
     Ok(should_update_dep)
 }
 
@@ -111,6 +188,158 @@ fn should_update_dependency(
 mod tests {
     use super::*;
     use crate::test_utils::write_package;
+
+    #[test]
+    fn compatible_requirements_keep_their_minimum_and_spelling() {
+        for (requirement, version) in [
+            ("0.6.7", "0.6.8"),
+            ("^0.6.7", "0.6.8"),
+            ("1.2.3", "1.3.0"),
+            ("~1.2.3", "1.2.4"),
+            ("=1.2.3", "1.2.3"),
+            ("1.2.*", "1.2.4"),
+            ("*", "2.0.0"),
+            (">=1.2.3, <2.0.0", "1.3.0"),
+            (">1.2.3", "1.2.4"),
+            ("<=1.2.3", "1.2.3"),
+            ("1.2.3-alpha.1", "1.2.3-alpha.2"),
+            ("1.2.3-alpha.1", "1.2.3"),
+        ] {
+            let version = Version::parse(version).unwrap();
+            assert_eq!(
+                LocalDependenciesUpdateStrategy::IfNeeded
+                    .upgrade_requirement(requirement, &version)
+                    .unwrap(),
+                None,
+                "{requirement} -> {version}"
+            );
+        }
+    }
+
+    #[test]
+    fn incompatible_requirements_are_rewritten() {
+        for (requirement, version, expected) in [
+            ("0.6.7", "0.7.0", "0.7.0"),
+            ("0.0.7", "0.0.8", "0.0.8"),
+            ("1.2.3", "2.0.0", "2.0.0"),
+            ("^1.2.3", "2.0.0", "^2.0.0"),
+            ("~1.2.3", "1.3.0", "~1.3.0"),
+            ("=1.2.3", "1.2.4", "=1.2.4"),
+            ("1.2.*", "1.3.0", "1.3.*"),
+            ("1.2.3", "1.3.0-alpha.1", "1.3.0-alpha.1"),
+            ("1.2.3-alpha.1", "1.3.0-alpha.1", "1.3.0-alpha.1"),
+        ] {
+            let version = Version::parse(version).unwrap();
+            assert_eq!(
+                LocalDependenciesUpdateStrategy::IfNeeded
+                    .upgrade_requirement(requirement, &version)
+                    .unwrap()
+                    .as_deref(),
+                Some(expected),
+                "{requirement} -> {version}"
+            );
+        }
+    }
+
+    #[test]
+    fn never_preserves_even_incompatible_requirements() {
+        for requirement in ["0.6.7", "=0.6.7", ">=0.6.7, <0.7.0", "0.7.0-alpha.1"] {
+            assert_eq!(
+                LocalDependenciesUpdateStrategy::Never
+                    .upgrade_requirement(requirement, &Version::new(1, 0, 0))
+                    .unwrap(),
+                None,
+                "{requirement}"
+            );
+        }
+    }
+
+    #[test]
+    fn never_preserves_incompatible_manifests_without_scheduling_releases() {
+        let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let root = directory.path();
+        write_package(
+            root,
+            "consumer",
+            "0.1.0",
+            "[dependencies]\nsupport = { path = \"support\", version = \"=0.1.0\" }\n[workspace]\nmembers = [\"support\"]\n",
+        );
+        write_package(&root.join("support"), "support", "0.1.0", "");
+        let manifest_path = root.join("Cargo.toml");
+        let original = fs_err::read_to_string(&manifest_path).unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&manifest_path).unwrap();
+        let consumer = metadata
+            .packages
+            .iter()
+            .find(|p| p.name == "consumer")
+            .unwrap();
+        let support = metadata
+            .packages
+            .iter()
+            .find(|p| p.name == "support")
+            .unwrap();
+        let next_version = Version::new(0, 2, 0);
+        let strategy = LocalDependenciesUpdateStrategy::Never;
+        let updated = [(support, next_version.clone())];
+        assert!(
+            strategy
+                .dependencies_to_update(consumer, &updated, None, root, false)
+                .unwrap()
+                .is_empty()
+        );
+        strategy
+            .update_dependencies(
+                &[consumer],
+                &next_version,
+                &support.canonical_path().unwrap(),
+                &manifest_path,
+            )
+            .unwrap();
+        assert_eq!(fs_err::read_to_string(manifest_path).unwrap(), original);
+    }
+
+    #[test]
+    fn never_still_propagates_versionless_git_only_dependencies() {
+        let dependency: toml_edit::DocumentMut = "path = \"support\"".parse().unwrap();
+        for (kind, include_versionless, expected) in [
+            (DepKind::Normal, true, true),
+            (DepKind::Build, true, true),
+            (DepKind::Development, true, false),
+            (DepKind::Normal, false, false),
+        ] {
+            assert_eq!(
+                should_update_dependency(
+                    dependency.as_table(),
+                    kind,
+                    &Version::new(0, 2, 0),
+                    include_versionless,
+                    LocalDependenciesUpdateStrategy::Never
+                )
+                .unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn default_still_raises_compatible_minimums() {
+        assert_eq!(
+            LocalDependenciesUpdateStrategy::default()
+                .upgrade_requirement("0.6.7", &Version::new(0, 6, 8))
+                .unwrap()
+                .as_deref(),
+            Some("0.6.8")
+        );
+    }
+
+    #[test]
+    fn unsupported_incompatible_ranges_still_error() {
+        assert!(
+            LocalDependenciesUpdateStrategy::IfNeeded
+                .upgrade_requirement(">=1.2.3, <2.0.0", &Version::new(2, 0, 0))
+                .is_err()
+        );
+    }
 
     #[test]
     fn versionless_and_workspace_dependencies_to_update() {
@@ -175,8 +404,9 @@ mod tests {
                 let updated = [(support, Version::new(0, 2, 0))];
                 for name in ["root-app", "consumer"] {
                     let package = metadata.packages.iter().find(|p| p.name == name).unwrap();
-                    let dependencies = package
+                    let dependencies = LocalDependenciesUpdateStrategy::Always
                         .dependencies_to_update(
+                            package,
                             &updated,
                             manifest.get_workspace_dependency_table(),
                             root,

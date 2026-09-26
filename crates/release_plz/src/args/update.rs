@@ -175,6 +175,7 @@ impl Update {
                 format!("Cannot find file {project_manifest:?}. Make sure you are inside a rust project or that --manifest-path points to a valid Cargo.toml file.")
             })?
             .with_dependencies_update(self.dependencies_update(config))
+            .with_local_dependencies_update_strategy(config.workspace.local_dependencies_update_strategy.into())
             .with_max_analyze_commits(self.max_analyze_commits(config))
             .with_allow_dirty(self.allow_dirty(config));
         match self.get_repo_url(config) {
