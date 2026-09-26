@@ -1,4 +1,8 @@
-use std::{fmt::Write as _, path::Path, process::Command};
+use std::path::Path;
+
+mod replay;
+
+use replay::ChangeReplay;
 
 use super::*;
 
@@ -12,6 +16,9 @@ use super::*;
 /// change was absent there.
 pub(super) struct RetainedChanges {
     replay: ChangeReplay,
+    head: String,
+    /// The first equal snapshot found by the walk, standing in for the release.
+    released: String,
     /// Repository-relative files Cargo packages at the release and, once
     /// [`Self::add_package_files`] ran, at HEAD. `None` when a listing failed:
     /// every file under `paths` counts then.
@@ -61,7 +68,9 @@ impl RetainedChanges {
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
         let mut changes = Self {
-            replay: ChangeReplay::new(repository, head, released)?,
+            replay: ChangeReplay::new(repository)?,
+            head: head.to_owned(),
+            released: released.to_owned(),
             package_files: None,
             paths: paths
                 .iter()
@@ -155,7 +164,7 @@ impl RetainedChanges {
     /// Whether the change of `commit` was absent from the release and is still
     /// present at HEAD.
     fn survives(&self, commit: &str) -> anyhow::Result<bool> {
-        let parent = self.replay.first_parent(commit)?;
+        let change = self.replay.change(commit)?;
         // Resolve supported text conflicts in favor of the release: an
         // overwritten change can be absent even when its inverse conflicts.
         // Known limitation: when the release edited tokens adjacent to the
@@ -163,181 +172,13 @@ impl RetainedChanges {
         // its content unchanged, and the change counts as absent. A commit also
         // reachable through another lineage can then be re-reported. Accepted:
         // it only reproduces the pre-existing behavior for that commit.
-        if self.undo_changes_package(commit, &parent, &self.replay.released, true)? {
+        if change.undo_changes_package(&self.released, true, |path| self.includes(path))? {
             return Ok(false);
         }
         // At HEAD, a clean token-level merge can establish that the change
         // was already undone despite later edits on the same line. Keep actual
         // token conflicts: an evolved change may still require its marker.
-        self.undo_changes_package(commit, &parent, &self.replay.head, false)
-    }
-
-    /// Whether undoing `commit` on `target` changes the packaged files. Unresolved
-    /// conflicts count as changes. Supported text conflicts are retried at
-    /// token granularity, favoring the target only for the release check.
-    fn undo_changes_package(
-        &self,
-        commit: &str,
-        parent: &str,
-        target: &str,
-        favor_target: bool,
-    ) -> anyhow::Result<bool> {
-        // Reversing the change is a three-way merge with the changed commit as
-        // base and its first parent as the other side (`git revert -m 1`).
-        let output = self
-            .replay
-            .command()
-            .args([
-                "merge-tree",
-                "--write-tree",
-                "-z",
-                "--messages",
-                &format!("--merge-base={commit}"),
-                target,
-                parent,
-            ])
-            .output()
-            .context("cannot run git merge-tree")?;
-        anyhow::ensure!(
-            matches!(output.status.code(), Some(0 | 1)),
-            "git merge-tree failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let mut records = output.stdout.split(|byte| *byte == 0);
-        let tree = std::str::from_utf8(records.next().context("missing merge tree")?)?;
-        let mut conflicts: HashMap<&[u8], [Option<ConflictEntry>; 3]> = HashMap::new();
-        for record in records.by_ref().take_while(|record| !record.is_empty()) {
-            let separator = record
-                .iter()
-                .position(|byte| *byte == b'\t')
-                .context("missing conflict path")?;
-            let (metadata, path) = (&record[..separator], &record[separator + 1..]);
-            let mut metadata = std::str::from_utf8(metadata)?.split(' ');
-            let mode = metadata.next().context("missing conflict mode")?;
-            let object = metadata.next().context("missing conflict object")?;
-            let stage: usize = metadata.next().context("missing conflict stage")?.parse()?;
-            anyhow::ensure!((1..=3).contains(&stage), "invalid conflict stage {stage}");
-            conflicts.entry(path).or_default()[stage - 1] = Some(ConflictEntry {
-                mode: mode.to_owned(),
-                object: object.to_owned(),
-            });
-        }
-        let includes = |path: &[u8]| {
-            std::str::from_utf8(path)
-                .map(|path| self.includes(Path::new(path)))
-                .unwrap_or(true)
-        };
-        // Structural conflicts can have no unmerged stages at all (for example
-        // a directory rename). Their stable, machine-readable messages also
-        // retain the original paths when a rename moved the staged entries.
-        while let Some(count) = records.next().filter(|record| !record.is_empty()) {
-            let count: usize = std::str::from_utf8(count)?.parse()?;
-            let mut affects_package = count == 0;
-            for _ in 0..count {
-                affects_package |=
-                    includes(records.next().context("missing conflict message path")?);
-            }
-            let kind = records.next().context("missing conflict message type")?;
-            records.next().context("missing conflict message detail")?;
-            if affects_package && kind.starts_with(b"CONFLICT") && kind != b"CONFLICT (contents)" {
-                return Ok(true);
-            }
-        }
-        for (path, conflict) in &conflicts {
-            if includes(path) && !self.conflict_leaves_file_unchanged(conflict, favor_target)? {
-                return Ok(true);
-            }
-        }
-        let changed = self.replay.git(&[
-            "diff-tree",
-            "--no-commit-id",
-            "--name-only",
-            "-r",
-            "-z",
-            "--no-renames",
-            target,
-            tree,
-        ])?;
-        Ok(changed.split(|byte| *byte == 0)
-            // Conflicted paths were checked above, including nonconflicting hunks.
-            .filter(|path| !path.is_empty() && !conflicts.contains_key(path))
-            .any(includes))
-    }
-
-    /// Whether a text conflict's inverse leaves the target unchanged. Independent
-    /// edits on the same line still apply; conflicting tokens keep the
-    /// target's content only when checking the release.
-    /// Binary, large, rename, deletion, and mode conflicts cannot establish absence.
-    fn conflict_leaves_file_unchanged(
-        &self,
-        conflict: &[Option<ConflictEntry>; 3],
-        favor_target: bool,
-    ) -> anyhow::Result<bool> {
-        let [Some(ancestor), Some(ours), Some(theirs)] = conflict else {
-            return Ok(false);
-        };
-        if ancestor.mode != ours.mode
-            || theirs.mode != ours.mode
-            || !matches!(ours.mode.as_str(), "100644" | "100755")
-        {
-            return Ok(false);
-        }
-        let blobs = [
-            self.replay.git(&["cat-file", "blob", &ancestor.object])?,
-            self.replay.git(&["cat-file", "blob", &ours.object])?,
-            self.replay.git(&["cat-file", "blob", &theirs.object])?,
-        ];
-        let max_conflict_input_bytes = 1024 * 1024; // 1 MiB across all three snapshots.
-        // Put words and individual punctuation/whitespace characters on separate
-        // lines. Keeping identifiers whole avoids aligning their letters with
-        // unrelated later edits. Bound the expanded input and leave binary or
-        // non-UTF-8 content unresolved.
-        if blobs.iter().map(Vec::len).sum::<usize>() > max_conflict_input_bytes
-            || blobs.iter().any(|blob| blob.contains(&0))
-        {
-            return Ok(false);
-        }
-        let mut encoded = Vec::with_capacity(blobs.len());
-        for blob in &blobs {
-            let Ok(contents) = std::str::from_utf8(blob) else {
-                return Ok(false);
-            };
-            let mut tokens = String::with_capacity(contents.len() * 4);
-            let mut in_word = false;
-            for character in contents.chars() {
-                let is_word = character.is_alphanumeric() || character == '_';
-                if !tokens.is_empty() && !(in_word && is_word) {
-                    tokens.push('\n');
-                }
-                write!(tokens, "{:x},", u32::from(character))?;
-                in_word = is_word;
-            }
-            tokens.push('\n');
-            encoded.push(tokens);
-        }
-        let files = fs_utils::Utf8TempDir::new()?;
-        let paths = ["ancestor", "ours", "theirs"].map(|name| files.path().join(name));
-        for (path, contents) in paths.iter().zip(&encoded) {
-            fs_err::write(path, contents)?;
-        }
-        let mut command = self.replay.command();
-        command.args(["merge-file", "-p"]);
-        if favor_target {
-            command.arg("--ours");
-        }
-        let output = command
-            .arg("--")
-            .args([&paths[1], &paths[0], &paths[2]])
-            .output()
-            .context("cannot run git merge-file")?;
-        // merge-file returns the number of conflicts, capped at 127; errors
-        // use negative exit codes, represented as 128 or greater by the shell.
-        anyhow::ensure!(
-            matches!(output.status.code(), Some(0..=127)),
-            "git merge-file failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Ok(output.status.success() && output.stdout == encoded[1].as_bytes())
+        change.undo_changes_package(&self.head, false, |path| self.includes(path))
     }
 
     fn includes(&self, path: &Path) -> bool {
@@ -355,150 +196,6 @@ impl RetainedChanges {
         } else {
             self.paths.iter().any(|root| path.starts_with(root))
         }
-    }
-}
-
-struct ConflictEntry {
-    mode: String,
-    object: String,
-}
-
-/// An isolated Git directory reads the source objects and stores replay results
-/// separately. The CLI supports both SHA-1 and SHA-256 without touching the
-/// source's index, worktree, configuration, or object database.
-struct ChangeReplay {
-    directory: fs_utils::Utf8TempDir,
-    head: String,
-    /// The first equal snapshot found by the walk, standing in for the release.
-    released: String,
-}
-
-impl ChangeReplay {
-    fn new(repository: &Repo, head: &str, released: &str) -> anyhow::Result<Self> {
-        let replay = Self {
-            directory: fs_utils::Utf8TempDir::new()?,
-            head: head.to_owned(),
-            released: released.to_owned(),
-        };
-        let help = replay
-            .command()
-            .args(["merge-tree", "-h"])
-            .output()
-            .context("cannot run git merge-tree")?;
-        anyhow::ensure!(
-            [help.stdout, help.stderr].iter().any(|output| output
-                .windows(b"merge-base".len())
-                .any(|part| part == b"merge-base")),
-            "checking retained changes requires Git 2.40 or newer (git merge-tree --merge-base)"
-        );
-        let object_format = repository.git(&["rev-parse", "--show-object-format"])?;
-        replay.git(&[
-            "init",
-            "--bare",
-            "--template=",
-            &format!("--object-format={object_format}"),
-        ])?;
-        let objects = repository.git(&[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "objects",
-        ])?;
-        // Quote the path using Git's C-style syntax, including control characters.
-        let mut quoted = String::from("\"");
-        for character in objects.chars() {
-            match character {
-                '\\' | '"' => {
-                    quoted.push('\\');
-                    quoted.push(character);
-                }
-                '\0'..='\x1f' | '\x7f' => {
-                    write!(quoted, "\\{:03o}", u32::from(character))?;
-                }
-                _ => quoted.push(character),
-            }
-        }
-        quoted.push_str("\"\n");
-        fs_err::write(
-            replay.directory.path().join("objects/info/alternates"),
-            quoted,
-        )?;
-        fs_err::create_dir_all(replay.directory.path().join("info"))?;
-        // Highest-precedence attributes override .gitattributes in every tree.
-        fs_err::write(
-            replay.directory.path().join("info/attributes"),
-            "* merge=text\n",
-        )?;
-        Ok(replay)
-    }
-
-    fn command(&self) -> Command {
-        let mut command = Command::new("git");
-        command
-            .arg("-C")
-            .arg(self.directory.path())
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env(
-                "GIT_CONFIG_GLOBAL",
-                self.directory.path().join("empty-config"),
-            )
-            .env("GIT_CONFIG_COUNT", "0")
-            .env("GIT_ATTR_NOSYSTEM", "1")
-            .env_remove("GIT_CONFIG_PARAMETERS")
-            .env_remove("GIT_CONFIG")
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_COMMON_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .env_remove("GIT_OBJECT_DIRECTORY")
-            .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-            .env_remove("GIT_ATTR_SOURCE")
-            .stdin(std::process::Stdio::null());
-        command
-    }
-
-    fn git(&self, args: &[&str]) -> anyhow::Result<Vec<u8>> {
-        let output = self
-            .command()
-            .args(args)
-            .output()
-            .with_context(|| format!("cannot run git {args:?}"))?;
-        anyhow::ensure!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Ok(output.stdout)
-    }
-
-    fn first_parent(&self, commit: &str) -> anyhow::Result<String> {
-        // Read the actual header: rev-list treats shallow boundaries as roots.
-        let contents = self.git(&["cat-file", "commit", commit])?;
-        if let Some(parent) = contents
-            .split(|byte| *byte == b'\n')
-            .take_while(|line| !line.is_empty())
-            .find_map(|line| line.strip_prefix(b"parent "))
-        {
-            return Ok(std::str::from_utf8(parent)?.to_owned());
-        }
-        // Git 2.40 requires commit tips, so give a root's empty parent a commit.
-        let tree = self.git(&["mktree"])?;
-        let tree = std::str::from_utf8(&tree)?.trim();
-        let output = self
-            .command()
-            .args(["commit-tree", tree, "-m", "empty replay parent"])
-            .env("GIT_AUTHOR_NAME", "release-plz")
-            .env("GIT_AUTHOR_EMAIL", "release-plz@example.invalid")
-            .env("GIT_COMMITTER_NAME", "release-plz")
-            .env("GIT_COMMITTER_EMAIL", "release-plz@example.invalid")
-            .output()
-            .context("cannot create empty replay parent")?;
-        anyhow::ensure!(
-            output.status.success(),
-            "cannot create empty replay parent: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        Ok(std::str::from_utf8(&output.stdout)?.trim().to_owned())
     }
 }
 
@@ -700,7 +397,6 @@ mod tests {
             fs_err::write(repo.directory().join("old/a"), "unchanged\n").unwrap();
             fs_err::write(repo.directory().join("old/b"), "removed\n").unwrap();
             repo.add_all_and_commit("add files").unwrap();
-            let parent = repo.current_commit_hash().unwrap();
             repo.git(&["rm", "old/b"]).unwrap();
             repo.add_all_and_commit("remove packaged file").unwrap();
             let changed = repo.current_commit_hash().unwrap();
@@ -717,7 +413,10 @@ mod tests {
             // is packaged. Git's structural conflict still affects this package.
             assert!(
                 changes
-                    .undo_changes_package(&changed, &parent, &target, false)
+                    .replay
+                    .change(&changed)
+                    .unwrap()
+                    .undo_changes_package(&target, false, |path| changes.includes(path))
                     .unwrap()
             );
         }
