@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use anyhow::Context as _;
 use git_cmd::Repo;
 
 pub(in super::super) struct Replay {
@@ -9,13 +8,18 @@ pub(in super::super) struct Replay {
 
 impl Replay {
     pub(super) fn new(repository: &Repo) -> anyhow::Result<Self> {
-        let source = git2::Repository::open(repository.directory())?;
-        let objects = source.commondir().join("objects");
-        let objects = objects.to_str().context("non-UTF-8 object directory")?;
+        // Let Git resolve the path: libgit2 cannot open repositories with some
+        // valid extensions, such as extensions.partialClone.
+        let objects = repository.git(&[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "objects",
+        ])?;
         // Alternates are read-only. Store synthetic attributes and replay results
         // in memory so no objects are added to the source, including worktrees.
         let odb = git2::Odb::new()?;
-        odb.add_disk_alternate(objects)?;
+        odb.add_disk_alternate(&objects)?;
         odb.add_new_mempack_backend(1000)?;
         let repo = git2::Repository::from_odb(odb)?;
         // Remove user configuration and force the built-in text driver through

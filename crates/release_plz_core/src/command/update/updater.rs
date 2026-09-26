@@ -747,7 +747,9 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to compare dependencies")?;
-        if let Some(mut changes) = retained_changes {
+        if !diff.commits.is_empty()
+            && let Some(mut changes) = retained_changes
+        {
             // Both file lists are needed: a file added or removed since the release
             // is only listed on one side.
             changes.add_package_files(self.history_package_files(package_path, repository)?);
