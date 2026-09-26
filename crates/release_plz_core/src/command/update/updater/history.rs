@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{cell::OnceCell, path::Path};
 
 mod replay;
 
@@ -14,8 +14,11 @@ use super::*;
 /// in an isolated object database to distinguish surviving contributions from
 /// discarded merge parents. A revert that leaves the release unchanged proves a
 /// change was absent there.
-pub(super) struct RetainedChanges {
-    replay: ChangeReplay,
+pub(super) struct RetainedChanges<'a> {
+    repository: &'a Repo,
+    /// The replay backend, built on first use so that an unusable one only
+    /// disables the content check, see [`Self::replay`].
+    replay: OnceCell<Option<ChangeReplay>>,
     head: String,
     /// The first equal snapshot found by the walk, standing in for the release.
     released: String,
@@ -37,14 +40,14 @@ pub(super) struct RetainedChanges {
     released_ancestors: HashSet<String>,
 }
 
-impl RetainedChanges {
+impl<'a> RetainedChanges<'a> {
     /// Start from the first equal snapshot `released` and its full-history
     /// `ancestors`, as in [`Self::add_boundary`].
     ///
     /// `package_files` are relative to the package directory, as Cargo lists
     /// them; `paths` are absolute, with the package directory first.
     pub(super) fn new(
-        repository: &Repo,
+        repository: &'a Repo,
         head: &str,
         released: &str,
         ancestors: Vec<String>,
@@ -68,7 +71,8 @@ impl RetainedChanges {
                 .with_context(|| format!("{path} is outside the repository {directory}"))
         };
         let mut changes = Self {
-            replay: ChangeReplay::new(repository)?,
+            repository,
+            replay: OnceCell::new(),
             head: head.to_owned(),
             released: released.to_owned(),
             package_files: None,
@@ -153,18 +157,33 @@ impl RetainedChanges {
         // undo conflict. Reachability ensures another lineage reaches the commit
         // without passing an equal package snapshot before trusting that.
         self.reachable.contains(commit)
-            && self.survives(commit).unwrap_or_else(|error| {
-                // Shallow histories may not contain the parent required for a
-                // revert. Then there is no evidence to override ancestry pruning.
-                warn!("cannot check retained changes in {commit}: {error:#}");
-                false
+            && self.replay().is_some_and(|replay| {
+                self.survives(replay, commit).unwrap_or_else(|error| {
+                    // Shallow histories may not contain the parent required for a
+                    // revert. Then there is no evidence to override ancestry pruning.
+                    warn!("cannot check retained changes in {commit}: {error:#}");
+                    false
+                })
             })
+    }
+
+    /// The replay backend, built on first use. One that cannot be built, for
+    /// example with Git older than 2.40 on a SHA-256 repository, is reported
+    /// once: without evidence, ancestry pruning then applies to every candidate.
+    fn replay(&self) -> Option<&ChangeReplay> {
+        self.replay
+            .get_or_init(|| {
+                ChangeReplay::new(self.repository)
+                    .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
+                    .ok()
+            })
+            .as_ref()
     }
 
     /// Whether the change of `commit` was absent from the release and is still
     /// present at HEAD.
-    fn survives(&self, commit: &str) -> anyhow::Result<bool> {
-        let change = self.replay.change(commit)?;
+    fn survives(&self, replay: &ChangeReplay, commit: &str) -> anyhow::Result<bool> {
+        let change = replay.change(commit)?;
         // Resolve supported text conflicts in favor of the release: an
         // overwritten change can be absent even when its inverse conflicts.
         // Known limitation: when the release edited tokens adjacent to the
@@ -217,12 +236,12 @@ mod tests {
 
     /// Replay `changed` against the single equal snapshot `released`, treating
     /// the repository root as the package directory.
-    fn replay(
-        repo: &Repo,
+    fn replay<'a>(
+        repo: &'a Repo,
         changed: &str,
         released: &str,
         package_files: Option<HashSet<Utf8PathBuf>>,
-    ) -> RetainedChanges {
+    ) -> RetainedChanges<'a> {
         RetainedChanges::new(
             repo,
             changed,
@@ -301,7 +320,11 @@ mod tests {
                 let contents_before = fs_err::read(path.join("file")).unwrap();
                 let changes = replay(&source, &changed, &released, None);
 
-                assert!(changes.survives(&changed).unwrap());
+                assert!(
+                    changes
+                        .survives(changes.replay().unwrap(), &changed)
+                        .unwrap()
+                );
                 assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
                 assert_eq!(source.current_commit_hash().unwrap(), head_before);
                 assert_eq!(
@@ -337,7 +360,11 @@ mod tests {
                 let changes = replay(&repo, &changed, &released, None);
                 // A nonconflicting hunk still undoes a released change. Binary
                 // conflicts cannot establish absence by choosing the release's bytes.
-                assert!(!changes.survives(&changed).unwrap());
+                assert!(
+                    !changes
+                        .survives(changes.replay().unwrap(), &changed)
+                        .unwrap()
+                );
             }
         }
     }
@@ -353,7 +380,7 @@ mod tests {
             repo.add_all_and_commit("remove root's file").unwrap();
             let released = repo.current_commit_hash().unwrap();
             let changes = replay(&repo, &root, &released, None);
-            assert!(changes.survives(&root).unwrap());
+            assert!(changes.survives(changes.replay().unwrap(), &root).unwrap());
         }
     }
 
@@ -384,7 +411,11 @@ mod tests {
             );
             // The first parent has the old file. Reverting relative to the
             // second parent would only remove the unrelated mainline file.
-            assert!(changes.survives(&changed).unwrap());
+            assert!(
+                changes
+                    .survives(changes.replay().unwrap(), &changed)
+                    .unwrap()
+            );
         }
     }
 
@@ -413,7 +444,8 @@ mod tests {
             // is packaged. Git's structural conflict still affects this package.
             assert!(
                 changes
-                    .replay
+                    .replay()
+                    .unwrap()
                     .change(&changed)
                     .unwrap()
                     .undo_changes_package(&target, false, |path| changes.includes(path))
