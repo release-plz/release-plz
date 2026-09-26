@@ -263,11 +263,6 @@ impl<'a> RetainedChanges<'a> {
 mod tests {
     use super::*;
 
-    fn init_repo(path: &Utf8Path, object_format: &str) -> Repo {
-        git_cmd::git_in_dir(path, &["init", &format!("--object-format={object_format}")]).unwrap();
-        Repo::init(path)
-    }
-
     /// Commit `contents` to `file` at the repository root and return the commit hash.
     fn commit_file(repo: &Repo, contents: &str) -> String {
         fs_err::write(repo.directory().join("file"), contents).unwrap();
@@ -333,7 +328,7 @@ mod tests {
         for object_format in ["sha1", "sha256"] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
             fs_err::create_dir(dir.path().join("main")).unwrap();
-            let repo = init_repo(&dir.path().join("main"), object_format);
+            let repo = Repo::init_with_object_format(dir.path().join("main"), object_format);
             commit_file(&repo, "a\n");
             let changed = commit_file(&repo, "b\n");
             let released = commit_file(&repo, "c\n");
@@ -399,7 +394,7 @@ mod tests {
                 ("a\0", "b\0", "c\0"),
             ] {
                 let dir = fs_utils::Utf8TempDir::new().unwrap();
-                let repo = init_repo(dir.path(), object_format);
+                let repo = Repo::init_with_object_format(dir.path(), object_format);
                 commit_file(&repo, base);
                 let changed = commit_file(&repo, changed);
                 let released = commit_file(&repo, released);
@@ -419,7 +414,7 @@ mod tests {
     fn a_root_commit_can_be_replayed() {
         for object_format in ["sha1", "sha256"] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
-            let repo = init_repo(dir.path(), object_format);
+            let repo = Repo::init_with_object_format(dir.path(), object_format);
             // Repo::init creates a root commit containing README.md.
             let root = repo.current_commit_hash().unwrap();
             repo.git(&["rm", "README.md"]).unwrap();
@@ -434,7 +429,7 @@ mod tests {
     fn a_merge_commit_is_replayed_relative_to_its_first_parent() {
         for object_format in ["sha1", "sha256"] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
-            let repo = init_repo(dir.path(), object_format);
+            let repo = Repo::init_with_object_format(dir.path(), object_format);
             fs_err::write(repo.directory().join("file"), "a\n").unwrap();
             repo.add_all_and_commit("base").unwrap();
             repo.git(&["checkout", "-b", "feature"]).unwrap();
@@ -469,7 +464,7 @@ mod tests {
     fn directory_rename_conflicts_include_the_original_packaged_path() {
         for object_format in ["sha1", "sha256"] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
-            let repo = init_repo(dir.path(), object_format);
+            let repo = Repo::init_with_object_format(dir.path(), object_format);
             fs_err::create_dir(repo.directory().join("old")).unwrap();
             fs_err::write(repo.directory().join("old/a"), "unchanged\n").unwrap();
             fs_err::write(repo.directory().join("old/b"), "removed\n").unwrap();
