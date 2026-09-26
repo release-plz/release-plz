@@ -95,6 +95,30 @@ impl History {
         sibling
     }
 
+    /// Continue with a clone of the newest `depth` commits, whose missing
+    /// history cannot be replayed.
+    fn shallow_clone(self, depth: u8) -> Self {
+        let root = self.repo.directory().parent().unwrap();
+        // Local clones copy every object: force the transport that honors depth.
+        git_cmd::git_in_dir(
+            root,
+            &[
+                "clone",
+                "--no-local",
+                &format!("--depth={depth}"),
+                "--config",
+                "core.autocrlf=false",
+                self.repo.directory().as_str(),
+                "shallow",
+            ],
+        )
+        .unwrap();
+        Self {
+            repo: Repo::new(root.join("shallow")).unwrap(),
+            ..self
+        }
+    }
+
     /// Set both dates to control the commit's position in the date-ordered walk.
     fn write_commit_at(&self, path: &str, contents: &str, message: &str, day: u8) -> String {
         fs_err::write(self.repo.directory().join(path), contents).unwrap();
@@ -497,6 +521,30 @@ fn a_retained_change_can_move_to_a_different_file() {
         let diff = history.diff(None);
         assert_commits(&diff, &[&breaking, &sibling, &moved]);
         assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
+fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
+    for object_format in ["sha1", "sha256"] {
+        let history = api_history(object_format);
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        // Put the breaking change one level deeper than the equal snapshot.
+        let later = history.write_commit("src/later.rs", "", "fix: later");
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+            fs_err::remove_file(root.join("src/later.rs")).unwrap();
+        });
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&breaking, &later, &sibling]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+
+        // Four levels keep the equal snapshot and the breaking change, but not
+        // the parent its revert needs. Without evidence, ancestry pruning applies.
+        let shallow = history.shallow_clone(4);
+        let diff = shallow.diff(None);
+        assert_commits(&diff, &[&later, &sibling]);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
     }
 }
 
