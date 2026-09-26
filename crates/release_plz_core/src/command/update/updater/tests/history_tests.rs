@@ -195,11 +195,14 @@ fn assert_commits(diff: &Diff, expected: &[&str]) {
 const BASE_API: &str = "pub fn api() {}\n\n\n\n\n\npub fn stable() {}\n";
 const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}\n";
 
-fn api_history() -> History {
-    History::with_packages(|root| {
-        write_package(root, PACKAGE, "0.1.0", "");
-        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
-    })
+fn api_history(object_format: &str) -> History {
+    History::with_packages_in_format(
+        |root| {
+            write_package(root, PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+        },
+        object_format,
+    )
 }
 
 fn assert_next_version(diff: &Diff, expected: &Version) {
@@ -210,7 +213,7 @@ fn assert_next_version(diff: &Diff, expected: &Version) {
 }
 
 #[test]
-fn sha256_repositories_preserve_equality_ancestry_pruning() {
+fn sha256_repositories_retain_changes_reverted_on_another_branch() {
     let history = History::with_packages_in_format(
         |root| write_package(root, PACKAGE, "0.1.0", ""),
         "sha256",
@@ -218,112 +221,61 @@ fn sha256_repositories_preserve_equality_ancestry_pruning() {
     assert_eq!(history.repo.current_commit_hash().unwrap().len(), 64);
     assert_commits(&history.diff(None), &[]);
 
-    history.write_commit(
+    let breaking = history.write_commit(
         "src/lib.rs",
         "pub fn temporary() {}\n",
         "feat!: temporary API",
     );
     let sibling = history.merge_ignored_revert("src/lib.rs", Some(""));
-    // Retained-change replay cannot inspect SHA-256 objects yet. Preserve the
-    // previous ancestry-based pruning and still release independent fixes.
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&sibling]);
-    assert_next_version(&diff, &Version::new(0, 1, 1));
-}
-
-#[test]
-fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
-    let history = api_history();
-    let repo = &history.repo;
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    repo.git(&["checkout", "-b", "equal"]).unwrap();
-    history.write_commit("src/lib.rs", BASE_API, "revert: breaking API");
-    repo.checkout_head().unwrap();
-    let prepared = history.write_commit(
-        "src/lib.rs",
-        &BASE_API.replace("api()", "api(_: u8)"),
-        "chore: prepare merge",
-    );
-    assert!(
-        repo.git(&["merge", "--no-ff", "--no-commit", "equal"])
-            .is_err()
-    );
-    let resolved = history.write_commit("src/lib.rs", BREAKING_API, "merge resolved");
-    repo.git(&["checkout", "equal"]).unwrap();
-    let sibling = history.write_commit(
-        "src/lib.rs",
-        &format!("{BASE_API}pub fn extra() {{}}\n"),
-        "fix: sibling",
-    );
-    repo.checkout_head().unwrap();
-    repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
-        .unwrap();
-    let merge = repo.current_commit_hash().unwrap();
-    assert_eq!(
-        fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-        format!("{BREAKING_API}pub fn extra() {{}}\n")
-    );
-    let diff = history.diff(None);
-    // Both merges resolve `src/lib.rs` to contents that differ from all their parents.
-    assert_commits(&diff, &[&breaking, &prepared, &resolved, &sibling, &merge]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
-}
-
-#[test]
-fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
-    let history = api_history();
-    let released_api = BASE_API.replace("api()", "api(_: u8)");
-    fs_err::write(
-        history.registry.directory().join("src/lib.rs"),
-        &released_api,
-    )
-    .unwrap();
-    history
-        .registry
-        .add_all_and_commit("published different API")
-        .unwrap();
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
-
-    // Undoing `api(bool)` to `api()` conflicts with the released `api(u8)`.
-    // HEAD still has `api(bool)`, so its breaking-change marker must survive.
     let diff = history.diff(None);
     assert_commits(&diff, &[&breaking, &sibling]);
     assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
 #[test]
-fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
-    let history = api_history();
-    let released_api = BASE_API.replace("api()", "api(_: u8)");
-    fs_err::write(
-        history.registry.directory().join("src/lib.rs"),
-        &released_api,
-    )
-    .unwrap();
-    history
-        .registry
-        .add_all_and_commit("published different API")
-        .unwrap();
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    history.merge_ignored_revert("src/lib.rs", Some(&released_api));
-    history.write_commit(
-        ".gitattributes",
-        "src/lib.rs merge=union\n",
-        "chore: merge attributes",
-    );
-
-    // libgit2 resolves merge drivers from `.gitattributes` even for in-memory
-    // reverts. The union rule at HEAD must not mask the release-side API conflict.
-    let diff = history.diff(None);
-    assert!(commit_ids(&diff).contains(&breaking.as_str()));
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
+    for object_format in ["sha1", "sha256"] {
+        let history = api_history(object_format);
+        let repo = &history.repo;
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        repo.git(&["checkout", "-b", "equal"]).unwrap();
+        history.write_commit("src/lib.rs", BASE_API, "revert: breaking API");
+        repo.checkout_head().unwrap();
+        let prepared = history.write_commit(
+            "src/lib.rs",
+            &BASE_API.replace("api()", "api(_: u8)"),
+            "chore: prepare merge",
+        );
+        assert!(
+            repo.git(&["merge", "--no-ff", "--no-commit", "equal"])
+                .is_err()
+        );
+        let resolved = history.write_commit("src/lib.rs", BREAKING_API, "merge resolved");
+        repo.git(&["checkout", "equal"]).unwrap();
+        let sibling = history.write_commit(
+            "src/lib.rs",
+            &format!("{BASE_API}pub fn extra() {{}}\n"),
+            "fix: sibling",
+        );
+        repo.checkout_head().unwrap();
+        repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
+            .unwrap();
+        let merge = repo.current_commit_hash().unwrap();
+        assert_eq!(
+            fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+            format!("{BREAKING_API}pub fn extra() {{}}\n")
+        );
+        let diff = history.diff(None);
+        // Both merges resolve `src/lib.rs` to contents that differ from all their parents.
+        assert_commits(&diff, &[&breaking, &prepared, &resolved, &sibling, &merge]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
 }
 
 #[test]
-fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
-    for setting in ["info/attributes", "core.attributesFile", "merge.default"] {
-        let history = api_history();
+fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
+    for object_format in ["sha1", "sha256"] {
+        let history = api_history(object_format);
         let released_api = BASE_API.replace("api()", "api(_: u8)");
         fs_err::write(
             history.registry.directory().join("src/lib.rs"),
@@ -336,46 +288,20 @@ fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
             .unwrap();
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
         let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
-        let repo = &history.repo;
-        match setting {
-            "info/attributes" => {
-                fs_err::write(
-                    repo.directory().join(".git/info/attributes"),
-                    "src/lib.rs merge=union\n",
-                )
-                .unwrap();
-            }
-            "core.attributesFile" => {
-                let attributes = repo.directory().with_file_name("attributes");
-                fs_err::write(&attributes, "src/lib.rs merge=union\n").unwrap();
-                repo.git(&["config", setting, attributes.as_str()]).unwrap();
-            }
-            "merge.default" => {
-                repo.git(&["config", setting, "union"]).unwrap();
-            }
-            _ => unreachable!(),
-        }
-        let config_path = repo.directory().join(".git/config");
-        let config_before = fs_err::read(&config_path).unwrap();
 
-        // These sources still apply to a bare repository with an empty index.
-        // A retained-change check must use ordinary text conflicts independently
-        // of both the checked-out snapshot and the user's merge configuration.
+        // Undoing `api(bool)` to `api()` conflicts with the released `api(u8)`.
+        // HEAD still has `api(bool)`, so its breaking-change marker must survive.
         let diff = history.diff(None);
         assert_commits(&diff, &[&breaking, &sibling]);
         assert_next_version(&diff, &Version::new(0, 2, 0));
-        assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
     }
 }
 
 #[test]
-fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
-    for released_api in [
-        "api(_: bool) { /* published implementation */ }",
-        "api(_: bool) { println!(\"hello\"); }",
-    ] {
-        let history = api_history();
-        let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
+fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
+    for object_format in ["sha1", "sha256"] {
+        let history = api_history(object_format);
+        let released_api = BASE_API.replace("api()", "api(_: u8)");
         fs_err::write(
             history.registry.directory().join("src/lib.rs"),
             &released_api,
@@ -383,107 +309,200 @@ fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
         .unwrap();
         history
             .registry
-            .add_all_and_commit("published implementation")
+            .add_all_and_commit("published different API")
             .unwrap();
-        history.write_commit("src/lib.rs", BREAKING_API, "feat!: already released API");
-        let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+        history.write_commit(
+            ".gitattributes",
+            "src/lib.rs merge=union\n",
+            "chore: merge attributes",
+        );
 
-        // The release already contains the breaking signature. Its later body edit
-        // must not make a line-level revert conflict look like an absent signature.
+        // The union rule at HEAD must not mask the release-side API conflict
+        // during the hypothetical revert.
         let diff = history.diff(None);
-        assert_commits(&diff, &[&sibling]);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+        assert!(commit_ids(&diff).contains(&breaking.as_str()));
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
+fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
+    for object_format in ["sha1", "sha256"] {
+        for setting in ["info/attributes", "core.attributesFile", "merge.default"] {
+            let history = api_history(object_format);
+            let released_api = BASE_API.replace("api()", "api(_: u8)");
+            fs_err::write(
+                history.registry.directory().join("src/lib.rs"),
+                &released_api,
+            )
+            .unwrap();
+            history
+                .registry
+                .add_all_and_commit("published different API")
+                .unwrap();
+            let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+            let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+            let repo = &history.repo;
+            match setting {
+                "info/attributes" => {
+                    fs_err::write(
+                        repo.directory().join(".git/info/attributes"),
+                        "src/lib.rs merge=union\n",
+                    )
+                    .unwrap();
+                }
+                "core.attributesFile" => {
+                    let attributes = repo.directory().with_file_name("attributes");
+                    fs_err::write(&attributes, "src/lib.rs merge=union\n").unwrap();
+                    repo.git(&["config", setting, attributes.as_str()]).unwrap();
+                }
+                "merge.default" => {
+                    repo.git(&["config", setting, "union"]).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            let config_path = repo.directory().join(".git/config");
+            let config_before = fs_err::read(&config_path).unwrap();
+
+            // These sources still apply to a bare repository with an empty index.
+            // A retained-change check must use ordinary text conflicts independently
+            // of both the checked-out snapshot and the user's merge configuration.
+            let diff = history.diff(None);
+            assert_commits(&diff, &[&breaking, &sibling]);
+            assert_next_version(&diff, &Version::new(0, 2, 0));
+            assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
+        }
+    }
+}
+
+#[test]
+fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
+    for object_format in ["sha1", "sha256"] {
+        for released_api in [
+            "api(_: bool) { /* published implementation */ }",
+            "api(_: bool) { println!(\"hello\"); }",
+        ] {
+            let history = api_history(object_format);
+            let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
+            fs_err::write(
+                history.registry.directory().join("src/lib.rs"),
+                &released_api,
+            )
+            .unwrap();
+            history
+                .registry
+                .add_all_and_commit("published implementation")
+                .unwrap();
+            history.write_commit("src/lib.rs", BREAKING_API, "feat!: already released API");
+            let sibling = history.merge_ignored_revert("src/lib.rs", Some(&released_api));
+
+            // The release already contains the breaking signature. Its later body edit
+            // must not make a line-level revert conflict look like an absent signature.
+            let diff = history.diff(None);
+            assert_commits(&diff, &[&sibling]);
+            assert_next_version(&diff, &Version::new(0, 1, 1));
+        }
     }
 }
 
 #[test]
 fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
-    for fixed_api in [
-        "api() { /* fixed implementation */ }",
-        "api() { println!(\"hello\"); }",
-    ] {
-        let history = api_history();
-        history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
-        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
-        let fixed = history.write_commit(
-            "src/lib.rs",
-            &BASE_API.replace("api() {}", fixed_api),
-            "fix: restore compatible API and fix implementation",
-        );
+    for object_format in ["sha1", "sha256"] {
+        for fixed_api in [
+            "api() { /* fixed implementation */ }",
+            "api() { println!(\"hello\"); }",
+        ] {
+            let history = api_history(object_format);
+            history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
+            let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+            let fixed = history.write_commit(
+                "src/lib.rs",
+                &BASE_API.replace("api() {}", fixed_api),
+                "fix: restore compatible API and fix implementation",
+            );
 
-        // Body edits conflict with a line-level inverse. Repeated punctuation
-        // in a call must not align with the removed parameter's parentheses.
-        let diff = history.diff(None);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
-        assert_commits(&diff, &[&sibling, &fixed]);
+            // Body edits conflict with a line-level inverse. Repeated punctuation
+            // in a call must not align with the removed parameter's parentheses.
+            let diff = history.diff(None);
+            assert_next_version(&diff, &Version::new(0, 1, 1));
+            assert_commits(&diff, &[&sibling, &fixed]);
+        }
     }
 }
 
 #[test]
 fn later_api_edits_preserve_a_retained_breaking_change_marker() {
-    for updated_api in [
-        "api(_: u8) {}",
-        "api(_: bool) { /* evolved implementation */ }",
-        "api(_: bool) { println!(\"hello\"); }",
-    ] {
-        let history = api_history();
-        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
-        let evolved = history.write_commit(
-            "src/lib.rs",
-            &BREAKING_API.replace("api(_: bool) {}", updated_api),
-            "chore: evolve API",
-        );
+    for object_format in ["sha1", "sha256"] {
+        for updated_api in [
+            "api(_: u8) {}",
+            "api(_: bool) { /* evolved implementation */ }",
+            "api(_: bool) { println!(\"hello\"); }",
+        ] {
+            let history = api_history(object_format);
+            let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+            let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+            let evolved = history.write_commit(
+                "src/lib.rs",
+                &BREAKING_API.replace("api(_: bool) {}", updated_api),
+                "chore: evolve API",
+            );
 
-        // Undoing the signature after a body edit is clean but changes HEAD;
-        // an evolved argument leaves a token conflict. Both retain the marker.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&breaking, &sibling, &evolved]);
-        assert_next_version(&diff, &Version::new(0, 2, 0));
+            // Undoing the signature after a body edit is clean but changes HEAD;
+            // an evolved argument leaves a token conflict. Both retain the marker.
+            let diff = history.diff(None);
+            assert_commits(&diff, &[&breaking, &sibling, &evolved]);
+            assert_next_version(&diff, &Version::new(0, 2, 0));
+        }
     }
 }
 
 #[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
-    for boundary in ["tag", "published", "missing", "equality"] {
-        let history = api_history();
-        let baseline = history.repo.current_commit_hash().unwrap();
-        let missing = "0".repeat(40);
-        let published_at = match boundary {
-            "tag" => {
-                history.repo.tag_lightweight("v0.1.0").unwrap();
-                None
-            }
-            "published" => Some(baseline.as_str()),
-            "missing" => Some(missing.as_str()),
-            _ => None,
-        };
-        let breaking =
-            history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
-        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
-        let diff = history.diff(published_at);
-        assert_commits(&diff, &[&breaking, &sibling]);
-        assert_next_version(&diff, &Version::new(0, 2, 0));
+    for object_format in ["sha1", "sha256"] {
+        for boundary in ["tag", "published", "missing", "equality"] {
+            let history = api_history(object_format);
+            let baseline = history.repo.current_commit_hash().unwrap();
+            let missing = "0".repeat(40);
+            let published_at = match boundary {
+                "tag" => {
+                    history.repo.tag_lightweight("v0.1.0").unwrap();
+                    None
+                }
+                "published" => Some(baseline.as_str()),
+                "missing" => Some(missing.as_str()),
+                _ => None,
+            };
+            let breaking =
+                history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
+            let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+            let diff = history.diff(published_at);
+            assert_commits(&diff, &[&breaking, &sibling]);
+            assert_next_version(&diff, &Version::new(0, 2, 0));
+        }
     }
 }
 
 #[test]
 fn a_retained_change_can_move_to_a_different_file() {
-    let history = api_history();
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
-    history
-        .repo
-        .git(&["mv", "src/lib.rs", "src/api.rs"])
-        .unwrap();
-    let moved = history.write_commit(
-        "src/lib.rs",
-        "mod api;\npub use api::*;\n",
-        "chore: move API",
-    );
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling, &moved]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    for object_format in ["sha1", "sha256"] {
+        let history = api_history(object_format);
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", Some(BASE_API));
+        history
+            .repo
+            .git(&["mv", "src/lib.rs", "src/api.rs"])
+            .unwrap();
+        let moved = history.write_commit(
+            "src/lib.rs",
+            "mod api;\npub use api::*;\n",
+            "chore: move API",
+        );
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&breaking, &sibling, &moved]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
 }
 
 #[test]
