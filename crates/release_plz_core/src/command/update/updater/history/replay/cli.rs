@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Write as _, path::Path, process::Command};
 
 use anyhow::Context as _;
-use git_cmd::Repo;
+use cargo_metadata::camino::Utf8Path;
 
 use crate::fs_utils;
 
@@ -13,7 +13,8 @@ pub(in super::super) struct Replay {
 }
 
 impl Replay {
-    pub(super) fn new(repository: &Repo, object_format: &str) -> anyhow::Result<Self> {
+    /// Replay the objects of the `object_format` database at `objects`.
+    pub(super) fn new(objects: &Utf8Path, object_format: &str) -> anyhow::Result<Self> {
         let replay = Self {
             directory: fs_utils::Utf8TempDir::new()?,
         };
@@ -34,15 +35,9 @@ impl Replay {
             "--template=",
             &format!("--object-format={object_format}"),
         ])?;
-        let objects = repository.git(&[
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            "objects",
-        ])?;
         // Quote the path using Git's C-style syntax, including control characters.
         let mut quoted = String::from("\"");
-        for character in objects.chars() {
+        for character in objects.as_str().chars() {
             match character {
                 '\\' | '"' => {
                     quoted.push('\\');
@@ -197,12 +192,12 @@ impl Change<'_> {
                 .context("missing conflict path")?;
             let (metadata, path) = (&record[..separator], &record[separator + 1..]);
             let mut metadata = std::str::from_utf8(metadata)?.split(' ');
-            let mode = metadata.next().context("missing conflict mode")?;
+            let mode = u32::from_str_radix(metadata.next().context("missing conflict mode")?, 8)?;
             let object = metadata.next().context("missing conflict object")?;
             let stage: usize = metadata.next().context("missing conflict stage")?.parse()?;
             anyhow::ensure!((1..=3).contains(&stage), "invalid conflict stage {stage}");
             conflicts.entry(path).or_default()[stage - 1] = Some(ConflictEntry {
-                mode: mode.to_owned(),
+                mode,
                 object: object.to_owned(),
             });
         }
@@ -257,10 +252,7 @@ impl Change<'_> {
         let [Some(ancestor), Some(ours), Some(theirs)] = conflict else {
             return Ok(false);
         };
-        if ancestor.mode != ours.mode
-            || theirs.mode != ours.mode
-            || !matches!(ours.mode.as_str(), "100644" | "100755")
-        {
+        if !super::same_regular_file_mode([ancestor.mode, ours.mode, theirs.mode]) {
             return Ok(false);
         }
         let blobs = [
@@ -273,6 +265,6 @@ impl Change<'_> {
 }
 
 struct ConflictEntry {
-    mode: String,
+    mode: u32,
     object: String,
 }

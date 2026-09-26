@@ -1,5 +1,7 @@
 use std::{fmt::Write as _, path::Path};
 
+use anyhow::Context as _;
+use cargo_metadata::camino::Utf8PathBuf;
 use git_cmd::Repo;
 
 mod cli;
@@ -14,11 +16,12 @@ pub(super) enum ChangeReplay {
 
 impl ChangeReplay {
     pub(super) fn new(repository: &Repo) -> anyhow::Result<Self> {
-        let object_format = repository.git(&["rev-parse", "--show-object-format"])?;
+        let object_format = object_format(repository)?;
+        let objects = objects_directory(repository)?;
         if object_format == "sha1" {
-            Ok(Self::Libgit2(libgit2::Replay::new(repository)?))
+            Ok(Self::Libgit2(libgit2::Replay::new(&objects)?))
         } else {
-            Ok(Self::Cli(cli::Replay::new(repository, &object_format)?))
+            Ok(Self::Cli(cli::Replay::new(&objects, object_format)?))
         }
     }
 
@@ -51,6 +54,45 @@ impl Change<'_> {
             Self::Cli(change) => change.undo_changes_package(target, favor_target, includes),
         }
     }
+}
+
+/// The object format of `repository`: `sha1` or `sha256`.
+///
+/// `git rev-parse` echoes an option it does not know instead of failing, and
+/// `--show-object-format` needs Git 2.29, so accept only the formats Git has.
+fn object_format(repository: &Repo) -> anyhow::Result<&'static str> {
+    let format = repository.git(&["rev-parse", "--show-object-format"])?;
+    ["sha1", "sha256"]
+        .into_iter()
+        .find(|known| *known == format)
+        .with_context(|| format!("unknown object format {format:?}: Git 2.29 or newer is required"))
+}
+
+/// The absolute path of the object database of `repository`.
+///
+/// Let Git resolve it: libgit2 cannot open repositories with some valid
+/// extensions, such as `extensions.partialClone`. `git rev-parse` echoes an
+/// option it does not know instead of failing, and `--path-format` needs Git
+/// 2.31, so make sure the answer is a single existing absolute directory.
+fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
+    let objects = Utf8PathBuf::from(repository.git(&[
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-path",
+        "objects",
+    ])?);
+    anyhow::ensure!(
+        !objects.as_str().contains('\n') && objects.is_absolute() && objects.is_dir(),
+        "cannot locate the object database, git rev-parse reported {objects:?}: Git 2.31 or newer is required"
+    );
+    Ok(objects)
+}
+
+/// Whether every stage of a conflict is a regular file of the same mode, so
+/// that merging their contents as text is meaningful. Type, mode, rename and
+/// deletion conflicts cannot establish absence.
+fn same_regular_file_mode(modes: [u32; 3]) -> bool {
+    modes.iter().all(|mode| *mode == modes[0]) && matches!(modes[0], 0o100_644 | 0o100_755)
 }
 
 /// Whether undoing a text conflict leaves the target unchanged. Independent
