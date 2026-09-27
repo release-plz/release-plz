@@ -1,8 +1,9 @@
 # Installation
 
 Make sure you have `git` installed when running `release-plz`.
-Repositories using the SHA-256 object format are not supported.
-If you need them, PRs are welcome.
+In repositories using the SHA-256 object format, release-plz cannot check whether
+a change reverted on a merged branch is still present at HEAD, so it treats such
+changes as already released. If you need this check, PRs are welcome.
 
 `release-plz` is a rust binary that can be installed in different ways.
 
