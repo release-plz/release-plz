@@ -16,9 +16,8 @@ If you are using release-plz to release important projects, make sure to check t
 [`release_always`](#the-release_always-field) field.
 :::
 
-Put the configuration file in one of these locations relative to the directory where you run
-release-plz.
-Release-plz checks them in this order and uses the first file it finds:
+Release-plz looks for the configuration file in the directory where you run it,
+checking these paths in order and using the first one that exists:
 
 1. `release-plz.toml`
 2. `.release-plz.toml`
