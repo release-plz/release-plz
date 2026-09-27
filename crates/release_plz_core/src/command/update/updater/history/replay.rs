@@ -3,6 +3,8 @@ use std::{collections::HashSet, fmt::Write as _};
 use cargo_metadata::camino::Utf8PathBuf;
 use git_cmd::Repo;
 
+use crate::fs_utils;
+
 /// Replay changes onto other snapshots in an isolated libgit2 repository that
 /// reads the source objects without writing to the source repository.
 pub(super) struct ChangeReplay {
@@ -190,19 +192,14 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
 /// The absolute path of the object database of `repository`.
 ///
 /// Let Git resolve it: libgit2 cannot open repositories with some valid
-/// extensions, such as `extensions.partialClone`. `git rev-parse` echoes an
-/// option it does not know instead of failing, and `--path-format` needs Git
-/// 2.31, so make sure the answer is a single existing absolute directory.
+/// extensions, such as `extensions.partialClone`. Git reports the path relative
+/// to the repository directory unless it is absolute, as in linked worktrees.
 fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
-    let objects = Utf8PathBuf::from(repository.git(&[
-        "rev-parse",
-        "--path-format=absolute",
-        "--git-path",
-        "objects",
-    ])?);
+    let objects = repository.git(&["rev-parse", "--git-path", "objects"])?;
+    let objects = fs_utils::canonicalize_utf8(&repository.directory().join(objects))?;
     anyhow::ensure!(
-        !objects.as_str().contains('\n') && objects.is_absolute() && objects.is_dir(),
-        "cannot locate the object database, git rev-parse reported {objects:?}: Git 2.31 or newer is required"
+        objects.is_dir(),
+        "the object database {objects} is not a directory"
     );
     Ok(objects)
 }
