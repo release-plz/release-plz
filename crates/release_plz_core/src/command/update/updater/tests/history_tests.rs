@@ -458,6 +458,36 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
     }
 }
 
+/// The release contains an evolution of the breaking change, so the tokens of
+/// the change's inverse conflict with the release and with HEAD alike.
+#[test]
+fn a_released_evolution_of_a_breaking_change_is_not_repeated() {
+    // A change after the release can touch the same file or another one.
+    for (after_path, after_contents) in [
+        ("src/after.rs", String::new()),
+        ("src/lib.rs", format!("{RELEASED_API}pub fn after() {{}}\n")),
+    ] {
+        let history = api_history();
+        let repo = &history.repo;
+        history.publish("src/lib.rs", RELEASED_API);
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        repo.git(&["checkout", "-b", "late"]).unwrap();
+        let late = history.write_commit("src/late.rs", "", "fix: late branch");
+        repo.checkout_head().unwrap();
+        history.write_commit("src/lib.rs", RELEASED_API, "chore: evolve API");
+        let after = history.write_commit(after_path, &after_contents, "fix: after the release");
+        repo.git(&["merge", "--no-ff", "-m", "merge late branch", "late"])
+            .unwrap();
+
+        // Without a tag or published commit, only the equal snapshot bounds the
+        // walk, and the late branch reaches the breaking change through another
+        // lineage. HEAD has the released evolution: the change is not repeated.
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&after, &late]);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
 #[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     for boundary in ["tag", "published", "missing", "equality"] {
