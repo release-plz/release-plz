@@ -205,20 +205,24 @@ impl<'a> RetainedChanges<'a> {
             .as_deref()
             .context("no equal snapshot was recorded")?;
         let includes = |path: &str| self.includes(path);
-        // Resolve supported text conflicts in favor of the release: an
-        // overwritten change can be absent even when its inverse conflicts.
-        // Known limitation: when the release edited tokens adjacent to the
-        // change, the token-level merge conflicts, favoring the release leaves
-        // its content unchanged, and the change counts as absent. A commit also
-        // reachable through another lineage can then be re-reported. Accepted:
-        // it only reproduces the pre-existing behavior for that commit.
-        if replay.undo_changes_package(commit, released, TokenConflicts::FavorTarget, includes)? {
+        let undo = |target: &str, conflicts: TokenConflicts| {
+            replay.undo_changes_package(commit, target, conflicts, includes)
+        };
+        if !undo(released, TokenConflicts::Keep)? {
+            // The release lacks the change beyond doubt. Token conflicts at HEAD
+            // then belong to an evolved change, which still requires its marker.
+            return undo(&self.head, TokenConflicts::Keep);
+        }
+        // The inverse changes the release or conflicts with it. Resolve text
+        // conflicts in favor of the release: an overwritten change can be absent
+        // even when its inverse conflicts with edits next to it.
+        if undo(released, TokenConflicts::FavorTarget)? {
             return Ok(false);
         }
-        // At HEAD, a clean token-level merge can establish that the change
-        // was already undone despite later edits on the same line. Keep actual
-        // token conflicts: an evolved change may still require its marker.
-        replay.undo_changes_package(commit, &self.head, TokenConflicts::Keep, includes)
+        // The conflicting tokens can also be the release's evolution of the
+        // change. Resolve HEAD's conflicts the same way, so that only content
+        // beyond those tokens, which the release lacks, counts as present.
+        undo(&self.head, TokenConflicts::FavorTarget)
     }
 
     fn includes(&self, path: &str) -> bool {

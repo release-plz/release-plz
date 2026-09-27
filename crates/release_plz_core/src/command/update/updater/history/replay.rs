@@ -113,8 +113,8 @@ impl ChangeReplay {
 /// How undoing a change treats tokens that conflict with the target.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TokenConflicts {
-    /// Keep the target's tokens: an overwritten change can be absent even when
-    /// its inverse conflicts. Only sound when checking the release.
+    /// Keep the target's tokens: a change can be absent even when its inverse
+    /// conflicts with edits next to it.
     FavorTarget,
     /// Leave them unresolved, so that they count as changes.
     Keep,
