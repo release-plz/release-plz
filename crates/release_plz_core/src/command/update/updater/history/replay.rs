@@ -1,4 +1,7 @@
-use std::{collections::HashSet, fmt::Write as _};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write as _,
+};
 
 use cargo_metadata::camino::Utf8PathBuf;
 use git_cmd::Repo;
@@ -83,37 +86,36 @@ impl ChangeReplay {
     }
 
     /// The paths of the change from `parent` to `tree`, together with the paths
-    /// `target` renamed them to.
+    /// `target` renamed them to: a merge applies edits to a renamed file there.
     fn changed_paths(
         &self,
         parent: &git2::Tree<'_>,
         tree: &git2::Tree<'_>,
         target: &git2::Tree<'_>,
     ) -> anyhow::Result<HashSet<Vec<u8>>> {
-        let changed = self
-            .repo
-            .diff_tree_to_tree(Some(parent), Some(tree), None)?;
-        let mut changed: HashSet<Vec<u8>> = changed
-            .deltas()
-            .flat_map(|delta| delta_paths(&delta).map(<[u8]>::to_vec))
-            .collect();
         let mut renamed = self
             .repo
             .diff_tree_to_tree(Some(tree), Some(target), None)?;
         renamed.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
-        let renamed: Vec<Vec<u8>> = renamed
+        let renamed: HashMap<&[u8], &[u8]> = renamed
             .deltas()
             .filter(|delta| delta.status() == git2::Delta::Renamed)
-            .filter(|delta| {
-                delta
-                    .old_file()
-                    .path_bytes()
-                    .is_some_and(|old| changed.contains(old))
+            .filter_map(|delta| {
+                Some((
+                    delta.old_file().path_bytes()?,
+                    delta.new_file().path_bytes()?,
+                ))
             })
-            .filter_map(|delta| delta.new_file().path_bytes().map(<[u8]>::to_vec))
             .collect();
-        changed.extend(renamed);
-        Ok(changed)
+        let changed = self
+            .repo
+            .diff_tree_to_tree(Some(parent), Some(tree), None)?;
+        Ok(changed
+            .deltas()
+            .flat_map(|delta| delta_paths(&delta))
+            .flat_map(|path| std::iter::once(path).chain(renamed.get(path).copied()))
+            .map(<[u8]>::to_vec)
+            .collect())
     }
 
     fn commit(&self, id: &str) -> anyhow::Result<git2::Commit<'_>> {
@@ -226,12 +228,7 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
 /// to the repository directory unless it is absolute, as in linked worktrees.
 fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
     let objects = repository.git(&["rev-parse", "--git-path", "objects"])?;
-    let objects = fs_utils::canonicalize_utf8(&repository.directory().join(objects))?;
-    anyhow::ensure!(
-        objects.is_dir(),
-        "the object database {objects} is not a directory"
-    );
-    Ok(objects)
+    fs_utils::canonicalize_utf8(&repository.directory().join(objects))
 }
 
 /// Whether every stage of a conflict is a regular file of the same mode, so

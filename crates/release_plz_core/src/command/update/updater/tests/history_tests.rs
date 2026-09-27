@@ -579,6 +579,8 @@ fn a_retained_change_can_move_to_a_different_file() {
         .repo
         .git(&["mv", "src/lib.rs", "src/api.rs"])
         .unwrap();
+    // A file stays at the old path, so the undo conflicts there instead of
+    // following a rename.
     let moved = history.write_commit(
         "src/lib.rs",
         "mod api;\npub use api::*;\n",
