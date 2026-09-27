@@ -30,8 +30,8 @@ pub(super) struct RetainedChanges<'a> {
     /// `None` until [`Self::add_boundary`] records one: nothing is pruned then.
     released: Option<String>,
     /// Repository-relative files Cargo packages at the release and, once
-    /// [`Self::add_package_files`] ran, at HEAD. `None` when a listing failed:
-    /// every file under the package directory counts then.
+    /// [`Self::retain_surviving`] adds HEAD's, at HEAD. `None` when a listing
+    /// failed: every file under the package directory counts then.
     package_files: Option<HashSet<Utf8PathBuf>>,
     /// Git's simplified, path-limited parent graph after release exclusions,
     /// with equal snapshot nodes removed to stop traversal at those boundaries.
@@ -98,7 +98,7 @@ impl<'a> RetainedChanges<'a> {
     ///
     /// Full ancestry also includes branches discarded by merges. An ancestor can
     /// nevertheless survive through another lineage; lineage reachability and the
-    /// content check of [`Self::retains`] preserve them.
+    /// content check of [`Self::retain_surviving`] preserve them.
     pub(super) fn add_boundary(
         &mut self,
         commit: &str,
@@ -143,8 +143,9 @@ impl<'a> RetainedChanges<'a> {
     /// load-bearing.
     ///
     /// `head_package_files` lists the package-relative files Cargo packages at
-    /// HEAD, see [`Self::add_package_files`]; it only runs when `commits`
-    /// contains a candidate.
+    /// HEAD, since a file added or removed since the release is only listed on
+    /// one side; `None` makes every file under the package directory count. It
+    /// only runs when `commits` contains a candidate.
     pub(super) fn retain_surviving(
         mut self,
         commits: &mut Vec<Commit>,
@@ -167,10 +168,8 @@ impl<'a> RetainedChanges<'a> {
         Ok(())
     }
 
-    /// Add the package-relative files Cargo packages at another snapshot,
-    /// typically HEAD: a file added or removed since the release is only listed
-    /// on one side. A failed listing (`None`) makes every file under the package
-    /// directory count.
+    /// Add the package-relative files Cargo packages at another snapshot, or
+    /// `None` when its listing failed.
     fn add_package_files(&mut self, files: Option<Vec<Utf8PathBuf>>) {
         let files = files.map(|files| self.repository_relative(files));
         match (self.package_files.as_mut(), files) {
