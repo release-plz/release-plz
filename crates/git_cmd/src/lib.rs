@@ -279,16 +279,7 @@ impl Repo {
         Ok(last_commit.to_string())
     }
 
-    /// Commits reachable from `head` that touch `paths`, ordered with `--date-order`.
-    ///
-    /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
-    /// doesn't exist in this repository is ignored, so a commit hash recorded by a
-    /// release that happened in another repository, or missing from a shallow clone,
-    /// is not fatal.
-    ///
-    /// Commits are ordered by date rather than topologically: `--topo-order` emits
-    /// whole lineages contiguously, so combining it with `max_commits` would keep the
-    /// oldest commits of one branch instead of the newest commits overall.
+    /// The commits of [`Repo::parents_at_paths`], without their parents.
     pub fn commits_at_paths(
         &self,
         head: &str,
@@ -296,15 +287,16 @@ impl Repo {
         paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
-        self.walk_at_paths(&[], head, exclude, paths, max_commits)
+        let graph = self.parents_at_paths(head, exclude, paths, max_commits)?;
+        Ok(graph.into_iter().map(|(commit, _)| commit).collect())
     }
 
     /// Commits reachable from `commit` that touch `paths`.
     ///
-    /// As in [`Repo::commits_at_paths`], `exclude` commits and their ancestors are
+    /// As in [`Repo::parents_at_paths`], `exclude` commits and their ancestors are
     /// dropped, and missing exclusions are ignored.
     ///
-    /// Unlike [`Repo::commits_at_paths`], this doesn't simplify history: every
+    /// Unlike [`Repo::parents_at_paths`], this doesn't simplify history: every
     /// parent of a merge is followed, so the result is a superset of the commits any
     /// simplified walk can reach through `commit` with the same exclusions.
     pub fn ancestors_at_paths(
@@ -316,7 +308,17 @@ impl Repo {
         self.rev_list(&["--full-history", commit], exclude, paths)
     }
 
-    /// The commits of [`Repo::commits_at_paths`], each paired with its parents.
+    /// Commits reachable from `head` that touch `paths`, each paired with its
+    /// parents and ordered with `--date-order`.
+    ///
+    /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
+    /// doesn't exist in this repository is ignored, so a commit hash recorded by a
+    /// release that happened in another repository, or missing from a shallow clone,
+    /// is not fatal.
+    ///
+    /// Commits are ordered by date rather than topologically: `--topo-order` emits
+    /// whole lineages contiguously, so combining it with `max_commits` would keep the
+    /// oldest commits of one branch instead of the newest commits overall.
     ///
     /// Parents are rewritten as `git rev-list --parents` does: a parent dropped by
     /// history simplification is replaced by the nearest ancestor that is kept.
@@ -330,7 +332,10 @@ impl Repo {
         paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<(String, Vec<String>)>> {
-        let lines = self.walk_at_paths(&["--parents"], head, exclude, paths, max_commits)?;
+        let limit = max_commits.map(|n| format!("--max-count={n}"));
+        let mut args = vec!["--parents", "--date-order", head];
+        args.extend(limit.as_deref());
+        let lines = self.rev_list(&args, exclude, paths)?;
         Ok(lines
             .iter()
             .filter_map(|line| {
@@ -338,24 +343,6 @@ impl Repo {
                 Some((ids.next()?.to_owned(), ids.map(str::to_owned).collect()))
             })
             .collect())
-    }
-
-    /// The date-ordered walk from `head` shared by [`Repo::commits_at_paths`] and
-    /// [`Repo::parents_at_paths`], with extra rev-list `args` and at most
-    /// `max_commits` entries.
-    fn walk_at_paths(
-        &self,
-        args: &[&str],
-        head: &str,
-        exclude: &[&str],
-        paths: &[impl AsRef<Utf8Path>],
-        max_commits: Option<u32>,
-    ) -> anyhow::Result<Vec<String>> {
-        let limit = max_commits.map(|n| format!("--max-count={n}"));
-        let mut args = args.to_vec();
-        args.extend(limit.as_deref());
-        args.extend(["--date-order", head]);
-        self.rev_list(&args, exclude, paths)
     }
 
     /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
@@ -694,9 +681,9 @@ mod tests {
         );
     }
 
-    /// [`Repo::parents_at_paths`] follows the simplification of
-    /// [`Repo::commits_at_paths`]: the "keep mine" merge is dropped, so the graph
-    /// starts at its first parent, and exclusions remove entries but not parents.
+    /// [`Repo::parents_at_paths`] simplifies history: the "keep mine" merge is
+    /// dropped, so the graph starts at its first parent, and exclusions remove
+    /// entries but not parents.
     #[test]
     fn simplified_parents_start_at_the_first_kept_commit() {
         test_logs::init();
