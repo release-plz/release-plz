@@ -21,6 +21,8 @@ impl ChangeReplay {
         let objects = objects_directory(repository)?;
         // Alternates are read-only. Store synthetic attributes and replay results
         // in memory so no objects are added to the source, including worktrees.
+        // The results of every replay stay in memory until this replay is
+        // dropped with the walk of its package.
         let odb = git2::Odb::new()?;
         odb.add_disk_alternate(objects.as_str())?;
         odb.add_new_mempack_backend(1000)?;
