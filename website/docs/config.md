@@ -21,8 +21,8 @@ release-plz.
 Release-plz checks them in this order and uses the first file it finds:
 
 1. `release-plz.toml`
-1. `.release-plz.toml`
-1. `.config/release-plz.toml`
+2. `.release-plz.toml`
+3. `.config/release-plz.toml`
 
 ## Example
 
