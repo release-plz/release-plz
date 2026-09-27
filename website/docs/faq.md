@@ -38,6 +38,18 @@ Here are some reasons why you might want to edit the release PR:
 The changelog of each crate includes the commits that changed one of the
 files of the crate or one of its dependencies.
 
+## Does release-plz support repositories with the SHA-256 object format?
+
+Yes, with one limitation.
+When a commit was reverted on a branch and a later merge restored its changes
+(for example with `git merge -s ours`), release-plz checks whether those changes
+are absent from the last release and still present at `HEAD` before listing the commit.
+This check isn't available in repositories using Git's
+[SHA-256 object format](https://git-scm.com/docs/hash-function-transition):
+release-plz treats such commits as already released, so they don't appear in the
+changelog and don't affect the version bump.
+PRs adding this check for SHA-256 repositories are welcome.
+
 ## What if a commit doesn't follow the conventional-commits format?
 
 By default, it will be listed under the section `### Other`.
