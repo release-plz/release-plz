@@ -239,9 +239,9 @@ fn assert_next_version(diff: &Diff, expected: &Version) {
     );
 }
 
-/// From a `history` equal to the release, a breaking change reverted on a
-/// merged branch is still reported, with its sibling, as a minor bump.
-fn assert_reverted_change_is_retained(history: &History) {
+/// In a `history` equal to the release, add a breaking change and revert it on
+/// a merged branch. Return the breaking commit and its sibling.
+fn revert_breaking_change(history: &History) -> (String, String) {
     assert_commits(&history.diff(None), &[]);
     let breaking = history.write_commit(
         "src/lib.rs",
@@ -249,11 +249,11 @@ fn assert_reverted_change_is_retained(history: &History) {
         "feat!: temporary API",
     );
     let sibling = history.merge_ignored_revert("src/lib.rs", Some(""));
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    (breaking, sibling)
 }
 
+/// libgit2 cannot open a repository with this extension, but the replay only
+/// reads its object database, so the reverted change is still retained.
 #[test]
 fn partial_clone_extension_does_not_prevent_updates() {
     let history = History::new();
@@ -265,7 +265,10 @@ fn partial_clone_extension_does_not_prevent_updates() {
         .repo
         .git(&["config", "extensions.partialClone", "origin"])
         .unwrap();
-    assert_reverted_change_is_retained(&history);
+    let (breaking, sibling) = revert_breaking_change(&history);
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
 }
 
 /// libgit2 cannot read SHA-256 objects, so a change reverted on a merged
@@ -277,13 +280,7 @@ fn sha256_repositories_fall_back_to_ancestry_pruning() {
         "sha256",
     );
     assert_eq!(history.repo.current_commit_hash().unwrap().len(), 64);
-    assert_commits(&history.diff(None), &[]);
-    history.write_commit(
-        "src/lib.rs",
-        "pub fn temporary() {}\n",
-        "feat!: temporary API",
-    );
-    let sibling = history.merge_ignored_revert("src/lib.rs", Some(""));
+    let (_breaking, sibling) = revert_breaking_change(&history);
     let diff = history.diff(None);
     assert_commits(&diff, &[&sibling]);
     assert_next_version(&diff, &Version::new(0, 1, 1));
