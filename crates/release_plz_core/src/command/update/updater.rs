@@ -659,12 +659,15 @@ impl Updater<'_> {
         let released = registry_package
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
-        let paths_to_check = paths_to_check(package_path, package)?;
+        let paths = PackagePaths::new(package_path, package)?;
         let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
             // 0 means "no limit"
             .filter(|&n| n != 0);
+        // Exclude already released history using both the release tag and the
+        // registry's published commit, when available. The walk skips these
+        // commits and their ancestors.
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
@@ -675,11 +678,11 @@ impl Updater<'_> {
         let graph = repository.parents_at_paths(
             "HEAD",
             &release_boundaries,
-            &paths_to_check.all(),
+            &paths.all(),
             max_analyze_commits,
         )?;
         let mut retained_changes =
-            history::RetainedChanges::new(repository, &head, &graph, &paths_to_check)?;
+            history::RetainedChanges::new(repository, &head, &graph, &paths)?;
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -707,7 +710,7 @@ impl Updater<'_> {
                     let ancestors = repository.ancestors_at_paths(
                         &current_commit_hash,
                         &release_boundaries,
-                        &paths_to_check.all(),
+                        &paths.all(),
                     )?;
                     retained_changes.add_boundary(
                         &current_commit_hash,
@@ -1027,19 +1030,19 @@ struct PackagePaths {
 }
 
 impl PackagePaths {
+    fn new(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Self> {
+        Ok(Self {
+            package: package_path.to_path_buf(),
+            readme: crate::local_readme_override(package, package_path)?,
+        })
+    }
+
     /// Every path, for path-limited Git commands.
     fn all(&self) -> Vec<&Utf8Path> {
         std::iter::once(self.package.as_path())
             .chain(self.readme.as_deref())
             .collect()
     }
-}
-
-fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<PackagePaths> {
-    Ok(PackagePaths {
-        package: package_path.to_path_buf(),
-        readme: crate::local_readme_override(package, package_path)?,
-    })
 }
 
 struct ChangelogRepo<'a> {
