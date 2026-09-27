@@ -203,8 +203,8 @@ impl<'a> RetainedChanges<'a> {
     }
 
     /// The replay backend, built on first use. One that cannot be built, for
-    /// example with Git older than 2.40 on a SHA-256 repository, is reported
-    /// once: without evidence, ancestry pruning then applies to every candidate.
+    /// example on a SHA-256 repository, is reported once: without evidence,
+    /// ancestry pruning then applies to every candidate.
     fn replay(&self) -> Option<&ChangeReplay> {
         self.replay
             .get_or_init(|| {
@@ -325,135 +325,81 @@ mod tests {
 
     #[test]
     fn merge_configuration_is_isolated_without_changing_worktree_indexes() {
-        for object_format in ["sha1", "sha256"] {
-            let dir = fs_utils::Utf8TempDir::new().unwrap();
-            fs_err::create_dir(dir.path().join("main")).unwrap();
-            let repo = Repo::init_with_object_format(dir.path().join("main"), object_format);
-            commit_file(&repo, "a\n");
-            let changed = commit_file(&repo, "b\n");
-            let released = commit_file(&repo, "c\n");
-            if std::env::var_os("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES").is_some() {
-                // Confirm the child really loads the global rule in ordinary Git.
-                assert_eq!(
-                    repo.git(&["check-attr", "merge", "--", "file"]).unwrap(),
-                    "file: merge: union"
-                );
-            }
-            fs_err::write(repo.directory().join(".gitattributes"), "* merge=union\n").unwrap();
-            repo.add_all_and_commit("merge attributes").unwrap();
-            repo.git(&["config", "merge.default", "union"]).unwrap();
-            let attributes_path = repo.directory().join(".git/info/attributes");
-            fs_err::write(&attributes_path, "* merge=union\n").unwrap();
-            let config_path = repo.directory().join(".git/config");
-            let config_before = fs_err::read(&config_path).unwrap();
-            let linked = dir.path().join("linked");
-            repo.git(&["worktree", "add", "--detach", linked.as_str()])
-                .unwrap();
-
-            for path in [repo.directory(), &linked] {
-                let source = Repo::new(path).unwrap();
-                let index_path = source
-                    .git(&["rev-parse", "--path-format=absolute", "--git-path", "index"])
-                    .unwrap();
-                let index_before = fs_err::read(&index_path).unwrap();
-                let head_before = source.current_commit_hash().unwrap();
-                let objects_before = source.git(&["count-objects", "-v"]).unwrap();
-                let contents_before = fs_err::read(path.join("file")).unwrap();
-                let changes = replay(&source, &changed, &released, None);
-
-                assert!(
-                    changes
-                        .survives(changes.replay().unwrap(), &changed)
-                        .unwrap()
-                );
-                assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
-                assert_eq!(source.current_commit_hash().unwrap(), head_before);
-                assert_eq!(
-                    source.git(&["count-objects", "-v"]).unwrap(),
-                    objects_before
-                );
-                assert_eq!(fs_err::read(path.join("file")).unwrap(), contents_before);
-            }
-            assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        fs_err::create_dir(dir.path().join("main")).unwrap();
+        let repo = Repo::init(dir.path().join("main"));
+        commit_file(&repo, "a\n");
+        let changed = commit_file(&repo, "b\n");
+        let released = commit_file(&repo, "c\n");
+        if std::env::var_os("RELEASE_PLZ_TEST_GLOBAL_MERGE_ATTRIBUTES").is_some() {
+            // Confirm the child really loads the global rule in ordinary Git.
             assert_eq!(
-                fs_err::read_to_string(attributes_path).unwrap(),
-                "* merge=union\n"
+                repo.git(&["check-attr", "merge", "--", "file"]).unwrap(),
+                "file: merge: union"
             );
         }
+        fs_err::write(repo.directory().join(".gitattributes"), "* merge=union\n").unwrap();
+        repo.add_all_and_commit("merge attributes").unwrap();
+        repo.git(&["config", "merge.default", "union"]).unwrap();
+        let attributes_path = repo.directory().join(".git/info/attributes");
+        fs_err::write(&attributes_path, "* merge=union\n").unwrap();
+        let config_path = repo.directory().join(".git/config");
+        let config_before = fs_err::read(&config_path).unwrap();
+        let linked = dir.path().join("linked");
+        repo.git(&["worktree", "add", "--detach", linked.as_str()])
+            .unwrap();
+
+        for path in [repo.directory(), &linked] {
+            let source = Repo::new(path).unwrap();
+            let index_path = source
+                .git(&["rev-parse", "--path-format=absolute", "--git-path", "index"])
+                .unwrap();
+            let index_before = fs_err::read(&index_path).unwrap();
+            let head_before = source.current_commit_hash().unwrap();
+            let objects_before = source.git(&["count-objects", "-v"]).unwrap();
+            let contents_before = fs_err::read(path.join("file")).unwrap();
+            let changes = replay(&source, &changed, &released, None);
+
+            assert!(
+                changes
+                    .survives(changes.replay().unwrap(), &changed)
+                    .unwrap()
+            );
+            assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
+            assert_eq!(source.current_commit_hash().unwrap(), head_before);
+            assert_eq!(
+                source.git(&["count-objects", "-v"]).unwrap(),
+                objects_before
+            );
+            assert_eq!(fs_err::read(path.join("file")).unwrap(), contents_before);
+        }
+        assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
+        assert_eq!(
+            fs_err::read_to_string(attributes_path).unwrap(),
+            "* merge=union\n"
+        );
     }
 
     #[test]
     fn release_conflicts_do_not_prove_partly_released_or_binary_changes_absent() {
-        for object_format in ["sha1", "sha256"] {
-            for (base, changed, released) in [
-                (
-                    "a\n1\n2\n3\n4\n5\n6\n7\n8\n9\nx\n",
-                    "b\n1\n2\n3\n4\n5\n6\n7\n8\n9\ny\n",
-                    "c\n1\n2\n3\n4\n5\n6\n7\n8\n9\ny\n",
-                ),
-                ("a\0", "b\0", "c\0"),
-            ] {
-                let dir = fs_utils::Utf8TempDir::new().unwrap();
-                let repo = Repo::init_with_object_format(dir.path(), object_format);
-                commit_file(&repo, base);
-                let changed = commit_file(&repo, changed);
-                let released = commit_file(&repo, released);
-                let changes = replay(&repo, &changed, &released, None);
-                // A nonconflicting hunk still undoes a released change. Binary
-                // conflicts cannot establish absence by choosing the release's bytes.
-                assert!(
-                    !changes
-                        .survives(changes.replay().unwrap(), &changed)
-                        .unwrap()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_root_commit_can_be_replayed() {
-        for object_format in ["sha1", "sha256"] {
+        for (base, changed, released) in [
+            (
+                "a\n1\n2\n3\n4\n5\n6\n7\n8\n9\nx\n",
+                "b\n1\n2\n3\n4\n5\n6\n7\n8\n9\ny\n",
+                "c\n1\n2\n3\n4\n5\n6\n7\n8\n9\ny\n",
+            ),
+            ("a\0", "b\0", "c\0"),
+        ] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
-            let repo = Repo::init_with_object_format(dir.path(), object_format);
-            // Repo::init creates a root commit containing README.md.
-            let root = repo.current_commit_hash().unwrap();
-            repo.git(&["rm", "README.md"]).unwrap();
-            repo.add_all_and_commit("remove root's file").unwrap();
-            let released = repo.current_commit_hash().unwrap();
-            let changes = replay(&repo, &root, &released, None);
-            assert!(changes.survives(changes.replay().unwrap(), &root).unwrap());
-        }
-    }
-
-    #[test]
-    fn a_merge_commit_is_replayed_relative_to_its_first_parent() {
-        for object_format in ["sha1", "sha256"] {
-            let dir = fs_utils::Utf8TempDir::new().unwrap();
-            let repo = Repo::init_with_object_format(dir.path(), object_format);
-            fs_err::write(repo.directory().join("file"), "a\n").unwrap();
-            repo.add_all_and_commit("base").unwrap();
-            repo.git(&["checkout", "-b", "feature"]).unwrap();
-            fs_err::write(repo.directory().join("file"), "b\n").unwrap();
-            repo.add_all_and_commit("change file").unwrap();
-            repo.checkout_head().unwrap();
-            fs_err::write(repo.directory().join("unrelated"), "mainline\n").unwrap();
-            repo.add_all_and_commit("mainline").unwrap();
-            repo.git(&["merge", "--no-ff", "-m", "merge feature", "feature"])
-                .unwrap();
-            let changed = repo.current_commit_hash().unwrap();
-            fs_err::write(repo.directory().join("file"), "a\n").unwrap();
-            repo.add_all_and_commit("revert merged change").unwrap();
-            let released = repo.current_commit_hash().unwrap();
-            let changes = replay(
-                &repo,
-                &changed,
-                &released,
-                Some(vec![Utf8PathBuf::from("file")]),
-            );
-            // The first parent has the old file. Reverting relative to the
-            // second parent would only remove the unrelated mainline file.
+            let repo = Repo::init(dir.path());
+            commit_file(&repo, base);
+            let changed = commit_file(&repo, changed);
+            let released = commit_file(&repo, released);
+            let changes = replay(&repo, &changed, &released, None);
+            // A nonconflicting hunk still undoes a released change. Binary
+            // conflicts cannot establish absence by choosing the release's bytes.
             assert!(
-                changes
+                !changes
                     .survives(changes.replay().unwrap(), &changed)
                     .unwrap()
             );
@@ -461,35 +407,79 @@ mod tests {
     }
 
     #[test]
+    fn a_root_commit_can_be_replayed() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        let repo = Repo::init(dir.path());
+        // Repo::init creates a root commit containing README.md.
+        let root = repo.current_commit_hash().unwrap();
+        repo.git(&["rm", "README.md"]).unwrap();
+        repo.add_all_and_commit("remove root's file").unwrap();
+        let released = repo.current_commit_hash().unwrap();
+        let changes = replay(&repo, &root, &released, None);
+        assert!(changes.survives(changes.replay().unwrap(), &root).unwrap());
+    }
+
+    #[test]
+    fn a_merge_commit_is_replayed_relative_to_its_first_parent() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        let repo = Repo::init(dir.path());
+        fs_err::write(repo.directory().join("file"), "a\n").unwrap();
+        repo.add_all_and_commit("base").unwrap();
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        fs_err::write(repo.directory().join("file"), "b\n").unwrap();
+        repo.add_all_and_commit("change file").unwrap();
+        repo.checkout_head().unwrap();
+        fs_err::write(repo.directory().join("unrelated"), "mainline\n").unwrap();
+        repo.add_all_and_commit("mainline").unwrap();
+        repo.git(&["merge", "--no-ff", "-m", "merge feature", "feature"])
+            .unwrap();
+        let changed = repo.current_commit_hash().unwrap();
+        fs_err::write(repo.directory().join("file"), "a\n").unwrap();
+        repo.add_all_and_commit("revert merged change").unwrap();
+        let released = repo.current_commit_hash().unwrap();
+        let changes = replay(
+            &repo,
+            &changed,
+            &released,
+            Some(vec![Utf8PathBuf::from("file")]),
+        );
+        // The first parent has the old file. Reverting relative to the
+        // second parent would only remove the unrelated mainline file.
+        assert!(
+            changes
+                .survives(changes.replay().unwrap(), &changed)
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn directory_rename_conflicts_include_the_original_packaged_path() {
-        for object_format in ["sha1", "sha256"] {
-            let dir = fs_utils::Utf8TempDir::new().unwrap();
-            let repo = Repo::init_with_object_format(dir.path(), object_format);
-            fs_err::create_dir(repo.directory().join("old")).unwrap();
-            fs_err::write(repo.directory().join("old/a"), "unchanged\n").unwrap();
-            fs_err::write(repo.directory().join("old/b"), "removed\n").unwrap();
-            repo.add_all_and_commit("add files").unwrap();
-            repo.git(&["rm", "old/b"]).unwrap();
-            repo.add_all_and_commit("remove packaged file").unwrap();
-            let changed = repo.current_commit_hash().unwrap();
-            repo.git(&["mv", "old", "new"]).unwrap();
-            repo.add_all_and_commit("rename directory").unwrap();
-            let target = repo.current_commit_hash().unwrap();
-            let changes = replay(
-                &repo,
-                &target,
-                &target,
-                Some(vec![Utf8PathBuf::from("old/b")]),
-            );
-            // Undoing the deletion suggests new/b, but only the original old/b
-            // is packaged. Git's structural conflict still affects this package.
-            let change = changes.replay().unwrap().change(&changed).unwrap();
-            let includes = |path: &str| changes.includes(path);
-            assert!(
-                change
-                    .undo_changes_package(&target, TokenConflicts::Keep, includes)
-                    .unwrap()
-            );
-        }
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        let repo = Repo::init(dir.path());
+        fs_err::create_dir(repo.directory().join("old")).unwrap();
+        fs_err::write(repo.directory().join("old/a"), "unchanged\n").unwrap();
+        fs_err::write(repo.directory().join("old/b"), "removed\n").unwrap();
+        repo.add_all_and_commit("add files").unwrap();
+        repo.git(&["rm", "old/b"]).unwrap();
+        repo.add_all_and_commit("remove packaged file").unwrap();
+        let changed = repo.current_commit_hash().unwrap();
+        repo.git(&["mv", "old", "new"]).unwrap();
+        repo.add_all_and_commit("rename directory").unwrap();
+        let target = repo.current_commit_hash().unwrap();
+        let changes = replay(
+            &repo,
+            &target,
+            &target,
+            Some(vec![Utf8PathBuf::from("old/b")]),
+        );
+        // Undoing the deletion suggests new/b, but only the original old/b
+        // is packaged. Git's structural conflict still affects this package.
+        let change = changes.replay().unwrap().change(&changed).unwrap();
+        let includes = |path: &str| changes.includes(path);
+        assert!(
+            change
+                .undo_changes_package(&target, TokenConflicts::Keep, includes)
+                .unwrap()
+        );
     }
 }
