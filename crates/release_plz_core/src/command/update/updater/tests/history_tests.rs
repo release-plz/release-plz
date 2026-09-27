@@ -437,6 +437,32 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
 }
 
 #[test]
+fn a_change_reverted_everywhere_is_not_retained_for_a_discarded_release_edit() {
+    let history = api_history();
+    let released = format!("{BASE_API}// released comment\n");
+    history.publish("src/lib.rs", &released);
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let reverted = history.write_commit("src/lib.rs", BASE_API, "fix: revert breaking API");
+    // The release reverts the change too and edits next to it. The keep-mine
+    // merge discards that edit, so HEAD differs from the release in the changed
+    // file without carrying the change.
+    let sibling = history.merge_ignored_revert("src/lib.rs", &released);
+    let diff = history.diff(None);
+    assert!(
+        !commit_ids(&diff).contains(&breaking.as_str()),
+        "{:?}",
+        diff.commits
+    );
+    assert!(
+        !commit_ids(&diff).contains(&reverted.as_str()),
+        "{:?}",
+        diff.commits
+    );
+    assert_commits(&diff, &[&sibling]);
+    assert_next_version(&diff, &Version::new(0, 1, 1));
+}
+
+#[test]
 fn later_api_edits_preserve_a_retained_breaking_change_marker() {
     for updated_api in [
         "api(_: u8) {}",
