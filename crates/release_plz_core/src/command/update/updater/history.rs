@@ -207,24 +207,16 @@ impl<'a> RetainedChanges<'a> {
             .as_deref()
             .context("no equal snapshot was recorded")?;
         let includes = |path: &str| self.includes(path);
-        let undo = |target: &str, conflicts: TokenConflicts| {
-            replay.undo_changes_package(commit, target, conflicts, includes)
-        };
-        if !undo(released, TokenConflicts::Keep)? {
-            // The release lacks the change beyond doubt. Token conflicts at HEAD
-            // then belong to an evolved change, which still requires its marker.
-            return undo(&self.head, TokenConflicts::Keep);
-        }
-        // The inverse changes the release or conflicts with it. Resolve text
-        // conflicts in favor of the release: an overwritten change can be absent
-        // even when its inverse conflicts with edits next to it.
-        if undo(released, TokenConflicts::FavorTarget)? {
+        // The release contains the change, in part at least, when undoing it
+        // changes the release. Conflicting tokens keep the release's: a change
+        // can be absent even when its inverse conflicts with edits next to it.
+        if replay.undo_affects_package(commit, released, TokenConflicts::FavorTarget, includes)? {
             return Ok(false);
         }
-        // The conflicting tokens can also be the release's evolution of the
-        // change. Resolve HEAD's conflicts the same way, so that only content
-        // beyond those tokens, which the release lacks, counts as present.
-        undo(&self.head, TokenConflicts::FavorTarget)
+        // The change is present at HEAD unless HEAD followed the release: the
+        // release's edits since the change then leave HEAD as it is. Conflicting
+        // tokens show HEAD's own version of the change, which keeps its marker.
+        replay.edits_affect_package(commit, released, &self.head, TokenConflicts::Keep, includes)
     }
 
     fn includes(&self, path: &str) -> bool {
@@ -451,7 +443,7 @@ mod tests {
         // re-adds old/b without a conflict, and that original path is packaged.
         assert!(
             replay
-                .undo_changes_package(&changed, &target, TokenConflicts::Keep, |path| {
+                .undo_affects_package(&changed, &target, TokenConflicts::Keep, |path| {
                     changes.includes(path)
                 })
                 .unwrap()

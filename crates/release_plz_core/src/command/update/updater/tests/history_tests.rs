@@ -490,6 +490,34 @@ fn a_released_evolution_of_a_breaking_change_is_not_repeated() {
     }
 }
 
+/// The release changed the token next to the breaking change without taking
+/// the change, and HEAD has both.
+#[test]
+fn a_release_edit_next_to_a_retained_change_keeps_its_marker() {
+    let history = History::with_packages(|root| {
+        write_package(root, PACKAGE, "0.1.0", "");
+        fs_err::write(root.join("src/lib.rs"), "pub fn api(a: i32) {}\n").unwrap();
+    });
+    history.publish("src/lib.rs", "pub fn api(a: i64) {}\n");
+    let breaking = history.write_commit(
+        "src/lib.rs",
+        "pub fn api(a: i32, b: u8) {}\n",
+        "feat!: add a parameter",
+    );
+    let sibling = history.merge_ignored_revert("src/lib.rs", "pub fn api(a: i64) {}\n");
+    let adopted = history.write_commit(
+        "src/lib.rs",
+        "pub fn api(a: i64, b: u8) {}\n",
+        "chore: adopt the released type",
+    );
+
+    // Undoing the parameter conflicts with the release's edit of the adjacent
+    // token, and equally at HEAD. HEAD still has the parameter the release lacks.
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling, &adopted]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
 #[test]
 fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     for boundary in ["tag", "published", "missing", "equality"] {

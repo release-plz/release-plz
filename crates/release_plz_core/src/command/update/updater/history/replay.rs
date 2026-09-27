@@ -1,10 +1,10 @@
-use std::fmt::Write as _;
+use std::{collections::HashSet, fmt::Write as _};
 
 use cargo_metadata::camino::Utf8PathBuf;
 use git_cmd::Repo;
 
-/// Undo changes in an isolated libgit2 repository that reads the source
-/// objects without writing to the source repository.
+/// Replay changes onto other snapshots in an isolated libgit2 repository that
+/// reads the source objects without writing to the source repository.
 pub(super) struct ChangeReplay {
     repo: git2::Repository,
 }
@@ -41,22 +41,79 @@ impl ChangeReplay {
     }
 
     /// Whether undoing the change of `commit` at `target` affects the files
-    /// `includes` selects. Unresolved conflicts count as changes. Text conflicts
-    /// are retried at token granularity, resolved as `conflicts` says.
-    pub(super) fn undo_changes_package(
+    /// `includes` selects, as [`Self::merging_affects_files`] counts changes.
+    pub(super) fn undo_affects_package(
         &self,
         commit: &str,
         target: &str,
         conflicts: TokenConflicts,
         includes: impl Fn(&str) -> bool,
     ) -> anyhow::Result<bool> {
-        let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
-        let target = self.repo.find_commit(git2::Oid::from_str(target)?)?;
-        // For merges, undo the change relative to the first parent, as
-        // `git revert -m 1` does. libgit2 handles roots with an empty base.
-        let mainline = u32::from(commit.parent_count() > 1);
-        let index = self.repo.revert_commit(&commit, &target, mainline, None)?;
-        let tree = target.tree()?;
+        let commit = self.commit(commit)?;
+        let parent = self.first_parent_tree(&commit)?;
+        let target = self.commit(target)?.tree()?;
+        self.merging_affects_files(&commit.tree()?, &target, &parent, conflicts, |path| {
+            includes_bytes(&includes, path)
+        })
+    }
+
+    /// Whether applying the edits made from `commit` to `edited` onto `target`
+    /// affects the files of the change of `commit` that `includes` selects, as
+    /// [`Self::merging_affects_files`] counts changes.
+    pub(super) fn edits_affect_package(
+        &self,
+        commit: &str,
+        edited: &str,
+        target: &str,
+        conflicts: TokenConflicts,
+        includes: impl Fn(&str) -> bool,
+    ) -> anyhow::Result<bool> {
+        let commit = self.commit(commit)?;
+        let tree = commit.tree()?;
+        let changed = self.repo.diff_tree_to_tree(
+            Some(&self.first_parent_tree(&commit)?),
+            Some(&tree),
+            None,
+        )?;
+        let changed: HashSet<Vec<u8>> = changed
+            .deltas()
+            .flat_map(|delta| delta_paths(&delta).map(<[u8]>::to_vec))
+            .collect();
+        let target = self.commit(target)?.tree()?;
+        let edited = self.commit(edited)?.tree()?;
+        self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
+            changed.contains(path) && includes_bytes(&includes, path)
+        })
+    }
+
+    fn commit(&self, id: &str) -> anyhow::Result<git2::Commit<'_>> {
+        Ok(self.repo.find_commit(git2::Oid::from_str(id)?)?)
+    }
+
+    /// The tree a change is relative to: the first parent's, as `git revert -m 1`
+    /// undoes a merge, or an empty tree for a root commit.
+    fn first_parent_tree<'r>(
+        &'r self,
+        commit: &git2::Commit<'r>,
+    ) -> anyhow::Result<git2::Tree<'r>> {
+        match commit.parents().next() {
+            Some(parent) => Ok(parent.tree()?),
+            None => Ok(self.repo.find_tree(self.repo.treebuilder(None)?.write()?)?),
+        }
+    }
+
+    /// Whether merging the edits made from `base` to `theirs` into `ours` changes
+    /// the files `includes` selects. Unresolved conflicts count as changes. Text
+    /// conflicts are retried at token granularity, resolved as `conflicts` says.
+    fn merging_affects_files(
+        &self,
+        base: &git2::Tree<'_>,
+        ours: &git2::Tree<'_>,
+        theirs: &git2::Tree<'_>,
+        conflicts: TokenConflicts,
+        includes: impl Fn(&[u8]) -> bool,
+    ) -> anyhow::Result<bool> {
+        let index = self.repo.merge_trees(base, ours, theirs, None)?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
             let affects_package = [
@@ -66,24 +123,19 @@ impl ChangeReplay {
             ]
             .into_iter()
             .flatten()
-            .any(|entry| includes_bytes(&includes, &entry.path));
+            .any(|entry| includes(&entry.path));
             if affects_package && !self.conflict_leaves_file_unchanged(&conflict, conflicts)? {
                 return Ok(true);
             }
         }
         let diff = self
             .repo
-            .diff_tree_to_index(Some(&tree), Some(&index), None)?;
+            .diff_tree_to_index(Some(ours), Some(&index), None)?;
         Ok(diff
             .deltas()
             // Conflicted paths were checked above, including nonconflicting hunks.
             .filter(|delta| delta.status() != git2::Delta::Conflicted)
-            .any(|delta| {
-                [delta.old_file().path_bytes(), delta.new_file().path_bytes()]
-                    .into_iter()
-                    .flatten()
-                    .any(|path| includes_bytes(&includes, path))
-            }))
+            .any(|delta| delta_paths(&delta).any(&includes)))
     }
 
     /// Binary, large, rename, deletion and mode conflicts cannot establish absence.
@@ -112,7 +164,7 @@ impl ChangeReplay {
     }
 }
 
-/// How undoing a change treats tokens that conflict with the target.
+/// How a merge treats tokens that conflict with the target.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TokenConflicts {
     /// Keep the target's tokens: a change can be absent even when its inverse
@@ -126,6 +178,13 @@ pub(super) enum TokenConflicts {
 /// cannot match the package's file list, so it counts as packaged.
 fn includes_bytes(includes: impl Fn(&str) -> bool, path: &[u8]) -> bool {
     std::str::from_utf8(path).map_or(true, includes)
+}
+
+/// The old and the new path of `delta`, as Git reports them.
+fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]> + use<'a> {
+    [delta.old_file().path_bytes(), delta.new_file().path_bytes()]
+        .into_iter()
+        .flatten()
 }
 
 /// The absolute path of the object database of `repository`.
