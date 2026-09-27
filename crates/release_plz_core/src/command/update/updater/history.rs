@@ -26,7 +26,7 @@ use replay::{ChangeReplay, TokenConflicts};
 /// change was absent there.
 pub(super) struct RetainedChanges<'a> {
     repository: &'a Repo,
-    /// The replay backend, built on first use so that an unusable one only
+    /// The change replay, built on first use so that an unusable one only
     /// disables the content check, see [`Self::replay`].
     replay: OnceCell<Option<ChangeReplay>>,
     head: String,
@@ -37,7 +37,7 @@ pub(super) struct RetainedChanges<'a> {
     released: Option<String>,
     /// Repository-relative files Cargo packages at the release and, once
     /// [`Self::add_package_files`] ran, at HEAD. `None` when a listing failed:
-    /// every file under `paths` counts then.
+    /// every file under the package directory counts then.
     package_files: Option<HashSet<Utf8PathBuf>>,
     /// Git's simplified, path-limited parent graph after release exclusions,
     /// with equal snapshot nodes removed to stop traversal at those boundaries.
@@ -143,7 +143,8 @@ impl<'a> RetainedChanges<'a> {
 
     /// Add the package-relative files Cargo packages at another snapshot,
     /// typically HEAD: a file added or removed since the release is only listed
-    /// on one side. A failed listing (`None`) makes every file under `paths` count.
+    /// on one side. A failed listing (`None`) makes every file under the package
+    /// directory count.
     pub(super) fn add_package_files(&mut self, files: Option<Vec<Utf8PathBuf>>) {
         let files = files.map(|files| self.repository_relative(files));
         match (self.package_files.as_mut(), files) {
@@ -182,7 +183,7 @@ impl<'a> RetainedChanges<'a> {
             })
     }
 
-    /// The replay backend, built on first use. One that cannot be built, for
+    /// The change replay, built on first use. One that cannot be built, for
     /// example on a SHA-256 repository, is reported once: without evidence,
     /// ancestry pruning then applies to every candidate.
     fn replay(&self) -> Option<&ChangeReplay> {
@@ -431,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn directory_rename_conflicts_include_the_original_packaged_path() {
+    fn undoing_a_deletion_re_adds_the_original_packaged_path() {
         let dir = fs_utils::Utf8TempDir::new().unwrap();
         let repo = Repo::init(dir.path());
         fs_err::create_dir(repo.directory().join("old")).unwrap();
@@ -450,8 +451,8 @@ mod tests {
             &target,
             Some(vec![Utf8PathBuf::from("old/b")]),
         );
-        // Undoing the deletion suggests new/b, but only the original old/b
-        // is packaged. Git's structural conflict still affects this package.
+        // libgit2 does not follow the directory rename: undoing the deletion
+        // re-adds old/b without a conflict, and that original path is packaged.
         assert!(
             changes
                 .replay()

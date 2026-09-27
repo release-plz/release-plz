@@ -772,8 +772,7 @@ impl Updater<'_> {
             .checkout_head()
             .context("can't checkout head to compare dependencies")?;
         if !diff.commits.is_empty() && retained_changes.has_boundary() {
-            // Both file lists are needed: a file added or removed since the release
-            // is only listed on one side.
+            // HEAD's package files, see `RetainedChanges::add_package_files`.
             retained_changes
                 .add_package_files(self.history_package_files(package_path, repository)?);
             // A simplified walk can visit an ancestor before the equal snapshot that
@@ -793,7 +792,7 @@ impl Updater<'_> {
     }
 
     /// The files Cargo packages in the current checkout when it equals the
-    /// released package, README included; `None` when they differ.
+    /// released package, comparing the README as well; `None` when they differ.
     fn check_package_equality(
         &self,
         repository: &Repo,
@@ -959,8 +958,8 @@ impl Updater<'_> {
     /// List the files Cargo packages in the current checkout, relative to the
     /// package directory, restoring any existing Cargo.lock after listing.
     ///
-    /// Return `None` if listing fails, so history comparisons fall back to all
-    /// files under the checked paths.
+    /// Return `None` if listing fails, so history comparisons fall back to every
+    /// file under the package directory.
     fn history_package_files(
         &self,
         package_path: &Utf8Path,
