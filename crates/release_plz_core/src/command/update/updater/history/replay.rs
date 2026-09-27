@@ -61,7 +61,9 @@ impl ChangeReplay {
 
     /// Whether applying the edits made from `commit` to `edited` onto `target`
     /// affects the files of the change of `commit` that `includes` selects, as
-    /// [`Self::merging_affects_files`] counts changes.
+    /// [`Self::merging_affects_files`] counts changes. Files `target` renamed
+    /// since `commit` count under their new name, where the merge applies the
+    /// edits.
     pub(super) fn edits_affect_package(
         &self,
         commit: &str,
@@ -72,20 +74,46 @@ impl ChangeReplay {
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let tree = commit.tree()?;
-        let changed = self.repo.diff_tree_to_tree(
-            Some(&self.first_parent_tree(&commit)?),
-            Some(&tree),
-            None,
-        )?;
-        let changed: HashSet<Vec<u8>> = changed
-            .deltas()
-            .flat_map(|delta| delta_paths(&delta).map(<[u8]>::to_vec))
-            .collect();
         let target = self.commit(target)?.tree()?;
         let edited = self.commit(edited)?.tree()?;
+        let changed = self.changed_paths(&self.first_parent_tree(&commit)?, &tree, &target)?;
         self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
             changed.contains(path) && includes_bytes(&includes, path)
         })
+    }
+
+    /// The paths of the change from `parent` to `tree`, together with the paths
+    /// `target` renamed them to.
+    fn changed_paths(
+        &self,
+        parent: &git2::Tree<'_>,
+        tree: &git2::Tree<'_>,
+        target: &git2::Tree<'_>,
+    ) -> anyhow::Result<HashSet<Vec<u8>>> {
+        let changed = self
+            .repo
+            .diff_tree_to_tree(Some(parent), Some(tree), None)?;
+        let mut changed: HashSet<Vec<u8>> = changed
+            .deltas()
+            .flat_map(|delta| delta_paths(&delta).map(<[u8]>::to_vec))
+            .collect();
+        let mut renamed = self
+            .repo
+            .diff_tree_to_tree(Some(tree), Some(target), None)?;
+        renamed.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
+        let renamed: Vec<Vec<u8>> = renamed
+            .deltas()
+            .filter(|delta| delta.status() == git2::Delta::Renamed)
+            .filter(|delta| {
+                delta
+                    .old_file()
+                    .path_bytes()
+                    .is_some_and(|old| changed.contains(old))
+            })
+            .filter_map(|delta| delta.new_file().path_bytes().map(<[u8]>::to_vec))
+            .collect();
+        changed.extend(renamed);
+        Ok(changed)
     }
 
     fn commit(&self, id: &str) -> anyhow::Result<git2::Commit<'_>> {
