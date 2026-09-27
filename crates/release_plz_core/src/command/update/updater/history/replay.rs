@@ -126,10 +126,12 @@ impl ChangeReplay {
         &'r self,
         commit: &git2::Commit<'r>,
     ) -> anyhow::Result<git2::Tree<'r>> {
-        match commit.parents().next() {
-            Some(parent) => Ok(parent.tree()?),
-            None => Ok(self.repo.find_tree(self.repo.treebuilder(None)?.write()?)?),
+        if commit.parent_count() == 0 {
+            return Ok(self.repo.find_tree(self.repo.treebuilder(None)?.write()?)?);
         }
+        // Look the parent up explicitly: `Commit::parents` silently ends at a
+        // parent that a shallow clone does not have.
+        Ok(self.repo.find_commit(commit.parent_id(0)?)?.tree()?)
     }
 
     /// Whether merging the edits made from `base` to `theirs` into `ours` changes
