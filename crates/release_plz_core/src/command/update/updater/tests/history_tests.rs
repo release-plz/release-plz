@@ -563,6 +563,25 @@ fn a_retained_change_can_move_to_a_different_file() {
 }
 
 #[test]
+fn a_retained_change_survives_a_rename_at_head() {
+    let history = api_history();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    let repo = &history.repo;
+    repo.git(&["mv", "src/lib.rs", "src/api.rs"]).unwrap();
+    let manifest = fs_err::read_to_string(repo.directory().join(CARGO_TOML)).unwrap();
+    // Nothing is left at the old path, so the replay must follow the rename.
+    let renamed = history.write_commit(
+        CARGO_TOML,
+        &format!("{manifest}\n[lib]\npath = \"src/api.rs\"\n"),
+        "chore: rename the API file",
+    );
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling, &renamed]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
 fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
