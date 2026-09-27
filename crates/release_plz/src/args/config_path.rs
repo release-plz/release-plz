@@ -10,7 +10,11 @@ use tracing::info;
 
 use crate::config::Config;
 
-const DEFAULT_CONFIG_PATHS: &[&str] = &["release-plz.toml", ".release-plz.toml"];
+const DEFAULT_CONFIG_PATHS: &[&str] = &[
+    "release-plz.toml",
+    ".release-plz.toml",
+    ".config/release-plz.toml",
+];
 
 /// A clap [`Args`] struct that specifies the path to the release-plz config file.
 #[derive(Debug, Default, Args)]
@@ -18,7 +22,7 @@ pub struct ConfigPath {
     /// Path to the release-plz config file.
     ///
     /// If not specified, the following paths are checked in order: `./release-plz.toml`,
-    /// `./.release-plz.toml`
+    /// `./.release-plz.toml`, `./.config/release-plz.toml`.
     ///
     /// If a config file is not found, the default configuration is used.
     #[arg(long = "config", value_name = "PATH")]
@@ -30,8 +34,8 @@ impl ConfigPath {
     ///
     /// If a path is specified, it will attempt to load the configuration from that file. If the
     /// file does not exist, it will return an error. If no path is specified, it will check the
-    /// default paths (`release-plz.toml` and `.release-plz.toml`) and load the first one that
-    /// exists.
+    /// default paths (`release-plz.toml`, `.release-plz.toml`, and
+    /// `.config/release-plz.toml`) in that order and load the first one that exists.
     pub fn load(&self) -> anyhow::Result<Config> {
         if let Some(path) = self.path.as_deref() {
             match load_config(path) {
@@ -41,18 +45,22 @@ impl ConfigPath {
             }
         }
 
-        for path in DEFAULT_CONFIG_PATHS {
-            let path = Path::new(path);
-            match load_config(path) {
-                Ok(Some(config)) => return Ok(config),
-                Ok(None) => (),
-                Err(err) => return Err(err.context("invalid config file")),
-            }
-        }
-
-        info!("release-plz config file not found, using default configuration");
-        Ok(Config::default())
+        load_default_config_in(Path::new("."))
     }
+}
+
+fn load_default_config_in(directory: &Path) -> anyhow::Result<Config> {
+    for path in DEFAULT_CONFIG_PATHS {
+        let path = directory.join(path);
+        match load_config(&path) {
+            Ok(Some(config)) => return Ok(config),
+            Ok(None) => (),
+            Err(err) => return Err(err.context("invalid config file")),
+        }
+    }
+
+    info!("release-plz config file not found, using default configuration");
+    Ok(Config::default())
 }
 
 /// Try to load the configuration from the specified path.
@@ -119,27 +127,79 @@ mod tests {
     }
 
     #[test]
-    fn load_config_default_path_success() {
-        let temp_dir = tempdir().unwrap();
-        let default_config_path = temp_dir.path().join("release-plz.toml");
-        let default_config = toml::to_string(&Config::default()).unwrap();
-        fs_err::write(&default_config_path, default_config).unwrap();
+    fn load_config_default_path_success() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let config_path = temp_dir.path().join("release-plz.toml");
+        fs_err::write(&config_path, "[workspace]\nallow_dirty = true\n")?;
 
-        let config_path = ConfigPath { path: None };
+        let config = load_default_config_in(temp_dir.path())?;
 
-        assert_eq!(config_path.load().unwrap(), Config::default());
+        assert_eq!(config.workspace.allow_dirty, Some(true));
+        Ok(())
     }
 
     #[test]
-    fn load_config_no_config_file_uses_default() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = ConfigPath { path: None };
+    fn load_config_no_config_file_uses_default() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let config = load_default_config_in(temp_dir.path())?;
 
-        // Ensure no config file exists
-        assert!(!temp_dir.path().join("release-plz.toml").exists());
-        assert!(!temp_dir.path().join(".release-plz.toml").exists());
+        assert_eq!(config, Config::default());
+        Ok(())
+    }
 
-        // Load the config, which should return the default
-        assert_eq!(config_path.load().unwrap(), Config::default());
+    #[test]
+    fn load_config_from_hidden_root_path() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let config_path = temp_dir.path().join(".release-plz.toml");
+        fs_err::write(&config_path, "[workspace]\nallow_dirty = true\n")?;
+
+        let config = load_default_config_in(temp_dir.path())?;
+
+        assert_eq!(config.workspace.allow_dirty, Some(true));
+        Ok(())
+    }
+
+    #[test]
+    fn load_config_from_dot_config_path() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let config_dir = temp_dir.path().join(".config");
+        let config_path = config_dir.join("release-plz.toml");
+        fs_err::create_dir_all(&config_dir)?;
+        fs_err::write(&config_path, "[workspace]\nallow_dirty = true\n")?;
+
+        let config = load_default_config_in(temp_dir.path())?;
+
+        assert_eq!(config.workspace.allow_dirty, Some(true));
+        Ok(())
+    }
+
+    #[test]
+    fn load_config_prefers_root_path_over_hidden_root_path() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let root_path = temp_dir.path().join("release-plz.toml");
+        let hidden_path = temp_dir.path().join(".release-plz.toml");
+        fs_err::write(&root_path, "[workspace]\nallow_dirty = true\n")?;
+        fs_err::write(&hidden_path, "[workspace]\nallow_dirty = false\n")?;
+
+        let config = load_default_config_in(temp_dir.path())?;
+
+        assert_eq!(config.workspace.allow_dirty, Some(true));
+        Ok(())
+    }
+
+    #[test]
+    fn load_config_prefers_hidden_root_path_over_dot_config_path() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let hidden_path = temp_dir.path().join(".release-plz.toml");
+        let config_dir = temp_dir.path().join(".config");
+        let dot_config_path = config_dir.join("release-plz.toml");
+        fs_err::write(&hidden_path, "[workspace]\nallow_dirty = false\n")?;
+        fs_err::create_dir_all(&config_dir)?;
+        fs_err::write(&dot_config_path, "[workspace]\nallow_dirty = true\n")?;
+
+        let config = load_default_config_in(temp_dir.path())?;
+
+        assert_eq!(config.workspace.allow_dirty, Some(false));
+        Ok(())
     }
 }

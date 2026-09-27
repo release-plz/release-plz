@@ -16,7 +16,13 @@ If you are using release-plz to release important projects, make sure to check t
 [`release_always`](#the-release_always-field) field.
 :::
 
-Put your `release-plz.toml` (or `.release-plz.toml`) file in the same directory of your root `Cargo.toml`.
+Put the configuration file in one of these locations relative to the directory where you run
+release-plz.
+Release-plz checks them in this order and uses the first file it finds:
+
+1. `release-plz.toml`
+1. `.release-plz.toml`
+1. `.config/release-plz.toml`
 
 ## Example
 
