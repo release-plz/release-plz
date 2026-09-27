@@ -296,9 +296,7 @@ impl Repo {
         paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
-        let limit = max_commits.map(|n| format!("--max-count={n}"));
-        let args: Vec<&str> = limit.as_deref().into_iter().collect();
-        self.walk_at_paths(&args, head, exclude, paths)
+        self.walk_at_paths(&[], head, exclude, paths, max_commits)
     }
 
     /// Commits reachable from `commit` that touch `paths`.
@@ -330,8 +328,9 @@ impl Repo {
         head: &str,
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
+        max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<(String, Vec<String>)>> {
-        let lines = self.walk_at_paths(&["--parents"], head, exclude, paths)?;
+        let lines = self.walk_at_paths(&["--parents"], head, exclude, paths, max_commits)?;
         Ok(lines
             .iter()
             .filter_map(|line| {
@@ -342,15 +341,19 @@ impl Repo {
     }
 
     /// The date-ordered walk from `head` shared by [`Repo::commits_at_paths`] and
-    /// [`Repo::parents_at_paths`], with extra rev-list `args`.
+    /// [`Repo::parents_at_paths`], with extra rev-list `args` and at most
+    /// `max_commits` entries.
     fn walk_at_paths(
         &self,
         args: &[&str],
         head: &str,
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
+        max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
+        let limit = max_commits.map(|n| format!("--max-count={n}"));
         let mut args = args.to_vec();
+        args.extend(limit.as_deref());
         args.extend(["--date-order", head]);
         self.rev_list(&args, exclude, paths)
     }
@@ -704,11 +707,12 @@ mod tests {
         let KeepMineMerge { base, mine, .. } = keep_mine_merge(&repo, path);
 
         assert_eq!(
-            repo.parents_at_paths("HEAD", &[], &[path]).unwrap(),
+            repo.parents_at_paths("HEAD", &[], &[path], None).unwrap(),
             [(mine.clone(), vec![base.clone()]), (base.clone(), vec![])]
         );
         assert_eq!(
-            repo.parents_at_paths("HEAD", &[&base], &[path]).unwrap(),
+            repo.parents_at_paths("HEAD", &[&base], &[path], None)
+                .unwrap(),
             [(mine, vec![base])]
         );
     }

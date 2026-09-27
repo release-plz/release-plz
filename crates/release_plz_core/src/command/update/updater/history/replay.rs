@@ -10,8 +10,14 @@ pub(super) struct ChangeReplay {
 }
 
 impl ChangeReplay {
-    pub(super) fn new(repository: &Repo) -> anyhow::Result<Self> {
-        check_object_format(repository)?;
+    /// Read the objects of `repository`, whose `head` commit id shows its object
+    /// format: only SHA-1 repositories are supported, since libgit2 cannot read
+    /// SHA-256 objects.
+    pub(super) fn new(repository: &Repo, head: &str) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            git2::Oid::from_str(head).is_ok(),
+            "SHA-256 repositories are not supported"
+        );
         let objects = objects_directory(repository)?;
         // Alternates are read-only. Store synthetic attributes and replay results
         // in memory so no objects are added to the source, including worktrees.
@@ -32,37 +38,22 @@ impl ChangeReplay {
         Ok(Self { repo })
     }
 
-    /// Prepare the change once for replay against both the release and HEAD.
-    pub(super) fn change(&self, commit: &str) -> anyhow::Result<Change<'_>> {
-        Ok(Change {
-            repo: &self.repo,
-            commit: self.repo.find_commit(git2::Oid::from_str(commit)?)?,
-        })
-    }
-}
-
-pub(super) struct Change<'a> {
-    repo: &'a git2::Repository,
-    commit: git2::Commit<'a>,
-}
-
-impl Change<'_> {
-    /// Whether undoing this change affects the files `includes` selects.
-    /// Unresolved conflicts count as changes. Text conflicts are retried at
-    /// token granularity, resolved as `conflicts` says.
+    /// Whether undoing the change of `commit` at `target` affects the files
+    /// `includes` selects. Unresolved conflicts count as changes. Text conflicts
+    /// are retried at token granularity, resolved as `conflicts` says.
     pub(super) fn undo_changes_package(
         &self,
+        commit: &str,
         target: &str,
         conflicts: TokenConflicts,
         includes: impl Fn(&str) -> bool,
     ) -> anyhow::Result<bool> {
+        let commit = self.repo.find_commit(git2::Oid::from_str(commit)?)?;
         let target = self.repo.find_commit(git2::Oid::from_str(target)?)?;
         // For merges, undo the change relative to the first parent, as
         // `git revert -m 1` does. libgit2 handles roots with an empty base.
-        let mainline = u32::from(self.commit.parent_count() > 1);
-        let index = self
-            .repo
-            .revert_commit(&self.commit, &target, mainline, None)?;
+        let mainline = u32::from(commit.parent_count() > 1);
+        let index = self.repo.revert_commit(&commit, &target, mainline, None)?;
         let tree = target.tree()?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
@@ -115,7 +106,7 @@ impl Change<'_> {
             self.repo.find_blob(ours.id)?,
             self.repo.find_blob(theirs.id)?,
         ];
-        conflict_leaves_file_unchanged(blobs.each_ref().map(git2::Blob::content), conflicts)
+        text_conflict_leaves_file_unchanged(blobs.each_ref().map(git2::Blob::content), conflicts)
     }
 }
 
@@ -133,19 +124,6 @@ pub(super) enum TokenConflicts {
 /// cannot match the package's file list, so it counts as packaged.
 fn includes_bytes(includes: impl Fn(&str) -> bool, path: &[u8]) -> bool {
     std::str::from_utf8(path).map_or(true, includes)
-}
-
-/// Only SHA-1 repositories are supported: libgit2 cannot read SHA-256 objects.
-///
-/// `git rev-parse` echoes an option it does not know instead of failing, and
-/// `--show-object-format` needs Git 2.29, so accept only the known formats.
-fn check_object_format(repository: &Repo) -> anyhow::Result<()> {
-    let format = repository.git(&["rev-parse", "--show-object-format"])?;
-    match format.as_str() {
-        "sha1" => Ok(()),
-        "sha256" => anyhow::bail!("SHA-256 repositories are not supported"),
-        _ => anyhow::bail!("unknown object format {format:?}: Git 2.29 or newer is required"),
-    }
 }
 
 /// The absolute path of the object database of `repository`.
@@ -178,7 +156,7 @@ fn same_regular_file_mode(modes: [u32; 3]) -> bool {
 /// Whether undoing a text conflict leaves the target unchanged. Independent
 /// edits on the same line still apply; `conflicts` decides about tokens that
 /// do conflict.
-fn conflict_leaves_file_unchanged(
+fn text_conflict_leaves_file_unchanged(
     blobs: [&[u8]; 3],
     conflicts: TokenConflicts,
 ) -> anyhow::Result<bool> {

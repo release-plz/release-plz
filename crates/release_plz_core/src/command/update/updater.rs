@@ -716,14 +716,16 @@ impl Updater<'_> {
             .collect();
         let head = repository.current_commit_hash()?;
         // Enumerate from the branch tip before checking out any historical snapshot.
-        let commits = repository.commits_at_paths(
+        // The parents let RetainedChanges follow the lineages of this same walk.
+        let graph = repository.parents_at_paths(
             "HEAD",
             &release_boundaries,
             &paths_to_check.all(),
             max_analyze_commits,
         )?;
+        let commits: Vec<String> = graph.iter().map(|(commit, _)| commit.clone()).collect();
         let mut retained_changes =
-            history::RetainedChanges::new(repository, &head, &release_boundaries, &paths_to_check)?;
+            history::RetainedChanges::new(repository, &head, graph, &paths_to_check)?;
         for current_commit_hash in commits {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -733,7 +735,7 @@ impl Updater<'_> {
             }
             checkout_commit(repository, &current_commit_hash)?;
             if let Some((released_package, released_path)) = released {
-                let equal_package_files = self.equal_package_files(
+                let equal_package_files = self.check_package_equality(
                     repository,
                     package,
                     package_path,
@@ -753,11 +755,7 @@ impl Updater<'_> {
                         &release_boundaries,
                         &paths_to_check.all(),
                     )?;
-                    retained_changes.add_boundary(
-                        &current_commit_hash,
-                        ancestors,
-                        package_files,
-                    )?;
+                    retained_changes.add_boundary(&current_commit_hash, ancestors, package_files);
                     continue;
                 }
             }
@@ -794,7 +792,9 @@ impl Updater<'_> {
         Ok(())
     }
 
-    fn equal_package_files(
+    /// The files Cargo packages in the current checkout when it equals the
+    /// released package, README included; `None` when they differ.
+    fn check_package_equality(
         &self,
         repository: &Repo,
         package: &Package,
@@ -1057,7 +1057,7 @@ fn get_package_files(
 }
 
 /// The paths whose history holds a package's changes.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct PackagePaths {
     /// The package directory.
     package: Utf8PathBuf,
