@@ -22,8 +22,8 @@ const DEFAULT_CONFIG_PATHS: &[&str] = &[
 pub struct ConfigPath {
     /// Path to the release-plz config file.
     ///
-    /// If not specified, the following paths are checked in order: `./release-plz.toml`,
-    /// `./.release-plz.toml`, `./.config/release-plz.toml`.
+    /// If not specified, the following paths are checked in order: `release-plz.toml`,
+    /// `.release-plz.toml`, `.config/release-plz.toml`.
     ///
     /// If a config file is not found, the default configuration is used.
     #[arg(long = "config", value_name = "PATH")]
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn load_config_uses_first_existing_default_path() {
-        for (i, expected) in DEFAULT_CONFIG_PATHS.iter().enumerate() {
+        for (i, &expected) in DEFAULT_CONFIG_PATHS.iter().enumerate() {
             let temp_dir = tempdir().unwrap();
             // Create this path and every lower-priority one, marking each file with its own path.
             for path in &DEFAULT_CONFIG_PATHS[i..] {
@@ -164,10 +164,7 @@ mod tests {
 
             let config = load_default_config_in(temp_dir.path()).unwrap();
 
-            assert_eq!(
-                config.workspace.pr_branch_prefix.as_deref(),
-                Some(*expected)
-            );
+            assert_eq!(config.workspace.pr_branch_prefix.as_deref(), Some(expected));
         }
     }
 
