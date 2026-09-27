@@ -678,10 +678,9 @@ impl Updater<'_> {
             &paths_to_check.all(),
             max_analyze_commits,
         )?;
-        let commits: Vec<String> = graph.iter().map(|(commit, _)| commit.clone()).collect();
         let mut retained_changes =
-            history::RetainedChanges::new(repository, &head, graph, &paths_to_check)?;
-        for current_commit_hash in commits {
+            history::RetainedChanges::new(repository, &head, &graph, &paths_to_check)?;
+        for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
@@ -690,7 +689,7 @@ impl Updater<'_> {
             }
             checkout_commit(repository, &current_commit_hash)?;
             if let Some((released_package, released_path)) = released {
-                let equal_package_files = self.check_package_equality(
+                let are_packages_equal = self.check_package_equality(
                     repository,
                     package,
                     package_path,
@@ -698,7 +697,7 @@ impl Updater<'_> {
                     released_path,
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
-                if let Some(package_files) = equal_package_files {
+                if are_packages_equal {
                     // Collect pruning candidates with full history: a "keep mine"
                     // merge can hide real ancestors from a simplified walk. Reuse
                     // the outer walk's paths and release boundaries to avoid
@@ -710,7 +709,11 @@ impl Updater<'_> {
                         &release_boundaries,
                         &paths_to_check.all(),
                     )?;
-                    retained_changes.add_boundary(&current_commit_hash, ancestors, package_files);
+                    retained_changes.add_boundary(
+                        &current_commit_hash,
+                        ancestors,
+                        released_package_files.get(released_path)?,
+                    );
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
@@ -734,16 +737,12 @@ impl Updater<'_> {
         repository
             .checkout_head()
             .context("can't checkout head to compare dependencies")?;
-        if !diff.commits.is_empty() && retained_changes.has_boundary() {
-            // HEAD's package files, see `RetainedChanges::add_package_files`.
-            retained_changes
-                .add_package_files(self.history_package_files(package_path, repository)?);
-            // A simplified walk can visit an ancestor before the equal snapshot that
-            // prunes it. Make the final decision with every discovered boundary,
-            // keeping only ancestors whose changes survive through another lineage.
-            diff.commits
-                .retain(|commit| retained_changes.retains(&commit.id));
-        }
+        // A simplified walk can visit an ancestor before the equal snapshot that
+        // prunes it. Make the final decision with every discovered boundary,
+        // keeping only ancestors whose changes survive through another lineage.
+        retained_changes.retain_surviving(&mut diff.commits, || {
+            self.history_package_files(package_path, repository)
+        })?;
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
@@ -754,8 +753,7 @@ impl Updater<'_> {
         Ok(())
     }
 
-    /// The files Cargo packages in the current checkout when it equals the
-    /// released package, comparing the README as well; `None` when they differ.
+    /// Whether the current checkout equals the released package, README included.
     fn check_package_equality(
         &self,
         repository: &Repo,
@@ -764,17 +762,17 @@ impl Updater<'_> {
         registry_package: &RegistryPackage,
         registry_package_path: &Utf8Path,
         released_package_files: &ReleasedPackageFiles,
-    ) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
+    ) -> anyhow::Result<bool> {
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
             package_path,
             &registry_package.package,
         )? {
             debug!("{}: README updated", package.name);
-            return Ok(None);
+            return Ok(false);
         }
         self.with_cargo_lock_restored(repository, || {
-            crate::package_compare::equal_package_files(
+            crate::package_compare::are_packages_equal_cached(
                 package_path,
                 registry_package_path,
                 released_package_files,

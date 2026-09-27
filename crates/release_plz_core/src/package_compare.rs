@@ -58,7 +58,8 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
 pub(crate) struct ReleasedPackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 
 impl ReleasedPackageFiles {
-    fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
+    /// The files of the released `package`, relative to its directory.
+    pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
         if let Some(files) = self.0.get() {
             return Ok(files);
         }
@@ -74,29 +75,27 @@ pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
 ) -> anyhow::Result<bool> {
-    Ok(equal_package_files(
+    are_packages_equal_cached(
         local_package,
         registry_package,
         &ReleasedPackageFiles::default(),
-    )?
-    .is_some())
+    )
 }
 
-/// Return the local package's file list if both packages are equal, reusing the
-/// released package's file list across the commits of a single history walk.
-/// `Some`, even with an empty list, means equal; `None` means different.
-pub(crate) fn equal_package_files(
+/// Same as [`are_packages_equal`], reusing the released package's file list
+/// across the commits of a single history walk.
+pub(crate) fn are_packages_equal_cached(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
     released_package_files: &ReleasedPackageFiles,
-) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
+) -> anyhow::Result<bool> {
     debug!(
         "compare local package {:?} with registry package {:?}",
         local_package, registry_package
     );
     if !are_cargo_toml_equal(local_package, registry_package) {
         debug!("Cargo.toml is different");
-        return Ok(None);
+        return Ok(false);
     }
 
     let local_package_files = get_cargo_package_files(local_package).with_context(|| {
@@ -118,7 +117,7 @@ pub(crate) fn equal_package_files(
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
         debug!("cargo package list is different");
-        return Ok(None);
+        return Ok(false);
     }
 
     let local_files = local_files
@@ -143,11 +142,11 @@ pub(crate) fn equal_package_files(
 
         let registry_path = registry_package.join(relative_path);
         if !are_files_equal(&local_path, &registry_path).context("files are not equal")? {
-            return Ok(None);
+            return Ok(false);
         }
     }
 
-    Ok(Some(local_package_files))
+    Ok(true)
 }
 
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
