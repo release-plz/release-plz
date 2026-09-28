@@ -1,0 +1,13 @@
+extends = "../.config/rumdl.toml"
+
+# Changelog Tera templates and generated-output examples contain long lines that
+# should stay intact. Keep prose at the root's 100-character limit, but allow
+# code examples up to the website's historical 500-character limit.
+[line-length]
+code-block-line-length = 500
+
+[per-file-ignores]
+# This MDX fragment is embedded in another page, so it has no own heading.
+"website/src/pages/quickstart_code.mdx" = ["first-line-h1"] # 1
+# The example label is emphasized in existing prose.
+"website/docs/config.md" = ["no-emphasis-as-heading"] # 1
