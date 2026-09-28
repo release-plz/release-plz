@@ -1,0 +1,33 @@
+name: Markdown
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.md"
+      - "**.mdx"
+      - ".config/rumdl.toml"
+      - "website/.rumdl.toml"
+      - ".github/workflows/markdown.yml"
+  pull_request:
+    paths:
+      - "**.md"
+      - "**.mdx"
+      - ".config/rumdl.toml"
+      - "website/.rumdl.toml"
+      - ".github/workflows/markdown.yml"
+
+permissions: {}
+
+jobs:
+  rumdl:
+    name: rumdl
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: rvben/rumdl@bb84a49a85625b31ecf6c3e58b7bca7c75fbfefb # v0.2.77
+        with:
+          version: "0.2.77"
