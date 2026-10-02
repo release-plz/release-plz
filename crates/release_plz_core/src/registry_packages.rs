@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context;
-use cargo::core::Workspace;
+use cargo::workspace::Workspace;
 use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use tempfile::{TempDir, tempdir};
