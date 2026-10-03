@@ -41,6 +41,8 @@ use super::{
     update_request::UpdateRequest,
 };
 
+mod history;
+
 static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
 
 #[derive(Debug)]
@@ -657,30 +659,35 @@ impl Updater<'_> {
         let released = registry_package
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
-        let paths_to_check = paths_to_check(package_path, package)?;
+        let paths = PackagePaths::new(package_path, package)?;
         let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
             // 0 means "no limit"
             .filter(|&n| n != 0);
-        // Exclude already released history using both the release tag and the registry's
-        // published commit, when available. The walk skips these commits and their ancestors.
+        // Exclude already released history using both the release tag and the
+        // registry's published commit, when available. The walk skips these
+        // commits and their ancestors.
         let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
+        let head = repository.current_commit_hash()?;
         // Enumerate from the branch tip before checking out any historical snapshot.
-        let commits = repository.commits_at_paths(
+        // The parents let RetainedChanges follow the lineages of this same walk.
+        let graph = repository.parents_at_paths(
             "HEAD",
             &release_boundaries,
-            &paths_to_check,
+            &paths.all(),
             max_analyze_commits,
         )?;
-        let mut released_ancestors = HashSet::new();
-        for current_commit_hash in commits {
-            // Skip unnecessary checkout and packaging for commits already known to be
-            // pruned (i.e. excluded from the diff).
-            if released_ancestors.contains(&current_commit_hash) {
+        let mut retained_changes =
+            history::RetainedChanges::new(repository, &head, &graph, &paths)?;
+        for (current_commit_hash, _) in graph {
+            // Stop lineages that have reached an equal snapshot. Still inspect
+            // ancestors reachable through another lineage: they can contain
+            // surviving changes or another equal snapshot that bounds that lineage.
+            if retained_changes.skips(&current_commit_hash) {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
@@ -694,20 +701,22 @@ impl Updater<'_> {
                     &released_package_files,
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
-                    // Prune every ancestor of this released snapshot.
-                    // `--full-history` is what makes the set complete: git's
-                    // default simplification drops the second parent of a "keep
-                    // mine" merge, hiding real ancestors. Reuse the outer walk's
-                    // paths and release boundaries to avoid collecting history
-                    // already excluded from the candidate commits.
-                    // "Ancestor of a released snapshot" only coincides with
-                    // "already released" while merges don't invert tree order: a
-                    // `merge -s ours` can keep an ancestor's tree alive at HEAD.
-                    released_ancestors.extend(repository.ancestors_at_paths(
+                    // Collect pruning candidates with full history: a "keep mine"
+                    // merge can hide real ancestors from a simplified walk. Reuse
+                    // the outer walk's paths and release boundaries to avoid
+                    // collecting history already excluded from consideration.
+                    // RetainedChanges preserves candidates whose changes survive
+                    // through another lineage.
+                    let ancestors = repository.ancestors_at_paths(
                         &current_commit_hash,
                         &release_boundaries,
-                        &paths_to_check,
-                    )?);
+                        &paths.all(),
+                    )?;
+                    retained_changes.add_boundary(
+                        &current_commit_hash,
+                        ancestors,
+                        released_package_files.get(released_path)?,
+                    );
                     continue;
                 }
                 // An already bumped version still needs its changelog updated.
@@ -728,16 +737,15 @@ impl Updater<'_> {
                 ));
             }
         }
-        // Git can skip a merge's parent connection when simplifying history, so even
-        // with `--date-order`, an ancestor reached through another branch can appear
-        // before the released snapshot that excludes it. Remove those commits here
-        // in case they were added before the loop knew to skip them.
-        diff.commits
-            .retain(|commit| !released_ancestors.contains(&commit.id));
-
         repository
             .checkout_head()
             .context("can't checkout head to compare dependencies")?;
+        // A simplified walk can visit an ancestor before the equal snapshot that
+        // prunes it. Make the final decision with every discovered boundary,
+        // keeping only ancestors whose changes survive through another lineage.
+        retained_changes.retain_surviving(&mut diff.commits, || {
+            self.history_package_files(package_path, repository)
+        })?;
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
@@ -748,6 +756,7 @@ impl Updater<'_> {
         Ok(())
     }
 
+    /// Whether the current checkout equals the released package, README included.
     fn check_package_equality(
         &self,
         repository: &Repo,
@@ -832,8 +841,8 @@ impl Updater<'_> {
         }
     }
 
-    /// Run `f`, then revert the edits.
-    /// Useful when `f` edits the file, eg to run `cargo package`.
+    /// Run `f`, which inspects the package with `cargo package`, then revert the
+    /// edits `cargo package` can make to files such as `Cargo.lock`.
     fn with_cargo_lock_restored<T>(
         &self,
         repository: &Repo,
@@ -908,6 +917,26 @@ impl Updater<'_> {
             return Ok(true);
         };
         Ok(!package_files.is_disjoint(&changed_files))
+    }
+
+    /// List the files Cargo packages in the current checkout, relative to the
+    /// package directory, restoring any existing Cargo.lock after listing.
+    ///
+    /// Return `None` if listing fails, so history comparisons fall back to every
+    /// file under the package directory.
+    fn history_package_files(
+        &self,
+        package_path: &Utf8Path,
+        repository: &Repo,
+    ) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
+        let package_files = self.with_cargo_lock_restored(repository, || {
+            crate::get_cargo_package_files(package_path)
+        })?;
+        // Cargo also lists generated files that do not exist in the checkout.
+        // Tree comparisons only need their names, not canonicalized files.
+        Ok(package_files
+            .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
+            .ok())
     }
 }
 
@@ -990,12 +1019,30 @@ fn get_package_files(
         .collect()
 }
 
-fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Vec<Utf8PathBuf>> {
-    let mut paths = vec![package_path.to_path_buf()];
-    if let Some(readme_path) = crate::local_readme_override(package, package_path)? {
-        paths.push(readme_path);
+/// The paths whose history holds a package's changes.
+#[derive(Debug)]
+struct PackagePaths {
+    /// The package directory.
+    package: Utf8PathBuf,
+    /// The canonical target of the README configured in `Cargo.toml`, when it
+    /// exists: it can live outside the package directory.
+    readme: Option<Utf8PathBuf>,
+}
+
+impl PackagePaths {
+    fn new(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Self> {
+        Ok(Self {
+            package: package_path.to_path_buf(),
+            readme: crate::local_readme_override(package, package_path)?,
+        })
     }
-    Ok(paths)
+
+    /// Every path, for path-limited Git commands.
+    fn all(&self) -> Vec<&Utf8Path> {
+        std::iter::once(self.package.as_path())
+            .chain(self.readme.as_deref())
+            .collect()
+    }
 }
 
 struct ChangelogRepo<'a> {
