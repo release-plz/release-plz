@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.170](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.169...release-plz-v0.3.170) - 2026-10-03
+
+### Added
+
+- support `.config/release-plz.toml` ([#3112](https://github.com/release-plz/release-plz/pull/3112))
+- *(changelog)* support `continue` in commit parsers ([#3103](https://github.com/release-plz/release-plz/pull/3103))
+
+### Fixed
+
+- *(changelog)* initialize git-cliff continue field explicitly ([#3101](https://github.com/release-plz/release-plz/pull/3101))
+- *(changelog)* collect package history across merged branches ([#3078](https://github.com/release-plz/release-plz/pull/3078))
+
+### Other
+
+- Update to cargo 0.100.0 ([#3118](https://github.com/release-plz/release-plz/pull/3118))
+
 ## [0.3.169](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.168...release-plz-v0.3.169) - 2026-09-19
 
 ### Fixed
