@@ -1,4 +1,5 @@
 mod config_path;
+mod dist;
 mod generate_completions;
 mod git_forge;
 mod init;
@@ -74,6 +75,8 @@ impl CliArgs {
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Command {
+    /// Build and publish binary distributions through draft GitHub releases.
+    Dist(dist::Dist),
     /// Update packages version and changelogs based on commit messages.
     Update(Update),
     /// Create a Pull Request representing the next release.

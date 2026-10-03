@@ -137,8 +137,10 @@ impl Config {
             if allow_dirty {
                 release_config.common.publish_allow_dirty = Some(true);
             }
-            release_request =
-                release_request.with_package_config(package, release_config.common.into());
+            let dist = release_config.dist;
+            let release_config =
+                release_plz_core::ReleaseConfig::from(release_config.common).with_dist(dist);
+            release_request = release_request.with_package_config(package, release_config);
         }
         Ok(release_request)
     }
@@ -306,6 +308,10 @@ pub struct PackageSpecificConfig {
     /// # Version group
     /// The name of a group of packages that needs to have the same version.
     version_group: Option<String>,
+    /// # Dist
+    /// Build binaries with cargo-dist and publish them through a draft GitHub release.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    dist: bool,
 }
 
 impl PackageSpecificConfig {
@@ -315,6 +321,7 @@ impl PackageSpecificConfig {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
+            dist: self.dist,
         }
     }
 }
@@ -582,6 +589,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn dist_is_opt_in_and_package_specific() {
+        let config: Config =
+            toml::from_str("[[package]]\nname = 'app'\ndist = true\n[[package]]\nname = 'lib'\n")
+                .unwrap();
+        let request = config
+            .fill_release_config(
+                false,
+                false,
+                ReleaseRequest::new(fake_package::metadata::fake_metadata()),
+            )
+            .unwrap();
+        assert!(request.get_package_config("app").dist());
+        assert!(!request.get_package_config("lib").dist());
+        assert!(!request.get_package_config("other").dist());
+        assert!(toml::from_str::<Config>("[workspace]\ndist = true").is_err());
+        assert!(toml::from_str::<Config>("[[package]]\nname = 'app'\ndist = 'yes'").is_err());
+    }
+
+    #[test]
     fn generated_release_notes_respect_workspace_defaults_and_package_overrides() {
         use release_plz_core::ReleaseConfig;
 
@@ -683,6 +709,7 @@ mod tests {
                 },
                 changelog_include: None,
                 version_group: None,
+                dist: false,
             },
         }
     }
@@ -804,6 +831,7 @@ mod tests {
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
                     version_group: None,
+                    dist: false,
                 },
             }]
             .into(),

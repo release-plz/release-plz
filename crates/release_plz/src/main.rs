@@ -28,6 +28,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run(args: CliArgs) -> anyhow::Result<()> {
     match args.command {
+        Command::Dist(cmd_args) => cmd_args.run().await?,
         Command::Update(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
             let config = cmd_args.config.load()?;

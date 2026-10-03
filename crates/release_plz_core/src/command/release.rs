@@ -214,6 +214,32 @@ impl ReleaseRequest {
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
+        for package in &self.metadata.packages {
+            let config = self.get_package_config(&package.name);
+            if !self.metadata.workspace_members.contains(&package.id)
+                || !config.release
+                || !config.dist
+            {
+                continue;
+            }
+            anyhow::ensure!(
+                self.git_release
+                    .as_ref()
+                    .is_some_and(|release| release.forge.forge_type() == crate::ForgeType::Github),
+                "Package `{}`: `dist` requires GitHub and a git token",
+                package.name
+            );
+            anyhow::ensure!(
+                config.git_release.enabled && config.git_tag.enabled,
+                "Package `{}`: `dist` requires git_release_enable and git_tag_enable",
+                package.name
+            );
+            anyhow::ensure!(
+                package.targets.iter().any(|target| target.is_bin()),
+                "Package `{}`: `dist` requires a binary target",
+                package.name
+            );
+        }
         let Some(git_release) = &self.git_release else {
             return Ok(());
         };
@@ -348,9 +374,20 @@ pub struct ReleaseConfig {
     /// A `publish = false` package is only released when this is `true`.
     /// Default: `false`.
     git_only: bool,
+    /// Build binary distributions before publishing the GitHub release.
+    dist: bool,
 }
 
 impl ReleaseConfig {
+    pub fn with_dist(mut self, dist: bool) -> Self {
+        self.dist = dist;
+        self
+    }
+
+    pub fn dist(&self) -> bool {
+        self.dist
+    }
+
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
         self.publish = publish;
         self
@@ -429,6 +466,7 @@ impl Default for ReleaseConfig {
             changelog_path: None,
             changelog_update: true,
             git_only: false,
+            dist: false,
         }
     }
 }
@@ -480,6 +518,10 @@ impl Default for GitReleaseConfig {
 }
 
 impl GitReleaseConfig {
+    pub fn latest(&self) -> Option<bool> {
+        self.latest
+    }
+
     pub fn enabled(enabled: bool) -> Self {
         Self {
             enabled,
@@ -1084,20 +1126,23 @@ async fn create_git_tag_and_release(
         };
         let release_body =
             release_body(input, release_info.package, release_info.changelog, &remote);
-        let release_config = input
-            .get_package_config(&release_info.package.name)
-            .git_release;
+        let package_config = input.get_package_config(&release_info.package.name);
+        let release_config = package_config.git_release;
         let is_pre_release = release_config.is_pre_release(&release_info.package.version);
         let git_release_info = GitReleaseInfo {
             git_tag: release_info.git_tag.to_string(),
             release_name: release_info.release_name.to_string(),
             release_body,
-            draft: release_config.draft,
+            draft: package_config.dist || release_config.draft,
             latest: release_config.latest,
             pre_release: is_pre_release,
             generate_release_notes: release_config.generate_release_notes,
         };
         git_client.create_release(&git_release_info).await?;
+        if package_config.dist {
+            git_client.dispatch_dist(release_info.git_tag).await
+                .context("draft created, but distribution dispatch failed; trigger the distribution workflow manually with this tag to retry")?;
+        }
     }
 
     Ok(())
@@ -1435,6 +1480,80 @@ mod tests {
             .expect(follow_up_requests)
             .mount(server)
             .await;
+    }
+
+    #[tokio::test]
+    async fn dist_creates_a_draft_and_dispatches_only_after_creation() {
+        for dry_run in [false, true] {
+            let server = MockServer::start().await;
+            let (_temporary, repo, mut request) = release_fixture(&server);
+            fs_err::write(repo.directory().join("src/main.rs"), "fn main() {}\n").unwrap();
+            request.metadata =
+                cargo_utils::get_manifest_metadata(&repo.directory().join("Cargo.toml")).unwrap();
+            repo.add_all_and_commit("add binary").unwrap();
+            request = request
+                .with_default_package_config(
+                    ReleaseConfig::default().with_git_only(true).with_dist(true),
+                )
+                .with_dry_run(dry_run);
+            let head = repo.current_commit_hash().unwrap();
+            mock_release_pr(&server, &head, None).await;
+            if !dry_run {
+                mock_git_release(&server, &head, 201).await;
+            }
+            Mock::given(method("POST"))
+                .and(path("/repos/owner/repo/dispatches"))
+                .and(body_partial_json(
+                    json!({"event_type": "release-plz-dist", "client_payload": {"tag": "v0.1.0"}}),
+                ))
+                .respond_with(ResponseTemplate::new(204))
+                .expect(if dry_run { 0 } else { 1 })
+                .mount(&server)
+                .await;
+            release(&request).await.unwrap();
+            let requests = server.received_requests().await.unwrap();
+            if dry_run {
+                assert!(!requests.iter().any(|r| r.method == "POST"));
+            } else {
+                let create_index = requests
+                    .iter()
+                    .position(|r| r.method == "POST" && r.url.path().ends_with("/releases"))
+                    .unwrap();
+                let body: serde_json::Value =
+                    serde_json::from_slice(&requests[create_index].body).unwrap();
+                assert_eq!(body["draft"], true);
+                let dispatch_index = requests
+                    .iter()
+                    .position(|r| r.url.path().ends_with("/dispatches"))
+                    .unwrap();
+                assert!(dispatch_index > create_index);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn dist_configuration_is_validated_before_release_side_effects() {
+        let server = MockServer::start().await;
+        let (_temporary, _repo, mut request) = release_fixture(&server);
+        request = request.with_default_package_config(
+            ReleaseConfig::default().with_git_only(true).with_dist(true),
+        );
+        assert!(
+            request
+                .validate_git_release_options()
+                .unwrap_err()
+                .to_string()
+                .contains("binary target")
+        );
+        request.git_release = None;
+        assert!(
+            request
+                .validate_git_release_options()
+                .unwrap_err()
+                .to_string()
+                .contains("git token")
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 
     #[tokio::test]
