@@ -25,19 +25,7 @@ Follow the steps below to set up the GitHub Action.
 
 :::tip
 If you want to use [trusted publishing](https://crates.io/docs/trusted-publishing),
-don't use the
-[`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action)
-action, and don't set the `CARGO_REGISTRY_TOKEN`
-secret (if you already use `CARGO_REGISTRY_TOKEN`, remove it from your workflow file entirely).
-`release-plz` implements the same crates-io API calls of the `rust-lang/crates-io-auth-action`
-action, and uses them to obtain a token when necessary.
-
-Set `id-token: write` in the permissions of the job that runs `release-plz release`.
-
-Remember to follow the crates.io docs to set up trusted publishing for all your crates.
-Also, new crates can't be published with trusted publishing — you need to publish them
-manually the first time.
-This is a limitation of crates.io, not release-plz.
+skip ahead to [Trusted publishing](#trusted-publishing)
 :::
 
 Release-plz needs a token to publish your packages to the cargo registry.
@@ -253,3 +241,119 @@ This is an example commit sequence where the release would be skipped:
   and the job of commit 3 is pending, waiting for Release-plz to finish on Commit 1.
 
 </details>
+
+## Trusted Publishing
+
+If you want to use [trusted publishing](https://crates.io/docs/trusted-publishing),
+don't use the
+[`rust-lang/crates-io-auth-action`](https://github.com/rust-lang/crates-io-auth-action)
+action, and don't set the `CARGO_REGISTRY_TOKEN`
+secret (if you already use `CARGO_REGISTRY_TOKEN`, remove it from your workflow file entirely).
+`release-plz` implements the same crates-io API calls of the `rust-lang/crates-io-auth-action`
+action, and uses them to obtain a token when necessary.
+
+:::tip
+New crates can't be published with trusted publishing — you need to publish them
+manually the first time.
+This is a limitation of crates.io, not release-plz.
+:::
+
+### 1. Follow the normal guide
+
+Follow the steps as described in
+[1. Change GitHub Actions permissions](#1-change-github-actions-permissions), then return here.
+
+### 2. Setup trusted publishing on crates.io
+
+:::tip
+This is adopted from the [trusted publishing](https://crates.io/docs/trusted-publishing)
+documentation on crates.io
+:::
+
+1. Search for your crate on crates.io
+2. Go to the settings tab
+3. Click the "Add" button next to Trusted Publishing
+
+   ![crates settings](../assets/crates_settings.jpg)
+
+4. Fill in the platform-specific fields and save the configuration
+
+   - If your crate has the repository field, repository owner and name should be filled automatically
+   - Workflow filename should be `release-plz.yml`
+   - You can optionally specify an environment, like `release`.
+
+    :::tip
+    To create a new environment, go to your project on Github → Settings → Environment and add one.
+    :::
+
+5. Consider turning on "Require trusted publishing for all new versions"
+
+### 3. Setup the trusted publishing workflow
+
+Create a new file at `.github/workflows/release-plz.yml` and copy the following workflow:
+
+```yaml
+name: Release-plz
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  # Release unpublished packages.
+  release-plz-release:
+    name: Release-plz release
+    runs-on: ubuntu-latest
+    # if you want to use an environment, uncomment this line and 
+    # change the name to whatever your environment is called
+    # environment: release
+    permissions:
+      contents: write
+      pull-requests: read
+      id-token: write
+    steps:
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - &install-rust
+        name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Create a PR with the new versions and changelog, preparing the next release.
+  release-plz-pr:
+    name: Release-plz PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - *checkout
+      - *install-rust
+      - name: Run release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+This workflow is slightly different from the standard workflow above:
+
+- The `release-plz-release` job has the additional permission `id-token: write`
+- The `CARGO_REGISTRY_TOKEN` env var never set, otherwise, release-plz will prefer using that over
+  trusted publishing
+- A commented out `environment: release`, in case you want to use environments
