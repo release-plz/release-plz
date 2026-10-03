@@ -133,6 +133,182 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
     assert!(changelog.contains("## [1.0.1]"), "{changelog}");
 }
 
+#[test]
+fn local_dependencies_update_strategy_preserves_compatible_floors() {
+    check_local_dependencies_update_strategy(
+        "if-needed",
+        "0.6.7",
+        "fix: update two",
+        "0.6.8",
+        false,
+    );
+}
+
+#[test]
+fn local_dependencies_update_strategy_never_rewrites_requirements() {
+    check_local_dependencies_update_strategy("never", "0.6.7", "fix: update two", "0.6.8", false);
+}
+
+#[test]
+fn local_dependencies_update_strategy_keeps_default_behavior() {
+    check_local_dependencies_update_strategy("", "0.6.7", "fix: update two", "0.6.8", true);
+}
+
+#[test]
+fn local_dependencies_update_strategy_propagates_incompatible_releases() {
+    check_local_dependencies_update_strategy(
+        "if-needed",
+        "0.6.7",
+        "fix!: update two",
+        "0.7.0",
+        true,
+    );
+}
+
+#[test]
+fn local_dependencies_update_strategy_propagates_exact_requirements() {
+    check_local_dependencies_update_strategy(
+        "if-needed",
+        "=0.6.7",
+        "fix: update two",
+        "0.6.8",
+        true,
+    );
+}
+
+#[test]
+fn local_dependencies_update_strategy_retains_deliberate_minimum_increases() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            (
+                "one",
+                "version = \"1.0.0\"\n[dependencies]\ntwo = { path = \"../two\", version = \"0.6.6\" }\n",
+            ),
+            ("two", "version = \"0.6.7\"\n"),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\nlocal_dependencies_update_strategy = \"if-needed\"\n",
+    );
+    for tag in ["one-v1.0.0", "two-v0.6.7"] {
+        repo.git(&["tag", tag]).unwrap();
+    }
+    let path = repo.directory().join("one/Cargo.toml");
+    let manifest = fs_err::read_to_string(&path)
+        .unwrap()
+        .replace("0.6.6", "0.6.7");
+    fs_err::write(&path, manifest).unwrap();
+    repo.add_all_and_commit("fix: require the dependency fix")
+        .unwrap();
+
+    run_workspace_update(&temp_dir, &repo, Some("https://github.com/test/project"));
+
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "0.6.7")]);
+    assert!(
+        fs_err::read_to_string(path)
+            .unwrap()
+            .contains("version = \"0.6.7\"")
+    );
+    assert!(repo.directory().join("one/CHANGELOG.md").exists());
+    assert!(!repo.directory().join("two/CHANGELOG.md").exists());
+}
+
+fn check_local_dependencies_update_strategy(
+    policy: &str,
+    requirement: &str,
+    commit: &str,
+    next_version: &str,
+    dependent_updated: bool,
+) {
+    // Exercise direct requirements, renamed inherited requirements, and dependencies
+    // on packages whose own version is inherited from workspace.package.
+    for (inherited_dependency, inherited_version) in [(false, false), (true, false), (true, true)] {
+        let dependencies = if inherited_dependency {
+            "[dependencies]\nshared.workspace = true\n".to_string()
+        } else {
+            format!(
+                "[dependencies]\nshared = {{ package = \"two\", path = \"../two\", version = {requirement:?} }}\n"
+            )
+        };
+        let workspace_dependency = if inherited_dependency {
+            format!(
+                "[workspace.dependencies]\nshared = {{ package = \"two\", path = \"two\", version = {requirement:?} }}\n"
+            )
+        } else {
+            String::new()
+        };
+        let two_version = if inherited_version {
+            "version.workspace = true\n"
+        } else {
+            "version = \"0.6.7\"\n"
+        };
+        let policy_config = if policy.is_empty() {
+            String::new()
+        } else {
+            format!("local_dependencies_update_strategy = {policy:?}\n")
+        };
+        let (temp_dir, repo) = init_workspace(
+            &[
+                ("one", &format!("version = \"1.0.0\"\n{dependencies}")),
+                ("two", two_version),
+                (
+                    "three",
+                    "version = \"1.0.0\"\n[dependencies]\none = { path = \"../one\", version = \"=1.0.0\" }\n",
+                ),
+            ],
+            &format!("[workspace.package]\nversion = \"0.6.7\"\n{workspace_dependency}"),
+            &format!("[workspace]\nsemver_check = false\n{policy_config}"),
+        );
+        for tag in ["one-v1.0.0", "two-v0.6.7", "three-v1.0.0"] {
+            repo.git(&["tag", tag]).unwrap();
+        }
+        let requirement_path = if inherited_dependency {
+            repo.directory().join("Cargo.toml")
+        } else {
+            repo.directory().join("one/Cargo.toml")
+        };
+        let original = fs_err::read_to_string(&requirement_path).unwrap();
+        change_package(&repo, "two", commit);
+
+        run_workspace_update(&temp_dir, &repo, Some("https://github.com/test/project"));
+
+        let dependent_version = if dependent_updated { "1.0.1" } else { "1.0.0" };
+        assert_locked_versions(
+            repo.directory(),
+            &[
+                ("one", dependent_version),
+                ("two", next_version),
+                ("three", dependent_version),
+            ],
+        );
+        for name in ["one", "three"] {
+            assert_eq!(
+                repo.directory().join(name).join("CHANGELOG.md").exists(),
+                dependent_updated
+            );
+        }
+        let manifest = fs_err::read_to_string(&requirement_path).unwrap();
+        let new_requirement = if dependent_updated {
+            format!(
+                "{}{next_version}",
+                if requirement.starts_with('=') {
+                    "="
+                } else {
+                    ""
+                }
+            )
+        } else {
+            requirement.to_string()
+        };
+        assert!(
+            manifest.contains(&format!("version = {new_requirement:?}")),
+            "{manifest}"
+        );
+        if !dependent_updated && !inherited_version {
+            assert_eq!(manifest, original);
+        }
+    }
+}
+
 /// Creates a workspace at `1.0.0` whose packages are already tagged as released
 /// and whose config only treats `feat:` commits as release commits.
 fn workspace_with_feat_release_commits_filter(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {

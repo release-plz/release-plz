@@ -14,6 +14,7 @@ use crate::{
     ChangelogRequest, ForgeType, GitClient, GitForge, PackagePath as _, RepoUrl, fs_utils,
 };
 
+use super::LocalDependenciesUpdateStrategy;
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
 pub const DEFAULT_MAX_ANALYZE_COMMITS: u32 = 1000;
@@ -37,6 +38,8 @@ pub struct UpdateRequest {
     /// - If true, update all the dependencies in Cargo.lock by running `cargo update`.
     /// - If false, updates the workspace packages in Cargo.lock by running `cargo update --workspace`.
     dependencies_update: bool,
+    /// Policy shared by dependency release propagation and manifest updates.
+    local_dependencies_update_strategy: LocalDependenciesUpdateStrategy,
     /// Allow dirty working directories to be updated.
     /// The uncommitted changes will be part of the update.
     allow_dirty: bool,
@@ -66,6 +69,7 @@ impl UpdateRequest {
             changelog_req: ChangelogRequest::default(),
             registry: None,
             dependencies_update: false,
+            local_dependencies_update_strategy: LocalDependenciesUpdateStrategy::default(),
             allow_dirty: false,
             repo_url: None,
             packages_config: PackagesConfig::default(),
@@ -228,6 +232,19 @@ impl UpdateRequest {
 
     pub fn should_update_dependencies(&self) -> bool {
         self.dependencies_update
+    }
+
+    /// Set how local dependency requirements are updated. Defaults to `Always`.
+    pub fn with_local_dependencies_update_strategy(
+        mut self,
+        policy: LocalDependenciesUpdateStrategy,
+    ) -> Self {
+        self.local_dependencies_update_strategy = policy;
+        self
+    }
+
+    pub fn local_dependencies_update_strategy(&self) -> LocalDependenciesUpdateStrategy {
+        self.local_dependencies_update_strategy
     }
 
     pub fn with_allow_dirty(self, allow_dirty: bool) -> Self {

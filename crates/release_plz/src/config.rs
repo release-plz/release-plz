@@ -172,6 +172,10 @@ pub struct Workspace {
     /// - If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.
     /// - If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.
     pub dependencies_update: Option<bool>,
+    /// # Local Dependencies Update Strategy
+    /// When to rewrite version requirements on local workspace dependencies.
+    #[serde(default)]
+    pub local_dependencies_update_strategy: LocalDependenciesUpdateStrategy,
     /// # PR Name
     /// Tera template of the pull request's name created by release-plz.
     pub pr_name: Option<String>,
@@ -217,6 +221,29 @@ pub struct Workspace {
     pub max_analyze_commits: Option<u32>,
 }
 
+/// When to update local dependency requirements in Cargo.toml.
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalDependenciesUpdateStrategy {
+    /// Rewrite requirements to the new version using their existing precision.
+    #[default]
+    Always,
+    /// Only rewrite requirements that do not accept the new version.
+    IfNeeded,
+    /// Preserve all requirements, even when they do not accept the new version.
+    Never,
+}
+
+impl From<LocalDependenciesUpdateStrategy> for release_plz_core::LocalDependenciesUpdateStrategy {
+    fn from(value: LocalDependenciesUpdateStrategy) -> Self {
+        match value {
+            LocalDependenciesUpdateStrategy::Always => Self::Always,
+            LocalDependenciesUpdateStrategy::IfNeeded => Self::IfNeeded,
+            LocalDependenciesUpdateStrategy::Never => Self::Never,
+        }
+    }
+}
+
 impl Default for Workspace {
     fn default() -> Self {
         Self {
@@ -224,6 +251,7 @@ impl Default for Workspace {
             allow_dirty: None,
             changelog_config: None,
             dependencies_update: None,
+            local_dependencies_update_strategy: LocalDependenciesUpdateStrategy::default(),
             repo_url: None,
             pr_name: None,
             pr_body: None,
@@ -582,6 +610,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn local_dependencies_update_strategy_configuration() {
+        for (value, expected) in [
+            ("", LocalDependenciesUpdateStrategy::Always),
+            (
+                "local_dependencies_update_strategy = \"always\"",
+                LocalDependenciesUpdateStrategy::Always,
+            ),
+            (
+                "local_dependencies_update_strategy = \"if-needed\"",
+                LocalDependenciesUpdateStrategy::IfNeeded,
+            ),
+            (
+                "local_dependencies_update_strategy = \"never\"",
+                LocalDependenciesUpdateStrategy::Never,
+            ),
+        ] {
+            let config: Config = toml::from_str(&format!("[workspace]\n{value}")).unwrap();
+            assert_eq!(
+                config.workspace.local_dependencies_update_strategy,
+                expected
+            );
+        }
+        assert!(
+            toml::from_str::<Config>(
+                "[workspace]\nlocal_dependencies_update_strategy = \"sometimes\""
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn generated_release_notes_respect_workspace_defaults_and_package_overrides() {
         use release_plz_core::ReleaseConfig;
 
@@ -640,6 +699,7 @@ mod tests {
             changelog: ChangelogCfg::default(),
             workspace: Workspace {
                 dependencies_update: Some(false),
+                local_dependencies_update_strategy: LocalDependenciesUpdateStrategy::default(),
                 changelog_config: Some("../git-cliff.toml".into()),
                 allow_dirty: Some(false),
                 repo_url: Some(
@@ -763,6 +823,7 @@ mod tests {
             changelog: ChangelogCfg::default(),
             workspace: Workspace {
                 dependencies_update: None,
+                local_dependencies_update_strategy: LocalDependenciesUpdateStrategy::default(),
                 changelog_config: Some("../git-cliff.toml".into()),
                 allow_dirty: None,
                 repo_url: Some(
@@ -818,6 +879,7 @@ mod tests {
             git_release_draft = false
             release = true
             changelog_config = "../git-cliff.toml"
+            local_dependencies_update_strategy = "always"
             pr_draft = false
             pr_labels = ["label1"]
             pr_branch_prefix = "f-"
