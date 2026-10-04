@@ -289,11 +289,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Release-plz default + contributors
 
 Like Release-plz default configuration, but it also shows the
-GitHub/Gitea/GitLab username of the contributors.
-In the changelog, the contributors list is empty on GitLab, because the
-GitLab API doesn't expose the account of a commit author. The same
-`remote.contributors` variable in `git_release_body` lists the MR authors
-on GitLab too.
+GitHub/Gitea username of the contributors.
+On GitLab, the contributors list is empty because the GitLab API doesn't
+expose the account of a commit author. To list the MR authors on GitLab,
+use the `remote.contributors` variable in
+[`git_release_body`](../config.md#the-git_release_body-field) instead.
 
 <details>
   <summary>TOML configuration</summary>
