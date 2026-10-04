@@ -240,16 +240,45 @@ fn text_conflict_leaves_file_unchanged(
     let Some(encoded) = encode_conflict(blobs)? else {
         return Ok(false);
     };
+    let [ancestor, ours, theirs] = encoded.each_ref().map(|text| text.as_bytes());
+    let merged = merge_text([ancestor, ours, theirs], conflicts)?;
+    if merged.is_automergeable() {
+        return Ok(merged.content() == ours);
+    }
+    if conflicts != TokenConflicts::Keep {
+        return Ok(false);
+    }
+    // Repeated tokens can align an edit with an unrelated later insertion.
+    // Replay the opposite edit first, then the original, requiring clean merges
+    // and exact restoration of the target. For an undo this reapplies the whole
+    // candidate before undoing it: any retained portion is removed as well, so
+    // a partly retained change still affects the target.
+    let applied = merge_text([theirs, ours, ancestor], TokenConflicts::Keep)?;
+    if !applied.is_automergeable() {
+        return Ok(false);
+    }
+    let undone = merge_text([ancestor, applied.content(), theirs], TokenConflicts::Keep)?;
+    Ok(undone.is_automergeable() && undone.content() == ours)
+}
+
+fn merge_text(
+    blobs: [&[u8]; 3],
+    conflicts: TokenConflicts,
+) -> anyhow::Result<git2::MergeFileResult> {
     let [mut ancestor, mut ours, mut theirs] = std::array::from_fn(|_| git2::MergeFileInput::new());
-    ancestor.content(encoded[0].as_bytes());
-    ours.content(encoded[1].as_bytes());
-    theirs.content(encoded[2].as_bytes());
+    ancestor.content(blobs[0]);
+    ours.content(blobs[1]);
+    theirs.content(blobs[2]);
     let mut options = git2::MergeFileOptions::new();
     if conflicts == TokenConflicts::FavorTarget {
         options.favor(git2::FileFavor::Ours);
     }
-    let merged = git2::merge_file(&ancestor, &ours, &theirs, Some(&mut options))?;
-    Ok(merged.is_automergeable() && merged.content() == encoded[1].as_bytes())
+    Ok(git2::merge_file(
+        &ancestor,
+        &ours,
+        &theirs,
+        Some(&mut options),
+    )?)
 }
 
 /// Put words with their trailing punctuation and other characters on separate lines.

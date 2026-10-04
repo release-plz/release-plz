@@ -400,6 +400,8 @@ fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
         "api(_: bool) { /* published implementation */ }",
         "api(_: bool) { println!(\"hello\"); }",
         "api(_: bool) { let enabled: bool = true; }",
+        "api(_: bool) { let predicate = |_: bool| {}; }",
+        "api(_: bool) { fn helper(_: bool) {} }",
     ] {
         let history = api_history();
         let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
@@ -424,6 +426,10 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
         "api() {\n    let enabled: bool = true;\n}",
         "api() { let enabled: bool = true; }",
         "api() { let count: u8 = 1; }",
+        "api() { let predicate = |_: bool| {}; }",
+        "api() { fn helper(_: bool) {} }",
+        "api() { println!(\"(\"); let predicate = |_: bool| {}; }",
+        "api() { /* ( */ fn helper(_: bool) {} }",
     ] {
         let history = api_history();
         history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
@@ -435,7 +441,7 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
         );
 
         // Body edits conflict with a line-level inverse. Repeated punctuation
-        // or a local's type must not align with the removed parameter.
+        // or a private helper's parameter must not align with the removed parameter.
         let diff = history.diff(None);
         assert_next_version(&diff, &Version::new(0, 1, 1));
         assert_commits(&diff, &[&sibling, &fixed]);
@@ -522,7 +528,11 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
         "api(_: bool) { /* evolved implementation */ }",
         "api(_: bool) { println!(\"hello\"); }",
         "api(_: bool) { let enabled: bool = true; }",
+        "api(_: bool) { let predicate = |_: bool| {}; }",
+        "api(_: bool) { fn helper(_: bool) {} }",
         "api(_: u8) { let enabled: bool = true; }",
+        "api(_: u8) { let predicate = |_: bool| {}; }",
+        "api(_: u8) { fn helper(_: bool) {} }",
     ] {
         let history = api_history();
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
@@ -537,6 +547,41 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
         // an evolved argument leaves a token conflict. Both retain the marker.
         let diff = history.diff(None);
         assert_commits(&diff, &[&breaking, &sibling, &evolved]);
+        assert_next_version(&diff, &Version::new(0, 2, 0));
+    }
+}
+
+#[test]
+fn a_partly_reverted_breaking_change_keeps_its_marker_after_body_edits() {
+    let history = api_history();
+    let breaking_api = BREAKING_API.replace("stable()", "stable(_: bool)");
+    let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: break two APIs");
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    let fixed_api = BASE_API
+        .replace("api() {}", "api() { fn helper(_: bool) {} }")
+        .replace("stable()", "stable(_: bool)");
+    let fixed = history.write_commit("src/lib.rs", &fixed_api, "chore: restore one API");
+
+    // The first signature is restored despite the private repeated tokens, but
+    // undoing the second signature still changes HEAD. Keep the whole marker.
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling, &fixed]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+}
+
+#[test]
+fn a_retained_change_moved_within_a_file_keeps_its_marker() {
+    for moved_api in [
+        format!("pub mod moved {{ {BREAKING_API} }}\n"),
+        format!("pub mod earlier {{ pub fn api() {{}} }}\npub mod moved {{ {BREAKING_API} }}\n"),
+    ] {
+        let history = api_history();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: break API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        let moved = history.write_commit("src/lib.rs", &moved_api, "chore: move API");
+
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&breaking, &sibling, &moved]);
         assert_next_version(&diff, &Version::new(0, 2, 0));
     }
 }
