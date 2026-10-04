@@ -1,11 +1,11 @@
 # Releasing binaries
 
-Set `dist = true` for each binary package you want release-plz to distribute:
+Set `distribute = true` for each binary package you want release-plz to distribute:
 
 ```toml
 [[package]]
 name = "my-cli"
-dist = true
+distribute = true
 ```
 
 For a binary that is not published to a Cargo registry, also set `git_only = true`.
@@ -115,7 +115,7 @@ GitHub [does not start workflows for draft release events](https://docs.github.c
 so this integration uses an explicit `repository_dispatch` event. It
 [works with the ordinary GITHUB_TOKEN](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 with `contents: write`. A successful dispatch does not guarantee that a matching
-workflow is installed: add the workflow before enabling `dist`.
+workflow is installed: add the workflow before enabling `distribute`.
 
 ## Recovery and CLI
 

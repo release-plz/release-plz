@@ -38,7 +38,7 @@ impl CargoDist {
             .join(metadata.workspace_root.strip_prefix(&original_root)?);
         ensure!(
             !root.join("dist-workspace.toml").exists(),
-            "dist=true manages its own cargo-dist configuration; remove dist-workspace.toml or use cargo-dist independently"
+            "distribute=true manages its own cargo-dist configuration; remove dist-workspace.toml or use cargo-dist independently"
         );
         for member in &metadata.packages {
             if !metadata.workspace_members.contains(&member.id) {
@@ -55,7 +55,7 @@ impl CargoDist {
                     .and_then(|p| p.get("metadata"))
                     .and_then(|m| m.get("dist"))
                     .is_none(),
-                "dist=true cannot be combined with package.metadata.dist ({})",
+                "distribute=true cannot be combined with package.metadata.dist ({})",
                 member.name
             );
             manifest["package"]["metadata"]["dist"]["dist"] = value(member.id == package.id);

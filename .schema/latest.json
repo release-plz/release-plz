@@ -313,8 +313,8 @@
             "null"
           ]
         },
-        "dist": {
-          "title": "Dist",
+        "distribute": {
+          "title": "Distribute",
           "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.",
           "type": "boolean"
         },

@@ -51,7 +51,7 @@ impl DistRequest {
         let mut packages = vec![];
         for package in project.workspace_packages() {
             if metadata.workspace_members.contains(&package.id)
-                && config.get_package_config(&package.name).dist()
+                && config.get_package_config(&package.name).distribute()
                 && project.git_tag(&package.name, &package.version.to_string())? == tag
             {
                 packages.push(package);
@@ -59,7 +59,7 @@ impl DistRequest {
         }
         ensure!(
             packages.len() == 1,
-            "tag `{tag}` must select exactly one package with dist=true"
+            "tag `{tag}` must select exactly one package with distribute=true"
         );
         let package = packages[0].clone();
         ensure!(

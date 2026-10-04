@@ -107,7 +107,7 @@ the following sections:
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
 - [`[[package]]`](#the-package-section) — Package-specific configurations.
   - [`name`](#the-name-field) — Package name. *(Required)*.
-  - [`dist`](#the-dist-field) — Build and distribute binaries through a draft GitHub release.
+  - [`distribute`](#the-distribute-field) — Build and distribute binaries through a draft GitHub release.
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
   - [`changelog_path`](#the-changelog_path-field-package-section) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
@@ -918,7 +918,7 @@ By default, release-plz runs [cargo-semver-checks] if the package is a library.
 [cargo-semver-checks]: https://github.com/obi1kenobi/cargo-semver-checks
 [git-cliff]: https://git-cliff.org
 
-#### The `dist` field
+#### The `distribute` field
 
 If `true`, distribute this package's binaries with cargo-dist. Defaults to `false`.
 This option is available only in `[[package]]`.
@@ -932,7 +932,7 @@ instructions to the existing release body and publishes the release.
 ```toml
 [[package]]
 name = "my-cli"
-dist = true
+distribute = true
 ```
 
 Requires a binary target, GitHub authentication, and enabled git tags and releases.
