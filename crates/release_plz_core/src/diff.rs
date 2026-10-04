@@ -47,7 +47,8 @@ impl Commit {
     }
 
     pub fn to_cliff_commit(&self) -> git_cliff_core::commit::Commit<'_> {
-        let remote = self.remote.username.is_some().then(|| self.remote.clone());
+        let has_remote_info = self.remote.username.is_some() || self.remote.pr_number.is_some();
+        let remote = has_remote_info.then(|| self.remote.clone());
         git_cliff_core::commit::Commit {
             id: self.id.clone(),
             message: self.message.clone(),
@@ -127,6 +128,25 @@ mod tests {
         let pattern = Regex::new(r"^feat").unwrap();
         let present = diff.any_commit_matches(&pattern);
         assert!(present);
+    }
+
+    #[test]
+    fn remote_is_omitted_from_cliff_commit_without_remote_info() {
+        let commit = Commit::new("1e6903d".to_string(), "feat: something".to_string());
+        assert_eq!(commit.to_cliff_commit().remote, None);
+    }
+
+    #[test]
+    fn remote_pr_number_is_kept_in_cliff_commit_without_username() {
+        let mut commit = Commit::new("1e6903d".to_string(), "feat: something".to_string());
+        commit.remote = RemoteContributor {
+            username: None,
+            pr_number: Some(42),
+            ..RemoteContributor::default()
+        };
+        let remote = commit.to_cliff_commit().remote.unwrap();
+        assert_eq!(remote.username, None);
+        assert_eq!(remote.pr_number, Some(42));
     }
 
     #[test]
