@@ -116,12 +116,6 @@ You can use the following context in the template:
 }
 ```
 
-:::info
-On GitLab, `commit.remote.username` is always empty because the GitLab API
-doesn't expose the account of a commit author. `commit.remote.pr_number` is
-populated as usual.
-:::
-
 #### Footers
 
 A conventional commit's body may end with any number of structured key-value pairs known as
