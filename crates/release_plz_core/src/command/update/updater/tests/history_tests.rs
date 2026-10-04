@@ -399,6 +399,7 @@ fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
     for released_api in [
         "api(_: bool) { /* published implementation */ }",
         "api(_: bool) { println!(\"hello\"); }",
+        "api(_: bool) { let enabled: bool = true; }",
     ] {
         let history = api_history();
         let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
@@ -419,6 +420,10 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
     for fixed_api in [
         "api() { /* fixed implementation */ }",
         "api() { println!(\"hello\"); }",
+        "api() {\n    let enabled = true;\n}",
+        "api() {\n    let enabled: bool = true;\n}",
+        "api() { let enabled: bool = true; }",
+        "api() { let count: u8 = 1; }",
     ] {
         let history = api_history();
         history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
@@ -430,7 +435,7 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
         );
 
         // Body edits conflict with a line-level inverse. Repeated punctuation
-        // in a call must not align with the removed parameter's parentheses.
+        // or a local's type must not align with the removed parameter.
         let diff = history.diff(None);
         assert_next_version(&diff, &Version::new(0, 1, 1));
         assert_commits(&diff, &[&sibling, &fixed]);
@@ -469,6 +474,8 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
         "api(_: u8) {}",
         "api(_: bool) { /* evolved implementation */ }",
         "api(_: bool) { println!(\"hello\"); }",
+        "api(_: bool) { let enabled: bool = true; }",
+        "api(_: u8) { let enabled: bool = true; }",
     ] {
         let history = api_history();
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");

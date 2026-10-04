@@ -260,8 +260,9 @@ fn text_conflict_leaves_file_unchanged(
     Ok(merged.is_automergeable() && merged.content() == encoded[1].as_bytes())
 }
 
-/// Put words and individual punctuation/whitespace characters on separate lines.
-/// Keeping identifiers whole avoids aligning their letters with unrelated edits.
+/// Put words with their trailing punctuation and other characters on separate lines.
+/// Keeping identifiers whole avoids aligning their letters with unrelated edits;
+/// trailing punctuation distinguishes a parameter's `bool)` from a local's `bool`.
 /// Bound the expanded input and leave binary or non-UTF-8 content unresolved.
 fn encode_conflict(blobs: [&[u8]; 3]) -> anyhow::Result<Option<[String; 3]>> {
     let max_conflict_input_bytes = 1024 * 1024; // 1 MiB across all three snapshots.
@@ -277,10 +278,16 @@ fn encode_conflict(blobs: [&[u8]; 3]) -> anyhow::Result<Option<[String; 3]>> {
         };
         tokens.reserve(contents.len() * 4);
         let mut in_word = false;
+        let mut word_token = false;
         for character in contents.chars() {
             let is_word = character.is_alphanumeric() || character == '_';
-            if !tokens.is_empty() && !(in_word && is_word) {
-                tokens.push('\n');
+            let continues_token =
+                (in_word && is_word) || (word_token && !is_word && !character.is_whitespace());
+            if !continues_token {
+                if !tokens.is_empty() {
+                    tokens.push('\n');
+                }
+                word_token = is_word;
             }
             write!(tokens, "{:x},", u32::from(character))?;
             in_word = is_word;
