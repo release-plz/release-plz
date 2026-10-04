@@ -887,7 +887,14 @@ impl GitClient {
         Ok(prs)
     }
 
+    /// Get the username of the author of the given commit, if the forge exposes it.
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
+        if self.forge == ForgeType::Gitlab {
+            // The GitLab REST API only returns the git author name and email of a commit,
+            // not the username of the associated GitLab account, so there's nothing to fetch.
+            return Ok(RemoteCommit { username: None });
+        }
+
         let api_path = self.commits_api_path(commit);
         let response = self.client.get(api_path).send().await?;
 
@@ -900,20 +907,14 @@ impl GitClient {
             return Ok(RemoteCommit { username: None });
         }
 
-        let username = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => {
-                let remote_commit: GitHubCommit = response
-                    .successful_status()
-                    .await?
-                    .json()
-                    .await
-                    .context("can't parse commits")?;
+        let remote_commit: GitHubCommit = response
+            .successful_status()
+            .await?
+            .json()
+            .await
+            .context("can't parse commits")?;
 
-                remote_commit.author.and_then(|author| author.login)
-            }
-            ForgeType::Gitlab => None,
-        };
-
+        let username = remote_commit.author.and_then(|author| author.login);
         Ok(RemoteCommit { username })
     }
 
@@ -1267,6 +1268,48 @@ mod tests {
                 .unwrap_err();
             assert!(error.to_string().contains("git_release_generate_notes"));
         }
+    }
+
+    #[tokio::test]
+    async fn remote_commit_username_is_read_from_github_response() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/commits/abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "sha": "abc",
+                "author": { "login": "bob" }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let client = GitClient::new(GitForge::Github(github)).unwrap();
+        let remote_commit = client.get_remote_commit("abc").await.unwrap();
+        assert_eq!(remote_commit.username.as_deref(), Some("bob"));
+    }
+
+    #[tokio::test]
+    async fn remote_commit_username_is_none_on_gitlab_without_requests() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
+        let server = MockServer::start().await;
+        // GitLab can't provide the username of a commit author, so release-plz
+        // shouldn't contact the server at all.
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let mut client = GitClient::new(GitForge::Github(github)).unwrap();
+        client.forge = ForgeType::Gitlab;
+        let remote_commit = client.get_remote_commit("abc").await.unwrap();
+        assert_eq!(remote_commit.username, None);
     }
 
     #[test]
