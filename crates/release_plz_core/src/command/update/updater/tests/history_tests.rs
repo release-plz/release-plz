@@ -468,6 +468,53 @@ fn a_change_reverted_everywhere_is_not_retained_for_a_discarded_release_edit() {
     assert_next_version(&diff, &Version::new(0, 1, 1));
 }
 
+#[cfg(unix)]
+#[test]
+fn outside_paths_do_not_retain_a_reverted_breaking_change() {
+    use std::os::unix::ffi::OsStrExt as _;
+
+    for outside in [b"outside/plain.txt".as_slice(), b"outside/\xff.txt"] {
+        let outside = std::path::Path::new(std::ffi::OsStr::from_bytes(outside));
+        let history = History::with_packages(|root| {
+            fs_err::create_dir(root.join("pkg")).unwrap();
+            fs_err::create_dir(root.join("outside")).unwrap();
+            fs_err::write(
+                root.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"pkg\"]\nresolver = \"2\"\n",
+            )
+            .unwrap();
+            write_package(&root.join("pkg"), PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+            fs_err::write(root.as_std_path().join(outside), "old\n").unwrap();
+            generate_lockfile(root);
+            // Keep package listing successful, independently of its fallback.
+            fs_err::copy(root.join("Cargo.lock"), root.join("pkg/Cargo.lock")).unwrap();
+        });
+        assert!(get_package_files(&history.repo.directory().join("pkg"), &history.repo).is_ok());
+        fs_err::write(
+            history.repo.directory().as_std_path().join(outside),
+            "new\n",
+        )
+        .unwrap();
+        history.write_commit(
+            "pkg/src/lib.rs",
+            BREAKING_API,
+            "feat!: temporarily break API",
+        );
+        let sibling = history.merge_ignored_change("pkg/src/fix.rs", |root| {
+            fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+            fs_err::write(root.as_std_path().join(outside), "old\n").unwrap();
+        });
+        let fixed = history.write_commit("pkg/src/lib.rs", BASE_API, "fix: revert breaking API");
+
+        // Only the outside edit survives. Its encoding must not decide whether
+        // this package retains the breaking-change marker.
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&sibling, &fixed]);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
 #[test]
 fn later_api_edits_preserve_a_retained_breaking_change_marker() {
     for updated_api in [

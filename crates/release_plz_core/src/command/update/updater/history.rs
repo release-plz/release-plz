@@ -205,7 +205,7 @@ impl<'a> RetainedChanges<'a> {
             .released
             .as_deref()
             .context("no equal snapshot was recorded")?;
-        let includes = |path: &str| self.includes(path);
+        let includes = |path: &[u8]| self.includes(path);
         // The release contains the change, in part at least, when undoing it
         // changes the release. Conflicting tokens keep the release's: a change
         // can be absent even when its inverse conflicts with edits next to it.
@@ -224,7 +224,18 @@ impl<'a> RetainedChanges<'a> {
         replay.edits_affect_package(commit, released, &self.head, TokenConflicts::Keep, includes)
     }
 
-    fn includes(&self, path: &str) -> bool {
+    fn includes(&self, path: &[u8]) -> bool {
+        let Ok(path) = std::str::from_utf8(path) else {
+            // Cargo's UTF-8 file list cannot represent this path. Conservatively
+            // include it only beneath the package directory; it cannot equal
+            // the UTF-8 README path. Git uses '/' on every platform.
+            let mut components = path.split(|byte| *byte == b'/');
+            return self
+                .relative_paths
+                .package
+                .iter()
+                .all(|component| components.next() == Some(component.as_bytes()));
+        };
         let path = Utf8Path::new(path);
         if path.file_name().is_some_and(is_generated_package_file) {
             return false;
@@ -243,6 +254,43 @@ impl<'a> RetainedChanges<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_utf8_paths_are_scoped_to_the_package_directory() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        let repo = Repo::init(dir.path());
+        let package = Utf8Path::new("crates").join("pkg");
+        let paths = PackagePaths {
+            package: repo.directory().join(&package),
+            readme: Some(repo.directory().join("README.md")),
+        };
+        let head = repo.current_commit_hash().unwrap();
+        let mut changes = RetainedChanges::new(&repo, &head, &[], &paths).unwrap();
+        changes.package_files = Some(HashSet::from([package.join("src/lib.rs")]));
+
+        for (path, included) in [
+            (b"crates/pkg/src/lib.rs".as_slice(), true),
+            (b"crates/pkg/ignored.txt", false),
+            (b"README.md", true),
+            (b"crates/pkg/src/\xff", true),
+            (b"crates/pkg-extra/\xff", false),
+            (b"outside/\xff", false),
+            (b"crates/\xff/pkg/file", false),
+        ] {
+            assert_eq!(changes.includes(path), included, "{path:?}");
+        }
+        changes.package_files = None;
+        assert!(changes.includes(b"crates/pkg/ignored.txt"));
+        assert!(changes.includes(b"crates/pkg/\xff"));
+        assert!(!changes.includes(b"crates/pkg-extra/\xff"));
+
+        // A package at the repository root conservatively includes every path
+        // whose bytes cannot be checked against its Cargo file list.
+        changes.relative_paths.package = Utf8PathBuf::new();
+        changes.package_files = Some(HashSet::new());
+        assert!(changes.includes(b"\xff"));
+        assert!(changes.includes(b"src/\xff"));
+    }
 
     /// Commit `contents` to `file` at the repository root and return the commit hash.
     fn commit_file(repo: &Repo, contents: &str) -> String {

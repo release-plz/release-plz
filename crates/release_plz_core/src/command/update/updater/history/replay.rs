@@ -52,14 +52,12 @@ impl ChangeReplay {
         commit: &str,
         target: &str,
         conflicts: TokenConflicts,
-        includes: impl Fn(&str) -> bool,
+        includes: impl Fn(&[u8]) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let parent = self.first_parent_tree(&commit)?;
         let target = self.commit(target)?.tree()?;
-        self.merging_affects_files(&commit.tree()?, &target, &parent, conflicts, |path| {
-            includes_bytes(&includes, path)
-        })
+        self.merging_affects_files(&commit.tree()?, &target, &parent, conflicts, includes)
     }
 
     /// Whether applying the edits made from `commit` to `edited` onto `target`
@@ -73,7 +71,7 @@ impl ChangeReplay {
         edited: &str,
         target: &str,
         conflicts: TokenConflicts,
-        includes: impl Fn(&str) -> bool,
+        includes: impl Fn(&[u8]) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let tree = commit.tree()?;
@@ -81,7 +79,7 @@ impl ChangeReplay {
         let edited = self.commit(edited)?.tree()?;
         let changed = self.changed_paths(&self.first_parent_tree(&commit)?, &tree, &target)?;
         self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
-            changed.contains(path) && includes_bytes(&includes, path)
+            changed.contains(path) && includes(path)
         })
     }
 
@@ -206,12 +204,6 @@ pub(super) enum TokenConflicts {
     FavorTarget,
     /// Leave them unresolved, so that they count as changes.
     Keep,
-}
-
-/// Apply `includes` to a path Git reports as bytes. A path that is not UTF-8
-/// cannot match the package's file list, so it counts as packaged.
-fn includes_bytes(includes: impl Fn(&str) -> bool, path: &[u8]) -> bool {
-    std::str::from_utf8(path).map_or(true, includes)
 }
 
 /// The old and the new path of `delta`, as Git reports them.
