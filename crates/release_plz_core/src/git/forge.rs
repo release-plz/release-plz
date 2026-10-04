@@ -889,13 +889,13 @@ impl GitClient {
 
     /// Get the username of the author of the given commit, if the forge exposes it.
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
-        if self.forge == ForgeType::Gitlab {
+        let api_path = match self.forge {
+            ForgeType::Github => format!("{}/commits/{commit}", self.repo_url()),
+            ForgeType::Gitea => format!("{}/git/commits/{commit}", self.repo_url()),
             // The GitLab REST API only returns the git author name and email of a commit,
             // not the username of the associated GitLab account, so there's nothing to fetch.
-            return Ok(RemoteCommit { username: None });
-        }
-
-        let api_path = self.commits_api_path(commit);
+            ForgeType::Gitlab => return Ok(RemoteCommit { username: None }),
+        };
         let response = self.client.get(api_path).send().await?;
 
         if let Err(err) = response.error_for_status_ref()
@@ -916,18 +916,6 @@ impl GitClient {
 
         let username = remote_commit.author.and_then(|author| author.login);
         Ok(RemoteCommit { username })
-    }
-
-    fn commits_api_path(&self, commit: &str) -> String {
-        let commits_path = "commits/";
-        let commits_api_path = match self.forge {
-            ForgeType::Gitea => {
-                format!("git/{commits_path}")
-            }
-            ForgeType::Github => commits_path.to_string(),
-            ForgeType::Gitlab => format!("repository/{commits_path}"),
-        };
-        format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
 
     /// Create a new branch from the given SHA.
