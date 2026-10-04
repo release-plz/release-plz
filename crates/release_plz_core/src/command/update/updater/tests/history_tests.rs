@@ -474,13 +474,18 @@ fn a_change_reverted_everywhere_is_not_retained_for_a_discarded_release_edit() {
     assert_next_version(&diff, &Version::new(0, 1, 1));
 }
 
-#[cfg(unix)]
 #[test]
 fn outside_paths_do_not_retain_a_reverted_breaking_change() {
+    #[cfg(target_os = "linux")]
     use std::os::unix::ffi::OsStrExt as _;
+    use std::path::Path;
 
-    for outside in [b"outside/plain.txt".as_slice(), b"outside/\xff.txt"] {
-        let outside = std::path::Path::new(std::ffi::OsStr::from_bytes(outside));
+    for outside in [
+        Path::new("outside/plain.txt"),
+        // macOS filesystems reject invalid UTF-8 filenames.
+        #[cfg(target_os = "linux")]
+        Path::new(std::ffi::OsStr::from_bytes(b"outside/\xff.txt")),
+    ] {
         let history = History::with_packages(|root| {
             fs_err::create_dir(root.join("pkg")).unwrap();
             fs_err::create_dir(root.join("outside")).unwrap();
