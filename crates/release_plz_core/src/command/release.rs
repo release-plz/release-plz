@@ -263,7 +263,6 @@ impl ReleaseRequest {
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
-        self.validate_distribute_options()?;
         let Some(git_release) = &self.git_release else {
             return Ok(());
         };
@@ -662,6 +661,7 @@ pub struct PackageRelease {
 #[instrument(skip(input))]
 pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> {
     // Reject unsupported configuration before checkout, registry publication or tag creation.
+    input.validate_distribute_options()?;
     input.validate_git_release_options()?;
     let overrides = input.packages_config.overridden_packages();
     let project = Project::new(
@@ -1589,7 +1589,7 @@ mod tests {
         let (_temporary, _repo, request) = release_fixture(&server);
         let error = request
             .with_default_package_config(distribute_config())
-            .validate_git_release_options()
+            .validate_distribute_options()
             .unwrap_err()
             .to_string();
         assert!(error.contains("binary target"), "{error}");
@@ -1601,7 +1601,7 @@ mod tests {
             let (_temporary, _repo, request) = distribute_fixture(&server, "");
             let error = request
                 .with_default_package_config(config)
-                .validate_git_release_options()
+                .validate_distribute_options()
                 .unwrap_err()
                 .to_string();
             assert!(
@@ -1612,7 +1612,7 @@ mod tests {
         let (_temporary, _repo, mut request) = distribute_fixture(&server, "");
         request.git_release = None;
         let error = request
-            .validate_git_release_options()
+            .validate_distribute_options()
             .unwrap_err()
             .to_string();
         assert!(error.contains("git token"), "{error}");
@@ -1625,13 +1625,13 @@ mod tests {
         let request =
             request.with_default_package_config(ReleaseConfig::default().with_distribute(true));
         let error = request
-            .validate_git_release_options()
+            .validate_distribute_options()
             .unwrap_err()
             .to_string();
         assert!(error.contains("requires `git_only = true`"), "{error}");
         request
             .with_default_package_config(distribute_config())
-            .validate_git_release_options()
+            .validate_distribute_options()
             .unwrap();
     }
 
@@ -1652,7 +1652,7 @@ mod tests {
         // Enterprise is fine as long as nothing is distributed.
         let request =
             request.with_default_package_config(ReleaseConfig::default().with_git_only(true));
-        request.validate_git_release_options().unwrap();
+        request.validate_distribute_options().unwrap();
         let request = request.with_default_package_config(distribute_config());
         assert!(
             release(&request)
