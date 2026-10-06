@@ -11,7 +11,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use cargo_utils::{CARGO_TOML, LocalManifest};
+use cargo_utils::LocalManifest;
 use git_cliff_core::{
     config::{ChangelogConfig, Config},
     contributor::RemoteContributor,
@@ -77,14 +77,19 @@ impl Updater<'_> {
         let mut filtered_packages = HashSet::new();
         let mut planned_updates = Vec::new();
 
-        let workspace_version_pkgs: HashSet<String> = packages_diffs
+        let workspace_packages = crate::project::workspace_packages_at(
+            self.req.cargo_metadata(),
+            crate::manifest_dir(local_manifest_path)?,
+        )?;
+        let mut inheriting_packages = Vec::new();
+        for package in &workspace_packages {
+            if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
+                inheriting_packages.push(package);
+            }
+        }
+        let workspace_version_pkgs: HashSet<String> = inheriting_packages
             .iter()
-            .filter(|(p, _)| {
-                let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
-                let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
-                local_manifest.version_is_inherited()
-            })
-            .map(|(p, _)| p.name.to_string())
+            .map(|p| p.name.to_string())
             .collect();
 
         let new_workspace_version = self.new_workspace_version(
@@ -146,6 +151,7 @@ impl Updater<'_> {
         let workspace_version = self.dependent_packages_update(
             &packages_to_check_for_deps,
             &mut planned_updates,
+            &inheriting_packages,
             &workspace_version_pkgs,
             &filtered_packages,
             new_workspace_version.as_ref(),
@@ -154,7 +160,8 @@ impl Updater<'_> {
         if let Some(version) = workspace_version {
             packages_to_update.with_workspace_version(version);
         }
-        let mut old_changelogs = OldChangelogs::new(self.shared_changelog_paths()?);
+        let mut old_changelogs =
+            OldChangelogs::new(self.shared_changelog_paths(&workspace_packages));
         for update in planned_updates {
             if update.version == update.package.version && !update.diff.is_version_published {
                 info!(
@@ -186,22 +193,14 @@ impl Updater<'_> {
         Ok(packages_to_update)
     }
 
-    /// Changelogs that more than one workspace package writes to.
-    fn shared_changelog_paths(&self) -> anyhow::Result<HashSet<Utf8PathBuf>> {
-        let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
-        let mut workspace_packages =
-            cargo_utils::workspace_members(self.req.cargo_metadata())?.collect();
-        crate::project::override_packages_path(
-            &mut workspace_packages,
-            self.req.cargo_metadata(),
-            workspace_dir,
-        )?;
+    /// Changelogs that more than one of the `workspace_packages` writes to.
+    fn shared_changelog_paths(&self, workspace_packages: &[Package]) -> HashSet<Utf8PathBuf> {
         let mut paths = HashSet::new();
-        Ok(workspace_packages
+        workspace_packages
             .iter()
             .map(|p| self.req.changelog_path(p))
             .filter(|path| !paths.insert(path.clone()))
-            .collect())
+            .collect()
     }
 
     /// Get the highest next version of all packages for each version group.
@@ -411,6 +410,7 @@ impl Updater<'_> {
         &self,
         packages_to_check_for_deps: &[(&'a Package, &Diff)],
         planned_updates: &mut Vec<PlannedUpdate<'a>>,
+        inheriting_packages: &[&Package],
         workspace_version_pkgs: &HashSet<String>,
         filtered_packages: &HashSet<&str>,
         initial_workspace_version: Option<&Version>,
@@ -418,19 +418,6 @@ impl Updater<'_> {
         let workspace_manifest = LocalManifest::try_new(self.req.local_manifest())?;
         let workspace_dependencies = workspace_manifest.get_workspace_dependency_table();
         let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
-        let mut workspace_packages =
-            cargo_utils::workspace_members(self.req.cargo_metadata())?.collect();
-        crate::project::override_packages_path(
-            &mut workspace_packages,
-            self.req.cargo_metadata(),
-            workspace_dir,
-        )?;
-        let mut inheriting_packages = Vec::new();
-        for package in workspace_packages {
-            if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
-                inheriting_packages.push(package);
-            }
-        }
         let mut processed: HashSet<&str> = planned_updates
             .iter()
             .map(|u| u.package.name.as_str())
@@ -461,7 +448,7 @@ impl Updater<'_> {
             if let Some(version) = &workspace_version {
                 // Even a filtered sibling physically changes version. Its
                 // dependents must see the new version without releasing the sibling.
-                for p in &inheriting_packages {
+                for &p in inheriting_packages {
                     if !processed.contains(p.name.as_str()) && &p.version != version {
                         changed_packages.push((p, version.clone()));
                     }
