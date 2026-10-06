@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, ensure};
 use release_plz_core::{
-    GitClient, GitForge, GitHub, ReleaseRequest,
+    GitClient, GitForge, GitHub, ReleaseRequest, RepoUrl,
     dist::{DistJob, DistRequest},
 };
 use secrecy::SecretString;
@@ -52,7 +52,7 @@ impl Dist {
         let config = args.config.load()?;
         let metadata = args.cargo_metadata()?;
         let repo_url = args.get_repo_url(&config)?;
-        let repository = repo_url.full_host();
+        let repository = distribution_repository(&repo_url);
         let client = GitClient::new(GitForge::Github(GitHub::from_repo_url(
             repo_url,
             SecretString::from(args.git_token.clone()),
@@ -70,6 +70,15 @@ impl Dist {
         } else {
             request.build(DistJob::from_env()?).await
         }
+    }
+}
+
+fn distribution_repository(repo_url: &RepoUrl) -> String {
+    // cargo-dist accepts only github.com, including when Git uses a public SSH alias.
+    if repo_url.is_on_github_dot_com() {
+        format!("https://github.com/{}/{}", repo_url.owner, repo_url.name)
+    } else {
+        repo_url.full_host()
     }
 }
 
@@ -94,5 +103,26 @@ impl ManifestCommand for DistArgs {
 impl RepoCommand for DistArgs {
     fn repo_url(&self) -> Option<&str> {
         self.repo_url.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distribution_uses_canonical_github_urls_for_public_aliases() {
+        for remote in [
+            "https://github.com/owner/repo.git",
+            "git@github.com:owner/repo.git",
+            "ssh://git@ssh.github.com:443/owner/repo.git",
+            "https://www.github.com/owner/repo.git",
+        ] {
+            let repo_url = RepoUrl::new(remote).unwrap();
+            assert_eq!(
+                distribution_repository(&repo_url),
+                "https://github.com/owner/repo"
+            );
+        }
     }
 }
