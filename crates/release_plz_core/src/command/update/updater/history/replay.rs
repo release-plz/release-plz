@@ -424,9 +424,9 @@ fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
     fs_utils::canonicalize_utf8(&repository.directory().join(objects))
 }
 
-/// Whether every stage of a conflict is a regular file of the same mode, so
-/// that merging their contents as text is meaningful. Type, mode, rename and
-/// deletion conflicts cannot establish absence.
+/// Whether all `modes` are the same regular-file mode, so that merging the
+/// contents as text is meaningful. Type and mode changes cannot establish
+/// absence.
 fn same_regular_file_mode<const N: usize>(modes: [u32; N]) -> bool {
     modes.iter().all(|mode| *mode == modes[0]) && matches!(modes[0], 0o100_644 | 0o100_755)
 }
