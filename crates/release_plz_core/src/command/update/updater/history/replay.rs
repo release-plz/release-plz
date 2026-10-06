@@ -282,7 +282,7 @@ pub(super) enum TokenConflicts {
     /// conflicts with edits next to it.
     FavorTarget,
     /// Leave them unresolved, so that they count as changes.
-    Keep,
+    Unresolved,
 }
 
 /// The old and the new path of `delta`, as Git reports them.
@@ -324,7 +324,7 @@ fn text_conflict_leaves_file_unchanged(
     if merged.is_automergeable() {
         return Ok(merged.content() == ours);
     }
-    if conflicts != TokenConflicts::Keep {
+    if conflicts != TokenConflicts::Unresolved {
         return Ok(false);
     }
     // Repeated tokens can align an edit with an unrelated later insertion.
@@ -332,11 +332,14 @@ fn text_conflict_leaves_file_unchanged(
     // and exact restoration of the target. For an undo this reapplies the whole
     // candidate before undoing it: any retained portion is removed as well, so
     // a partly retained change still affects the target.
-    let applied = merge_text([theirs, ours, ancestor], TokenConflicts::Keep)?;
+    let applied = merge_text([theirs, ours, ancestor], TokenConflicts::Unresolved)?;
     if !applied.is_automergeable() {
         return Ok(false);
     }
-    let undone = merge_text([ancestor, applied.content(), theirs], TokenConflicts::Keep)?;
+    let undone = merge_text(
+        [ancestor, applied.content(), theirs],
+        TokenConflicts::Unresolved,
+    )?;
     Ok(undone.is_automergeable() && undone.content() == ours)
 }
 

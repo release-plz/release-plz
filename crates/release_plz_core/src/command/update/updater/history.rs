@@ -218,13 +218,19 @@ impl<'a> RetainedChanges<'a> {
         // HEAD lacks the change when undoing it leaves HEAD as it is, whatever
         // else HEAD and the release disagree on. Conflicting tokens show HEAD's
         // own version of the change, which keeps its marker.
-        if !replay.undo_affects_package(commit, &self.head, TokenConflicts::Keep, includes)? {
+        if !replay.undo_affects_package(commit, &self.head, TokenConflicts::Unresolved, includes)? {
             return Ok(false);
         }
         // HEAD also lacks the change when it followed the release: the release's
         // edits since the change then leave HEAD as it is, even where they
         // evolved the change instead of undoing it.
-        replay.edits_affect_package(commit, released, &self.head, TokenConflicts::Keep, includes)
+        replay.edits_affect_package(
+            commit,
+            released,
+            &self.head,
+            TokenConflicts::Unresolved,
+            includes,
+        )
     }
 
     fn includes(&self, path: &[u8]) -> bool {
@@ -497,7 +503,7 @@ mod tests {
         // re-adds old/b without a conflict, and that original path is packaged.
         assert!(
             replay
-                .undo_affects_package(&changed, &target, TokenConflicts::Keep, |path| {
+                .undo_affects_package(&changed, &target, TokenConflicts::Unresolved, |path| {
                     changes.includes(path)
                 })
                 .unwrap()
