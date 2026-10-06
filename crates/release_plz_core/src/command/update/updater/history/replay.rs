@@ -11,19 +11,26 @@ use crate::fs_utils;
 
 /// Replay changes onto other snapshots in an isolated libgit2 repository that
 /// reads the source objects without writing to the source repository.
-pub(super) struct ChangeReplay {
+pub(super) struct ChangeReplay<'a> {
+    /// The source repository, whose Git fetches the objects a partial clone
+    /// lacks, see [`Self::fetch_missing_blobs`].
+    repository: &'a Repo,
     repo: git2::Repository,
     /// The repository-relative paths the replayed trees are restricted to,
     /// see [`Self::restrict`].
     paths: Vec<Utf8PathBuf>,
 }
 
-impl ChangeReplay {
+impl<'a> ChangeReplay<'a> {
     /// Read the objects of `repository`, whose `head` commit id shows its object
     /// format: only SHA-1 repositories are supported, since libgit2 cannot read
     /// SHA-256 objects. Replays read only the repository-relative `paths`,
     /// see [`Self::restrict`].
-    pub(super) fn new(repository: &Repo, head: &str, paths: &[&Utf8Path]) -> anyhow::Result<Self> {
+    pub(super) fn new(
+        repository: &'a Repo,
+        head: &str,
+        paths: &[&Utf8Path],
+    ) -> anyhow::Result<Self> {
         anyhow::ensure!(
             git2::Oid::from_str(head).is_ok(),
             "SHA-256 repositories are not supported"
@@ -48,6 +55,7 @@ impl ChangeReplay {
         }
         repo.set_index(&mut index)?;
         Ok(Self {
+            repository,
             repo,
             paths: paths.iter().map(|path| path.to_path_buf()).collect(),
         })
@@ -63,9 +71,11 @@ impl ChangeReplay {
         includes: impl Fn(&[u8]) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
+        let tree = self.tree(&commit)?;
         let parent = self.first_parent_tree(&commit)?;
         let target = self.tree(&self.commit(target)?)?;
-        self.merging_affects_files(&self.tree(&commit)?, &target, &parent, conflicts, includes)
+        self.fetch_missing_blobs(&tree, &[&target, &parent])?;
+        self.merging_affects_files(&tree, &target, &parent, conflicts, includes)
     }
 
     /// Whether applying the edits made from `commit` to `edited` onto `target`
@@ -87,6 +97,7 @@ impl ChangeReplay {
         let target = self.tree(&self.commit(target)?)?;
         let edited = self.tree(&self.commit(edited)?)?;
         let parent = self.first_parent_tree(&commit)?;
+        self.fetch_missing_blobs(&tree, &[&parent, &edited, &target])?;
         let mut changed = HashSet::new();
         for (path, target_path) in self.changed_paths(&parent, &tree, &target)? {
             if (includes(&path) || includes(&target_path))
@@ -107,6 +118,44 @@ impl ChangeReplay {
         self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
             changed.contains(path)
         })
+    }
+
+    /// Fetch the blobs of `trees` that differ from `base`'s and are missing from
+    /// the object database. The walk checks out only the commits it visits, so a
+    /// partial clone lacks the blobs of other commits, such as a candidate's
+    /// parent on an excluded branch, and libgit2 cannot fetch them; Git does on
+    /// lookup. Full clones miss nothing and spawn no process.
+    ///
+    /// For every path, these diffs hold each distinct blob among the snapshots,
+    /// so the merges and the rename detection find every blob they read. The
+    /// trees are restricted to the package, so only its blobs are fetched.
+    fn fetch_missing_blobs(
+        &self,
+        base: &git2::Tree<'_>,
+        trees: &[&git2::Tree<'_>],
+    ) -> anyhow::Result<()> {
+        let odb = self.repo.odb()?;
+        let mut seen = HashSet::new();
+        for tree in trees {
+            // Without rename detection, the diff reads no blobs itself.
+            let diff = self.repo.diff_tree_to_tree(Some(base), Some(tree), None)?;
+            for delta in diff.deltas() {
+                for file in [delta.old_file(), delta.new_file()] {
+                    // Deleted sides have a zero id; submodules are commits of
+                    // another repository.
+                    if file.id().is_zero()
+                        || file.mode() == git2::FileMode::Commit
+                        || !seen.insert(file.id())
+                        || odb.exists(file.id())
+                    {
+                        continue;
+                    }
+                    self.repository
+                        .git(&["cat-file", "-e", &file.id().to_string()])?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Prove that the target adopted the edits to the candidate's changed

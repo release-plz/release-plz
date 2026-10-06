@@ -182,7 +182,7 @@ impl<'a> RetainedChanges<'a> {
     }
 
     /// Whether `commit` stays in the diff, see [`Self::retain_surviving`].
-    fn retains(&self, replay: Option<&ChangeReplay>, commit: &str) -> bool {
+    fn retains(&self, replay: Option<&ChangeReplay<'_>>, commit: &str) -> bool {
         if !self.released_ancestors.contains(commit) {
             return true;
         }
@@ -202,7 +202,7 @@ impl<'a> RetainedChanges<'a> {
 
     /// Whether the change of `commit` was absent from the release and is still
     /// present at HEAD.
-    fn survives(&self, replay: &ChangeReplay, commit: &str) -> anyhow::Result<bool> {
+    fn survives(&self, replay: &ChangeReplay<'_>, commit: &str) -> anyhow::Result<bool> {
         // Candidates are ancestors of an equal snapshot, so one was recorded.
         let released = self
             .released
@@ -317,7 +317,7 @@ mod tests {
         changed: &str,
         released: &str,
         package_files: Option<Vec<Utf8PathBuf>>,
-    ) -> (RetainedChanges<'a>, ChangeReplay) {
+    ) -> (RetainedChanges<'a>, ChangeReplay<'a>) {
         let paths = PackagePaths {
             package: repo.directory().to_path_buf(),
             readme: None,
