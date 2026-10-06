@@ -102,7 +102,6 @@ impl DistRequest {
 
     /// Build for this runner and upload assets, then a receipt indicating successful completion.
     pub async fn build(&self, job: DistJob) -> anyhow::Result<()> {
-        job.validate()?;
         self.require_draft_release().await?;
         let cargo_dist = self.cargo_dist(vec![job.target.clone()])?;
         let mut manifest = self.build_manifest(&cargo_dist, false)?;
@@ -265,10 +264,10 @@ impl DistRequest {
 /// Matrix identity supplied automatically by the distribution action.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DistJob {
-    pub run_id: String,
-    pub index: usize,
-    pub total: usize,
-    pub target: String,
+    run_id: String,
+    index: usize,
+    total: usize,
+    target: String,
 }
 
 impl DistJob {
