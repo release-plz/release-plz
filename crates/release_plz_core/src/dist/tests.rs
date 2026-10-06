@@ -426,7 +426,16 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             .with_distribute(true),
     );
     let request = DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
-    assert!(request.finalize("123").await.is_err());
+    // The full error chain: `successful_status` keeps the HTTP status in the cause.
+    async fn finalize_error(request: &DistRequest, run_id: &str) -> String {
+        format!("{:#}", request.finalize(run_id).await.unwrap_err())
+    }
+    let error = finalize_error(&request, "123").await;
+    assert!(
+        error.contains("no successful distribution builds"),
+        "{error}"
+    );
+    // The second build replaces the first one's assets and receipt.
     for _ in 0..2 {
         request
             .build(DistJob {
@@ -438,12 +447,33 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             .await
             .unwrap();
     }
-    assert!(request.finalize("124").await.is_err());
-    assert!(request.finalize("123").await.is_err());
+    let error = finalize_error(&request, "124").await;
+    assert!(
+        error.contains("no successful distribution builds"),
+        "{error}"
+    );
+    // The mock rejects the first installer upload.
+    let error = finalize_error(&request, "123").await;
+    assert!(error.contains("422"), "{error}");
+    assert!(state.lock().unwrap().failed_global_upload);
     assert!(state.lock().unwrap().published.is_none());
     request.finalize("123").await.unwrap();
     request.finalize("123").await.unwrap();
     let state = state.lock().unwrap();
+    let names: BTreeSet<&str> = state
+        .assets
+        .values()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert_eq!(names.len(), state.assets.len(), "{names:?}");
+    assert_eq!(
+        names
+            .iter()
+            .filter(|name| name.starts_with(&receipt_prefix("123")))
+            .count(),
+        1,
+        "{names:?}"
+    );
     let published = state.published.as_ref().unwrap();
     assert_eq!(published["draft"], false);
     let body = published["body"].as_str().unwrap();
