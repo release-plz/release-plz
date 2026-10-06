@@ -121,8 +121,9 @@ impl DistRequest {
         );
         // The build is slow: a concurrent finalize may have published the release meanwhile.
         let release = self.draft_release().await?;
+        let existing = self.client.dist_assets(&release).await?;
         let assets = self
-            .upload_manifest_artifacts(&cargo_dist, &release, &manifest)
+            .upload_manifest_artifacts(&cargo_dist, &release, &existing, &manifest)
             .await?;
         ensure!(!assets.is_empty(), "cargo-dist produced no assets");
         manifest.clear_paths();
@@ -135,7 +136,12 @@ impl DistRequest {
             assets,
         };
         self.client
-            .dist_upload(&release, &receipt.name(), serde_json::to_vec(&receipt)?)
+            .dist_upload(
+                &release,
+                &existing,
+                &receipt.name(),
+                serde_json::to_vec(&receipt)?,
+            )
             .await?;
         Ok(())
     }
@@ -187,7 +193,7 @@ impl DistRequest {
         }
         let mut manifest = cargo_dist.build(&self.tag, &targets, true)?;
         manifest.validate(&self.tag, &self.package)?;
-        self.upload_manifest_artifacts(&cargo_dist, &release, &manifest)
+        self.upload_manifest_artifacts(&cargo_dist, &release, &assets, &manifest)
             .await?;
         let notes = manifest.installation_notes()?;
         ensure!(
@@ -199,6 +205,7 @@ impl DistRequest {
         self.client
             .dist_upload(
                 &release,
+                &assets,
                 "dist-manifest.json",
                 serde_json::to_vec(&manifest)?,
             )
@@ -226,6 +233,7 @@ impl DistRequest {
         &self,
         cargo_dist: &CargoDist,
         release: &Release,
+        existing: &[Asset],
         manifest: &Manifest,
     ) -> anyhow::Result<Vec<Asset>> {
         let mut assets = vec![];
@@ -241,7 +249,7 @@ impl DistRequest {
                 );
                 assets.push(
                     self.client
-                        .dist_upload(release, name, cargo_dist.artifact_bytes(path)?)
+                        .dist_upload(release, existing, name, cargo_dist.artifact_bytes(path)?)
                         .await?,
                 );
             }

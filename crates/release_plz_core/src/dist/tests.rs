@@ -159,6 +159,7 @@ async fn finds_drafts_beyond_first_page() {
     let release = json!({"id": 1, "tag_name": "old", "draft": false, "body": null, "upload_url": "https://uploads.github.com/unused"});
     Mock::given(method("GET"))
         .and(path("/repos/owner/repo/releases"))
+        .and(query_param("per_page", "100"))
         .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(vec![release.clone(); 100]))
         .expect(1)
@@ -169,6 +170,7 @@ async fn finds_drafts_beyond_first_page() {
     draft["draft"] = json!(true);
     Mock::given(method("GET"))
         .and(path("/repos/owner/repo/releases"))
+        .and(query_param("per_page", "100"))
         .and(query_param("page", "2"))
         .respond_with(ResponseTemplate::new(200).set_body_json(vec![draft]))
         .expect(1)
