@@ -57,14 +57,13 @@ impl Dist {
             repo_url,
             SecretString::from(args.git_token.clone()),
         )?))?;
-        let release_config =
-            config.fill_release_config(false, false, ReleaseRequest::new(metadata.clone()))?;
+        let request = config.fill_release_config(false, false, ReleaseRequest::new(metadata))?;
         let tag = match args.tag {
             Some(tag) => tag,
             None => event_tag()?,
         };
         ensure!(!tag.is_empty(), "release tag must not be empty");
-        let request = DistRequest::new(metadata, &release_config, tag, client, repository)?;
+        let request = DistRequest::new(request, tag, client, repository)?;
         if finalize {
             request.finalize(&release_plz_core::dist::run_id()?).await
         } else {

@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{Context as _, ensure};
-use cargo_metadata::{Metadata, Package};
+use cargo_metadata::Package;
 use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,7 +22,7 @@ use github::{Asset, Release};
 /// A distribution is always tied to one package, tag and checked-out commit.
 #[derive(Debug)]
 pub struct DistRequest {
-    metadata: Metadata,
+    request: ReleaseRequest,
     package: Package,
     project: Project,
     tag: String,
@@ -35,24 +35,23 @@ pub struct DistRequest {
 
 impl DistRequest {
     pub fn new(
-        metadata: Metadata,
-        config: &ReleaseRequest,
+        request: ReleaseRequest,
         tag: String,
         client: GitClient,
         repository: String,
     ) -> anyhow::Result<Self> {
         ensure!(client.forge == ForgeType::Github, "dist requires GitHub");
+        let metadata = request.cargo_metadata();
         let project = Project::new(
             &metadata.workspace_root.join("Cargo.toml"),
             None,
             &HashSet::new(),
-            &metadata,
-            config,
+            metadata,
+            &request,
         )?;
         let mut packages = vec![];
         for package in project.workspace_packages() {
-            if metadata.workspace_members.contains(&package.id)
-                && config.get_package_config(&package.name).distribute()
+            if request.get_package_config(&package.name).distribute()
                 && project.git_tag(&package.name, &package.version.to_string())? == tag
             {
                 packages.push(package);
@@ -82,10 +81,10 @@ impl DistRequest {
             commit.trim() == tagged_commit.trim(),
             "HEAD must match release tag `{tag}`"
         );
-        let package_config = config.get_package_config(&package.name);
+        let package_config = request.get_package_config(&package.name);
         let git_release = package_config.git_release();
         Ok(Self {
-            metadata,
+            request,
             package,
             project,
             tag,
@@ -102,13 +101,7 @@ impl DistRequest {
         job.validate()?;
         self.draft_release().await?;
         let targets = vec![job.target.clone()];
-        let cargo_dist = CargoDist::prepare(
-            &self.project,
-            &self.metadata,
-            &self.package,
-            &self.repository,
-            &targets,
-        )?;
+        let cargo_dist = self.cargo_dist(&targets)?;
         let mut manifest = cargo_dist.build(&self.tag, &targets, false)?;
         manifest.validate(&self.tag, &self.package)?;
         ensure!(
@@ -181,13 +174,7 @@ impl DistRequest {
             &self.package,
             &assets,
         )?;
-        let cargo_dist = CargoDist::prepare(
-            &self.project,
-            &self.metadata,
-            &self.package,
-            &self.repository,
-            &targets,
-        )?;
+        let cargo_dist = self.cargo_dist(&targets)?;
         for (i, receipt) in receipts.iter().enumerate() {
             cargo_dist.import_manifest(i, &receipt.manifest)?;
         }
@@ -221,6 +208,16 @@ impl DistRequest {
             );
         }
         Ok(())
+    }
+
+    fn cargo_dist(&self, targets: &[String]) -> anyhow::Result<CargoDist> {
+        CargoDist::prepare(
+            &self.project,
+            self.request.cargo_metadata(),
+            &self.package,
+            &self.repository,
+            targets,
+        )
     }
 
     async fn draft_release(&self) -> anyhow::Result<Release> {

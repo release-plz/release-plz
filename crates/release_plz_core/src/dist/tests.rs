@@ -285,14 +285,13 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             _ => ResponseTemplate::new(404),
         }
     }).mount(&server).await;
-    let config = ReleaseRequest::new(metadata.clone()).with_default_package_config(
+    let request = ReleaseRequest::new(metadata).with_default_package_config(
         ReleaseConfig::default()
             .with_git_only(true)
             .with_distribute(true),
     );
     let request = DistRequest::new(
-        metadata,
-        &config,
+        request,
         "v1.0.0".into(),
         client(&server),
         "https://github.com/owner/repo".into(),
