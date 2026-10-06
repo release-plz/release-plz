@@ -46,6 +46,24 @@ impl History {
         }
     }
 
+    /// A workspace whose member `pkg` holds the package with [`BASE_API`].
+    /// `write_extra` adds files outside the package to the workspace root.
+    fn with_member_package(write_extra: impl Fn(&Utf8Path)) -> Self {
+        Self::with_packages(|root| {
+            fs_err::write(
+                root.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"pkg\"]\nresolver = \"2\"\n",
+            )
+            .unwrap();
+            write_package(&root.join("pkg"), PACKAGE, "0.1.0", "");
+            fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+            write_extra(root);
+            generate_lockfile(root);
+            // Keep package listing successful, independently of its fallback.
+            fs_err::copy(root.join("Cargo.lock"), root.join("pkg/Cargo.lock")).unwrap();
+        })
+    }
+
     fn write_commit(&self, path: &str, contents: &str, message: &str) -> String {
         fs_err::write(self.repo.directory().join(path), contents).unwrap();
         self.repo.add_all_and_commit(message).unwrap();
@@ -550,20 +568,9 @@ fn outside_paths_do_not_retain_a_reverted_breaking_change() {
         #[cfg(target_os = "linux")]
         Path::new(std::ffi::OsStr::from_bytes(b"outside/\xff.txt")),
     ] {
-        let history = History::with_packages(|root| {
-            fs_err::create_dir(root.join("pkg")).unwrap();
+        let history = History::with_member_package(|root| {
             fs_err::create_dir(root.join("outside")).unwrap();
-            fs_err::write(
-                root.join("Cargo.toml"),
-                "[workspace]\nmembers = [\"pkg\"]\nresolver = \"2\"\n",
-            )
-            .unwrap();
-            write_package(&root.join("pkg"), PACKAGE, "0.1.0", "");
-            fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
             fs_err::write(root.as_std_path().join(outside), "old\n").unwrap();
-            generate_lockfile(root);
-            // Keep package listing successful, independently of its fallback.
-            fs_err::copy(root.join("Cargo.lock"), root.join("pkg/Cargo.lock")).unwrap();
         });
         assert!(get_package_files(&history.repo.directory().join("pkg"), &history.repo).is_ok());
         fs_err::write(
@@ -813,20 +820,9 @@ fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
 /// libgit2 cannot fetch them: the replay must not read outside the package.
 #[test]
 fn partial_clones_replay_retained_changes_without_outside_blobs() {
-    let history = History::with_packages(|root| {
-        fs_err::create_dir(root.join("pkg")).unwrap();
+    let history = History::with_member_package(|root| {
         fs_err::create_dir(root.join("docs")).unwrap();
-        fs_err::write(
-            root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"pkg\"]\nresolver = \"2\"\n",
-        )
-        .unwrap();
-        write_package(&root.join("pkg"), PACKAGE, "0.1.0", "");
-        fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
         fs_err::write(root.join("docs/x"), "base\n").unwrap();
-        generate_lockfile(root);
-        // Keep package listing successful, independently of its fallback.
-        fs_err::copy(root.join("Cargo.lock"), root.join("pkg/Cargo.lock")).unwrap();
     });
     let repo = &history.repo;
     // The parent of the breaking change touches only the outside file.
