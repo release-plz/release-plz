@@ -1,5 +1,6 @@
 use super::*;
-use crate::{GitForge, GitHub, ReleaseConfig};
+use crate::{GitForge, GitHub, GitTagConfig, ReleaseConfig};
+use cargo_metadata::camino::Utf8Path;
 use secrecy::SecretString;
 use serde_json::json;
 use wiremock::{
@@ -421,6 +422,153 @@ async fn release_update_publishes_only_on_request_without_touching_prerelease() 
             .await
             .unwrap();
     }
+}
+
+fn distribute_config() -> ReleaseConfig {
+    ReleaseConfig::default()
+        .with_git_only(true)
+        .with_distribute(true)
+}
+
+/// Write the `publish = false` package `name` at `dir` with a single source file.
+fn write_dist_package(dir: &Utf8Path, name: &str, source_file: &str) {
+    fs_err::create_dir_all(dir.join("src")).unwrap();
+    fs_err::write(dir.join(source_file), "fn main() {}\n").unwrap();
+    fs_err::write(
+        dir.join(cargo_utils::CARGO_TOML),
+        crate::test_utils::package_manifest(name, "1.0.0", "publish = false\n"),
+    )
+    .unwrap();
+}
+
+/// Commit `repo` and tag it `v1.0.0`: the checkout a distribution job runs from.
+fn tag_dist_repo(repo: &Repo, config: ReleaseConfig) -> ReleaseRequest {
+    let metadata =
+        cargo_utils::get_manifest_metadata(&repo.directory().join(cargo_utils::CARGO_TOML))
+            .unwrap();
+    repo.add_all_and_commit("initial").unwrap();
+    repo.git(&["tag", "v1.0.0"]).unwrap();
+    ReleaseRequest::new(metadata).with_default_package_config(config)
+}
+
+/// A committed, tagged `distribute = true` package whose only source file is `source_file`.
+fn dist_fixture(source_file: &str) -> (tempfile::TempDir, Repo, ReleaseRequest) {
+    let temporary = tempfile::tempdir().unwrap();
+    let repo = Repo::init(temporary.path());
+    write_dist_package(repo.directory(), "app", source_file);
+    let request = tag_dist_repo(&repo, distribute_config());
+    (temporary, repo, request)
+}
+
+fn new_dist_request_error(request: ReleaseRequest, client: GitClient) -> String {
+    DistRequest::new(request, "v1.0.0".into(), client)
+        .unwrap_err()
+        .to_string()
+}
+
+#[tokio::test]
+async fn dist_request_requires_one_tagged_binary_package_on_github() {
+    let server = MockServer::start().await;
+    let (_temporary, _repo, request) = dist_fixture("src/main.rs");
+    DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
+
+    let (_temporary, _repo, request) = dist_fixture("src/main.rs");
+    let gitea = GitClient::new(GitForge::Gitea(crate::Gitea {
+        remote: GitHub::new("owner".into(), "repo".into(), SecretString::from("token")).remote,
+    }))
+    .unwrap();
+    let error = new_dist_request_error(request, gitea);
+    assert!(error.contains("dist requires GitHub"), "{error}");
+
+    let (_temporary, _repo, request) = dist_fixture("src/main.rs");
+    let request = request.with_default_package_config(ReleaseConfig::default().with_git_only(true));
+    let error = new_dist_request_error(request, client(&server));
+    assert!(
+        error.contains("tag `v1.0.0` must select exactly one package with distribute=true"),
+        "{error}"
+    );
+
+    // Two packages sharing a tag template are ambiguous.
+    let temporary = tempfile::tempdir().unwrap();
+    let repo = Repo::init(temporary.path());
+    fs_err::write(
+        repo.directory().join(cargo_utils::CARGO_TOML),
+        "[workspace]\nmembers = ['a', 'b']\nresolver = '2'\n",
+    )
+    .unwrap();
+    for name in ["a", "b"] {
+        write_dist_package(&repo.directory().join(name), name, "src/main.rs");
+    }
+    let shared_tag = GitTagConfig::enabled(true).set_name_template(Some("v{{ version }}".into()));
+    let request = tag_dist_repo(&repo, distribute_config().with_git_tag(shared_tag));
+    let error = new_dist_request_error(request, client(&server));
+    assert!(
+        error.contains("tag `v1.0.0` must select exactly one package with distribute=true"),
+        "{error}"
+    );
+
+    let (_temporary, _repo, request) = dist_fixture("src/lib.rs");
+    let error = new_dist_request_error(request, client(&server));
+    assert!(error.contains("dist requires a binary target"), "{error}");
+}
+
+#[tokio::test]
+async fn dist_request_requires_a_clean_checkout_of_the_tag() {
+    let server = MockServer::start().await;
+    let (_temporary, repo, request) = dist_fixture("src/main.rs");
+    fs_err::write(repo.directory().join("src/main.rs"), "fn main() { }\n").unwrap();
+    let error = new_dist_request_error(request, client(&server));
+    assert!(
+        error.contains("distribution requires a clean checkout of the release tag"),
+        "{error}"
+    );
+
+    let (_temporary, repo, request) = dist_fixture("src/main.rs");
+    fs_err::write(repo.directory().join("README.md"), "later\n").unwrap();
+    repo.add_all_and_commit("after the tag").unwrap();
+    let error = new_dist_request_error(request, client(&server));
+    assert!(
+        error.contains("HEAD must match release tag `v1.0.0`"),
+        "{error}"
+    );
+
+    let (_temporary, repo, request) = dist_fixture("src/main.rs");
+    repo.git(&["tag", "-d", "v1.0.0"]).unwrap();
+    let error = new_dist_request_error(request, client(&server));
+    assert!(error.contains("release tag is missing locally"), "{error}");
+}
+
+#[tokio::test]
+async fn published_release_stops_build_and_is_a_finalize_no_op() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/owner/repo/releases"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
+            "id": 1, "tag_name": "v1.0.0", "draft": false, "body": "notes", "upload_url": "https://uploads.github.com/unused"
+        }])))
+        .mount(&server)
+        .await;
+    let (_temporary, _repo, request) = dist_fixture("src/main.rs");
+    let request = DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
+    // The check runs before cargo-dist is even looked up.
+    let error = request
+        .build(DistJob {
+            run_id: "123".into(),
+            index: 0,
+            total: 1,
+            target: "x86_64-unknown-linux-gnu".into(),
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("release `v1.0.0` is already published"),
+        "{error}"
+    );
+    request.finalize("123").await.unwrap();
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert!(requests.iter().all(|request| request.method == "GET"));
 }
 
 #[tokio::test]
