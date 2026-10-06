@@ -4,7 +4,7 @@ use secrecy::SecretString;
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{body_json, method, path, query_param},
+    matchers::{body_bytes, body_json, header, method, path, query_param},
 };
 
 fn package() -> Package {
@@ -256,6 +256,90 @@ fn client(server: &MockServer) -> GitClient {
     .unwrap()
 }
 
+/// Release `1` for `v1.0.0`, uploading to the mock server like GitHub's templated URL.
+fn github_release(server: &MockServer, draft: bool) -> GitHubRelease {
+    GitHubRelease {
+        id: 1,
+        tag_name: "v1.0.0".into(),
+        draft,
+        body: None,
+        upload_url: format!("{}/upload{{?name,label}}", server.uri()),
+    }
+}
+
+fn asset(id: u64, name: &str) -> Asset {
+    Asset {
+        id,
+        name: name.into(),
+        size: 1,
+        state: "uploaded".into(),
+    }
+}
+
+#[tokio::test]
+async fn upload_replaces_only_the_same_named_asset() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/repos/owner/repo/releases/assets/7"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/repos/owner/repo/releases/assets/8"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/upload"))
+        .and(query_param("name", "app.zip"))
+        .and(header("content-type", "application/octet-stream"))
+        .and(body_bytes(b"bytes".to_vec()))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_body_json(json!({"id": 9, "name": "app.zip", "size": 5, "state": "uploaded"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let existing = [asset(7, "app.zip"), asset(8, "other.zip")];
+    let uploaded = client(&server)
+        .dist_upload(
+            &github_release(&server, true),
+            &existing,
+            "app.zip",
+            b"bytes".to_vec(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (uploaded.id, uploaded.name.as_str(), uploaded.size),
+        (9, "app.zip", 5)
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn upload_refuses_published_releases() {
+    let server = MockServer::start().await;
+    let error = client(&server)
+        .dist_upload(
+            &github_release(&server, false),
+            &[asset(7, "app.zip")],
+            "app.zip",
+            b"bytes".to_vec(),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("refusing to upload to a published release"),
+        "{error}"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
 #[tokio::test]
 async fn finds_drafts_beyond_first_page() {
     let server = MockServer::start().await;
@@ -332,15 +416,8 @@ async fn release_update_publishes_only_on_request_without_touching_prerelease() 
             .expect(1)
             .mount(&server)
             .await;
-        let release = GitHubRelease {
-            id: 1,
-            tag_name: "v1.0.0".into(),
-            draft: true,
-            body: None,
-            upload_url: "https://uploads.github.com/unused".into(),
-        };
         client(&server)
-            .dist_update_release(&release, "notes", publish, latest)
+            .dist_update_release(&github_release(&server, true), "notes", publish, latest)
             .await
             .unwrap();
     }
