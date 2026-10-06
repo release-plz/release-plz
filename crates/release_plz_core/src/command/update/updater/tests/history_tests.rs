@@ -141,6 +141,41 @@ impl History {
         (baseline, one, two)
     }
 
+    /// Publish `released`, break the API and branch `late` off the breaking
+    /// change; then evolve `src/lib.rs` to `released` on the mainline, commit
+    /// `after_contents` at `after_path` and merge `late` back. Returns the late
+    /// and the after commits.
+    fn merge_late_branch(
+        &self,
+        released: &str,
+        after_path: &str,
+        after_contents: &str,
+    ) -> (String, String) {
+        let repo = &self.repo;
+        self.publish("src/lib.rs", released);
+        self.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        repo.git(&["checkout", "-b", "late"]).unwrap();
+        let late = self.write_commit("src/late.rs", "", "fix: late branch");
+        repo.checkout_head().unwrap();
+        self.write_commit("src/lib.rs", released, "chore: evolve API");
+        let after = self.write_commit(after_path, after_contents, "fix: after the release");
+        repo.git(&["merge", "--no-ff", "-m", "merge late branch", "late"])
+            .unwrap();
+        (late, after)
+    }
+
+    /// Rename the API file to `src/api.rs` and point the manifest at it.
+    /// Returns the rename commit.
+    fn rename_api_file(&self) -> String {
+        self.repo.git(&["mv", "src/lib.rs", "src/api.rs"]).unwrap();
+        let manifest = fs_err::read_to_string(self.repo.directory().join(CARGO_TOML)).unwrap();
+        self.write_commit(
+            CARGO_TOML,
+            &format!("{manifest}\n[lib]\npath = \"src/api.rs\"\n"),
+            "chore: rename the API file",
+        )
+    }
+
     /// Every commit in the order `get_diff` visits them, newest date first.
     fn walk_order(&self) -> String {
         self.repo
@@ -601,16 +636,7 @@ fn a_released_evolution_of_a_breaking_change_is_not_repeated() {
         ("src/lib.rs", format!("{RELEASED_API}pub fn after() {{}}\n")),
     ] {
         let history = api_history();
-        let repo = &history.repo;
-        history.publish("src/lib.rs", RELEASED_API);
-        history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-        repo.git(&["checkout", "-b", "late"]).unwrap();
-        let late = history.write_commit("src/late.rs", "", "fix: late branch");
-        repo.checkout_head().unwrap();
-        history.write_commit("src/lib.rs", RELEASED_API, "chore: evolve API");
-        let after = history.write_commit(after_path, &after_contents, "fix: after the release");
-        repo.git(&["merge", "--no-ff", "-m", "merge late branch", "late"])
-            .unwrap();
+        let (late, after) = history.merge_late_branch(RELEASED_API, after_path, &after_contents);
 
         // Without a tag or published commit, only the equal snapshot bounds the
         // walk, and the late branch reaches the breaking change through another
@@ -628,21 +654,7 @@ fn a_released_evolution_is_not_repeated_after_independent_release_edits_are_remo
         RELEASED_API.replace("api(_: u8) {}", "api(_: u8) { /* released body */ }"),
     ] {
         let history = api_history();
-        let repo = &history.repo;
-        history.publish("src/lib.rs", &released);
-        history.write_commit("src/lib.rs", BREAKING_API, "feat!: released breaking API");
-        repo.git(&["checkout", "-b", "late"]).unwrap();
-        let late = history.write_commit("src/late.rs", "", "fix: late branch");
-        repo.checkout_head().unwrap();
-        history.write_commit(
-            "src/lib.rs",
-            &released,
-            "chore: evolve API and implementation",
-        );
-        let after =
-            history.write_commit("src/lib.rs", RELEASED_API, "fix: remove released comment");
-        repo.git(&["merge", "--no-ff", "-m", "merge late branch", "late"])
-            .unwrap();
+        let (late, after) = history.merge_late_branch(&released, "src/lib.rs", RELEASED_API);
 
         // The late branch reaches the original breaking commit, but HEAD has
         // its released evolution. Unrelated removed text in the same file,
@@ -652,13 +664,7 @@ fn a_released_evolution_is_not_repeated_after_independent_release_edits_are_remo
         assert_next_version(&diff, &Version::new(0, 1, 1));
 
         // The same proof must follow the API file when HEAD renames it.
-        repo.git(&["mv", "src/lib.rs", "src/api.rs"]).unwrap();
-        let manifest = fs_err::read_to_string(repo.directory().join(CARGO_TOML)).unwrap();
-        let renamed = history.write_commit(
-            CARGO_TOML,
-            &format!("{manifest}\n[lib]\npath = \"src/api.rs\"\n"),
-            "chore: rename the API file",
-        );
+        let renamed = history.rename_api_file();
         let diff = history.diff(None);
         assert_commits(&diff, &[&after, &late, &renamed]);
         assert_next_version(&diff, &Version::new(0, 1, 1));
@@ -744,15 +750,8 @@ fn a_retained_change_survives_a_rename_at_head() {
     let history = api_history();
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
-    let repo = &history.repo;
-    repo.git(&["mv", "src/lib.rs", "src/api.rs"]).unwrap();
-    let manifest = fs_err::read_to_string(repo.directory().join(CARGO_TOML)).unwrap();
     // Nothing is left at the old path, so the replay must follow the rename.
-    let renamed = history.write_commit(
-        CARGO_TOML,
-        &format!("{manifest}\n[lib]\npath = \"src/api.rs\"\n"),
-        "chore: rename the API file",
-    );
+    let renamed = history.rename_api_file();
     let diff = history.diff(None);
     assert_commits(&diff, &[&breaking, &sibling, &renamed]);
     assert_next_version(&diff, &Version::new(0, 2, 0));
