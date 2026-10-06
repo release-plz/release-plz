@@ -248,6 +248,13 @@ impl ReleaseRequest {
                 "Package `{}`: `distribute` requires a binary target",
                 package.name
             );
+            // A binary package is skipped by the release only when it is
+            // unpublishable and not git-only: nothing would be tagged or distributed.
+            anyhow::ensure!(
+                self.is_releasable(package),
+                "Package `{}`: `distribute` with `publish = false` requires `git_only = true`",
+                package.name
+            );
         }
         Ok(())
     }
@@ -1575,6 +1582,34 @@ mod tests {
                 .to_string()
                 .contains("git token")
         );
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn distribute_requires_git_only_for_unpublishable_packages() {
+        let server = MockServer::start().await;
+        let (_temporary, repo, mut request) = release_fixture(&server);
+        let manifest = repo.directory().join(cargo_utils::CARGO_TOML);
+        fs_err::write(
+            &manifest,
+            crate::test_utils::package_manifest("test-package", "0.1.0", "publish = false\n"),
+        )
+        .unwrap();
+        fs_err::write(repo.directory().join("src/main.rs"), "fn main() {}\n").unwrap();
+        request.metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        request =
+            request.with_default_package_config(ReleaseConfig::default().with_distribute(true));
+        let error = request
+            .validate_git_release_options()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("requires `git_only = true`"), "{error}");
+        request = request.with_default_package_config(
+            ReleaseConfig::default()
+                .with_git_only(true)
+                .with_distribute(true),
+        );
+        request.validate_git_release_options().unwrap();
         assert!(server.received_requests().await.unwrap().is_empty());
     }
 
