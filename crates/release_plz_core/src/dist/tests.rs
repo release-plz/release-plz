@@ -306,6 +306,22 @@ fn matrix_identity_rejects_inconsistent_or_invalid_slots() {
             "invalid distribution matrix identity",
         ),
         ("abc", "0", "1", target, "invalid GitHub run ID"),
+        // Targets become file names and command-line arguments.
+        (
+            "123",
+            "0",
+            "1",
+            r#"{"target": "x86_64/evil"}"#,
+            "invalid Rust target triple",
+        ),
+        (
+            "123",
+            "0",
+            "1",
+            r#"{"target": ""}"#,
+            "invalid Rust target triple",
+        ),
+        ("123", "0", "1", "{", "invalid distribution matrix context"),
     ] {
         let error = DistJob::from_matrix(run_id.into(), index, total, matrix)
             .unwrap_err()
