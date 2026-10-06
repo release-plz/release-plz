@@ -1,5 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, Stdio},
 };
 
@@ -12,12 +12,13 @@ use super::Manifest;
 use crate::{Project, fs_utils, tmp_repo::TempRepo};
 
 pub const VERSION: &str = "0.33.0";
+/// The cargo-dist executable name. `Command` resolves `dist.exe` on Windows.
+const EXECUTABLE: &str = "dist";
 
 #[derive(Debug)]
 pub(super) struct CargoDist {
     _repo: TempRepo,
-    pub root: Utf8PathBuf,
-    executable: PathBuf,
+    root: Utf8PathBuf,
 }
 
 impl CargoDist {
@@ -28,8 +29,7 @@ impl CargoDist {
         repository: &str,
         targets: &[String],
     ) -> anyhow::Result<Self> {
-        let executable = PathBuf::from(format!("dist{}", std::env::consts::EXE_SUFFIX));
-        check_executable(&executable)?;
+        check_executable(Path::new(EXECUTABLE))?;
         let original_root = project.root();
         let repo = project.get_repo()?;
         let root = repo.repo.directory().join(fs_utils::strip_prefix(
@@ -74,15 +74,11 @@ impl CargoDist {
             }
         }))?;
         fs_err::write(root.join("dist-workspace.toml"), config)?;
-        Ok(Self {
-            _repo: repo,
-            root,
-            executable,
-        })
+        Ok(Self { _repo: repo, root })
     }
 
     pub fn build(&self, tag: &str, targets: &[String], global: bool) -> anyhow::Result<Manifest> {
-        let mut cmd = Command::new(&self.executable);
+        let mut cmd = Command::new(EXECUTABLE);
         cmd.current_dir(&self.root)
             .env("CARGO_TARGET_DIR", self.root.join("target"))
             .args([
