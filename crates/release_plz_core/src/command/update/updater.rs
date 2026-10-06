@@ -1104,6 +1104,7 @@ fn get_contributors(commits: &[git_cliff_core::commit::Commit]) -> Vec<RemoteCon
     commits
         .iter()
         .filter_map(|c| c.remote.clone())
+        .filter(|remote| remote.username.is_some())
         // Filter out duplicate contributors.
         // `insert` returns false if the contributor is already in the set.
         .filter(|remote| unique_contributors.insert(remote.username.clone()))
@@ -1136,6 +1137,40 @@ mod tests {
     use super::*;
 
     mod history_tests;
+
+    #[test]
+    fn contributors_are_unique_and_have_usernames() {
+        let commits = [
+            (None, None),
+            (None, Some(42)),
+            (None, Some(43)),
+            (Some("alice"), Some(44)),
+            (Some("alice"), Some(45)),
+            (Some("bob"), Some(46)),
+        ]
+        .map(|(username, pr_number)| Commit {
+            remote: RemoteContributor {
+                username: username.map(str::to_string),
+                pr_number,
+                ..RemoteContributor::default()
+            },
+            ..Commit::default()
+        });
+        let commits: Vec<_> = commits.iter().map(Commit::to_cliff_commit).collect();
+
+        assert_eq!(commits[1].remote.as_ref().unwrap().pr_number, Some(42));
+        assert!(get_contributors(&commits[..3]).is_empty());
+
+        let contributors = get_contributors(&commits);
+        let contributors: Vec<_> = contributors
+            .iter()
+            .map(|remote| (remote.username.as_deref(), remote.pr_number))
+            .collect();
+        assert_eq!(
+            contributors,
+            vec![(Some("alice"), Some(44)), (Some("bob"), Some(46))]
+        );
+    }
 
     #[test]
     fn only_rust_library_targets_are_libraries() {
