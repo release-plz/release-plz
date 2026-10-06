@@ -143,6 +143,87 @@ fn release_notes_preserve_existing_changelog() {
     assert_eq!(manifest.installation_notes().unwrap(), "## Download app\n");
 }
 
+#[test]
+fn matrix_identity_defaults_to_a_single_host_job() {
+    let job = DistJob::from_matrix("123".into(), "", "", "null").unwrap();
+    assert_eq!((job.index, job.total), (0, 1));
+    assert_eq!(job.target, cargo_dist::host_target().unwrap());
+    let job = DistJob::from_matrix(
+        "123".into(),
+        "1",
+        "2",
+        r#"{"target": "aarch64-apple-darwin"}"#,
+    )
+    .unwrap();
+    assert_eq!((job.index, job.total), (1, 2));
+    assert_eq!(job.target, "aarch64-apple-darwin");
+    let job = DistJob::from_matrix("123".into(), "0", "1", r#"{"target": null}"#).unwrap();
+    assert_eq!(job.target, cargo_dist::host_target().unwrap());
+}
+
+#[test]
+fn matrix_identity_rejects_inconsistent_or_invalid_slots() {
+    let target = r#"{"target": "x86_64-unknown-linux-gnu"}"#;
+    for (run_id, index, total, matrix, message) in [
+        (
+            "123",
+            "0",
+            "",
+            "null",
+            "both matrix job index and total must be provided",
+        ),
+        (
+            "123",
+            "",
+            "2",
+            "null",
+            "both matrix job index and total must be provided",
+        ),
+        (
+            "123",
+            "",
+            "",
+            target,
+            "matrix context requires a job index and total",
+        ),
+        (
+            "123",
+            "0",
+            "1",
+            r#"{"target": 1}"#,
+            "matrix.target must be a Rust target triple string",
+        ),
+        ("123", "x", "1", target, "invalid matrix job number `x`"),
+        (
+            "123",
+            "1",
+            "1",
+            target,
+            "invalid distribution matrix identity",
+        ),
+        (
+            "123",
+            "0",
+            "257",
+            target,
+            "invalid distribution matrix identity",
+        ),
+        (
+            "123",
+            "0",
+            "0",
+            target,
+            "invalid distribution matrix identity",
+        ),
+        ("abc", "0", "1", target, "invalid GitHub run ID"),
+    ] {
+        let error = DistJob::from_matrix(run_id.into(), index, total, matrix)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(message), "{error}");
+    }
+}
+
 fn client(server: &MockServer) -> GitClient {
     GitClient::new(GitForge::Github(
         GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))

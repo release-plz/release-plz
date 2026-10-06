@@ -89,6 +89,11 @@ fn event_tag() -> anyhow::Result<String> {
     let path = std::env::var_os("GITHUB_EVENT_PATH")
         .context("pass --tag or run from a distribution workflow event")?;
     let event: serde_json::Value = serde_json::from_slice(&fs_err::read(path)?)?;
+    tag_from_event(&event)
+}
+
+/// The tag of a `repository_dispatch` (`client_payload`) or `workflow_dispatch` (`inputs`) event.
+fn tag_from_event(event: &serde_json::Value) -> anyhow::Result<String> {
     event
         .pointer("/client_payload/tag")
         .or_else(|| event.pointer("/inputs/tag"))
@@ -112,6 +117,26 @@ impl RepoCommand for DistArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn event_tag_comes_from_dispatch_payload_or_workflow_inputs() {
+        let dispatch = json!({"action": "release-plz-dist", "client_payload": {"tag": "v1.0.0"}});
+        assert_eq!(tag_from_event(&dispatch).unwrap(), "v1.0.0");
+        let workflow = json!({"inputs": {"tag": "app-v2.0.0"}});
+        assert_eq!(tag_from_event(&workflow).unwrap(), "app-v2.0.0");
+        for event in [
+            json!({"action": "published", "release": {"tag_name": "v1.0.0"}}),
+            json!({"client_payload": {"tag": 1}}),
+            json!({"inputs": {"tag": null}}),
+        ] {
+            let error = tag_from_event(&event).unwrap_err().to_string();
+            assert!(
+                error.contains("GitHub event has no distribution tag; pass --tag"),
+                "{error}"
+            );
+        }
+    }
 
     #[test]
     fn distribution_uses_canonical_github_urls_for_public_aliases() {

@@ -263,18 +263,26 @@ pub struct DistJob {
 
 impl DistJob {
     pub fn from_env() -> anyhow::Result<Self> {
-        let run_id = run_id()?;
-        let index = std::env::var("RELEASE_PLZ_DIST_JOB_INDEX").unwrap_or_default();
-        let total = std::env::var("RELEASE_PLZ_DIST_JOB_TOTAL").unwrap_or_default();
-        ensure!(
-            index.is_empty() == total.is_empty(),
-            "both matrix job index and total must be provided"
-        );
-        let matrix: Value = serde_json::from_str(
+        Self::from_matrix(
+            run_id()?,
+            &std::env::var("RELEASE_PLZ_DIST_JOB_INDEX").unwrap_or_default(),
+            &std::env::var("RELEASE_PLZ_DIST_JOB_TOTAL").unwrap_or_default(),
             &std::env::var("RELEASE_PLZ_DIST_MATRIX").unwrap_or_else(|_| "null".into()),
-        )?;
+        )
+    }
+
+    /// Identify this job from the matrix `index`/`total` and the JSON `matrix` context.
+    /// Without a matrix, the job is the only one and builds for the host target.
+    fn from_matrix(run_id: String, index: &str, total: &str, matrix: &str) -> anyhow::Result<Self> {
+        let slot = match (parse_optional_usize(index)?, parse_optional_usize(total)?) {
+            (Some(index), Some(total)) => Some((index, total)),
+            (None, None) => None,
+            _ => anyhow::bail!("both matrix job index and total must be provided"),
+        };
+        let matrix: Value =
+            serde_json::from_str(matrix).context("invalid distribution matrix context")?;
         ensure!(
-            matrix.is_null() || !total.is_empty(),
+            matrix.is_null() || slot.is_some(),
             "matrix context requires a job index and total"
         );
         let target = match matrix.get("target") {
@@ -282,10 +290,11 @@ impl DistJob {
             Some(Value::String(target)) => target.clone(),
             Some(_) => anyhow::bail!("matrix.target must be a Rust target triple string"),
         };
+        let (index, total) = slot.unwrap_or((0, 1));
         let job = Self {
             run_id,
-            index: if index.is_empty() { 0 } else { index.parse()? },
-            total: if total.is_empty() { 1 } else { total.parse()? },
+            index,
+            total,
             target,
         };
         job.validate()?;
@@ -315,6 +324,16 @@ pub fn run_id() -> anyhow::Result<String> {
         .context("distribution commands must run in GitHub Actions (GITHUB_RUN_ID is missing)")?;
     validate_run_id(&run_id)?;
     Ok(run_id)
+}
+
+fn parse_optional_usize(value: &str) -> anyhow::Result<Option<usize>> {
+    if value.is_empty() {
+        return Ok(None);
+    }
+    value
+        .parse()
+        .map(Some)
+        .with_context(|| format!("invalid matrix job number `{value}`"))
 }
 
 fn validate_run_id(run_id: &str) -> anyhow::Result<()> {
