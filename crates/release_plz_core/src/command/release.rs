@@ -222,11 +222,20 @@ impl ReleaseRequest {
             {
                 continue;
             }
+            let Some(GitRelease {
+                forge: GitForge::Github(github),
+            }) = &self.git_release
+            else {
+                anyhow::bail!(
+                    "Package `{}`: `distribute` requires GitHub and a git token",
+                    package.name
+                );
+            };
+            // RepoUrl maps Enterprise Server repositories to /api/v3. The pinned
+            // cargo-dist only understands github.com repository URLs.
             anyhow::ensure!(
-                self.git_release
-                    .as_ref()
-                    .is_some_and(|release| release.forge.forge_type() == crate::ForgeType::Github),
-                "Package `{}`: `distribute` requires GitHub and a git token",
+                github.remote.base_url.path().trim_end_matches('/') != "/api/v3",
+                "Package `{}`: `distribute` requires GitHub.com; cargo-dist does not support GitHub Enterprise Server",
                 package.name
             );
             anyhow::ensure!(
@@ -1558,6 +1567,43 @@ mod tests {
                 .contains("git token")
         );
         assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn distribute_rejects_enterprise_before_release_side_effects() {
+        let server = MockServer::start().await;
+        let (_temporary, repo, mut request) = release_fixture(&server);
+        fs_err::write(repo.directory().join("src/main.rs"), "fn main() {}\n").unwrap();
+        request.metadata =
+            cargo_utils::get_manifest_metadata(&repo.directory().join("Cargo.toml")).unwrap();
+        repo.add_all_and_commit("add binary").unwrap();
+        let github = crate::GitHub::from_repo_url(
+            crate::RepoUrl::new("https://github.example.com/owner/repo").unwrap(),
+            SecretString::from("token"),
+        )
+        .unwrap();
+        // Keep the Enterprise API path while sending any unexpected API calls to the mock.
+        let mut api_url: Url = server.uri().parse().unwrap();
+        api_url.set_path(github.remote.base_url.path());
+        let github = github.with_base_url(api_url);
+        request = request.with_git_release(GitRelease {
+            forge: GitForge::Github(github),
+        });
+        request.validate_git_release_options().unwrap();
+        request = request.with_default_package_config(
+            ReleaseConfig::default()
+                .with_git_only(true)
+                .with_distribute(true),
+        );
+        assert!(
+            release(&request)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("does not support GitHub Enterprise Server")
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+        assert!(repo.git(&["tag", "--list"]).unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -52,7 +52,7 @@ impl Dist {
         let config = args.config.load()?;
         let metadata = args.cargo_metadata()?;
         let repo_url = args.get_repo_url(&config)?;
-        let repository = distribution_repository(&repo_url);
+        let repository = distribution_repository(&repo_url)?;
         let client = GitClient::new(GitForge::Github(GitHub::from_repo_url(
             repo_url,
             SecretString::from(args.git_token.clone()),
@@ -73,13 +73,16 @@ impl Dist {
     }
 }
 
-fn distribution_repository(repo_url: &RepoUrl) -> String {
+fn distribution_repository(repo_url: &RepoUrl) -> anyhow::Result<String> {
+    ensure!(
+        repo_url.is_on_github_dot_com(),
+        "binary distribution requires GitHub.com; cargo-dist does not support GitHub Enterprise Server"
+    );
     // cargo-dist accepts only github.com, including when Git uses a public SSH alias.
-    if repo_url.is_on_github_dot_com() {
-        format!("https://github.com/{}/{}", repo_url.owner, repo_url.name)
-    } else {
-        repo_url.full_host()
-    }
+    Ok(format!(
+        "https://github.com/{}/{}",
+        repo_url.owner, repo_url.name
+    ))
 }
 
 fn event_tag() -> anyhow::Result<String> {
@@ -120,9 +123,20 @@ mod tests {
         ] {
             let repo_url = RepoUrl::new(remote).unwrap();
             assert_eq!(
-                distribution_repository(&repo_url),
+                distribution_repository(&repo_url).unwrap(),
                 "https://github.com/owner/repo"
             );
         }
+    }
+
+    #[test]
+    fn distribution_rejects_enterprise_repositories() {
+        let repo_url = RepoUrl::new("https://github.example.com/owner/repo").unwrap();
+        assert!(
+            distribution_repository(&repo_url)
+                .unwrap_err()
+                .to_string()
+                .contains("does not support GitHub Enterprise Server")
+        );
     }
 }

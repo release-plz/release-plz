@@ -940,7 +940,8 @@ name = "my-cli"
 distribute = true
 ```
 
-Requires a binary target, GitHub authentication, and enabled git tags and releases.
+Requires a binary target, GitHub.com authentication, and enabled git tags and releases.
+GitHub Enterprise Server is unsupported by the pinned cargo-dist version.
 Distribution jobs require cargo-dist 0.33.0 on `PATH`. The `dist` Cargo profile is
 optional; distribution builds inherit `release` settings when it is absent.
 See the [recommended profile configuration](extra/releasing-binaries.md#optional-dist-profile)

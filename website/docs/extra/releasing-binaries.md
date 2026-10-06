@@ -156,6 +156,9 @@ same workflow run. An already published release is left unchanged.
 
 The integration builds one package per release, including packages containing
 multiple binaries, and keeps release-plz's existing registry publication behavior.
+It requires GitHub.com; the pinned cargo-dist version does not support GitHub
+Enterprise Server. Distribution configuration for Enterprise Server is rejected
+before creating tags or publishing packages.
 It uses cargo-dist 0.33.0 through its CLI and creates its configuration in a temporary
 copy of the repository. The original manifests and workflows remain unchanged.
 The CLI requires that version to be installed; it does not install tools.
