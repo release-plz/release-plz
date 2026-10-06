@@ -948,6 +948,20 @@ fn real_cargo_dist_prepare_rejects_existing_dist_configuration() {
         "{error}"
     );
     fs_err::write(&manifest, original).unwrap();
+    // A legacy workspace-level table would make cargo-dist ignore its own configuration.
+    let manifest = repo.directory().join("Cargo.toml");
+    let original = fs_err::read_to_string(&manifest).unwrap();
+    fs_err::write(
+        &manifest,
+        format!("{original}\n[workspace.metadata.dist]\ndist = true\n"),
+    )
+    .unwrap();
+    let error = prepare_app(&project, &metadata).unwrap_err().to_string();
+    assert!(
+        error.contains("cannot be combined with workspace.metadata.dist"),
+        "{error}"
+    );
+    fs_err::write(&manifest, original).unwrap();
     prepare_app(&project, &metadata).unwrap();
     repo.is_clean().unwrap();
 }

@@ -93,7 +93,7 @@ impl CargoDist {
             manifest["package"]["repository"] = value(repository);
             fs_err::write(path, manifest.to_string())?;
         }
-        ensure_dist_profile(root.join(CARGO_TOML).as_std_path())?;
+        prepare_root_manifest(root.join(CARGO_TOML).as_std_path())?;
         let config = toml::to_string(&DistWorkspace {
             workspace: WorkspaceConfig {
                 members: &["cargo:."],
@@ -166,8 +166,17 @@ impl CargoDist {
     }
 }
 
-fn ensure_dist_profile(manifest_path: &Path) -> anyhow::Result<()> {
+/// Reject a workspace-level cargo-dist table and define the `dist` profile if it is missing.
+fn prepare_root_manifest(manifest_path: &Path) -> anyhow::Result<()> {
     let mut manifest: DocumentMut = fs_err::read_to_string(manifest_path)?.parse()?;
+    ensure!(
+        manifest
+            .get("workspace")
+            .and_then(|w| w.get("metadata"))
+            .and_then(|m| m.get("dist"))
+            .is_none(),
+        "distribute=true cannot be combined with workspace.metadata.dist; remove it or use cargo-dist independently"
+    );
     if manifest
         .get("profile")
         .and_then(|p| p.get("dist"))
@@ -248,7 +257,7 @@ mod tests {
         let path = temporary.path().join(CARGO_TOML);
         for manifest in ["[workspace]\n", "[profile.release]\nlto = true\n"] {
             fs_err::write(&path, manifest).unwrap();
-            ensure_dist_profile(&path).unwrap();
+            prepare_root_manifest(&path).unwrap();
             let actual: toml::Value =
                 toml::from_str(&fs_err::read_to_string(&path).unwrap()).unwrap();
             let expected: toml::Value = toml::from_str(&format!(
@@ -265,7 +274,21 @@ mod tests {
         let path = temporary.path().join(CARGO_TOML);
         let manifest = "[profile.dist]\ninherits = 'release'\nlto = false\ncodegen-units = 4\n";
         fs_err::write(&path, manifest).unwrap();
-        ensure_dist_profile(&path).unwrap();
+        prepare_root_manifest(&path).unwrap();
+        assert_eq!(fs_err::read_to_string(&path).unwrap(), manifest);
+    }
+
+    #[test]
+    fn workspace_dist_metadata_is_rejected_before_rewriting_the_manifest() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join(CARGO_TOML);
+        let manifest = "[workspace]\nmembers = ['app']\n\n[workspace.metadata.dist]\ndist = true\n";
+        fs_err::write(&path, manifest).unwrap();
+        let error = prepare_root_manifest(&path).unwrap_err().to_string();
+        assert!(
+            error.contains("cannot be combined with workspace.metadata.dist"),
+            "{error}"
+        );
         assert_eq!(fs_err::read_to_string(&path).unwrap(), manifest);
     }
 }
