@@ -357,10 +357,6 @@ fn receipt_prefix(run_id: &str) -> String {
     format!("release-plz-dist-{run_id}-")
 }
 
-fn receipt_name(run_id: &str, index: usize) -> String {
-    format!("{}{index}.json", receipt_prefix(run_id))
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct Receipt {
     schema: u32,
@@ -373,7 +369,11 @@ struct Receipt {
 
 impl Receipt {
     fn name(&self) -> String {
-        receipt_name(&self.job.run_id, self.job.index)
+        format!(
+            "{}{}.json",
+            receipt_prefix(&self.job.run_id),
+            self.job.index
+        )
     }
 }
 
