@@ -34,7 +34,7 @@ struct DistWorkspace<'a> {
 
 #[derive(Serialize)]
 struct WorkspaceConfig {
-    members: [&'static str; 1],
+    members: &'static [&'static str],
 }
 
 #[derive(Serialize)]
@@ -42,9 +42,9 @@ struct WorkspaceConfig {
 struct DistConfig<'a> {
     cargo_dist_version: &'static str,
     /// release-plz drives CI itself: cargo-dist must not generate workflows.
-    ci: [&'static str; 0],
-    hosting: [&'static str; 1],
-    installers: [&'static str; 2],
+    ci: &'static [&'static str],
+    hosting: &'static [&'static str],
+    installers: &'static [&'static str],
     targets: &'a [String],
     source_tarball: bool,
     precise_builds: bool,
@@ -97,13 +97,13 @@ impl CargoDist {
         ensure_dist_profile(root.join(CARGO_TOML).as_std_path())?;
         let config = toml::to_string(&DistWorkspace {
             workspace: WorkspaceConfig {
-                members: ["cargo:."],
+                members: &["cargo:."],
             },
             dist: DistConfig {
                 cargo_dist_version: VERSION,
-                ci: [],
-                hosting: ["github"],
-                installers: ["shell", "powershell"],
+                ci: &[],
+                hosting: &["github"],
+                installers: &["shell", "powershell"],
                 targets: &targets,
                 source_tarball: false,
                 precise_builds: true,
