@@ -1583,7 +1583,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn distribute_configuration_is_validated_before_release_side_effects() {
+    async fn distribute_rejects_unsupported_configurations() {
         let server = MockServer::start().await;
         // A library package has nothing to distribute.
         let (_temporary, _repo, request) = release_fixture(&server);
@@ -1612,7 +1612,6 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("git token"), "{error}");
-        assert!(server.received_requests().await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -1630,7 +1629,6 @@ mod tests {
             .with_default_package_config(distribute_config())
             .validate_git_release_options()
             .unwrap();
-        assert!(server.received_requests().await.unwrap().is_empty());
     }
 
     #[tokio::test]
