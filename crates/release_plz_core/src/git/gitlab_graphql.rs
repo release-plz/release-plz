@@ -97,12 +97,12 @@ pub async fn commit_author_username(
 
     let Some(project) = response.data.and_then(|data| data.project) else {
         anyhow::bail!(
-            "GitLab project `{full_path}` not found. Make sure the token has access to the project."
+            "GitLab project `{full_path}` not found. Make sure your token has access to the project. Learn more at https://release-plz.dev/docs/usage/release-pr#gitlab"
         );
     };
     let Some(repository) = project.repository else {
         anyhow::bail!(
-            "can't read the repository of GitLab project `{full_path}`. Make sure the token has permission to read the repository."
+            "can't read the repository of GitLab project `{full_path}`. Make sure your token has permission to read the repository. Learn more at https://release-plz.dev/docs/usage/release-pr#gitlab"
         );
     };
     let Some(commit_info) = repository.commit else {
