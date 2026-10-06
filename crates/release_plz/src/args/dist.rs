@@ -29,7 +29,7 @@ enum DistCommand {
 #[derive(clap::Args, Debug)]
 struct DistArgs {
     /// Release tag. Defaults to the tag in the `repository_dispatch` or `workflow_dispatch` event.
-    #[arg(long)]
+    #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     tag: Option<String>,
     /// Path to Cargo.toml.
     #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
@@ -66,7 +66,6 @@ impl Dist {
             Some(tag) => tag,
             None => event_tag()?,
         };
-        ensure!(!tag.is_empty(), "release tag must not be empty");
         let request = DistRequest::new(request, tag, client)?;
         if finalize {
             request.finalize(&release_plz_core::dist::run_id()?).await
@@ -89,6 +88,7 @@ fn tag_from_event(event: &serde_json::Value) -> anyhow::Result<String> {
         .pointer("/client_payload/tag")
         .or_else(|| event.pointer("/inputs/tag"))
         .and_then(|tag| tag.as_str())
+        .filter(|tag| !tag.is_empty())
         .map(str::to_owned)
         .context("GitHub event has no distribution tag; pass --tag")
 }
@@ -120,6 +120,7 @@ mod tests {
             json!({"action": "published", "release": {"tag_name": "v1.0.0"}}),
             json!({"client_payload": {"tag": 1}}),
             json!({"inputs": {"tag": null}}),
+            json!({"inputs": {"tag": ""}}),
         ] {
             let error = tag_from_event(&event).unwrap_err().to_string();
             assert!(
