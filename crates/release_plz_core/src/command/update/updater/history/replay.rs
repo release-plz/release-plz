@@ -239,6 +239,11 @@ impl ChangeReplay {
     /// touch the package: a file outside it can lack the blob of a commit the
     /// walk never visited, such as the parent of a change, and libgit2 cannot
     /// fetch it. Replays must therefore not read objects outside the package.
+    ///
+    /// The restriction hides renames across the package boundary: a file the
+    /// target moved out of the package shows as a modify/delete conflict, which
+    /// conservatively counts as a change and retains the marker, and a file
+    /// moved into the package is not matched to its old path.
     fn restrict<'r>(&'r self, tree: git2::Tree<'r>) -> anyhow::Result<git2::Tree<'r>> {
         if self.paths.iter().any(|path| path.as_str().is_empty()) {
             return Ok(tree);
