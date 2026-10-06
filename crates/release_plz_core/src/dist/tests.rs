@@ -140,6 +140,71 @@ fn receipts_cannot_omit_artifacts_or_reuse_matrix_slots() {
 }
 
 #[test]
+fn receipts_require_uploaded_assets_of_the_recorded_size() {
+    let receipts = vec![receipt(0, 1)];
+    // GitHub reports an interrupted upload as a `starter` asset.
+    let mut pending = assets(&receipts);
+    pending[0].state = "starter".into();
+    assert_rejected(
+        &receipts,
+        &pending,
+        "release asset `app-0.zip` is missing or was replaced",
+    );
+    let mut truncated = assets(&receipts);
+    truncated[1].size -= 1;
+    assert_rejected(
+        &receipts,
+        &truncated,
+        "release asset `app-0.sha256` is missing or was replaced",
+    );
+}
+
+#[test]
+fn manifest_must_describe_exactly_this_release() {
+    let package = package();
+    receipt(0, 1).manifest.validate("v1.0.0", &package).unwrap();
+    const WRONG_RELEASE: &str = "cargo-dist must select exactly the requested package and version";
+    type Mutation = fn(&mut Manifest);
+    let cases: [(Mutation, &str); 5] = [
+        (
+            |manifest| manifest.dist_version = "0.0.1".into(),
+            "unexpected cargo-dist version",
+        ),
+        (
+            |manifest| manifest.announcement_tag = "v2.0.0".into(),
+            "cargo-dist tag does not match release",
+        ),
+        (
+            |manifest| {
+                manifest.releases.push(ManifestRelease {
+                    app_name: "other".into(),
+                    app_version: "1.0.0".into(),
+                    extra: BTreeMap::new(),
+                });
+            },
+            WRONG_RELEASE,
+        ),
+        (
+            |manifest| manifest.releases[0].app_name = "other".into(),
+            WRONG_RELEASE,
+        ),
+        (
+            |manifest| manifest.releases[0].app_version = "9.9.9".into(),
+            WRONG_RELEASE,
+        ),
+    ];
+    for (mutate, message) in cases {
+        let mut manifest = receipt(0, 1).manifest;
+        mutate(&mut manifest);
+        let error = manifest
+            .validate("v1.0.0", &package)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(message), "{error}");
+    }
+}
+
+#[test]
 fn release_notes_preserve_existing_changelog() {
     let body =
         body_with_installation_notes("## Fixes\n\nFixed things.\n", "## Downloads\n\nA link.\n");
