@@ -3,6 +3,7 @@ use std::{
     fmt::Write as _,
 };
 
+use anyhow::Context as _;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 
@@ -242,49 +243,16 @@ impl ChangeReplay {
         if self.paths.iter().any(|path| path.as_str().is_empty()) {
             return Ok(tree);
         }
-        let paths: Vec<&Utf8Path> = self.paths.iter().map(Utf8PathBuf::as_path).collect();
-        match self.restricted_tree(&tree, &paths)? {
-            Some(id) => Ok(self.repo.find_tree(id)?),
-            None => self.empty_tree(),
-        }
-    }
-
-    /// Write the entries of `tree` at the relative `paths` as a tree, reusing
-    /// the entries of `tree` themselves, or `None` when it has none of them.
-    fn restricted_tree(
-        &self,
-        tree: &git2::Tree<'_>,
-        paths: &[&Utf8Path],
-    ) -> anyhow::Result<Option<git2::Oid>> {
-        // Group the remainders of the paths by their first component.
-        let mut children: HashMap<&str, Vec<&Utf8Path>> = HashMap::new();
-        for path in paths {
-            let mut components = path.components();
-            if let Some(name) = components.next() {
-                children
-                    .entry(name.as_str())
-                    .or_default()
-                    .push(components.as_path());
+        let mut update = git2::build::TreeUpdateBuilder::new();
+        for path in &self.paths {
+            // A path the snapshot lacks selects nothing. The entries keep their
+            // ids, so a merge reads the same blobs.
+            if let Ok(entry) = tree.get_path(path.as_std_path()) {
+                update.upsert(path.as_str(), entry.id(), file_mode(&entry)?);
             }
         }
-        let mut builder = self.repo.treebuilder(None)?;
-        for (name, paths) in children {
-            let Some(entry) = tree.get_name(name) else {
-                continue;
-            };
-            if paths.iter().any(|path| path.as_str().is_empty()) {
-                // A selected path, with every path beneath it.
-                builder.insert(name, entry.id(), entry.filemode())?;
-            } else if entry.kind() == Some(git2::ObjectType::Tree)
-                && let Some(id) = self.restricted_tree(&self.repo.find_tree(entry.id())?, &paths)?
-            {
-                builder.insert(name, id, i32::from(git2::FileMode::Tree))?;
-            }
-        }
-        if builder.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(builder.write()?))
+        let id = update.create_updated(&self.repo, &self.empty_tree()?)?;
+        Ok(self.repo.find_tree(id)?)
     }
 
     /// Whether merging the edits made from `base` to `theirs` into `ours` changes
@@ -357,6 +325,21 @@ pub(super) enum TokenConflicts {
     FavorTarget,
     /// Leave them unresolved, so that they count as changes.
     Unresolved,
+}
+
+/// The mode of `entry` as [`git2::build::TreeUpdateBuilder`] takes it.
+fn file_mode(entry: &git2::TreeEntry<'_>) -> anyhow::Result<git2::FileMode> {
+    use git2::FileMode::{Blob, BlobExecutable, BlobGroupWritable, Commit, Link, Tree};
+    [Tree, Blob, BlobExecutable, Link, Commit, BlobGroupWritable]
+        .into_iter()
+        .find(|mode| i32::from(*mode) == entry.filemode())
+        .with_context(|| {
+            format!(
+                "unknown file mode {:o} of {:?}",
+                entry.filemode(),
+                entry.name()
+            )
+        })
 }
 
 /// The old and the new path of `delta`, as Git reports them.
