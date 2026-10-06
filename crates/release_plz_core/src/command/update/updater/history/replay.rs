@@ -140,14 +140,15 @@ impl<'a> ChangeReplay<'a> {
             // Without rename detection, the diff reads no blobs itself.
             let diff = self.repo.diff_tree_to_tree(Some(base), Some(tree), None)?;
             for delta in diff.deltas() {
-                for file in [delta.old_file(), delta.new_file()] {
-                    // Deleted sides have a zero id; submodules are commits of
-                    // another repository.
-                    if file.id().is_zero()
-                        || file.mode() == git2::FileMode::Commit
-                        || !seen.insert(file.id())
-                        || odb.exists(file.id())
-                    {
+                for (file, side) in [(delta.old_file(), base), (delta.new_file(), *tree)] {
+                    // Deleted sides have a zero id.
+                    if file.id().is_zero() || !seen.insert(file.id()) || odb.exists(file.id()) {
+                        continue;
+                    }
+                    // Submodules are commits of another repository. Read the
+                    // mode from the tree entry: `DiffFile::mode` panics on
+                    // legacy modes Git accepts, such as 100600.
+                    if is_submodule(side, &file) {
                         continue;
                     }
                     self.repository
@@ -381,6 +382,14 @@ pub(super) enum TokenConflicts {
     Unresolved,
 }
 
+/// Whether `file`, one side of a delta, is a submodule in `tree`, that side's
+/// tree. The tree entry's mode is normalized, unlike the delta's.
+fn is_submodule(tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
+    file.path()
+        .and_then(|path| tree.get_path(path).ok())
+        .is_some_and(|entry| entry.filemode() == i32::from(git2::FileMode::Commit))
+}
+
 /// The mode of `entry` as [`git2::build::TreeUpdateBuilder`] takes it.
 fn file_mode(entry: &git2::TreeEntry<'_>) -> anyhow::Result<git2::FileMode> {
     use git2::FileMode::{Blob, BlobExecutable, BlobGroupWritable, Commit, Link, Tree};
@@ -597,5 +606,46 @@ mod tests {
             ]
         );
         assert!(restricted_blobs(&["missing"]).is_empty());
+    }
+
+    /// A commit that only gives a package file a legacy mode Git accepts, such
+    /// as the 100600 old importers wrote. Git reads it as 100644, so undoing
+    /// the commit leaves its parent unchanged.
+    #[test]
+    fn legacy_file_modes_do_not_abort_the_replay() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        // Repo::init commits README.md at the repository root.
+        let repo = Repo::init(dir.path());
+        fs_err::write(repo.directory().join("f"), "hello\n").unwrap();
+        repo.add_all_and_commit("base").unwrap();
+        let base = repo.current_commit_hash().unwrap();
+        // Git refuses to write such a tree unless told to take it literally.
+        let mut tree = Vec::new();
+        for (mode, path) in [("100644", "README.md"), ("100600", "f")] {
+            let blob = repo.git(&["rev-parse", &format!("HEAD:{path}")]).unwrap();
+            tree.extend_from_slice(format!("{mode} {path}\0").as_bytes());
+            tree.extend_from_slice(git2::Oid::from_str(&blob).unwrap().as_bytes());
+        }
+        let tree_file = dir.path().join("tree.bin");
+        fs_err::write(&tree_file, &tree).unwrap();
+        let tree = repo
+            .git(&[
+                "hash-object",
+                "-t",
+                "tree",
+                "-w",
+                "--literally",
+                tree_file.as_str(),
+            ])
+            .unwrap();
+        let commit = repo
+            .git(&["commit-tree", &tree, "-p", "HEAD", "-m", "legacy mode"])
+            .unwrap();
+        repo.git(&["update-ref", "HEAD", &commit]).unwrap();
+        let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
+        let affects = replay
+            .undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
+            .unwrap();
+        assert!(!affects);
     }
 }
