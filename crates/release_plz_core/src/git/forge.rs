@@ -887,7 +887,7 @@ impl GitClient {
         Ok(prs)
     }
 
-    /// Forge information about the given commit.
+    /// Get information about the given commit from the forge.
     ///
     /// `username` is `None` if the commit isn't in the remote repository
     /// (e.g. the user edited files before running release-plz, like with cargo hakari)
