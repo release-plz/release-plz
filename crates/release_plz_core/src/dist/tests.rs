@@ -355,13 +355,14 @@ async fn real_cargo_dist_build_retry_and_finalize() {
     let temporary = tempfile::tempdir().unwrap();
     let repo = Repo::init(temporary.path());
     fs_err::create_dir_all(repo.directory().join("src")).unwrap();
+    // The dev profile unwinds, so only an inherited release profile compiles.
     fs_err::write(
         repo.directory().join("src/main.rs"),
-        "#[cfg(not(debug_assertions))]\ncompile_error!(\"must inherit release settings\");\nfn main() { println!(\"hello\"); }",
+        "#[cfg(not(panic = \"abort\"))]\ncompile_error!(\"must inherit release settings\");\nfn main() { println!(\"hello\"); }",
     )
     .unwrap();
     // No dist profile: both build and finalize must default to the release settings.
-    fs_err::write(repo.directory().join("Cargo.toml"), "[package]\nname = \"dist-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\npublish = false\n[profile.release]\ndebug-assertions = true\n").unwrap();
+    fs_err::write(repo.directory().join("Cargo.toml"), "[package]\nname = \"dist-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\npublish = false\n[profile.release]\npanic = \"abort\"\n").unwrap();
     fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
     fs_err::write(
         repo.directory().join("CHANGELOG.md"),
