@@ -6,6 +6,7 @@ use std::{
 use anyhow::Context as _;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
+use tracing::debug;
 
 use crate::fs_utils;
 
@@ -152,8 +153,11 @@ impl<'a> ChangeReplay<'a> {
                     if is_submodule(side, &file) {
                         continue;
                     }
-                    self.repository
-                        .git(&["cat-file", "-e", &file.id().to_string()])?;
+                    let id = file.id().to_string();
+                    debug!(
+                        "fetching blob {id} missing from the partial clone to check retained changes"
+                    );
+                    self.repository.git(&["cat-file", "-e", &id])?;
                 }
             }
         }
