@@ -1,0 +1,130 @@
+use cargo_metadata::{camino::Utf8Path, semver::Version};
+use git_cmd::Repo;
+
+use super::{UpdateConfig, UpdateRequest, update};
+use crate::{
+    copy_to_temp_dir,
+    fs_utils::{self, Utf8TempDir},
+    test_utils::generate_lockfile,
+};
+
+fn workspace(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {
+    let dir = Utf8TempDir::new().unwrap();
+    let root = fs_utils::canonicalize_utf8(dir.path())
+        .unwrap()
+        .join("project");
+    fs_err::create_dir(&root).unwrap();
+    let repo = Repo::init(&root);
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let members: Vec<_> = packages.iter().map(|(name, _)| name).collect();
+    fs_err::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[workspace]\nmembers = {members:?}\nresolver = \"3\"\n[workspace.package]\nversion = \"1.0.0\"\n"
+        ),
+    )
+    .unwrap();
+    for (name, manifest) in packages {
+        let package_dir = root.join(name);
+        fs_err::create_dir_all(package_dir.join("src")).unwrap();
+        fs_err::write(package_dir.join("src/lib.rs"), "").unwrap();
+        fs_err::write(
+            package_dir.join("Cargo.toml"),
+            format!("[package]\nname = {name:?}\nedition = \"2024\"\n{manifest}"),
+        )
+        .unwrap();
+    }
+    generate_lockfile(&root);
+    repo.add_all_and_commit("chore: published baseline")
+        .unwrap();
+    for (name, _) in packages {
+        repo.tag_lightweight(&format!("{name}-v1.0.0")).unwrap();
+    }
+    (dir, repo)
+}
+
+fn relocated_request(repo: &Repo) -> (Utf8TempDir, UpdateRequest) {
+    let metadata =
+        cargo_utils::get_manifest_metadata(&repo.directory().join("Cargo.toml")).unwrap();
+    let relocated = copy_to_temp_dir(repo.directory()).unwrap();
+    // release-pr retains metadata from the original checkout when it moves the
+    // request to the temporary repository where the release will be prepared.
+    let request = UpdateRequest::new(metadata)
+        .unwrap()
+        .with_default_package_config(UpdateConfig {
+            git_only: Some(true),
+            semver_check: false,
+            ..UpdateConfig::default()
+        })
+        .set_local_manifest(relocated.path().join("project/Cargo.toml"))
+        .unwrap();
+    (relocated, request)
+}
+
+fn assert_locked_versions(root: &Utf8Path, expected: &[(&str, &str)]) {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .current_dir(root)
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap();
+    for (name, version) in expected {
+        let package = metadata.packages.iter().find(|p| p.name == *name).unwrap();
+        assert_eq!(package.version.to_string(), *version, "{name}");
+    }
+}
+
+#[tokio::test]
+async fn relocated_shared_versions_propagate_through_unreleased_siblings() {
+    for release_sibling in [true, false] {
+        let (_dir, repo) = workspace(&[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+            ("sibling", "version.workspace = true\n"),
+            (
+                "downstream",
+                "version = \"1.0.0\"\n[dependencies]\nsibling = { path = \"../sibling\", version = \"=1.0.0\" }\n",
+            ),
+        ]);
+        fs_err::write(
+            repo.directory().join("support/src/lib.rs"),
+            "pub fn new() {}\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("feat: update support").unwrap();
+        let (_relocated, mut request) = relocated_request(&repo);
+        if release_sibling {
+            request = request.with_release_commits("^feat:").unwrap();
+        } else {
+            let mut config = request.get_package_config("sibling");
+            config.generic.release = false;
+            request = request.with_package_config("sibling", config);
+        }
+
+        let (updates, _repository) = update(&request).await.unwrap();
+
+        let downstream = updates
+            .updates()
+            .iter()
+            .find(|(p, _)| p.name == "downstream")
+            .expect("the inherited sibling's new version must release downstream");
+        assert_eq!(downstream.1.version, Version::new(1, 0, 1));
+        let root = request.local_manifest_dir().unwrap();
+        let changelog = fs_err::read_to_string(root.join("downstream/CHANGELOG.md")).unwrap();
+        assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+        assert!(changelog.contains("sibling"), "{changelog}");
+        assert!(!root.join("sibling/CHANGELOG.md").exists());
+        assert_locked_versions(
+            root,
+            &[
+                ("support", "1.1.0"),
+                ("consumer", "1.0.1"),
+                ("sibling", "1.0.1"),
+                ("downstream", "1.0.1"),
+            ],
+        );
+        repo.is_clean().unwrap();
+    }
+}

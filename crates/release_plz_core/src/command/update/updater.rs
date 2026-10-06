@@ -400,8 +400,15 @@ impl Updater<'_> {
         let workspace_manifest = LocalManifest::try_new(self.req.local_manifest())?;
         let workspace_dependencies = workspace_manifest.get_workspace_dependency_table();
         let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
+        let mut workspace_packages =
+            cargo_utils::workspace_members(self.req.cargo_metadata())?.collect();
+        crate::project::override_packages_path(
+            &mut workspace_packages,
+            self.req.cargo_metadata(),
+            workspace_dir,
+        )?;
         let mut inheriting_packages = Vec::new();
-        for package in cargo_utils::workspace_members(self.req.cargo_metadata())? {
+        for package in workspace_packages {
             if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
                 inheriting_packages.push(package);
             }

@@ -313,7 +313,7 @@ pub fn new_project_root(
 /// Release-plz copies the user project to a temporary
 /// directory to avoid making changes to the original project.
 /// This function sets packages path relative to the specified `manifest_dir`.
-fn override_packages_path(
+pub(crate) fn override_packages_path(
     packages: &mut Vec<Package>,
     metadata: &Metadata,
     manifest_dir: &Utf8Path,
