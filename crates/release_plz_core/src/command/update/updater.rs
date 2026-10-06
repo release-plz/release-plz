@@ -156,39 +156,15 @@ impl Updater<'_> {
             &filtered_packages,
             new_workspace_version.as_ref(),
         )?;
-        let mut packages_to_update = PackagesUpdate::default();
-        if let Some(version) = workspace_version {
-            packages_to_update.with_workspace_version(version);
-        }
         let mut old_changelogs =
             OldChangelogs::new(self.shared_changelog_paths(&workspace_packages));
-        for update in planned_updates {
-            if update.version == update.package.version && !update.diff.is_version_published {
-                info!(
-                    "{}: updating changelog for version {}{}",
-                    update.package.name,
-                    update.version,
-                    update.diff.semver_check.outcome_str()
-                );
-            } else {
-                info!(
-                    "{}: next version is {}{}",
-                    update.package.name,
-                    update.version,
-                    update.diff.semver_check.outcome_str()
-                );
-            }
-            let result = self.calculate_update_result(
-                update.diff.commits,
-                update.version,
-                update.package,
-                update.diff.semver_check,
-                update.diff.registry_version,
-                &mut old_changelogs,
-            )?;
-            packages_to_update
-                .updates_mut()
-                .push((update.package.clone(), result));
+        let updates = planned_updates
+            .into_iter()
+            .map(|update| self.calculate_update_result(update, &mut old_changelogs))
+            .collect::<anyhow::Result<_>>()?;
+        let mut packages_to_update = PackagesUpdate::new(updates);
+        if let Some(version) = workspace_version {
+            packages_to_update.with_workspace_version(version);
         }
         Ok(packages_to_update)
     }
@@ -529,27 +505,38 @@ impl Updater<'_> {
 
     fn calculate_update_result(
         &self,
-        commits: Vec<Commit>,
-        next_version: Version,
-        p: &Package,
-        semver_check: SemverCheck,
-        registry_version: Option<Version>,
+        update: PlannedUpdate<'_>,
         old_changelogs: &mut OldChangelogs,
-    ) -> Result<UpdateResult, anyhow::Error> {
+    ) -> anyhow::Result<(Package, UpdateResult)> {
+        let PlannedUpdate {
+            package: p,
+            diff,
+            version,
+        } = update;
+        let action = if version == p.version && !diff.is_version_published {
+            "updating changelog for version"
+        } else {
+            "next version is"
+        };
+        info!(
+            "{}: {action} {version}{}",
+            p.name,
+            diff.semver_check.outcome_str()
+        );
         let changelog_path = self.req.changelog_path(p);
         let old_changelog = old_changelogs.get_or_read(&changelog_path);
         let update_result = self.update_result(
-            commits,
-            next_version,
+            diff.commits,
+            version,
             p,
-            semver_check,
-            registry_version,
+            diff.semver_check,
+            diff.registry_version,
             old_changelog,
         )?;
         if let Some(changelog) = &update_result.changelog {
             old_changelog.update(changelog.clone());
         }
-        Ok(update_result)
+        Ok((p.clone(), update_result))
     }
 
     /// This function needs `old_changelog` so that you can have changes of different
