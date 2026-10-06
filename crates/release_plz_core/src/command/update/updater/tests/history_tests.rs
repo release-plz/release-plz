@@ -90,25 +90,54 @@ impl History {
     /// Continue with a clone of the newest `depth` commits, whose missing
     /// history cannot be replayed.
     fn shallow_clone(self, depth: u8) -> Self {
+        self.clone_with(&format!("--depth={depth}"), "shallow")
+    }
+
+    /// Continue with a clone that fetches blobs only when a checkout needs
+    /// them, so the files of commits the walk never checks out stay missing.
+    fn partial_clone(self) -> Self {
+        // Serving a filtered clone, and the lazy fetches that follow, needs
+        // the source's permission.
+        self.repo
+            .git(&["config", "uploadpack.allowFilter", "true"])
+            .unwrap();
+        self.clone_with("--filter=blob:none", "partial")
+    }
+
+    /// Clone the repository with `option` into the sibling directory `name`.
+    fn clone_with(self, option: &str, name: &str) -> Self {
         let root = self.repo.directory().parent().unwrap();
-        // Local clones copy every object: force the transport that honors depth.
+        // Local clones copy every object: force the transport that honors
+        // depth and filters.
         git_cmd::git_in_dir(
             root,
             &[
                 "clone",
                 "--no-local",
-                &format!("--depth={depth}"),
+                option,
                 "--config",
                 "core.autocrlf=false",
                 self.repo.directory().as_str(),
-                "shallow",
+                name,
             ],
         )
         .unwrap();
         Self {
-            repo: Repo::new(root.join("shallow")).unwrap(),
+            repo: Repo::new(root.join(name)).unwrap(),
             ..self
         }
+    }
+
+    /// The objects reachable from HEAD that this clone does not have.
+    fn missing_objects(&self) -> String {
+        // `--missing` also stops Git from fetching them.
+        self.repo
+            .git(&["rev-list", "--objects", "--missing=print", "HEAD"])
+            .unwrap()
+            .lines()
+            .filter_map(|line| line.strip_prefix('?'))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Set both dates to control the commit's position in the date-ordered walk.
@@ -777,6 +806,54 @@ fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
     let diff = shallow.diff(None);
     assert_commits(&diff, &[&later, &sibling]);
     assert_next_version(&diff, &Version::new(0, 1, 1));
+}
+
+/// The walk checks out only commits that touch the package, so a partial
+/// clone keeps missing the blobs other commits give to unrelated files.
+/// libgit2 cannot fetch them: the replay must not read outside the package.
+#[test]
+fn partial_clones_replay_retained_changes_without_outside_blobs() {
+    let history = History::with_packages(|root| {
+        fs_err::create_dir(root.join("pkg")).unwrap();
+        fs_err::create_dir(root.join("docs")).unwrap();
+        fs_err::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"pkg\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        write_package(&root.join("pkg"), PACKAGE, "0.1.0", "");
+        fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+        fs_err::write(root.join("docs/x"), "base\n").unwrap();
+        generate_lockfile(root);
+        // Keep package listing successful, independently of its fallback.
+        fs_err::copy(root.join("Cargo.lock"), root.join("pkg/Cargo.lock")).unwrap();
+    });
+    let repo = &history.repo;
+    // The parent of the breaking change touches only the outside file.
+    let outside = history.write_commit("docs/x", "p\n", "docs: outside the package");
+    fs_err::write(repo.directory().join("docs/x"), "c\n").unwrap();
+    let breaking = history.write_commit("pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_change("pkg/src/fix.rs", |root| {
+        fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+        fs_err::write(root.join("docs/x"), "e\n").unwrap();
+    });
+    let diff = history.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+
+    let partial = history.partial_clone();
+    let outside_blob = partial
+        .repo
+        .git(&["rev-parse", &format!("{outside}:docs/x")])
+        .unwrap();
+    assert!(partial.missing_objects().contains(&outside_blob));
+    // Undoing the breaking change merges the outside file of its parent, of
+    // the equal snapshot and of HEAD, which all differ, unless the replay
+    // stays within the package.
+    let diff = partial.diff(None);
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+    assert!(partial.missing_objects().contains(&outside_blob));
 }
 
 #[test]

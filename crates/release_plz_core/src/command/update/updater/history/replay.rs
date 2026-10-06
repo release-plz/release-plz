@@ -3,7 +3,7 @@ use std::{
     fmt::Write as _,
 };
 
-use cargo_metadata::camino::Utf8PathBuf;
+use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 
 use crate::fs_utils;
@@ -12,13 +12,17 @@ use crate::fs_utils;
 /// reads the source objects without writing to the source repository.
 pub(super) struct ChangeReplay {
     repo: git2::Repository,
+    /// The repository-relative paths the replayed trees are restricted to,
+    /// see [`Self::restrict`].
+    paths: Vec<Utf8PathBuf>,
 }
 
 impl ChangeReplay {
     /// Read the objects of `repository`, whose `head` commit id shows its object
     /// format: only SHA-1 repositories are supported, since libgit2 cannot read
-    /// SHA-256 objects.
-    pub(super) fn new(repository: &Repo, head: &str) -> anyhow::Result<Self> {
+    /// SHA-256 objects. Replays read only the repository-relative `paths`,
+    /// see [`Self::restrict`].
+    pub(super) fn new(repository: &Repo, head: &str, paths: &[&Utf8Path]) -> anyhow::Result<Self> {
         anyhow::ensure!(
             git2::Oid::from_str(head).is_ok(),
             "SHA-256 repositories are not supported"
@@ -42,7 +46,10 @@ impl ChangeReplay {
             index.read_tree(&repo.find_tree(tree.write()?)?)?;
         }
         repo.set_index(&mut index)?;
-        Ok(Self { repo })
+        Ok(Self {
+            repo,
+            paths: paths.iter().map(|path| path.to_path_buf()).collect(),
+        })
     }
 
     /// Whether undoing the change of `commit` at `target` affects the files
@@ -56,8 +63,8 @@ impl ChangeReplay {
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let parent = self.first_parent_tree(&commit)?;
-        let target = self.commit(target)?.tree()?;
-        self.merging_affects_files(&commit.tree()?, &target, &parent, conflicts, includes)
+        let target = self.tree(&self.commit(target)?)?;
+        self.merging_affects_files(&self.tree(&commit)?, &target, &parent, conflicts, includes)
     }
 
     /// Whether applying the edits made from `commit` to `edited` onto `target`
@@ -75,9 +82,9 @@ impl ChangeReplay {
         includes: impl Fn(&[u8]) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
-        let tree = commit.tree()?;
-        let target = self.commit(target)?.tree()?;
-        let edited = self.commit(edited)?.tree()?;
+        let tree = self.tree(&commit)?;
+        let target = self.tree(&self.commit(target)?)?;
+        let edited = self.tree(&self.commit(edited)?)?;
         let parent = self.first_parent_tree(&commit)?;
         let mut changed = HashSet::new();
         for (path, target_path) in self.changed_paths(&parent, &tree, &target)? {
@@ -199,6 +206,11 @@ impl ChangeReplay {
         Ok(self.repo.find_commit(git2::Oid::from_str(id)?)?)
     }
 
+    /// The tree of `commit`, restricted as [`Self::restrict`] describes.
+    fn tree<'r>(&'r self, commit: &git2::Commit<'r>) -> anyhow::Result<git2::Tree<'r>> {
+        self.restrict(commit.tree()?)
+    }
+
     /// The tree a change is relative to: the first parent's, as `git revert -m 1`
     /// undoes a merge, or an empty tree for a root commit.
     fn first_parent_tree<'r>(
@@ -206,11 +218,73 @@ impl ChangeReplay {
         commit: &git2::Commit<'r>,
     ) -> anyhow::Result<git2::Tree<'r>> {
         if commit.parent_count() == 0 {
-            return Ok(self.repo.find_tree(self.repo.treebuilder(None)?.write()?)?);
+            return self.empty_tree();
         }
         // Look the parent up explicitly: `Commit::parents` silently ends at a
         // parent that a shallow clone does not have.
-        Ok(self.repo.find_commit(commit.parent_id(0)?)?.tree()?)
+        self.tree(&self.repo.find_commit(commit.parent_id(0)?)?)
+    }
+
+    fn empty_tree(&self) -> anyhow::Result<git2::Tree<'_>> {
+        Ok(self.repo.find_tree(self.repo.treebuilder(None)?.write()?)?)
+    }
+
+    /// The entries of `tree` at the replayed paths, written to the in-memory
+    /// backend, or `tree` itself when a path is the repository root.
+    ///
+    /// Merges and rename detection read the blobs of every path whose entries
+    /// differ between the snapshots. A partial clone fetches blobs when the
+    /// walk checks out a commit, and the walk only checks out commits that
+    /// touch the package: a file outside it can lack the blob of a commit the
+    /// walk never visited, such as the parent of a change, and libgit2 cannot
+    /// fetch it. Replays must therefore not read objects outside the package.
+    fn restrict<'r>(&'r self, tree: git2::Tree<'r>) -> anyhow::Result<git2::Tree<'r>> {
+        if self.paths.iter().any(|path| path.as_str().is_empty()) {
+            return Ok(tree);
+        }
+        let paths: Vec<&Utf8Path> = self.paths.iter().map(Utf8PathBuf::as_path).collect();
+        match self.restricted_tree(&tree, &paths)? {
+            Some(id) => Ok(self.repo.find_tree(id)?),
+            None => self.empty_tree(),
+        }
+    }
+
+    /// Write the entries of `tree` at the relative `paths` as a tree, reusing
+    /// the entries of `tree` themselves, or `None` when it has none of them.
+    fn restricted_tree(
+        &self,
+        tree: &git2::Tree<'_>,
+        paths: &[&Utf8Path],
+    ) -> anyhow::Result<Option<git2::Oid>> {
+        // Group the remainders of the paths by their first component.
+        let mut children: HashMap<&str, Vec<&Utf8Path>> = HashMap::new();
+        for path in paths {
+            let mut components = path.components();
+            if let Some(name) = components.next() {
+                children
+                    .entry(name.as_str())
+                    .or_default()
+                    .push(components.as_path());
+            }
+        }
+        let mut builder = self.repo.treebuilder(None)?;
+        for (name, paths) in children {
+            let Some(entry) = tree.get_name(name) else {
+                continue;
+            };
+            if paths.iter().any(|path| path.as_str().is_empty()) {
+                // A selected path, with every path beneath it.
+                builder.insert(name, entry.id(), entry.filemode())?;
+            } else if entry.kind() == Some(git2::ObjectType::Tree)
+                && let Some(id) = self.restricted_tree(&self.repo.find_tree(entry.id())?, &paths)?
+            {
+                builder.insert(name, id, i32::from(git2::FileMode::Tree))?;
+            }
+        }
+        if builder.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(builder.write()?))
     }
 
     /// Whether merging the edits made from `base` to `theirs` into `ours` changes
@@ -398,4 +472,92 @@ fn encode_conflict<const N: usize>(blobs: [&[u8]; N]) -> anyhow::Result<Option<[
         tokens.push('\n');
     }
     Ok(Some(encoded))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The repository-relative paths of the blobs of `tree`, in tree order.
+    fn blob_paths(tree: &git2::Tree<'_>) -> Vec<String> {
+        let mut paths = Vec::new();
+        tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+            if entry.kind() == Some(git2::ObjectType::Blob) {
+                paths.push(format!("{root}{}", entry.name().unwrap()));
+            }
+            git2::TreeWalkResult::Ok
+        })
+        .unwrap();
+        paths
+    }
+
+    #[test]
+    fn replayed_trees_hold_only_the_package_and_its_readme() {
+        let dir = fs_utils::Utf8TempDir::new().unwrap();
+        // Repo::init commits README.md at the repository root.
+        let repo = Repo::init(dir.path());
+        for path in [
+            "crates/pkg/Cargo.toml",
+            "crates/pkg/src/lib.rs",
+            "crates/other/src/lib.rs",
+            "docs/x",
+        ] {
+            let file = repo.directory().join(path);
+            fs_err::create_dir_all(file.parent().unwrap()).unwrap();
+            fs_err::write(file, path).unwrap();
+        }
+        repo.add_all_and_commit("add files").unwrap();
+        let head = repo.current_commit_hash().unwrap();
+        let tree = |paths: &[&str]| {
+            let paths: Vec<_> = paths.iter().map(Utf8Path::new).collect();
+            let replay = ChangeReplay::new(&repo, &head, &paths).unwrap();
+            let commit = replay.commit(&head).unwrap();
+            let tree = replay.tree(&commit).unwrap();
+            // The selected entries keep their ids, so a merge reads the same
+            // blobs, and the source repository stays untouched.
+            for path in blob_paths(&tree) {
+                let path = std::path::Path::new(&path);
+                assert_eq!(
+                    tree.get_path(path).unwrap().id(),
+                    commit.tree().unwrap().get_path(path).unwrap().id()
+                );
+            }
+            if !tree.is_empty() && !paths.contains(&Utf8Path::new("")) {
+                // Restricted trees stay in memory: the source repository lacks them.
+                assert!(
+                    repo.git(&["cat-file", "-e", &tree.id().to_string()])
+                        .is_err(),
+                    "{paths:?}"
+                );
+            }
+            blob_paths(&tree)
+        };
+
+        // A README outside the package directory and a missing path.
+        assert_eq!(
+            tree(&["crates/pkg", "README.md", "missing/README.md"]),
+            [
+                "README.md",
+                "crates/pkg/Cargo.toml",
+                "crates/pkg/src/lib.rs"
+            ]
+        );
+        // A README inside the package directory selects it once.
+        assert_eq!(
+            tree(&["crates/pkg", "crates/pkg/Cargo.toml"]),
+            ["crates/pkg/Cargo.toml", "crates/pkg/src/lib.rs"]
+        );
+        // The repository root selects everything, and only missing paths nothing.
+        assert_eq!(
+            tree(&[""]),
+            [
+                "README.md",
+                "crates/other/src/lib.rs",
+                "crates/pkg/Cargo.toml",
+                "crates/pkg/src/lib.rs",
+                "docs/x",
+            ]
+        );
+        assert!(tree(&["missing"]).is_empty());
+    }
 }
