@@ -15,7 +15,7 @@ use crate::fs_utils;
 pub(super) struct ChangeReplay<'a> {
     /// The source repository, whose Git fetches the blobs a partial clone
     /// lacks, see [`Self::fetch_missing_blobs`].
-    repository: &'a Repo,
+    source: &'a Repo,
     repo: git2::Repository,
     /// The repository-relative paths the replayed trees are restricted to,
     /// see [`Self::restrict`].
@@ -56,7 +56,7 @@ impl<'a> ChangeReplay<'a> {
         }
         repo.set_index(&mut index)?;
         Ok(Self {
-            repository,
+            source: repository,
             repo,
             paths: paths.iter().map(|path| path.to_path_buf()).collect(),
         })
@@ -155,7 +155,7 @@ impl<'a> ChangeReplay<'a> {
                     debug!(
                         "fetching blob {id} missing from the partial clone to check retained changes"
                     );
-                    self.repository.git(&["cat-file", "-e", &id])?;
+                    self.source.git(&["cat-file", "-e", &id])?;
                 }
             }
         }
