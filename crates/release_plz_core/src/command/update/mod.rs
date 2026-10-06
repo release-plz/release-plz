@@ -94,7 +94,9 @@ fn update_manifests(
         // excludes its own release. Keep references to those members in sync too.
         for pkg in all_packages {
             let manifest = LocalManifest::try_new(&pkg.manifest_path)?;
-            let is_planned = workspace_pkgs.iter().any(|(p, _)| p.id == pkg.id);
+            // Workspace names remain stable when release-pr relocates the
+            // checkout, whereas Cargo package IDs include the original path.
+            let is_planned = workspace_pkgs.iter().any(|(p, _)| p.name == pkg.name);
             if !manifest.version_is_inherited()
                 || (pkg.version == *new_workspace_version && !is_planned)
             {

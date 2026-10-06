@@ -128,3 +128,43 @@ async fn relocated_shared_versions_propagate_through_unreleased_siblings() {
         repo.is_clean().unwrap();
     }
 }
+
+#[tokio::test]
+async fn relocated_pre_bumped_shared_versions_update_dependency_requirements() {
+    let (_dir, repo) = workspace(&[
+        ("upstream", "version.workspace = true\n"),
+        (
+            "downstream",
+            "version = \"1.0.0\"\n[dependencies]\nupstream = { path = \"../upstream\", version = \"^1.0.0\" }\n",
+        ),
+    ]);
+    let path = repo.directory().join("Cargo.toml");
+    let manifest = fs_err::read_to_string(&path).unwrap();
+    fs_err::write(path, manifest.replace("1.0.0", "1.1.0")).unwrap();
+    fs_err::write(
+        repo.directory().join("upstream/src/lib.rs"),
+        "pub fn new() {}\n",
+    )
+    .unwrap();
+    generate_lockfile(repo.directory());
+    repo.add_all_and_commit("feat: update upstream and bump workspace version")
+        .unwrap();
+    let (_relocated, request) = relocated_request(&repo);
+
+    let (updates, _repository) = update(&request).await.unwrap();
+
+    let upstream = updates
+        .updates()
+        .iter()
+        .find(|(p, _)| p.name == "upstream")
+        .unwrap();
+    assert_eq!(upstream.0.version, Version::new(1, 1, 0));
+    assert_eq!(upstream.1.version, Version::new(1, 1, 0));
+    let root = request.local_manifest_dir().unwrap();
+    let downstream = fs_err::read_to_string(root.join("downstream/Cargo.toml")).unwrap();
+    // The old caret requirement still resolves, but the release must update its
+    // lower bound to the upstream version it was prepared against.
+    assert!(downstream.contains("version = \"^1.1.0\""), "{downstream}");
+    assert_locked_versions(root, &[("upstream", "1.1.0"), ("downstream", "1.0.1")]);
+    repo.is_clean().unwrap();
+}
