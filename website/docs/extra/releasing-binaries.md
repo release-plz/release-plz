@@ -152,7 +152,8 @@ When invoking the binary directly in a matrix, provide its context:
 
 These variables are supplied internally by the action. Without matrix context,
 a direct CLI invocation represents one native build. Run the finalizer in the
-same workflow run. An already published release is left unchanged.
+same workflow run. An already published release is never modified: `dist finalize`
+exits successfully and `dist build` fails.
 
 ## Scope
 
