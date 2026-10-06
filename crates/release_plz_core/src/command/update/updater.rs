@@ -721,7 +721,7 @@ impl Updater<'_> {
         // Enumerate from the branch tip before checking out any historical snapshot.
         // The parents let RetainedChanges follow the lineages of this same walk.
         let graph = repository.parents_at_paths(
-            "HEAD",
+            &head,
             &release_boundaries,
             &paths.all(),
             max_analyze_commits,
