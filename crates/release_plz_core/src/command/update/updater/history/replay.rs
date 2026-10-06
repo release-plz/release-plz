@@ -146,7 +146,7 @@ impl<'a> ChangeReplay<'a> {
                         continue;
                     }
                     // Submodules are commits of another repository. Read the
-                    // mode from the tree entry: `DiffFile::mode` panics on
+                    // kind from the tree entry: `DiffFile::mode` panics on
                     // legacy modes Git accepts, such as 100600.
                     if is_submodule(side, &file) {
                         continue;
@@ -385,11 +385,11 @@ pub(super) enum TokenConflicts {
 }
 
 /// Whether `file`, one side of a delta, is a submodule in `tree`, that side's
-/// tree. The tree entry's mode is normalized, unlike the delta's.
+/// tree.
 fn is_submodule(tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
     file.path()
         .and_then(|path| tree.get_path(path).ok())
-        .is_some_and(|entry| entry.filemode() == i32::from(git2::FileMode::Commit))
+        .is_some_and(|entry| entry.kind() == Some(git2::ObjectType::Commit))
 }
 
 /// The mode of `entry` as [`git2::build::TreeUpdateBuilder`] takes it.
