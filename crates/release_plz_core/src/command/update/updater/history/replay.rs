@@ -285,11 +285,10 @@ impl<'a> ChangeReplay<'a> {
     /// backend, or `tree` itself when a path is the repository root.
     ///
     /// Merges and rename detection read the blobs of every path whose entries
-    /// differ between the snapshots. A partial clone fetches blobs when the
-    /// walk checks out a commit, and the walk only checks out commits that
-    /// touch the package: a file outside it can lack the blob of a commit the
-    /// walk never visited, such as the parent of a change, and libgit2 cannot
-    /// fetch it. Replays must therefore not read objects outside the package.
+    /// differ between the snapshots. A partial clone fetches blobs only when a
+    /// checkout needs them, so files outside the package lack the blobs of the
+    /// commits the walk skipped. Restricting the trees keeps the reads, and the
+    /// fetches of [`Self::fetch_missing_blobs`], within the package.
     ///
     /// The restriction hides renames across the package boundary: a file the
     /// target moved out of the package shows as a modify/delete conflict, which
