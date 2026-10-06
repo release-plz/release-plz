@@ -218,12 +218,9 @@ impl ReleaseRequest {
     }
 
     fn validate_distribute_options(&self) -> anyhow::Result<()> {
-        for package in &self.metadata.packages {
+        for package in self.metadata.workspace_packages() {
             let config = self.get_package_config(&package.name);
-            if !self.metadata.workspace_members.contains(&package.id)
-                || !config.release
-                || !config.distribute
-            {
+            if !config.release || !config.distribute {
                 continue;
             }
             let Some(GitRelease {

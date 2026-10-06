@@ -9,12 +9,7 @@ use wiremock::{
 };
 
 fn package() -> Package {
-    let metadata = fake_package::metadata::fake_metadata();
-    metadata
-        .packages
-        .into_iter()
-        .find(|p| metadata.workspace_members.contains(&p.id))
-        .unwrap()
+    fake_package::metadata::fake_metadata().workspace_packages()[0].clone()
 }
 
 /// A receipt for matrix slot `index`: one executable archive plus its checksum.

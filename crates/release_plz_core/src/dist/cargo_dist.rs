@@ -69,10 +69,7 @@ impl CargoDist {
             !root.join("dist-workspace.toml").exists(),
             "distribute=true manages its own cargo-dist configuration; remove dist-workspace.toml or use cargo-dist independently"
         );
-        for member in &metadata.packages {
-            if !metadata.workspace_members.contains(&member.id) {
-                continue;
-            }
+        for member in metadata.workspace_packages() {
             let path = repo.repo.directory().join(fs_utils::strip_prefix(
                 &member.manifest_path,
                 original_root,
