@@ -105,10 +105,7 @@ impl DistRequest {
         let mut manifest = cargo_dist.build(&self.tag, &targets, false)?;
         manifest.validate(&self.tag, &self.package)?;
         ensure!(
-            manifest
-                .artifacts
-                .values()
-                .any(|a| a.kind == "executable-zip" && a.target_triples == targets),
+            manifest.has_binary_for(&job.target),
             "cargo-dist did not build binaries for {}",
             job.target
         );
@@ -360,6 +357,13 @@ struct Manifest {
 }
 
 impl Manifest {
+    /// Whether cargo-dist built an executable archive for exactly `target`.
+    fn has_binary_for(&self, target: &str) -> bool {
+        self.artifacts
+            .values()
+            .any(|a| a.kind == "executable-zip" && a.target_triples == [target])
+    }
+
     fn installation_notes(&self) -> anyhow::Result<&str> {
         let body = self
             .announcement_github_body
@@ -462,11 +466,8 @@ fn validate_receipts(
             "multiple matrix jobs built the same target"
         );
         receipt.manifest.validate(tag, package)?;
-        let binary = receipt.manifest.artifacts.values().any(|a| {
-            a.kind == "executable-zip" && a.target_triples == [receipt.job.target.clone()]
-        });
         ensure!(
-            binary && !receipt.assets.is_empty(),
+            receipt.manifest.has_binary_for(&receipt.job.target) && !receipt.assets.is_empty(),
             "distribution receipt contains no binaries"
         );
         for built in &receipt.assets {
