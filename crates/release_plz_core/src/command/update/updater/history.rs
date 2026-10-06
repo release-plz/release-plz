@@ -136,6 +136,12 @@ impl<'a> RetainedChanges<'a> {
         self.released_ancestors.contains(commit) && !self.reachable.contains(commit)
     }
 
+    /// Whether `commit` is an ancestor of an equal snapshot that another lineage
+    /// reaches without passing one: only the content check can decide about it.
+    fn is_candidate(&self, commit: &str) -> bool {
+        self.released_ancestors.contains(commit) && self.reachable.contains(commit)
+    }
+
     /// Keep the `commits` of the walk that stay in the diff: those that are not
     /// ancestors of an equal snapshot, and those another lineage reaches without
     /// passing one whose change survives at HEAD. A simplified walk can visit an
@@ -151,10 +157,7 @@ impl<'a> RetainedChanges<'a> {
         commits: &mut Vec<Commit>,
         head_package_files: impl FnOnce() -> anyhow::Result<Option<Vec<Utf8PathBuf>>>,
     ) -> anyhow::Result<()> {
-        if !commits
-            .iter()
-            .any(|commit| self.released_ancestors.contains(&commit.id))
-        {
+        if !commits.iter().any(|commit| self.is_candidate(&commit.id)) {
             return Ok(());
         }
         self.add_package_files(head_package_files()?);
@@ -184,9 +187,9 @@ impl<'a> RetainedChanges<'a> {
             return true;
         }
         // A sibling editing the same lines as a reverted commit can make its
-        // undo conflict. Reachability ensures another lineage reaches the commit
-        // without passing an equal package snapshot before trusting that.
-        self.reachable.contains(commit)
+        // undo conflict. Trust that only for a candidate, which another lineage
+        // reaches without passing an equal package snapshot.
+        self.is_candidate(commit)
             && replay.is_some_and(|replay| {
                 self.survives(replay, commit).unwrap_or_else(|error| {
                     // Shallow histories may not contain the parent required for a
