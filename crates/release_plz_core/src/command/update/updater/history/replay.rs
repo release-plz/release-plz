@@ -135,14 +135,15 @@ impl<'a> ChangeReplay<'a> {
         trees: &[&git2::Tree<'_>],
     ) -> anyhow::Result<()> {
         let odb = self.repo.odb()?;
-        let mut seen = HashSet::new();
         for tree in trees {
             // Without rename detection, the diff reads no blobs itself.
             let diff = self.repo.diff_tree_to_tree(Some(base), Some(tree), None)?;
             for delta in diff.deltas() {
                 for (file, side) in [(delta.old_file(), base), (delta.new_file(), *tree)] {
-                    // Deleted sides have a zero id.
-                    if file.id().is_zero() || !seen.insert(file.id()) || odb.exists(file.id()) {
+                    // Deleted sides have a zero id. A miss refreshes the object
+                    // database, so a blob fetched for one tree is found for the
+                    // next.
+                    if file.id().is_zero() || odb.exists(file.id()) {
                         continue;
                     }
                     // Submodules are commits of another repository. Read the
