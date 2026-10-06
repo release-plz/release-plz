@@ -143,7 +143,8 @@ impl Updater<'_> {
                 });
             } else {
                 // We need to update this package only if one of its dependencies has changed.
-                // An already bumped version may still need its release changelog.
+                // This includes already bumped (unpublished) versions without new commits:
+                // a dependency change can still release them.
                 packages_to_check_for_deps.push((*p, diff));
             }
         }
