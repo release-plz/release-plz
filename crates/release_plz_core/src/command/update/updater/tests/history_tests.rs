@@ -621,6 +621,38 @@ fn a_released_evolution_of_a_breaking_change_is_not_repeated() {
     }
 }
 
+#[test]
+fn a_released_evolution_is_not_repeated_after_independent_release_edits_are_removed() {
+    for released in [
+        format!("{RELEASED_API}// unrelated released comment\n"),
+        RELEASED_API.replace("api(_: u8) {}", "api(_: u8) { /* released body */ }"),
+    ] {
+        let history = api_history();
+        let repo = &history.repo;
+        history.publish("src/lib.rs", &released);
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: released breaking API");
+        repo.git(&["checkout", "-b", "late"]).unwrap();
+        let late = history.write_commit("src/late.rs", "", "fix: late branch");
+        repo.checkout_head().unwrap();
+        history.write_commit(
+            "src/lib.rs",
+            &released,
+            "chore: evolve API and implementation",
+        );
+        let after =
+            history.write_commit("src/lib.rs", RELEASED_API, "fix: remove released comment");
+        repo.git(&["merge", "--no-ff", "-m", "merge late branch", "late"])
+            .unwrap();
+
+        // The late branch reaches the original breaking commit, but HEAD has
+        // its released evolution. Unrelated removed text in the same file,
+        // including the same line, must not repeat that breaking marker.
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&after, &late]);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
+    }
+}
+
 /// The release changed the token next to the breaking change without taking
 /// the change, and HEAD has both.
 #[test]

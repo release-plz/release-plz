@@ -61,8 +61,9 @@ impl ChangeReplay {
     }
 
     /// Whether applying the edits made from `commit` to `edited` onto `target`
-    /// affects the files of the change of `commit` that `includes` selects, as
-    /// [`Self::merging_affects_files`] counts changes. Files `target` renamed
+    /// affects the change of `commit` in the files `includes` selects, as
+    /// [`Self::merging_affects_files`] counts changes. Independent text edits
+    /// within those files do not count. Files `target` renamed
     /// since `commit` count under their new name, where the merge applies the
     /// edits.
     pub(super) fn edits_affect_package(
@@ -77,10 +78,68 @@ impl ChangeReplay {
         let tree = commit.tree()?;
         let target = self.commit(target)?.tree()?;
         let edited = self.commit(edited)?.tree()?;
-        let changed = self.changed_paths(&self.first_parent_tree(&commit)?, &tree, &target)?;
+        let parent = self.first_parent_tree(&commit)?;
+        let mut changed = HashSet::new();
+        for path in self.changed_paths(&parent, &tree, &target)? {
+            if includes(&path)
+                && !self.edited_tokens_leave_file_unchanged(
+                    [&parent, &tree, &edited, &target],
+                    &path,
+                    conflicts,
+                )?
+            {
+                changed.insert(path);
+            }
+        }
         self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
-            changed.contains(path) && includes(path)
+            changed.contains(path)
         })
+    }
+
+    /// Prove that the target adopted the edits to the candidate's changed
+    /// tokens, independently of other edits in the same file. Structural and
+    /// unsupported text changes still need the ordinary tree replay.
+    fn edited_tokens_leave_file_unchanged(
+        &self,
+        trees: [&git2::Tree<'_>; 4],
+        path: &[u8],
+        conflicts: TokenConflicts,
+    ) -> anyhow::Result<bool> {
+        let Ok(path) = std::str::from_utf8(path) else {
+            return Ok(false);
+        };
+        let entries = trees.map(|tree| tree.get_path(std::path::Path::new(path)).ok());
+        let [Some(parent), Some(changed), Some(edited), Some(target)] = entries else {
+            return Ok(false);
+        };
+        let entries = [parent, changed, edited, target];
+        if !same_regular_file_mode(entries.each_ref().map(|entry| entry.filemode() as u32)) {
+            return Ok(false);
+        }
+        let blobs = entries
+            .iter()
+            .map(|entry| self.repo.find_blob(entry.id()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let Some([parent, changed, edited, target]) =
+            encode_conflict(std::array::from_fn(|i| blobs[i].content()))?
+        else {
+            return Ok(false);
+        };
+        // Reapply the candidate to the release, keeping independent release
+        // edits. The difference back to the release now describes only the
+        // release's version of the candidate, without unrelated changes.
+        let reapplied = merge_text(
+            [parent.as_bytes(), changed.as_bytes(), edited.as_bytes()],
+            TokenConflicts::FavorTarget,
+        )?;
+        if !reapplied.is_automergeable() {
+            return Ok(false);
+        }
+        let merged = merge_text(
+            [reapplied.content(), target.as_bytes(), edited.as_bytes()],
+            conflicts,
+        )?;
+        Ok(merged.is_automergeable() && merged.content() == target.as_bytes())
     }
 
     /// The paths of the change from `parent` to `tree`, together with the paths
@@ -226,7 +285,7 @@ fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
 /// Whether every stage of a conflict is a regular file of the same mode, so
 /// that merging their contents as text is meaningful. Type, mode, rename and
 /// deletion conflicts cannot establish absence.
-fn same_regular_file_mode(modes: [u32; 3]) -> bool {
+fn same_regular_file_mode<const N: usize>(modes: [u32; N]) -> bool {
     modes.iter().all(|mode| *mode == modes[0]) && matches!(modes[0], 0o100_644 | 0o100_755)
 }
 
@@ -285,8 +344,8 @@ fn merge_text(
 /// Keeping identifiers whole avoids aligning their letters with unrelated edits;
 /// trailing punctuation distinguishes a parameter's `bool)` from a local's `bool`.
 /// Bound the expanded input and leave binary or non-UTF-8 content unresolved.
-fn encode_conflict(blobs: [&[u8]; 3]) -> anyhow::Result<Option<[String; 3]>> {
-    let max_conflict_input_bytes = 1024 * 1024; // 1 MiB across all three snapshots.
+fn encode_conflict<const N: usize>(blobs: [&[u8]; N]) -> anyhow::Result<Option<[String; N]>> {
+    let max_conflict_input_bytes = 1024 * 1024; // 1 MiB across the snapshots.
     if blobs.iter().map(|blob| blob.len()).sum::<usize>() > max_conflict_input_bytes
         || blobs.iter().any(|blob| blob.contains(&0))
     {
