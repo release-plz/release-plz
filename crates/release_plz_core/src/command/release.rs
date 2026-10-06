@@ -1574,6 +1574,24 @@ mod tests {
                 .to_string()
                 .contains("binary target")
         );
+        let disabled_release = request.with_default_package_config(
+            ReleaseConfig::default()
+                .with_git_only(true)
+                .with_distribute(true)
+                .with_git_release(GitReleaseConfig::enabled(false)),
+        );
+        assert!(
+            disabled_release
+                .validate_git_release_options()
+                .unwrap_err()
+                .to_string()
+                .contains("requires git_release_enable and git_tag_enable")
+        );
+        request = disabled_release.with_default_package_config(
+            ReleaseConfig::default()
+                .with_git_only(true)
+                .with_distribute(true),
+        );
         request.git_release = None;
         assert!(
             request
