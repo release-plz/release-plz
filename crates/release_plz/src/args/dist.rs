@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, ensure};
+use anyhow::Context as _;
 use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
 use release_plz_core::{
-    GitClient, GitForge, GitHub, ReleaseRequest,
+    GitHub, ReleaseRequest,
     dist::{DistJob, DistRequest, run_id},
 };
 use secrecy::SecretString;
@@ -56,17 +56,12 @@ impl Dist {
             args.get_repo_url(&config)?,
             SecretString::from(args.git_token),
         )?;
-        ensure!(
-            !github.is_enterprise(),
-            "binary distribution requires GitHub.com; cargo-dist does not support GitHub Enterprise Server"
-        );
-        let client = GitClient::new(GitForge::Github(github))?;
         let request = config.fill_release_config(false, false, ReleaseRequest::new(metadata))?;
         let tag = match args.tag {
             Some(tag) => tag,
             None => event_tag()?,
         };
-        let request = DistRequest::new(request, tag, client)?;
+        let request = DistRequest::new(request, tag, github)?;
         if finalize {
             request.finalize(&run_id()?).await
         } else {

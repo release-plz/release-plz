@@ -15,7 +15,7 @@ use git_cmd::Repo;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{ForgeType, GitClient, Project, ReleaseRequest};
+use crate::{GitClient, GitForge, GitHub, Project, ReleaseRequest};
 use cargo_dist::CargoDist;
 use github::{Asset, GitHubRelease};
 
@@ -34,14 +34,18 @@ pub struct DistRequest {
 }
 
 impl DistRequest {
-    pub fn new(request: ReleaseRequest, tag: String, client: GitClient) -> anyhow::Result<Self> {
-        ensure!(client.forge == ForgeType::Github, "dist requires GitHub");
+    pub fn new(request: ReleaseRequest, tag: String, github: GitHub) -> anyhow::Result<Self> {
+        ensure!(
+            !github.is_enterprise(),
+            "`distribute` requires GitHub.com; cargo-dist does not support GitHub Enterprise Server"
+        );
         // cargo-dist accepts only github.com, including when Git uses a public SSH alias,
         // so derive the canonical repository URL from the owner and name instead of the remote.
         let repository = format!(
             "https://github.com/{}/{}",
-            client.remote.owner, client.remote.repo
+            github.remote.owner, github.remote.repo
         );
+        let client = GitClient::new(GitForge::Github(github))?;
         let metadata = request.cargo_metadata();
         let project = Project::new(
             &metadata.workspace_root.join(cargo_utils::CARGO_TOML),

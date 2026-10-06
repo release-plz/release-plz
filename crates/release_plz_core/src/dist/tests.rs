@@ -1,5 +1,5 @@
 use super::*;
-use crate::{GitForge, GitHub, GitTagConfig, ReleaseConfig};
+use crate::{GitTagConfig, ReleaseConfig, RepoUrl};
 use cargo_metadata::{Metadata, camino::Utf8Path};
 use secrecy::SecretString;
 use serde_json::json;
@@ -353,12 +353,14 @@ fn matrix_identity_rejects_inconsistent_or_invalid_slots() {
     }
 }
 
+/// The `owner/repo` GitHub.com repository, served by the mock `server`.
+fn github(server: &MockServer) -> GitHub {
+    GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+        .with_base_url(server.uri().parse().unwrap())
+}
+
 fn client(server: &MockServer) -> GitClient {
-    GitClient::new(GitForge::Github(
-        GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
-            .with_base_url(server.uri().parse().unwrap()),
-    ))
-    .unwrap()
+    GitClient::new(GitForge::Github(github(server))).unwrap()
 }
 
 /// Release `1` for `v1.0.0`, uploading to the mock server like GitHub's templated URL.
@@ -564,8 +566,8 @@ fn dist_fixture(source_file: &str) -> (tempfile::TempDir, Repo, ReleaseRequest) 
     (temporary, repo, request)
 }
 
-fn new_dist_request_error(request: ReleaseRequest, client: GitClient) -> String {
-    DistRequest::new(request, "v1.0.0".into(), client)
+fn new_dist_request_error(request: ReleaseRequest, github: GitHub) -> String {
+    DistRequest::new(request, "v1.0.0".into(), github)
         .unwrap_err()
         .to_string()
 }
@@ -574,19 +576,27 @@ fn new_dist_request_error(request: ReleaseRequest, client: GitClient) -> String 
 async fn dist_request_requires_one_tagged_binary_package_on_github() {
     let server = MockServer::start().await;
     let (_temporary, _repo, request) = dist_fixture("src/main.rs");
-    DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
+    DistRequest::new(request, "v1.0.0".into(), github(&server)).unwrap();
 
+    // The pinned cargo-dist only understands github.com repository URLs.
     let (_temporary, _repo, request) = dist_fixture("src/main.rs");
-    let gitea = GitClient::new(GitForge::Gitea(crate::Gitea {
-        remote: GitHub::new("owner".into(), "repo".into(), SecretString::from("token")).remote,
-    }))
-    .unwrap();
-    let error = new_dist_request_error(request, gitea);
-    assert!(error.contains("dist requires GitHub"), "{error}");
+    let enterprise = GitHub::from_repo_url(
+        RepoUrl::new("https://github.example.com/owner/repo").unwrap(),
+        SecretString::from("token"),
+    )
+    .unwrap()
+    .with_base_url(server.uri().parse().unwrap());
+    let error = new_dist_request_error(request, enterprise);
+    assert!(
+        error.contains(
+            "`distribute` requires GitHub.com; cargo-dist does not support GitHub Enterprise Server"
+        ),
+        "{error}"
+    );
 
     let (_temporary, _repo, request) = dist_fixture("src/main.rs");
     let request = request.with_default_package_config(ReleaseConfig::default().with_git_only(true));
-    let error = new_dist_request_error(request, client(&server));
+    let error = new_dist_request_error(request, github(&server));
     assert!(
         error.contains("tag `v1.0.0` must select exactly one package with distribute=true"),
         "{error}"
@@ -605,14 +615,14 @@ async fn dist_request_requires_one_tagged_binary_package_on_github() {
     }
     let shared_tag = GitTagConfig::enabled(true).set_name_template(Some("v{{ version }}".into()));
     let request = tag_dist_repo(&repo, distribute_config().with_git_tag(shared_tag));
-    let error = new_dist_request_error(request, client(&server));
+    let error = new_dist_request_error(request, github(&server));
     assert!(
         error.contains("tag `v1.0.0` must select exactly one package with distribute=true"),
         "{error}"
     );
 
     let (_temporary, _repo, request) = dist_fixture("src/lib.rs");
-    let error = new_dist_request_error(request, client(&server));
+    let error = new_dist_request_error(request, github(&server));
     assert!(error.contains("dist requires a binary target"), "{error}");
 }
 
@@ -621,7 +631,7 @@ async fn dist_request_requires_a_clean_checkout_of_the_tag() {
     let server = MockServer::start().await;
     let (_temporary, repo, request) = dist_fixture("src/main.rs");
     fs_err::write(repo.directory().join("src/main.rs"), "fn main() { }\n").unwrap();
-    let error = new_dist_request_error(request, client(&server));
+    let error = new_dist_request_error(request, github(&server));
     assert!(
         error.contains("distribution requires a clean checkout of the release tag"),
         "{error}"
@@ -630,7 +640,7 @@ async fn dist_request_requires_a_clean_checkout_of_the_tag() {
     let (_temporary, repo, request) = dist_fixture("src/main.rs");
     fs_err::write(repo.directory().join("README.md"), "later\n").unwrap();
     repo.add_all_and_commit("after the tag").unwrap();
-    let error = new_dist_request_error(request, client(&server));
+    let error = new_dist_request_error(request, github(&server));
     assert!(
         error.contains("HEAD must match release tag `v1.0.0`"),
         "{error}"
@@ -638,7 +648,7 @@ async fn dist_request_requires_a_clean_checkout_of_the_tag() {
 
     let (_temporary, repo, request) = dist_fixture("src/main.rs");
     repo.git(&["tag", "-d", "v1.0.0"]).unwrap();
-    let error = new_dist_request_error(request, client(&server));
+    let error = new_dist_request_error(request, github(&server));
     assert!(error.contains("release tag is missing locally"), "{error}");
 }
 
@@ -653,7 +663,7 @@ async fn published_release_stops_build_and_is_a_finalize_no_op() {
         .mount(&server)
         .await;
     let (_temporary, _repo, request) = dist_fixture("src/main.rs");
-    let request = DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
+    let request = DistRequest::new(request, "v1.0.0".into(), github(&server)).unwrap();
     // The check runs before cargo-dist is even looked up.
     let error = request
         .build(DistJob {
@@ -755,7 +765,7 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             .with_git_only(true)
             .with_distribute(true),
     );
-    let request = DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
+    let request = DistRequest::new(request, "v1.0.0".into(), github(&server)).unwrap();
     // The full error chain: `successful_status` keeps the HTTP status in the cause.
     async fn finalize_error(request: &DistRequest, run_id: &str) -> String {
         format!("{:#}", request.finalize(run_id).await.unwrap_err())
