@@ -234,6 +234,29 @@ fn release_notes_are_replaced_when_finalize_reruns() {
 }
 
 #[test]
+fn release_notes_keep_text_added_after_the_installation_notes() {
+    // A draft kept by `git_release_draft` can be edited before finalize runs again.
+    let notes = "## Downloads\n\nA link.\n";
+    let once = body_with_installation_notes("## Fixes\n\nFixed things.\n", notes);
+    let edited = format!("{once}\n## Known issues\n\nNone yet.\n");
+    assert_eq!(body_with_installation_notes(&edited, notes), edited);
+    let updated = body_with_installation_notes(&edited, "## Downloads\n\nAnother link.\n");
+    assert!(updated.starts_with("## Fixes\n\nFixed things.\n\n<!-- release-plz-dist -->\n"));
+    assert!(updated.ends_with("<!-- /release-plz-dist -->\n\n## Known issues\n\nNone yet.\n"));
+    assert!(updated.contains("Another link."));
+    assert!(!updated.contains("A link."));
+}
+
+#[test]
+fn release_notes_without_a_changelog_start_with_the_marker() {
+    let notes = "## Downloads\n\nA link.\n";
+    let body = body_with_installation_notes("", notes);
+    assert!(body.starts_with("<!-- release-plz-dist -->\n## Downloads"));
+    assert!(body.ends_with("A link.\n<!-- /release-plz-dist -->\n"));
+    assert_eq!(body_with_installation_notes(&body, notes), body);
+}
+
+#[test]
 fn matrix_identity_defaults_to_a_single_host_job() {
     let job = DistJob::from_matrix("123".into(), "", "", "null").unwrap();
     assert_eq!((job.index, job.total), (0, 1));

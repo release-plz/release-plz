@@ -533,13 +533,23 @@ fn validate_receipts(
 const NOTES_START: &str = "<!-- release-plz-dist -->";
 const NOTES_END: &str = "<!-- /release-plz-dist -->";
 
-/// Append `notes` to `body`, replacing the notes of an earlier finalize run so a retry
+/// Insert `notes` into `body`, replacing the notes of an earlier finalize run so a retry
 /// (for example when `git_release_draft` keeps the release a draft) is idempotent.
+/// Text before and after the delimited block, such as a manually edited draft, is kept.
 fn body_with_installation_notes(body: &str, notes: &str) -> String {
-    let changelog = body.split(NOTES_START).next().unwrap_or_default();
-    format!(
-        "{}\n\n{NOTES_START}\n{}\n{NOTES_END}\n",
-        changelog.trim_end(),
-        notes.trim()
-    )
+    let (head, tail) = match body.split_once(NOTES_START) {
+        Some((head, rest)) => (
+            head,
+            rest.split_once(NOTES_END).map_or("", |(_, tail)| tail),
+        ),
+        None => (body, ""),
+    };
+    let notes = format!("{NOTES_START}\n{}\n{NOTES_END}", notes.trim());
+    let mut body = [head.trim_end(), &notes, tail.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    body.push('\n');
+    body
 }
