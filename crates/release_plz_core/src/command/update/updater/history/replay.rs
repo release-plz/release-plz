@@ -80,15 +80,20 @@ impl ChangeReplay {
         let edited = self.commit(edited)?.tree()?;
         let parent = self.first_parent_tree(&commit)?;
         let mut changed = HashSet::new();
-        for path in self.changed_paths(&parent, &tree, &target)? {
-            if includes(&path)
+        for (path, target_path) in self.changed_paths(&parent, &tree, &target)? {
+            if (includes(&path) || includes(&target_path))
                 && !self.edited_tokens_leave_file_unchanged(
                     [&parent, &tree, &edited, &target],
                     &path,
+                    &target_path,
                     conflicts,
                 )?
             {
-                changed.insert(path);
+                changed.extend(
+                    [path, target_path]
+                        .into_iter()
+                        .filter(|path| includes(path)),
+                );
             }
         }
         self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
@@ -97,18 +102,25 @@ impl ChangeReplay {
     }
 
     /// Prove that the target adopted the edits to the candidate's changed
-    /// tokens, independently of other edits in the same file. Structural and
-    /// unsupported text changes still need the ordinary tree replay.
+    /// tokens, independently of other edits in the same file. Missing files,
+    /// mode changes and unsupported text still need the ordinary tree replay.
     fn edited_tokens_leave_file_unchanged(
         &self,
         trees: [&git2::Tree<'_>; 4],
         path: &[u8],
+        target_path: &[u8],
         conflicts: TokenConflicts,
     ) -> anyhow::Result<bool> {
-        let Ok(path) = std::str::from_utf8(path) else {
+        let (Ok(path), Ok(target_path)) =
+            (std::str::from_utf8(path), std::str::from_utf8(target_path))
+        else {
             return Ok(false);
         };
-        let entries = trees.map(|tree| tree.get_path(std::path::Path::new(path)).ok());
+        // A rename in the target changes only its lookup; the candidate and
+        // release still describe the contents at the original path.
+        let paths = [path, path, path, target_path];
+        let entries =
+            std::array::from_fn(|i| trees[i].get_path(std::path::Path::new(paths[i])).ok());
         let [Some(parent), Some(changed), Some(edited), Some(target)] = entries else {
             return Ok(false);
         };
@@ -146,14 +158,14 @@ impl ChangeReplay {
         Ok(merged.is_automergeable() && merged.content() == target.as_bytes())
     }
 
-    /// The paths of the change from `parent` to `tree`, together with the paths
-    /// `target` renamed them to: a merge applies edits to a renamed file there.
+    /// The paths of the change from `parent` to `tree`, mapped to their paths
+    /// in `target`: a merge applies edits to a renamed file at its new path.
     fn changed_paths(
         &self,
         parent: &git2::Tree<'_>,
         tree: &git2::Tree<'_>,
         target: &git2::Tree<'_>,
-    ) -> anyhow::Result<HashSet<Vec<u8>>> {
+    ) -> anyhow::Result<HashMap<Vec<u8>, Vec<u8>>> {
         let mut renamed = self
             .repo
             .diff_tree_to_tree(Some(tree), Some(target), None)?;
@@ -174,8 +186,12 @@ impl ChangeReplay {
         Ok(changed
             .deltas()
             .flat_map(|delta| delta_paths(&delta))
-            .flat_map(|path| std::iter::once(path).chain(renamed.get(path).copied()))
-            .map(<[u8]>::to_vec)
+            .map(|path| {
+                (
+                    path.to_vec(),
+                    renamed.get(path).copied().unwrap_or(path).to_vec(),
+                )
+            })
             .collect())
     }
 

@@ -650,6 +650,18 @@ fn a_released_evolution_is_not_repeated_after_independent_release_edits_are_remo
         let diff = history.diff(None);
         assert_commits(&diff, &[&after, &late]);
         assert_next_version(&diff, &Version::new(0, 1, 1));
+
+        // The same proof must follow the API file when HEAD renames it.
+        repo.git(&["mv", "src/lib.rs", "src/api.rs"]).unwrap();
+        let manifest = fs_err::read_to_string(repo.directory().join(CARGO_TOML)).unwrap();
+        let renamed = history.write_commit(
+            CARGO_TOML,
+            &format!("{manifest}\n[lib]\npath = \"src/api.rs\"\n"),
+            "chore: rename the API file",
+        );
+        let diff = history.diff(None);
+        assert_commits(&diff, &[&after, &late, &renamed]);
+        assert_next_version(&diff, &Version::new(0, 1, 1));
     }
 }
 
