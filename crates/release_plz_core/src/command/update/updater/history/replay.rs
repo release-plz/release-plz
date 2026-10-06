@@ -545,15 +545,16 @@ mod tests {
         }
         repo.add_all_and_commit("add files").unwrap();
         let head = repo.current_commit_hash().unwrap();
-        let tree = |paths: &[&str]| {
+        let restricted_blobs = |paths: &[&str]| {
             let paths: Vec<_> = paths.iter().map(Utf8Path::new).collect();
             let replay = ChangeReplay::new(&repo, &head, &paths).unwrap();
             let commit = replay.commit(&head).unwrap();
             let tree = replay.tree(&commit).unwrap();
+            let blobs = blob_paths(&tree);
             // The selected entries keep their ids, so a merge reads the same
             // blobs, and the source repository stays untouched.
-            for path in blob_paths(&tree) {
-                let path = std::path::Path::new(&path);
+            for path in &blobs {
+                let path = std::path::Path::new(path);
                 assert_eq!(
                     tree.get_path(path).unwrap().id(),
                     commit.tree().unwrap().get_path(path).unwrap().id()
@@ -567,12 +568,12 @@ mod tests {
                     "{paths:?}"
                 );
             }
-            blob_paths(&tree)
+            blobs
         };
 
         // A README outside the package directory and a missing path.
         assert_eq!(
-            tree(&["crates/pkg", "README.md", "missing/README.md"]),
+            restricted_blobs(&["crates/pkg", "README.md", "missing/README.md"]),
             [
                 "README.md",
                 "crates/pkg/Cargo.toml",
@@ -581,12 +582,12 @@ mod tests {
         );
         // A README inside the package directory selects it once.
         assert_eq!(
-            tree(&["crates/pkg", "crates/pkg/Cargo.toml"]),
+            restricted_blobs(&["crates/pkg", "crates/pkg/Cargo.toml"]),
             ["crates/pkg/Cargo.toml", "crates/pkg/src/lib.rs"]
         );
         // The repository root selects everything, and only missing paths nothing.
         assert_eq!(
-            tree(&[""]),
+            restricted_blobs(&[""]),
             [
                 "README.md",
                 "crates/other/src/lib.rs",
@@ -595,6 +596,6 @@ mod tests {
                 "docs/x",
             ]
         );
-        assert!(tree(&["missing"]).is_empty());
+        assert!(restricted_blobs(&["missing"]).is_empty());
     }
 }
