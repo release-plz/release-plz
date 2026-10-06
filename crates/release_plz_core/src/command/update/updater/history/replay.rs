@@ -610,9 +610,10 @@ mod tests {
         assert!(restricted_blobs(&["missing"]).is_empty());
     }
 
-    /// A commit that only gives a package file a legacy mode Git accepts, such
-    /// as the 100600 old importers wrote. Git reads it as 100644, so undoing
-    /// the commit leaves its parent unchanged.
+    /// A legacy file mode Git accepts, such as the 100600 old importers wrote,
+    /// makes `DiffFile::mode` panic. The replay selects the repository root,
+    /// so its trees keep the raw mode: `restrict` rewrites a selected file's
+    /// entry with the normalized mode.
     #[test]
     fn legacy_file_modes_do_not_abort_the_replay() {
         let dir = fs_utils::Utf8TempDir::new().unwrap();
@@ -621,29 +622,23 @@ mod tests {
         fs_err::write(repo.directory().join("f"), "hello\n").unwrap();
         repo.add_all_and_commit("base").unwrap();
         let base = repo.current_commit_hash().unwrap();
-        // Git refuses to write such a tree unless told to take it literally.
+        // libgit2's `TreeBuilder` rejects the legacy mode: write the raw tree.
         let mut tree = Vec::new();
         for (mode, path) in [("100644", "README.md"), ("100600", "f")] {
             let blob = repo.git(&["rev-parse", &format!("HEAD:{path}")]).unwrap();
             tree.extend_from_slice(format!("{mode} {path}\0").as_bytes());
             tree.extend_from_slice(git2::Oid::from_str(&blob).unwrap().as_bytes());
         }
-        let tree_file = dir.path().join("tree.bin");
-        fs_err::write(&tree_file, &tree).unwrap();
-        let tree = repo
-            .git(&[
-                "hash-object",
-                "-t",
-                "tree",
-                "-w",
-                "--literally",
-                tree_file.as_str(),
-            ])
-            .unwrap();
+        let tree = git2::Repository::open(repo.directory())
+            .unwrap()
+            .odb()
+            .unwrap()
+            .write(git2::ObjectType::Tree, &tree)
+            .unwrap()
+            .to_string();
         let commit = repo
-            .git(&["commit-tree", &tree, "-p", "HEAD", "-m", "legacy mode"])
+            .git(&["commit-tree", &tree, "-p", &base, "-m", "legacy mode"])
             .unwrap();
-        repo.git(&["update-ref", "HEAD", &commit]).unwrap();
         let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
         let affects = replay
             .undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
