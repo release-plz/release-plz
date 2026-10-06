@@ -113,7 +113,11 @@ impl ChangeReplay {
             return Ok(false);
         };
         let entries = [parent, changed, edited, target];
-        if !same_regular_file_mode(entries.each_ref().map(|entry| entry.filemode() as u32)) {
+        if !same_regular_file_mode(
+            entries
+                .each_ref()
+                .map(|entry| entry.filemode().cast_unsigned()),
+        ) {
             return Ok(false);
         }
         let blobs = entries
