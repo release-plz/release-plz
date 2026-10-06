@@ -936,6 +936,8 @@ instructions to the existing release body and publishes the release.
 
 If `git_release_draft = true`, `dist finalize` still adds the installers and download
 instructions but leaves the release as a draft for you to publish manually.
+Rerunning `dist finalize` replaces the previously added instructions instead of
+appending them.
 
 ```toml
 [[package]]
