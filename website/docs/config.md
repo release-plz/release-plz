@@ -934,6 +934,9 @@ A distribution workflow builds binaries on your chosen runners. After all builds
 succeed, `release-plz dist finalize` adds cargo-dist's installers and download
 instructions to the existing release body and publishes the release.
 
+If `git_release_draft = true`, `dist finalize` still adds the installers and download
+instructions but leaves the release as a draft for you to publish manually.
+
 ```toml
 [[package]]
 name = "my-cli"

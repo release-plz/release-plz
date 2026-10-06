@@ -102,6 +102,8 @@ uploads archives, checksums, and build manifests directly to the draft release.
 The finalizer collects those manifests, generates shell/PowerShell installers
 where supported, appends cargo-dist's installation instructions and download
 table to the existing changelog, and publishes the release.
+If `git_release_draft = true`, it still adds the installers and download table but
+leaves the release as a draft for you to publish manually.
 There are no upload-artifact/download-artifact steps to configure.
 The runner must have Rust and the native build dependencies your application needs.
 
