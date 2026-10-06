@@ -106,6 +106,9 @@ If `git_release_draft = true`, it still adds the installers and download table b
 leaves the release as a draft for you to publish manually.
 There are no upload-artifact/download-artifact steps to configure.
 The runner must have Rust and the native build dependencies your application needs.
+Builds run in a temporary copy of the repository with their own target directory,
+so build artifacts cached by the workflow are not reused and every matrix job
+compiles from scratch.
 
 Each build defaults to the host target reported by `rustc -vV`. To cross-compile,
 you can use a `target` field in your existing matrix; the action forwards it
