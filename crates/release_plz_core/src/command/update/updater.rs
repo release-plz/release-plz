@@ -154,7 +154,7 @@ impl Updater<'_> {
         if let Some(version) = workspace_version {
             packages_to_update.with_workspace_version(version);
         }
-        let mut old_changelogs = OldChangelogs::new();
+        let mut old_changelogs = OldChangelogs::new(self.shared_changelog_paths()?);
         for update in planned_updates {
             if update.version == update.package.version && !update.diff.is_version_published {
                 info!(
@@ -184,6 +184,24 @@ impl Updater<'_> {
                 .push((update.package.clone(), result));
         }
         Ok(packages_to_update)
+    }
+
+    /// Changelogs that more than one workspace package writes to.
+    fn shared_changelog_paths(&self) -> anyhow::Result<HashSet<Utf8PathBuf>> {
+        let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
+        let mut workspace_packages =
+            cargo_utils::workspace_members(self.req.cargo_metadata())?.collect();
+        crate::project::override_packages_path(
+            &mut workspace_packages,
+            self.req.cargo_metadata(),
+            workspace_dir,
+        )?;
+        let mut paths = HashSet::new();
+        Ok(workspace_packages
+            .iter()
+            .map(|p| self.req.changelog_path(p))
+            .filter(|path| !paths.insert(path.clone()))
+            .collect())
     }
 
     /// Get the highest next version of all packages for each version group.
@@ -1100,7 +1118,10 @@ fn get_changelog(
                 .flatten()
         });
         if is_package_published {
-            let last_version = last_version.unwrap_or(package.version.to_string());
+            // The latest release of a shared changelog can belong to another package.
+            let last_version = last_version
+                .filter(|_| !old_changelog.is_shared())
+                .unwrap_or(package.version.to_string());
             changelog_builder = changelog_builder.with_previous_version(last_version);
         } else if let Some(last_version) = last_version
             && let Some(old_changelog) = old_changelog.current()
@@ -1270,30 +1291,32 @@ mod tests {
 - complex update
 ";
         let mut package: Package = fake_package::FakePackage::new("my_package").into();
-        // Check both normal and manually bumped versions, including when another
-        // package has already added its own entry to the shared changelog.
-        for package_version in [package.version.clone(), next_version.clone()] {
-            package.version = package_version;
-            for updated in [
-                None,
+        // Check both normal and manually bumped versions. For the latter, also check
+        // when another package has already added its own entry to the shared changelog.
+        for (package_version, updated) in [
+            (package.version.clone(), None),
+            (next_version.clone(), None),
+            (
+                next_version.clone(),
                 Some(format!("## [2.0.0]\n\n- another package\n\n{old}")),
-            ] {
-                let mut old_changelog = OldChangelog::new(Some(old.to_string()));
-                if let Some(updated) = updated {
-                    old_changelog.update(updated);
-                }
-                let new = get_changelog(
-                    &commits,
-                    &next_version,
-                    Some(changelog_req.clone()),
-                    &old_changelog,
-                    None,
-                    None,
-                    &package,
-                )
-                .unwrap();
-                assert_eq!(old_changelog.current().unwrap(), new.0);
+            ),
+        ] {
+            package.version = package_version;
+            let mut old_changelog = OldChangelog::new(Some(old.to_string()), updated.is_some());
+            if let Some(updated) = updated {
+                old_changelog.update(updated);
             }
+            let new = get_changelog(
+                &commits,
+                &next_version,
+                Some(changelog_req.clone()),
+                &old_changelog,
+                None,
+                None,
+                &package,
+            )
+            .unwrap();
+            assert_eq!(old_changelog.current().unwrap(), new.0);
         }
     }
 }

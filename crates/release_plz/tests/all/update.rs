@@ -202,6 +202,44 @@ body = """
 }
 
 #[test]
+fn shared_changelog_keeps_entry_matching_another_package_release() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            ("support", "version = \"1.0.1\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[dependencies]\nsupport = { path = \"../support\", version = \"1.0.1\" }\n",
+            ),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n",
+    );
+    repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
+        .unwrap();
+    // The latest entry of the shared changelog belongs to `support`, but it has
+    // the version that `consumer` is about to release.
+    fs_err::write(
+        repo.directory().join("CHANGELOG.md"),
+        "# Changelog\n\n## [Unreleased]\n\n## [1.0.1] - 2026-01-01\n\n- release support\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("chore: release").unwrap();
+    for tag in ["support-v1.0.1", "consumer-v1.0.0"] {
+        repo.git(&["tag", tag]).unwrap();
+    }
+    change_package(&repo, "support", "fix: update support");
+    change_package(&repo, "consumer", "fix: update consumer");
+
+    let summary = run_workspace_update(&temp_dir, &repo, None);
+
+    assert!(summary.contains("`consumer`: 1.0.0 -> 1.0.1"), "{summary}");
+    let changelog = fs_err::read_to_string(repo.directory().join("CHANGELOG.md")).unwrap();
+    for entry in ["update support", "update consumer", "release support"] {
+        assert!(changelog.contains(entry), "{changelog}");
+    }
+}
+
+#[test]
 fn dependency_updates_propagate_through_the_shared_workspace_version() {
     for (release_commits, breaking_sibling, release_sibling) in [
         ("", false, true),
