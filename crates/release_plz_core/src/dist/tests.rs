@@ -138,10 +138,7 @@ fn release_notes_preserve_existing_changelog() {
     let mut manifest = receipt(0, 1).manifest;
     manifest.announcement_github_body =
         Some("## Release Notes\n\nDuplicate changelog.\n\n## Download app\n".into());
-    manifest.extra.insert(
-        "announcement_changelog".into(),
-        json!("Duplicate changelog."),
-    );
+    manifest.announcement_changelog = Some("Duplicate changelog.".into());
     assert_eq!(manifest.installation_notes().unwrap(), "## Download app\n");
 }
 

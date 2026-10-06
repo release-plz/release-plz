@@ -357,8 +357,13 @@ struct Manifest {
     dist_version: String,
     announcement_tag: String,
     announcement_github_body: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    announcement_changelog: Option<String>,
     releases: Vec<ManifestRelease>,
     artifacts: BTreeMap<String, Artifact>,
+    /// Local paths cargo-dist would upload itself; dropped from receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    upload_files: Option<Value>,
     #[serde(flatten)]
     extra: BTreeMap<String, Value>,
 }
@@ -378,11 +383,7 @@ impl Manifest {
             .context("cargo-dist did not generate release notes")?;
         // Release-plz owns the changelog. Strip only cargo-dist's known changelog
         // prefix; retain its generated installer instructions and download table.
-        if let Some(changelog) = self
-            .extra
-            .get("announcement_changelog")
-            .and_then(Value::as_str)
-        {
+        if let Some(changelog) = &self.announcement_changelog {
             body.strip_prefix(&format!("## Release Notes\n\n{changelog}\n\n"))
                 .context("unexpected cargo-dist release notes format")
         } else {
@@ -412,7 +413,7 @@ impl Manifest {
         for artifact in self.artifacts.values_mut() {
             artifact.path = None;
         }
-        self.extra.remove("upload_files");
+        self.upload_files = None;
     }
 }
 
