@@ -95,21 +95,16 @@ pub async fn commit_author_username(
         );
     }
 
-    let project = response
-        .data
-        .and_then(|data| data.project)
-        .with_context(|| {
-            format!(
-                "GitLab project `{full_path}` not found. Make sure the token has access to the project."
-            )
-        })?;
-
-    let repository = project.repository.with_context(|| {
-        format!(
+    let Some(project) = response.data.and_then(|data| data.project) else {
+        anyhow::bail!(
+            "GitLab project `{full_path}` not found. Make sure the token has access to the project."
+        );
+    };
+    let Some(repository) = project.repository else {
+        anyhow::bail!(
             "can't read the repository of GitLab project `{full_path}`. Make sure the token has permission to read the repository."
-        )
-    })?;
-
+        );
+    };
     let Some(commit_info) = repository.commit else {
         debug!("Commit {commit} not found in the remote repository");
         return Ok(None);
