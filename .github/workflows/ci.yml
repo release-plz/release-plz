@@ -29,10 +29,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install cargo-semver-checks
+      - name: Install test tools
         uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
-          tool: cargo-semver-checks@0.50
+          tool: cargo-semver-checks@0.50,cargo-dist@0.33.0
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
@@ -40,6 +40,8 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
       - name: Run tests
         run: cargo test --all-features --workspace
+      - name: Test cargo-dist integration
+        run: cargo test --locked -p release_plz_core --all-features --lib 'dist::' -- --ignored
 
   test-no-docker:
     name: Test Suite (no Docker)
