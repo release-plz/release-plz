@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::{ForgeType, GitClient, Project, ReleaseRequest};
 use cargo_dist::CargoDist;
-use github::{Asset, Release};
+use github::{Asset, GitHubRelease};
 
 /// A distribution is always tied to one package, tag and checked-out commit.
 #[derive(Debug)]
@@ -184,7 +184,7 @@ impl DistRequest {
             !notes.trim().is_empty(),
             "cargo-dist generated empty release notes"
         );
-        let body = release_body(release.body.as_deref().unwrap_or_default(), notes);
+        let body = body_with_installation_notes(release.body.as_deref().unwrap_or_default(), notes);
         manifest.clear_paths();
         self.client
             .dist_upload(
@@ -217,7 +217,7 @@ impl DistRequest {
         )
     }
 
-    async fn draft_release(&self) -> anyhow::Result<Release> {
+    async fn draft_release(&self) -> anyhow::Result<GitHubRelease> {
         let release = self.client.dist_release(&self.tag).await?;
         ensure!(release.draft, "release `{}` is already published", self.tag);
         Ok(release)
@@ -226,7 +226,7 @@ impl DistRequest {
     async fn upload_manifest_artifacts(
         &self,
         cargo_dist: &CargoDist,
-        release: &Release,
+        release: &GitHubRelease,
         existing: &[Asset],
         manifest: &Manifest,
     ) -> anyhow::Result<Vec<Asset>> {
@@ -504,7 +504,7 @@ fn validate_receipts(
     Ok(targets.into_iter().collect())
 }
 
-fn release_body(changelog: &str, notes: &str) -> String {
+fn body_with_installation_notes(changelog: &str, notes: &str) -> String {
     format!(
         "{}\n\n<!-- release-plz-dist -->\n{}\n<!-- /release-plz-dist -->\n",
         changelog.trim_end(),

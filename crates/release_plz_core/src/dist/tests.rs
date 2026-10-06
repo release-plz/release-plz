@@ -132,7 +132,8 @@ fn receipts_cannot_omit_artifacts_or_reuse_matrix_slots() {
 
 #[test]
 fn release_notes_preserve_existing_changelog() {
-    let body = release_body("## Fixes\n\nFixed things.\n", "## Downloads\n\nA link.\n");
+    let body =
+        body_with_installation_notes("## Fixes\n\nFixed things.\n", "## Downloads\n\nA link.\n");
     assert!(body.starts_with("## Fixes\n\nFixed things.\n\n"));
     assert!(body.contains("## Downloads\n\nA link."));
     let mut manifest = receipt(0, 1).manifest;
@@ -194,7 +195,7 @@ async fn publishing_respects_draft_and_latest_without_touching_prerelease() {
             .expect(1)
             .mount(&server)
             .await;
-        let release = Release {
+        let release = GitHubRelease {
             id: 1,
             tag_name: "v1.0.0".into(),
             draft: true,

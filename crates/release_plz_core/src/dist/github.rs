@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::{ForgeType, GitClient, response_ext::ResponseExt as _};
 
 #[derive(Debug, Deserialize)]
-pub(super) struct Release {
+pub(super) struct GitHubRelease {
     pub id: u64,
     pub tag_name: String,
     pub draft: bool,
@@ -61,16 +61,16 @@ impl GitClient {
         Ok(items)
     }
 
-    pub(super) async fn dist_release(&self, tag: &str) -> anyhow::Result<Release> {
+    pub(super) async fn dist_release(&self, tag: &str) -> anyhow::Result<GitHubRelease> {
         // The by-tag endpoint only returns published releases. List releases to find drafts.
-        self.dist_pages::<Release>("releases")
+        self.dist_pages::<GitHubRelease>("releases")
             .await?
             .into_iter()
             .find(|release| release.tag_name == tag)
             .with_context(|| format!("GitHub release for tag `{tag}` not found"))
     }
 
-    pub(super) async fn dist_assets(&self, release: &Release) -> anyhow::Result<Vec<Asset>> {
+    pub(super) async fn dist_assets(&self, release: &GitHubRelease) -> anyhow::Result<Vec<Asset>> {
         self.dist_pages(&format!("releases/{}/assets", release.id))
             .await
     }
@@ -92,7 +92,7 @@ impl GitClient {
     /// Upload `bytes` as `name`, replacing any same-named asset among `existing`.
     pub(super) async fn dist_upload(
         &self,
-        release: &Release,
+        release: &GitHubRelease,
         existing: &[Asset],
         name: &str,
         bytes: Vec<u8>,
@@ -129,7 +129,7 @@ impl GitClient {
 
     pub(super) async fn dist_publish(
         &self,
-        release: &Release,
+        release: &GitHubRelease,
         body: &str,
         draft: bool,
         latest: Option<bool>,
