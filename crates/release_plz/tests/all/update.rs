@@ -135,64 +135,93 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
 
 #[test]
 fn dependency_updates_preserve_shared_changelog_entries_and_previous_versions() {
-    for custom_template in [false, true] {
-        for (commit, support_version) in [
-            ("fix: update support", "1.0.1"),
-            ("feat: update support", "1.1.0"),
-        ] {
-            let changelog_config = if custom_template {
-                r#"
+    // Both packages are released as 1.0.1, the version of the entry that support
+    // has just added to the shared changelog.
+    update_shared_changelog(
+        "fix: update support",
+        "",
+        &[
+            "/compare/support-v1.0.0...support-v1.0.1",
+            "/compare/consumer-v1.0.0...consumer-v1.0.1",
+        ],
+    );
+}
+
+#[test]
+fn dependency_updates_preserve_shared_changelog_previous_versions_when_versions_differ() {
+    update_shared_changelog(
+        "feat: update support",
+        "",
+        &[
+            "/compare/support-v1.0.0...support-v1.1.0",
+            "/compare/consumer-v1.0.0...consumer-v1.0.1",
+        ],
+    );
+}
+
+#[test]
+fn dependency_updates_pass_previous_versions_to_shared_changelog_template() {
+    update_shared_changelog(
+        "fix: update support",
+        PREVIOUS_VERSION_CHANGELOG_CONFIG,
+        &[
+            "## [1.0.1] support previous=1.0.0",
+            "## [1.0.1] consumer previous=1.0.0",
+        ],
+    );
+}
+
+#[test]
+fn dependency_updates_pass_previous_versions_to_shared_changelog_template_when_versions_differ() {
+    update_shared_changelog(
+        "feat: update support",
+        PREVIOUS_VERSION_CHANGELOG_CONFIG,
+        &[
+            "## [1.1.0] support previous=1.0.0",
+            "## [1.0.1] consumer previous=1.0.0",
+        ],
+    );
+}
+
+/// Renders the package name and its previous version in each release header.
+const PREVIOUS_VERSION_CHANGELOG_CONFIG: &str = r#"
 [changelog]
 body = """
 ## [{{ version }}] {{ package }} previous={{ previous.version | default(value="none") }}
 {% for commit in commits %}- {{ commit.message }}
 {% endfor %}
 """
-"#
-            } else {
-                ""
-            };
-            let (temp_dir, repo) = released_workspace(
-                &[
-                    ("support", "version = \"1.0.0\"\n"),
-                    (
-                        "consumer",
-                        "version = \"1.0.0\"\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
-                    ),
-                ],
-                "",
-                &format!(
-                    "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n{changelog_config}"
-                ),
-            );
-            change_package(&repo, "support", commit);
+"#;
 
-            run_workspace_update(&temp_dir, &repo, None);
+/// Releases `support` with `support_commit` and its dependent `consumer`, which
+/// share a changelog, and checks that the changelog keeps the entries of both
+/// packages and contains every `expected` line.
+fn update_shared_changelog(support_commit: &str, changelog_config: &str, expected: &[&str]) {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+        ],
+        "",
+        &format!(
+            "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n{changelog_config}"
+        ),
+    );
+    change_package(&repo, "support", support_commit);
 
-            let changelog = fs_err::read_to_string(repo.directory().join("CHANGELOG.md")).unwrap();
-            assert!(changelog.contains("update support"), "{changelog}");
-            assert!(
-                changelog.contains("updated the following local packages: support"),
-                "{changelog}"
-            );
-            if custom_template {
-                assert!(
-                    changelog.contains(&format!("## [{support_version}] support previous=1.0.0")),
-                    "{changelog}"
-                );
-                assert!(
-                    changelog.contains("## [1.0.1] consumer previous=1.0.0"),
-                    "{changelog}"
-                );
-            } else {
-                for (name, version) in [("support", support_version), ("consumer", "1.0.1")] {
-                    assert!(
-                        changelog.contains(&format!("/compare/{name}-v1.0.0...{name}-v{version}")),
-                        "{changelog}"
-                    );
-                }
-            }
-        }
+    run_workspace_update(&temp_dir, &repo, None);
+
+    let changelog = fs_err::read_to_string(repo.directory().join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("update support"), "{changelog}");
+    assert!(
+        changelog.contains("updated the following local packages: support"),
+        "{changelog}"
+    );
+    for line in expected {
+        assert!(changelog.contains(line), "{line}: {changelog}");
     }
 }
 
@@ -231,13 +260,51 @@ fn shared_changelog_keeps_entry_matching_another_package_release() {
 
 #[test]
 fn dependency_updates_propagate_through_the_shared_workspace_version() {
-    for (release_commits, breaking_sibling, release_sibling) in [
-        ("", false, true),
-        ("release_commits = \"^feat:\"\n", false, true),
-        ("release_commits = \"^feat:\"\n", true, true),
-        ("", false, false),
-    ] {
-        let packages = [
+    update_through_shared_workspace_version("", None, "1.0.1", true);
+}
+
+#[test]
+fn dependency_updates_propagate_through_a_release_commits_filtered_sibling() {
+    update_through_shared_workspace_version("release_commits = \"^feat:\"\n", None, "1.0.1", false);
+}
+
+#[test]
+fn dependency_updates_propagate_through_a_breaking_filtered_sibling() {
+    // A filtered breaking change still determines the shared version once
+    // the consumer needs a dependency-only release.
+    let (_temp_dir, repo) = update_through_shared_workspace_version(
+        "release_commits = \"^feat:\"\n",
+        Some("fix!: update sibling"),
+        "2.0.0",
+        false,
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(!changelog.contains("## [1.0.1]"), "{changelog}");
+}
+
+#[test]
+fn dependency_updates_propagate_through_a_release_disabled_sibling() {
+    update_through_shared_workspace_version(
+        "[[package]]\nname = \"sibling\"\nrelease = false\n",
+        None,
+        "1.0.1",
+        false,
+    );
+}
+
+/// Updates a workspace after a `feat:` commit to `support` and, if given,
+/// `sibling_commit` to `sibling`. `consumer` depends on `support` and shares the
+/// workspace version with `sibling`, which `downstream` depends on, so the
+/// release of `support` must reach `downstream` even when `release_sibling` is
+/// false.
+fn update_through_shared_workspace_version(
+    release_plz_toml: &str,
+    sibling_commit: Option<&str>,
+    shared_version: &str,
+    release_sibling: bool,
+) -> (Utf8TempDir, Repo) {
+    let (temp_dir, repo) = released_workspace(
+        &[
             ("support", "version = \"1.0.0\"\n"),
             (
                 "consumer",
@@ -248,113 +315,117 @@ fn dependency_updates_propagate_through_the_shared_workspace_version() {
                 "downstream",
                 "version = \"1.0.0\"\n[dependencies]\nsibling = { path = \"../sibling\", version = \"=1.0.0\" }\n",
             ),
-        ];
-        let sibling_config = if release_sibling {
-            ""
-        } else {
-            "\n[[package]]\nname = \"sibling\"\nrelease = false\n"
-        };
-        let (temp_dir, repo) = released_workspace(
-            &packages,
-            "\n[workspace.package]\nversion = \"1.0.0\"\n",
-            &format!("[workspace]\nsemver_check = false\n{release_commits}{sibling_config}"),
-        );
-        change_package(&repo, "support", "feat: update support");
-        if breaking_sibling {
-            change_package(&repo, "sibling", "fix!: update sibling");
-        }
-
-        let summary = run_workspace_update(&temp_dir, &repo, None);
-
-        // A filtered breaking change still determines the shared version once
-        // the consumer needs a dependency-only release.
-        let shared_version = if breaking_sibling { "2.0.0" } else { "1.0.1" };
-        assert_locked_versions(
-            repo.directory(),
-            &[
-                ("support", "1.1.0"),
-                ("consumer", shared_version),
-                ("sibling", shared_version),
-                ("downstream", "1.0.1"),
-            ],
-        );
-        for name in ["consumer", "sibling", "downstream"] {
-            let changelog_path = repo.directory().join(name).join("CHANGELOG.md");
-            if name == "sibling" && (!release_commits.is_empty() || !release_sibling) {
-                // Filtering skips this sibling's release, but its inherited
-                // version still changes and must propagate to downstream.
-                assert!(!changelog_path.exists());
-                assert!(!summary.contains("`sibling`"), "{summary}");
-            } else {
-                let next_version = if name == "downstream" {
-                    "1.0.1"
-                } else {
-                    shared_version
-                };
-                let changelog = fs_err::read_to_string(changelog_path).unwrap();
-                assert!(
-                    changelog.contains(&format!("## [{next_version}]")),
-                    "{name}: {changelog}"
-                );
-                if next_version == "2.0.0" {
-                    assert!(!changelog.contains("## [1.0.1]"), "{changelog}");
-                }
-                assert!(
-                    summary.contains(&format!("`{name}`: 1.0.0 -> {next_version}")),
-                    "{summary}"
-                );
-            }
-        }
+        ],
+        "\n[workspace.package]\nversion = \"1.0.0\"\n",
+        &format!("[workspace]\nsemver_check = false\n{release_plz_toml}"),
+    );
+    change_package(&repo, "support", "feat: update support");
+    if let Some(commit_message) = sibling_commit {
+        change_package(&repo, "sibling", commit_message);
     }
+
+    let summary = run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            ("support", "1.1.0"),
+            ("consumer", shared_version),
+            ("sibling", shared_version),
+            ("downstream", "1.0.1"),
+        ],
+    );
+    let mut released = vec![("consumer", shared_version), ("downstream", "1.0.1")];
+    if release_sibling {
+        released.push(("sibling", shared_version));
+    } else {
+        // Skipping the sibling's release doesn't stop its inherited version from
+        // changing, which must still propagate to downstream.
+        assert!(!repo.directory().join("sibling/CHANGELOG.md").exists());
+        assert!(!summary.contains("`sibling`"), "{summary}");
+    }
+    for (name, version) in released {
+        let changelog =
+            fs_err::read_to_string(repo.directory().join(name).join("CHANGELOG.md")).unwrap();
+        assert!(
+            changelog.contains(&format!("## [{version}]")),
+            "{name}: {changelog}"
+        );
+        assert!(
+            summary.contains(&format!("`{name}`: 1.0.0 -> {version}")),
+            "{summary}"
+        );
+    }
+    (temp_dir, repo)
 }
 
 #[test]
-fn dependency_updates_respect_prerelease_and_pre_bumped_workspace_versions() {
-    for (published_version, current_version, next_version, release_commits) in [
-        ("1.0.0-alpha.1", "1.0.0-alpha.1", "1.0.0-alpha.2", ""),
-        ("1.0.0", "1.1.0", "1.1.0", ""),
-        ("1.0.0", "1.1.0", "1.1.0", "release_commits = \"^feat:\"\n"),
-    ] {
-        let (temp_dir, repo) = released_workspace(
-            &[
-                ("support", "version = \"1.0.0\"\n"),
-                (
-                    "consumer",
-                    "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
-                ),
-            ],
-            &format!("\n[workspace.package]\nversion = \"{published_version}\"\n"),
-            &format!("[workspace]\nsemver_check = false\n{release_commits}"),
-        );
-        if published_version != current_version {
-            let path = repo.directory().join("Cargo.toml");
-            let manifest = fs_err::read_to_string(&path).unwrap();
-            fs_err::write(path, manifest.replace(published_version, current_version)).unwrap();
-            generate_lockfile(repo.directory());
-            repo.add_all_and_commit("chore: bump workspace version")
-                .unwrap();
-        }
-        change_package(&repo, "support", "feat: update support");
+fn dependency_updates_respect_prerelease_workspace_versions() {
+    update_workspace_version_consumer("", "1.0.0-alpha.1", None, "1.0.0-alpha.2");
+}
 
-        let summary = run_workspace_update(&temp_dir, &repo, None);
+#[test]
+fn dependency_updates_respect_pre_bumped_workspace_versions() {
+    update_workspace_version_consumer("", "1.0.0", Some("1.1.0"), "1.1.0");
+}
 
-        assert_locked_versions(
-            repo.directory(),
-            &[("consumer", next_version), ("support", "1.1.0")],
-        );
-        assert!(
-            summary.contains(&format!(
-                "`consumer`: {published_version} -> {next_version}"
-            )),
-            "{summary}"
-        );
-        let changelog =
-            fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
-        assert!(
-            changelog.contains(&format!("## [{next_version}]")),
-            "{changelog}"
-        );
+#[test]
+fn dependency_updates_respect_pre_bumped_workspace_versions_with_release_commits_filter() {
+    update_workspace_version_consumer(
+        "release_commits = \"^feat:\"\n",
+        "1.0.0",
+        Some("1.1.0"),
+        "1.1.0",
+    );
+}
+
+/// Releases `support` in a workspace published at `published_version`, whose
+/// `consumer` depends on `support` and inherits the workspace version, which is
+/// manually set to `bumped_version` after the release, if any.
+fn update_workspace_version_consumer(
+    release_plz_toml: &str,
+    published_version: &str,
+    bumped_version: Option<&str>,
+    next_version: &str,
+) {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+        ],
+        &format!("\n[workspace.package]\nversion = \"{published_version}\"\n"),
+        &format!("[workspace]\nsemver_check = false\n{release_plz_toml}"),
+    );
+    if let Some(bumped_version) = bumped_version {
+        let path = repo.directory().join("Cargo.toml");
+        let manifest = fs_err::read_to_string(&path).unwrap();
+        fs_err::write(path, manifest.replace(published_version, bumped_version)).unwrap();
+        generate_lockfile(repo.directory());
+        repo.add_all_and_commit("chore: bump workspace version")
+            .unwrap();
     }
+    change_package(&repo, "support", "feat: update support");
+
+    let summary = run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(
+        repo.directory(),
+        &[("consumer", next_version), ("support", "1.1.0")],
+    );
+    assert!(
+        summary.contains(&format!(
+            "`consumer`: {published_version} -> {next_version}"
+        )),
+        "{summary}"
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        changelog.contains(&format!("## [{next_version}]")),
+        "{changelog}"
+    );
 }
 
 /// Creates a workspace at `1.0.0` whose packages are already tagged as released
