@@ -461,6 +461,7 @@ fn commit_parser(regex: &str, group: &str) -> CommitParser {
         default_scope: None,
         scope: None,
         skip: None,
+        r#continue: None,
         field: None,
         pattern: None,
         sha: None,

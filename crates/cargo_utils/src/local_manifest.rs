@@ -213,9 +213,9 @@ impl LocalManifest {
         if matches!(status, FeatureStatus::None | FeatureStatus::DepFeature)
             && let toml_edit::Item::Table(feature_table) = &mut self.data.as_table_mut()["features"]
         {
-            for (_feature, mut activated_crates) in feature_table.iter_mut() {
+            for (_feature, activated_crates) in feature_table.iter_mut() {
                 if let toml_edit::Item::Value(toml_edit::Value::Array(feature_activations)) =
-                    &mut activated_crates
+                    activated_crates
                 {
                     remove_feature_activation(feature_activations, dep_key, status);
                 }

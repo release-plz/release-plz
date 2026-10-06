@@ -16,7 +16,12 @@ If you are using release-plz to release important projects, make sure to check t
 [`release_always`](#the-release_always-field) field.
 :::
 
-Put your `release-plz.toml` (or `.release-plz.toml`) file in the same directory of your root `Cargo.toml`.
+Release-plz looks for the configuration file in the directory where you run it,
+checking these paths in order and using the first one that exists:
+
+1. `release-plz.toml`
+2. `.release-plz.toml`
+3. `.config/release-plz.toml`
 
 ## Example
 
@@ -1189,6 +1194,11 @@ Postprocessors use the same syntax as commit preprocessors, so check the section
 
 An array of parsers allowing to group and skip commits.
 
+Parsers are evaluated in order. By default, processing stops at the first matching parser.
+Set `continue = true` on a parser to apply subsequent parsers to the same commit.
+Later matching parsers can override fields set by earlier parsers; fields they don't set are preserved.
+Omitting `continue` or setting it to `false` keeps the default behavior.
+
 Default:
 
 ```toml
@@ -1227,6 +1237,22 @@ Here are some examples of parsers:
     E.g. `docs: xyz` will be processed as `docs(other): xyz`.
 - `{ sha = "f6f2472bdf0bbb5f9fcaf2d72c1fa9f98f772bb2", skip = true }`
   - Skip a specific commit by using its SHA1.
+
+For example, set a scope from a commit footer, then assign a group from the commit message:
+
+```toml
+[changelog]
+commit_parsers = [
+    { footer = "^Component: ?Billing$", scope = "billing", continue = true },
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Fixes" },
+]
+```
+
+A `feat: add invoices` commit with a `Component: Billing` footer gets the `billing` scope
+and the `Features` group. A parser with `skip = true` still skips a matching commit even if
+`continue = true`, unless
+[`protect_breaking_commits`](#the-protect_breaking_commits-field) protects it.
 
 #### The `link_parsers` field
 
