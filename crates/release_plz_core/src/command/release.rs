@@ -235,10 +235,9 @@ impl ReleaseRequest {
                     package.name
                 );
             };
-            // RepoUrl maps Enterprise Server repositories to /api/v3. The pinned
-            // cargo-dist only understands github.com repository URLs.
+            // The pinned cargo-dist only understands github.com repository URLs.
             anyhow::ensure!(
-                github.remote.base_url.path().trim_end_matches('/') != "/api/v3",
+                !github.is_enterprise(),
                 "Package `{}`: `distribute` requires GitHub.com; cargo-dist does not support GitHub Enterprise Server",
                 package.name
             );
@@ -1643,15 +1642,13 @@ mod tests {
         request.metadata =
             cargo_utils::get_manifest_metadata(&repo.directory().join("Cargo.toml")).unwrap();
         repo.add_all_and_commit("add binary").unwrap();
+        // Send any unexpected API calls to the mock.
         let github = crate::GitHub::from_repo_url(
             crate::RepoUrl::new("https://github.example.com/owner/repo").unwrap(),
             SecretString::from("token"),
         )
-        .unwrap();
-        // Keep the Enterprise API path while sending any unexpected API calls to the mock.
-        let mut api_url: Url = server.uri().parse().unwrap();
-        api_url.set_path(github.remote.base_url.path());
-        let github = github.with_base_url(api_url);
+        .unwrap()
+        .with_base_url(server.uri().parse().unwrap());
         request = request.with_git_release(GitRelease {
             forge: GitForge::Github(github),
         });
