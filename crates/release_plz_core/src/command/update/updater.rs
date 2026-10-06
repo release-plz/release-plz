@@ -470,12 +470,8 @@ impl Updater<'_> {
                 ) else {
                     continue;
                 };
-                let update = if !deps.is_empty() {
+                let (change, version) = if !deps.is_empty() {
                     let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
-                    let change = format!(
-                        "chore: updated the following local packages: {}",
-                        deps.join(", ")
-                    );
                     let next_version = if !diff.is_version_published {
                         p.version.clone()
                     } else if p.version.is_prerelease() {
@@ -483,37 +479,35 @@ impl Updater<'_> {
                     } else {
                         p.version.increment_patch()
                     };
-                    PlannedUpdate {
-                        package: p,
-                        diff: Diff {
-                            commits: vec![Commit::new(NO_COMMIT_ID.to_string(), change)],
-                            semver_check: SemverCheck::Skipped,
-                            ..(*diff).clone()
-                        },
-                        version: next_version.max(
-                            inherited_version
-                                .cloned()
-                                .unwrap_or_else(|| p.version.clone()),
+                    (
+                        format!(
+                            "chore: updated the following local packages: {}",
+                            deps.join(", ")
                         ),
-                    }
+                        inherited_version
+                            .map_or(next_version.clone(), |v| next_version.max(v.clone())),
+                    )
                 } else if let Some(version) = inherited_version
                     && version != &p.version
                     && !filtered_packages.contains(p.name.as_str())
                 {
-                    let mut diff = (*diff).clone();
-                    if diff.commits.is_empty() {
-                        diff.commits.push(Commit::new(
-                            NO_COMMIT_ID.to_string(),
-                            "chore: updated workspace version".to_string(),
-                        ));
-                    }
-                    PlannedUpdate {
-                        package: p,
-                        diff,
-                        version: version.clone(),
-                    }
+                    // Unfiltered packages with commits are always planned already,
+                    // so this package has no commits to keep.
+                    (
+                        "chore: updated workspace version".to_string(),
+                        version.clone(),
+                    )
                 } else {
                     continue;
+                };
+                let update = PlannedUpdate {
+                    package: p,
+                    diff: Diff {
+                        commits: vec![Commit::new(NO_COMMIT_ID.to_string(), change)],
+                        semver_check: SemverCheck::Skipped,
+                        ..(*diff).clone()
+                    },
+                    version,
                 };
                 if let Some((_, version)) = changed_packages
                     .iter_mut()
