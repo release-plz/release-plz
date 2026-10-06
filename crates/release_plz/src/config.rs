@@ -307,6 +307,7 @@ pub struct PackageSpecificConfig {
     version_group: Option<String>,
     /// # Distribute
     /// Build binaries with cargo-dist and publish them through a draft GitHub release.
+    /// Defaults to `false`. Only available in `[[package]]`; it is not inherited from `[workspace]`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     distribute: bool,
 }

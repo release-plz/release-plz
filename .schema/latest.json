@@ -322,7 +322,7 @@
         },
         "distribute": {
           "title": "Distribute",
-          "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.",
+          "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.\nDefaults to `false`. Only available in `[[package]]`; it is not inherited from `[workspace]`.",
           "type": "boolean"
         },
         "features_always_increment_minor": {
