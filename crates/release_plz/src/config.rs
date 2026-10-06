@@ -137,10 +137,7 @@ impl Config {
             if allow_dirty {
                 release_config.common.publish_allow_dirty = Some(true);
             }
-            let distribute = release_config.distribute;
-            let release_config = release_plz_core::ReleaseConfig::from(release_config.common)
-                .with_distribute(distribute);
-            release_request = release_request.with_package_config(package, release_config);
+            release_request = release_request.with_package_config(package, release_config.into());
         }
         Ok(release_request)
     }
@@ -508,6 +505,12 @@ impl From<PackageSpecificConfig> for release_plz_core::PackageUpdateConfig {
             changelog_include: config.changelog_include.unwrap_or_default(),
             version_group: config.version_group,
         }
+    }
+}
+
+impl From<PackageSpecificConfig> for release_plz_core::ReleaseConfig {
+    fn from(config: PackageSpecificConfig) -> Self {
+        Self::from(config.common).with_distribute(config.distribute)
     }
 }
 
