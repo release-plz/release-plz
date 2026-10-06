@@ -134,6 +134,74 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
 }
 
 #[test]
+fn dependency_updates_preserve_shared_changelog_entries_and_previous_versions() {
+    for custom_template in [false, true] {
+        for (commit, support_version) in [
+            ("fix: update support", "1.0.1"),
+            ("feat: update support", "1.1.0"),
+        ] {
+            let changelog_config = if custom_template {
+                r#"
+[changelog]
+body = """
+## [{{ version }}] {{ package }} previous={{ previous.version | default(value="none") }}
+{% for commit in commits %}- {{ commit.message }}
+{% endfor %}
+"""
+"#
+            } else {
+                ""
+            };
+            let (temp_dir, repo) = init_workspace(
+                &[
+                    ("support", "version = \"1.0.0\"\n"),
+                    (
+                        "consumer",
+                        "version = \"1.0.0\"\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+                    ),
+                ],
+                "",
+                &format!(
+                    "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n{changelog_config}"
+                ),
+            );
+            repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
+                .unwrap();
+            for name in ["support", "consumer"] {
+                repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
+            }
+            change_package(&repo, "support", commit);
+
+            run_workspace_update(&temp_dir, &repo, None);
+
+            let changelog = fs_err::read_to_string(repo.directory().join("CHANGELOG.md")).unwrap();
+            assert!(changelog.contains("update support"), "{changelog}");
+            assert!(
+                changelog.contains("updated the following local packages: support"),
+                "{changelog}"
+            );
+            if custom_template {
+                assert!(
+                    changelog.contains(&format!("## [{support_version}] support previous=1.0.0")),
+                    "{changelog}"
+                );
+                assert!(
+                    changelog.contains("## [1.0.1] consumer previous=1.0.0"),
+                    "{changelog}"
+                );
+            } else {
+                for (name, version) in [("support", support_version), ("consumer", "1.0.1")] {
+                    assert!(
+                        changelog.contains(&format!("/compare/{name}-v1.0.0...{name}-v{version}")),
+                        "{changelog}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn dependency_updates_propagate_through_the_shared_workspace_version() {
     for (release_commits, breaking_sibling, release_sibling) in [
         ("", false, true),

@@ -25,7 +25,7 @@ use crate::{
     RepoUrl, UpdateResult,
     changelog_filler::{fill_commit, get_required_info},
     changelog_parser,
-    command::update::changelog_update::OldChangelogs,
+    command::update::changelog_update::{OldChangelog, OldChangelogs},
     diff::{Commit, Diff},
     fs_utils, lock_compare,
     next_ver::takes_part_in_release,
@@ -538,17 +538,17 @@ impl Updater<'_> {
         old_changelogs: &mut OldChangelogs,
     ) -> Result<UpdateResult, anyhow::Error> {
         let changelog_path = self.req.changelog_path(p);
-        let old_changelog: Option<String> = old_changelogs.get_or_read(&changelog_path);
+        let old_changelog = old_changelogs.get_or_read(&changelog_path);
         let update_result = self.update_result(
             commits,
             next_version,
             p,
             semver_check,
             registry_version,
-            old_changelog.as_deref(),
+            old_changelog,
         )?;
         if let Some(changelog) = &update_result.changelog {
-            old_changelogs.insert(changelog_path, changelog.clone());
+            old_changelog.update(changelog.clone());
         }
         Ok(update_result)
     }
@@ -562,7 +562,7 @@ impl Updater<'_> {
         package: &Package,
         semver_check: SemverCheck,
         registry_version: Option<Version>,
-        old_changelog: Option<&str>,
+        old_changelog: &OldChangelog,
     ) -> anyhow::Result<UpdateResult> {
         let repo_url = self.req.repo_url();
         let release_link = {
@@ -1057,7 +1057,7 @@ fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
     changelog_req: Option<ChangelogRequest>,
-    old_changelog: Option<&str>,
+    old_changelog: &OldChangelog,
     repo: Option<ChangelogRepo<'_>>,
     release_link: Option<&str>,
     package: &Package,
@@ -1094,7 +1094,7 @@ fn get_changelog(
         }
         let is_package_published = next_version != &package.version;
 
-        let last_version = old_changelog.and_then(|old_changelog| {
+        let last_version = old_changelog.original().and_then(|old_changelog| {
             changelog_parser::last_version_from_str(old_changelog)
                 .ok()
                 .flatten()
@@ -1103,7 +1103,7 @@ fn get_changelog(
             let last_version = last_version.unwrap_or(package.version.to_string());
             changelog_builder = changelog_builder.with_previous_version(last_version);
         } else if let Some(last_version) = last_version
-            && let Some(old_changelog) = old_changelog
+            && let Some(old_changelog) = old_changelog.current()
             && last_version == next_version.to_string()
         {
             // If the next version is the same as the last version of the changelog,
@@ -1115,7 +1115,7 @@ fn get_changelog(
         }
     }
     let new_changelog = changelog_builder.build();
-    let changelog = match old_changelog {
+    let changelog = match old_changelog.current() {
         Some(old_changelog) => new_changelog.prepend(old_changelog)?,
         None => new_changelog.generate()?, // Old changelog doesn't exist.
     };
@@ -1269,16 +1269,31 @@ mod tests {
 ### other
 - complex update
 ";
-        let new = get_changelog(
-            &commits,
-            &next_version,
-            Some(changelog_req),
-            Some(old),
-            None,
-            None,
-            &fake_package::FakePackage::new("my_package").into(),
-        )
-        .unwrap();
-        assert_eq!(old, new.0);
+        let mut package: Package = fake_package::FakePackage::new("my_package").into();
+        // Check both normal and manually bumped versions, including when another
+        // package has already added its own entry to the shared changelog.
+        for package_version in [package.version.clone(), next_version.clone()] {
+            package.version = package_version;
+            for updated in [
+                None,
+                Some(format!("## [2.0.0]\n\n- another package\n\n{old}")),
+            ] {
+                let mut old_changelog = OldChangelog::new(Some(old.to_string()));
+                if let Some(updated) = updated {
+                    old_changelog.update(updated);
+                }
+                let new = get_changelog(
+                    &commits,
+                    &next_version,
+                    Some(changelog_req.clone()),
+                    &old_changelog,
+                    None,
+                    None,
+                    &package,
+                )
+                .unwrap();
+                assert_eq!(old_changelog.current().unwrap(), new.0);
+            }
+        }
     }
 }
