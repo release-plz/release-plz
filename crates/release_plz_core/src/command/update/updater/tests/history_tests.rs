@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     command::update::UpdateConfig,
-    test_utils::{generate_lockfile, write_package},
+    test_utils::{generate_lockfile, init_baseline_repo, write_package},
 };
 use cargo_utils::CARGO_TOML;
 
@@ -22,19 +22,8 @@ impl History {
         let dir = fs_utils::Utf8TempDir::new().unwrap();
         // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
         let root = fs_utils::canonicalize_utf8(dir.path()).unwrap();
-        let [repo, registry] = ["local", "registry"].map(|name| {
-            let path = root.join(name);
-            fs_err::create_dir(&path).unwrap();
-            let repo = Repo::init(path);
-            // Keep checked-out files byte-identical to the LF-only registry fixtures.
-            repo.git(&["config", "core.autocrlf", "false"]).unwrap();
-            write_packages(repo.directory());
-            fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
-            generate_lockfile(repo.directory());
-            repo.add_all_and_commit("chore: published baseline")
-                .unwrap();
-            repo
-        });
+        let [repo, registry] =
+            ["local", "registry"].map(|name| init_baseline_repo(&root.join(name), &write_packages));
         Self {
             repo,
             registry,
