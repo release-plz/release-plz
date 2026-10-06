@@ -283,6 +283,37 @@ async fn finds_drafts_beyond_first_page() {
 }
 
 #[tokio::test]
+async fn stops_paging_releases_once_the_tag_is_found() {
+    let server = MockServer::start().await;
+    let mut releases = vec![
+        json!({"id": 1, "tag_name": "old", "draft": false, "body": null, "upload_url": "https://uploads.github.com/unused"});
+        100
+    ];
+    releases[50]["id"] = json!(2);
+    releases[50]["tag_name"] = json!("v1.0.0");
+    releases[50]["draft"] = json!(true);
+    // A full page: a caller collecting every page would request page 2.
+    Mock::given(method("GET"))
+        .and(path("/repos/owner/repo/releases"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(releases))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/owner/repo/releases"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let release = client(&server).dist_release("v1.0.0").await.unwrap();
+    assert_eq!(release.id, 2);
+    assert!(release.draft);
+}
+
+#[tokio::test]
 async fn publishing_respects_draft_and_latest_without_touching_prerelease() {
     for (draft, latest, expected) in [
         (

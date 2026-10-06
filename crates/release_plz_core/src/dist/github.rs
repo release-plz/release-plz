@@ -22,6 +22,8 @@ pub(super) struct Asset {
     pub state: String,
 }
 
+const PAGE_SIZE: usize = 100;
+
 impl GitClient {
     /// Draft releases do not emit Actions release events. Dispatch explicitly instead.
     pub(crate) async fn dispatch_dist(&self, tag: &str) -> anyhow::Result<()> {
@@ -36,43 +38,54 @@ impl GitClient {
         Ok(())
     }
 
-    /// Collect every page of a list endpoint relative to the repository URL.
-    async fn dist_pages<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<Vec<T>> {
-        let mut items = vec![];
-        for page in 1.. {
-            let batch: Vec<T> = self
-                .client
-                .get(format!(
-                    "{}/{path}?per_page=100&page={page}",
-                    self.repo_url()
-                ))
-                .send()
-                .await?
-                .successful_status()
-                .await?
-                .json()
-                .await?;
-            let last = batch.len() < 100;
-            items.extend(batch);
-            if last {
-                break;
-            }
-        }
-        Ok(items)
+    /// One page of a list endpoint relative to the repository URL.
+    async fn dist_page<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        page: u32,
+    ) -> anyhow::Result<Vec<T>> {
+        Ok(self
+            .client
+            .get(format!(
+                "{}/{path}?per_page={PAGE_SIZE}&page={page}",
+                self.repo_url()
+            ))
+            .send()
+            .await?
+            .successful_status()
+            .await?
+            .json()
+            .await?)
     }
 
     pub(super) async fn dist_release(&self, tag: &str) -> anyhow::Result<GitHubRelease> {
         // The by-tag endpoint only returns published releases. List releases to find drafts.
-        self.dist_pages::<GitHubRelease>("releases")
-            .await?
-            .into_iter()
-            .find(|release| release.tag_name == tag)
-            .with_context(|| format!("GitHub release for tag `{tag}` not found"))
+        // A fresh draft is normally on the first page: stop as soon as the tag shows up.
+        for page in 1.. {
+            let releases: Vec<GitHubRelease> = self.dist_page("releases", page).await?;
+            let last = releases.len() < PAGE_SIZE;
+            if let Some(release) = releases.into_iter().find(|release| release.tag_name == tag) {
+                return Ok(release);
+            }
+            if last {
+                break;
+            }
+        }
+        anyhow::bail!("GitHub release for tag `{tag}` not found")
     }
 
     pub(super) async fn dist_assets(&self, release: &GitHubRelease) -> anyhow::Result<Vec<Asset>> {
-        self.dist_pages(&format!("releases/{}/assets", release.id))
-            .await
+        let path = format!("releases/{}/assets", release.id);
+        let mut assets = vec![];
+        for page in 1.. {
+            let batch: Vec<Asset> = self.dist_page(&path, page).await?;
+            let last = batch.len() < PAGE_SIZE;
+            assets.extend(batch);
+            if last {
+                break;
+            }
+        }
+        Ok(assets)
     }
 
     pub(super) async fn dist_download(&self, asset: &Asset) -> anyhow::Result<Vec<u8>> {
