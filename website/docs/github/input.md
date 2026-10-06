@@ -33,7 +33,7 @@ When the action runs `dist build` or `dist finalize`, it installs cargo-dist,
 checks out the tag from the distribution dispatch event, and passes the job
 matrix context to release-plz automatically.
 See [Releasing binaries](../extra/releasing-binaries.md) for the optional Cargo
-profile and required workflow. These commands require GitHub and `contents: write`.
+profile and required workflow. These commands require GitHub.com and `contents: write`.
 
 You can specify the input variables by using the `with` keyword.
 For example:
