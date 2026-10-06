@@ -147,15 +147,15 @@ impl History {
     }
 
     /// The objects reachable from HEAD that this clone does not have.
-    fn missing_objects(&self) -> String {
+    fn missing_objects(&self) -> Vec<String> {
         // `--missing` also stops Git from fetching them.
         self.repo
             .git(&["rev-list", "--objects", "--missing=print", "HEAD"])
             .unwrap()
             .lines()
             .filter_map(|line| line.strip_prefix('?'))
-            .collect::<Vec<_>>()
-            .join("\n")
+            .map(str::to_owned)
+            .collect()
     }
 
     /// Set both dates to control the commit's position in the date-ordered walk.
