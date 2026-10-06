@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, ensure};
+use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
 use release_plz_core::{
     GitClient, GitForge, GitHub, ReleaseRequest, RepoUrl,
     dist::{DistJob, DistRequest},
@@ -31,15 +32,15 @@ struct DistArgs {
     #[arg(long)]
     tag: Option<String>,
     /// Path to Cargo.toml.
-    #[arg(long)]
+    #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
     manifest_path: Option<PathBuf>,
     #[command(flatten)]
     config: ConfigPath,
     /// GitHub repository URL. Defaults to the origin remote.
-    #[arg(long)]
+    #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     repo_url: Option<String>,
     /// GitHub token with contents:write permission.
-    #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true)]
+    #[arg(long, value_parser = NonEmptyStringValueParser::new(), env = "GITHUB_TOKEN", hide_env_values = true)]
     git_token: String,
 }
 
@@ -55,7 +56,7 @@ impl Dist {
         let repository = distribution_repository(&repo_url)?;
         let client = GitClient::new(GitForge::Github(GitHub::from_repo_url(
             repo_url,
-            SecretString::from(args.git_token.clone()),
+            SecretString::from(args.git_token),
         )?))?;
         let request = config.fill_release_config(false, false, ReleaseRequest::new(metadata))?;
         let tag = match args.tag {
