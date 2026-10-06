@@ -12,7 +12,7 @@ use toml_edit::{DocumentMut, value};
 use super::Manifest;
 use crate::{Project, fs_utils, tmp_repo::TempRepo};
 
-pub const VERSION: &str = "0.33.0";
+pub(super) const VERSION: &str = "0.33.0";
 /// The cargo-dist executable name. `Command` resolves `dist.exe` on Windows.
 const EXECUTABLE: &str = "dist";
 
@@ -50,7 +50,9 @@ struct DistConfig<'a> {
 }
 
 impl CargoDist {
-    pub fn prepare(
+    /// Copy the repository to a temporary directory, mark only `package` for distribution in the
+    /// member manifests and write `dist-workspace.toml`.
+    pub(super) fn prepare(
         project: &Project,
         metadata: &Metadata,
         package: &Package,
@@ -115,7 +117,7 @@ impl CargoDist {
     }
 
     /// Run `dist build` for the prepared targets: local archives, or the global installers.
-    pub fn build(&self, global: bool) -> anyhow::Result<Manifest> {
+    pub(super) fn build(&self, global: bool) -> anyhow::Result<Manifest> {
         let mut cmd = Command::new(EXECUTABLE);
         cmd.current_dir(&self.root)
             .env("CARGO_TARGET_DIR", self.root.join("target"))
@@ -143,7 +145,7 @@ impl CargoDist {
         serde_json::from_slice(&output.stdout).context("invalid cargo-dist manifest")
     }
 
-    pub fn import_manifest(&self, index: usize, manifest: &Manifest) -> anyhow::Result<()> {
+    pub(super) fn import_manifest(&self, index: usize, manifest: &Manifest) -> anyhow::Result<()> {
         let dir = self.root.join("target/distrib");
         fs_err::create_dir_all(&dir)?;
         fs_err::write(
@@ -153,7 +155,7 @@ impl CargoDist {
         Ok(())
     }
 
-    pub fn artifact_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+    pub(super) fn artifact_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
         let path = fs_err::canonicalize(path)?;
         ensure!(
             path.starts_with(fs_err::canonicalize(&self.root)?),

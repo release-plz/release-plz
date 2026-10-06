@@ -420,6 +420,8 @@ impl Manifest {
     }
 
     fn validate(&self, tag: &str, package: &Package) -> anyhow::Result<()> {
+        const WRONG_RELEASE: &str =
+            "cargo-dist must select exactly the requested package and version";
         ensure!(
             self.dist_version == cargo_dist::VERSION,
             "unexpected cargo-dist version"
@@ -428,11 +430,13 @@ impl Manifest {
             self.announcement_tag == tag,
             "cargo-dist tag does not match release"
         );
+        let [release] = self.releases.as_slice() else {
+            anyhow::bail!(WRONG_RELEASE);
+        };
         ensure!(
-            self.releases.len() == 1
-                && self.releases[0].app_name == package.name.as_str()
-                && self.releases[0].app_version == package.version.to_string(),
-            "cargo-dist must select exactly the requested package and version"
+            release.app_name == package.name.as_str()
+                && release.app_version == package.version.to_string(),
+            WRONG_RELEASE
         );
         Ok(())
     }
@@ -532,7 +536,7 @@ fn validate_receipts(
     Ok(targets.into_iter().collect())
 }
 
-/// Delimits the installation notes appended to the release body.
+// The markers that delimit the installation notes added to the release body.
 const NOTES_START: &str = "<!-- release-plz-dist -->";
 const NOTES_END: &str = "<!-- /release-plz-dist -->";
 
