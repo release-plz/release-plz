@@ -181,11 +181,15 @@ fn check_executable(executable: &Path) -> anyhow::Result<()> {
         "failed to check cargo-dist version: {}",
         String::from_utf8_lossy(&output.stderr).trim()
     );
-    let version = String::from_utf8_lossy(&output.stdout);
+    ensure_version(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Check the output of `dist --version` against the pinned version.
+fn ensure_version(stdout: &str) -> anyhow::Result<()> {
     ensure!(
-        version.split_whitespace().last() == Some(VERSION),
+        stdout.split_whitespace().last() == Some(VERSION),
         "cargo-dist {VERSION} is required; found `{}`",
-        version.trim()
+        stdout.trim()
     );
     Ok(())
 }
@@ -218,6 +222,16 @@ mod tests {
         );
         assert!(error.to_string().contains("PATH"));
         assert!(fs_err::read_dir(temporary.path()).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn version_mismatch_reports_required_and_found_versions() {
+        ensure_version("cargo-dist 0.33.0\n").unwrap();
+        let error = ensure_version("cargo-dist 0.32.0\n")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("cargo-dist 0.33.0 is required"), "{error}");
+        assert!(error.contains("found `cargo-dist 0.32.0`"), "{error}");
     }
 
     #[test]
