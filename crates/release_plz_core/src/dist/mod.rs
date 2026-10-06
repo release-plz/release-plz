@@ -29,6 +29,7 @@ pub struct DistRequest {
     commit: String,
     client: GitClient,
     repository: String,
+    draft: bool,
     latest: Option<bool>,
 }
 
@@ -81,10 +82,8 @@ impl DistRequest {
             commit.trim() == tagged_commit.trim(),
             "HEAD must match release tag `{tag}`"
         );
-        let latest = config
-            .get_package_config(&package.name)
-            .git_release()
-            .latest();
+        let package_config = config.get_package_config(&package.name);
+        let git_release = package_config.git_release();
         Ok(Self {
             metadata,
             package,
@@ -93,7 +92,8 @@ impl DistRequest {
             commit,
             client,
             repository,
-            latest,
+            draft: git_release.draft(),
+            latest: git_release.latest(),
         })
     }
 
@@ -204,8 +204,14 @@ impl DistRequest {
             .await?;
         // Publishing is the final write: any earlier failure leaves a recoverable draft.
         self.client
-            .dist_publish(&release, &body, self.latest)
+            .dist_publish(&release, &body, self.draft, self.latest)
             .await?;
+        if self.draft {
+            tracing::info!(
+                "Release {} was left as a draft because `git_release_draft` is enabled",
+                self.tag
+            );
+        }
         Ok(())
     }
 

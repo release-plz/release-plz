@@ -527,6 +527,10 @@ impl Default for GitReleaseConfig {
 }
 
 impl GitReleaseConfig {
+    pub fn draft(&self) -> bool {
+        self.draft
+    }
+
     pub fn latest(&self) -> Option<bool> {
         self.latest
     }

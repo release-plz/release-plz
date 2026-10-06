@@ -4,7 +4,7 @@ use secrecy::SecretString;
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{method, path, query_param},
+    matchers::{body_json, method, path, query_param},
 };
 
 fn package() -> Package {
@@ -175,6 +175,38 @@ async fn finds_drafts_beyond_first_page() {
         .mount(&server)
         .await;
     assert!(client(&server).dist_release("v1.0.0").await.unwrap().draft);
+}
+
+#[tokio::test]
+async fn publishing_respects_draft_and_latest_without_touching_prerelease() {
+    for (draft, latest, expected) in [
+        (
+            false,
+            Some(false),
+            json!({"body": "notes", "draft": false, "make_latest": "false"}),
+        ),
+        (true, None, json!({"body": "notes", "draft": true})),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/releases/1"))
+            .and(body_json(&expected))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let release = Release {
+            id: 1,
+            tag_name: "v1.0.0".into(),
+            draft: true,
+            body: None,
+            upload_url: "https://uploads.github.com/unused".into(),
+        };
+        client(&server)
+            .dist_publish(&release, "notes", draft, latest)
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]

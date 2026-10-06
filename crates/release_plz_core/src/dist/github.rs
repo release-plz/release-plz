@@ -146,9 +146,10 @@ impl GitClient {
         &self,
         release: &Release,
         body: &str,
+        draft: bool,
         latest: Option<bool>,
     ) -> anyhow::Result<()> {
-        let mut payload = json!({"body": body, "draft": false});
+        let mut payload = json!({"body": body, "draft": draft});
         if let Some(latest) = latest {
             payload["make_latest"] = json!(latest.to_string());
         }
