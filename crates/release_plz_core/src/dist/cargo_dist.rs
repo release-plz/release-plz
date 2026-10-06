@@ -9,7 +9,7 @@ use cargo_metadata::{Metadata, Package};
 use toml_edit::{DocumentMut, value};
 
 use super::Manifest;
-use crate::{Project, root_repo_path_from_manifest_dir, tmp_repo::TempRepo};
+use crate::{Project, fs_utils, tmp_repo::TempRepo};
 
 pub const VERSION: &str = "0.33.0";
 
@@ -30,12 +30,12 @@ impl CargoDist {
     ) -> anyhow::Result<Self> {
         let executable = PathBuf::from(format!("dist{}", std::env::consts::EXE_SUFFIX));
         check_executable(&executable)?;
-        let original_root = root_repo_path_from_manifest_dir(&metadata.workspace_root)?;
+        let original_root = project.root();
         let repo = project.get_repo()?;
-        let root = repo
-            .repo
-            .directory()
-            .join(metadata.workspace_root.strip_prefix(&original_root)?);
+        let root = repo.repo.directory().join(fs_utils::strip_prefix(
+            &metadata.workspace_root,
+            original_root,
+        )?);
         ensure!(
             !root.join("dist-workspace.toml").exists(),
             "distribute=true manages its own cargo-dist configuration; remove dist-workspace.toml or use cargo-dist independently"
@@ -44,10 +44,10 @@ impl CargoDist {
             if !metadata.workspace_members.contains(&member.id) {
                 continue;
             }
-            let path = repo
-                .repo
-                .directory()
-                .join(member.manifest_path.strip_prefix(&original_root)?);
+            let path = repo.repo.directory().join(fs_utils::strip_prefix(
+                &member.manifest_path,
+                original_root,
+            )?);
             let mut manifest: DocumentMut = fs_err::read_to_string(&path)?.parse()?;
             ensure!(
                 manifest
