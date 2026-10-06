@@ -133,6 +133,148 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
     assert!(changelog.contains("## [1.0.1]"), "{changelog}");
 }
 
+#[test]
+fn dependency_updates_propagate_through_the_shared_workspace_version() {
+    for (release_commits, breaking_sibling, release_sibling) in [
+        ("", false, true),
+        ("release_commits = \"^feat:\"\n", false, true),
+        ("release_commits = \"^feat:\"\n", true, true),
+        ("", false, false),
+    ] {
+        let packages = [
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+            ("sibling", "version.workspace = true\n"),
+            (
+                "downstream",
+                "version = \"1.0.0\"\n[dependencies]\nsibling = { path = \"../sibling\", version = \"=1.0.0\" }\n",
+            ),
+        ];
+        let sibling_config = if release_sibling {
+            ""
+        } else {
+            "\n[[package]]\nname = \"sibling\"\nrelease = false\n"
+        };
+        let (temp_dir, repo) = init_workspace(
+            &packages,
+            "\n[workspace.package]\nversion = \"1.0.0\"\n",
+            &format!("[workspace]\nsemver_check = false\n{release_commits}{sibling_config}"),
+        );
+        repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
+            .unwrap();
+        for (name, _) in packages {
+            repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
+        }
+        change_package(&repo, "support", "feat: update support");
+        if breaking_sibling {
+            change_package(&repo, "sibling", "fix!: update sibling");
+        }
+
+        let summary = run_workspace_update(&temp_dir, &repo, None);
+
+        // A filtered breaking change still determines the shared version once
+        // the consumer needs a dependency-only release.
+        let shared_version = if breaking_sibling { "2.0.0" } else { "1.0.1" };
+        assert_locked_versions(
+            repo.directory(),
+            &[
+                ("support", "1.1.0"),
+                ("consumer", shared_version),
+                ("sibling", shared_version),
+                ("downstream", "1.0.1"),
+            ],
+        );
+        for name in ["consumer", "sibling", "downstream"] {
+            let changelog_path = repo.directory().join(name).join("CHANGELOG.md");
+            if name == "sibling" && (!release_commits.is_empty() || !release_sibling) {
+                // Filtering skips this sibling's release, but its inherited
+                // version still changes and must propagate to downstream.
+                assert!(!changelog_path.exists());
+                assert!(!summary.contains("`sibling`"), "{summary}");
+            } else {
+                let next_version = if name == "downstream" {
+                    "1.0.1"
+                } else {
+                    shared_version
+                };
+                let changelog = fs_err::read_to_string(changelog_path).unwrap();
+                assert!(
+                    changelog.contains(&format!("## [{next_version}]")),
+                    "{name}: {changelog}"
+                );
+                if next_version == "2.0.0" {
+                    assert!(!changelog.contains("## [1.0.1]"), "{changelog}");
+                }
+                assert!(
+                    summary.contains(&format!("`{name}`: 1.0.0 -> {next_version}")),
+                    "{summary}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn dependency_updates_respect_prerelease_and_pre_bumped_workspace_versions() {
+    for (published_version, current_version, next_version, release_commits) in [
+        ("1.0.0-alpha.1", "1.0.0-alpha.1", "1.0.0-alpha.2", ""),
+        ("1.0.0", "1.1.0", "1.1.0", ""),
+        ("1.0.0", "1.1.0", "1.1.0", "release_commits = \"^feat:\"\n"),
+    ] {
+        let (temp_dir, repo) = init_workspace(
+            &[
+                ("support", "version = \"1.0.0\"\n"),
+                (
+                    "consumer",
+                    "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+                ),
+            ],
+            &format!("\n[workspace.package]\nversion = \"{published_version}\"\n"),
+            &format!("[workspace]\nsemver_check = false\n{release_commits}"),
+        );
+        repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
+            .unwrap();
+        repo.git(&["tag", "support-v1.0.0"]).unwrap();
+        repo.git(&["tag", &format!("consumer-v{published_version}")])
+            .unwrap();
+        if published_version != current_version {
+            let path = repo.directory().join("Cargo.toml");
+            let manifest = fs_err::read_to_string(&path).unwrap();
+            fs_err::write(path, manifest.replace(published_version, current_version)).unwrap();
+            assert_cmd::Command::new("cargo")
+                .current_dir(repo.directory())
+                .args(["generate-lockfile", "--offline"])
+                .assert()
+                .success();
+            repo.add_all_and_commit("chore: bump workspace version")
+                .unwrap();
+        }
+        change_package(&repo, "support", "feat: update support");
+
+        let summary = run_workspace_update(&temp_dir, &repo, None);
+
+        assert_locked_versions(
+            repo.directory(),
+            &[("consumer", next_version), ("support", "1.1.0")],
+        );
+        assert!(
+            summary.contains(&format!(
+                "`consumer`: {published_version} -> {next_version}"
+            )),
+            "{summary}"
+        );
+        let changelog =
+            fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+        assert!(
+            changelog.contains(&format!("## [{next_version}]")),
+            "{changelog}"
+        );
+    }
+}
+
 /// Creates a workspace at `1.0.0` whose packages are already tagged as released
 /// and whose config only treats `feat:` commits as release commits.
 fn workspace_with_feat_release_commits_filter(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {
@@ -203,7 +345,7 @@ fn change_package(repo: &Repo, name: &str, commit_message: &str) {
     repo.add_all_and_commit(commit_message).unwrap();
 }
 
-fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&str>) {
+fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&str>) -> String {
     let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
     cmd.current_dir(repo.directory())
         .args(["update", "--registry-manifest-path"])
@@ -211,7 +353,8 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
     if let Some(url) = repo_url {
         cmd.args(["--repo-url", url]);
     }
-    cmd.assert().success();
+    let output = cmd.assert().success().get_output().stdout.clone();
+    String::from_utf8(output).unwrap()
 }
 
 /// Reads the resolved package versions with `--locked`, which makes `cargo metadata`

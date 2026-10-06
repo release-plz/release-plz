@@ -37,8 +37,7 @@ use crate::{
 };
 
 use super::{
-    PackagesToUpdate, PackagesUpdate, package_dependencies::PackageDependencies as _,
-    update_request::UpdateRequest,
+    PackagesUpdate, package_dependencies::PackageDependencies as _, update_request::UpdateRequest,
 };
 
 static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
@@ -47,6 +46,13 @@ static SEMVER_CHECK_LOG_ONCE: Once = Once::new();
 pub struct Updater<'a> {
     pub project: &'a Project,
     pub req: &'a UpdateRequest,
+}
+
+/// Versions and release reasons are finalized before generating any changelogs.
+struct PlannedUpdate<'a> {
+    package: &'a Package,
+    diff: Diff,
+    version: Version,
 }
 
 impl Updater<'_> {
@@ -67,8 +73,9 @@ impl Updater<'_> {
         let version_groups_with_release_commit =
             self.version_groups_with_release_commit(&packages_diffs);
 
-        let mut packages_to_check_for_deps: Vec<&Package> = vec![];
-        let mut packages_to_update = PackagesUpdate::default();
+        let mut packages_to_check_for_deps = Vec::new();
+        let mut filtered_packages = HashSet::new();
+        let mut planned_updates = Vec::new();
 
         let workspace_version_pkgs: HashSet<String> = packages_diffs
             .iter()
@@ -85,8 +92,7 @@ impl Updater<'_> {
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
-        let mut old_changelogs = OldChangelogs::new();
-        for (p, diff) in packages_diffs {
+        for (p, diff) in &packages_diffs {
             let group_has_release_commit = || {
                 self.req
                     .get_package_config(&p.name)
@@ -100,7 +106,8 @@ impl Updater<'_> {
             {
                 info!("{}: no commit matches the `release_commits` regex", p.name);
                 // We need to update this package only if one of its dependencies has changed.
-                packages_to_check_for_deps.push(p);
+                filtered_packages.insert(p.name.as_str());
+                packages_to_check_for_deps.push((*p, diff));
                 continue;
             }
             let next_version = self.get_next_version(
@@ -108,7 +115,7 @@ impl Updater<'_> {
                 p,
                 &workspace_version_pkgs,
                 &version_groups,
-                &diff,
+                diff,
             )?;
             debug!(
                 "package: {}, diff: {diff:?}, next_version: {next_version}",
@@ -124,56 +131,57 @@ impl Updater<'_> {
                 || !diff.registry_package_exists
                 || version_already_bumped
             {
-                if version_already_bumped {
-                    info!(
-                        "{}: updating changelog for version {current_version}{}",
-                        p.name,
-                        diff.semver_check.outcome_str()
-                    );
-                } else {
-                    info!(
-                        "{}: next version is {next_version}{}",
-                        p.name,
-                        diff.semver_check.outcome_str()
-                    );
-                }
-                let update_result = self.calculate_update_result(
-                    diff.commits,
-                    next_version,
-                    p,
-                    diff.semver_check,
-                    diff.registry_version,
-                    &mut old_changelogs,
-                )?;
-                packages_to_update
-                    .updates_mut()
-                    .push((p.clone(), update_result));
-            } else if diff.is_version_published {
+                planned_updates.push(PlannedUpdate {
+                    package: p,
+                    diff: diff.clone(),
+                    version: next_version,
+                });
+            } else {
                 // We need to update this package only if one of its dependencies has changed.
-                packages_to_check_for_deps.push(p);
+                // An already bumped version may still need its release changelog.
+                packages_to_check_for_deps.push((*p, diff));
             }
         }
 
-        let changed_packages: Vec<(&Package, Version)> = packages_to_update
-            .updates()
-            .iter()
-            .map(|(p, u)| (p, u.version.clone()))
-            .collect();
-        let dependent_packages =
-            self.dependent_packages_update(&packages_to_check_for_deps, &changed_packages)?;
-        packages_to_update.updates_mut().extend(dependent_packages);
-
-        // Release commit filtering can exclude all packages inheriting the workspace version.
-        // Only record the new workspace version if one of those packages is actually being updated.
-        // This must run after `dependent_packages_update`, because a filtered package can still be
-        // updated as a dependent.
-        if let Some(new_workspace_version) = new_workspace_version
-            && packages_to_update
-                .updates()
-                .iter()
-                .any(|(p, _)| workspace_version_pkgs.contains(p.name.as_str()))
-        {
-            packages_to_update.with_workspace_version(new_workspace_version);
+        let workspace_version = self.dependent_packages_update(
+            &packages_to_check_for_deps,
+            &mut planned_updates,
+            &workspace_version_pkgs,
+            &filtered_packages,
+            new_workspace_version.as_ref(),
+        )?;
+        let mut packages_to_update = PackagesUpdate::default();
+        if let Some(version) = workspace_version {
+            packages_to_update.with_workspace_version(version);
+        }
+        let mut old_changelogs = OldChangelogs::new();
+        for update in planned_updates {
+            if update.version == update.package.version && !update.diff.is_version_published {
+                info!(
+                    "{}: updating changelog for version {}{}",
+                    update.package.name,
+                    update.version,
+                    update.diff.semver_check.outcome_str()
+                );
+            } else {
+                info!(
+                    "{}: next version is {}{}",
+                    update.package.name,
+                    update.version,
+                    update.diff.semver_check.outcome_str()
+                );
+            }
+            let result = self.calculate_update_result(
+                update.diff.commits,
+                update.version,
+                update.package,
+                update.diff.semver_check,
+                update.diff.registry_version,
+                &mut old_changelogs,
+            )?;
+            packages_to_update
+                .updates_mut()
+                .push((update.package.clone(), result));
         }
         Ok(packages_to_update)
     }
@@ -380,109 +388,137 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// Return the update to apply to the packages that depend on the `initial_changed_packages`.
-    ///
-    /// ## Args
-    ///
-    /// - `packages_to_check_for_deps`: The packages that might need to be updated.
-    ///   We update them if they depend on any of the `changed_packages`.
-    ///   If they don't depend on any of the `changed_packages`, they are not updated
-    ///   because they don't contain any new commits.
-    /// - `initial_changed_packages`: The packages that have changed (i.e. contains commits).
-    fn dependent_packages_update(
+    /// Propagate dependency and shared-version changes until no more packages need a release.
+    fn dependent_packages_update<'a>(
         &self,
-        packages_to_check_for_deps: &[&Package],
-        initial_changed_packages: &[(&Package, Version)],
-    ) -> anyhow::Result<PackagesToUpdate> {
+        packages_to_check_for_deps: &[(&'a Package, &Diff)],
+        planned_updates: &mut Vec<PlannedUpdate<'a>>,
+        workspace_version_pkgs: &HashSet<String>,
+        filtered_packages: &HashSet<&str>,
+        initial_workspace_version: Option<&Version>,
+    ) -> anyhow::Result<Option<Version>> {
         let workspace_manifest = LocalManifest::try_new(self.req.local_manifest())?;
         let workspace_dependencies = workspace_manifest.get_workspace_dependency_table();
-
-        let mut old_changelogs = OldChangelogs::new();
         let workspace_dir = crate::manifest_dir(self.req.local_manifest())?;
-
-        // Track which packages have been processed
-        let mut processed: HashSet<String> = initial_changed_packages
+        let mut inheriting_packages = Vec::new();
+        for package in cargo_utils::workspace_members(self.req.cargo_metadata())? {
+            if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
+                inheriting_packages.push(package);
+            }
+        }
+        let mut processed: HashSet<&str> = planned_updates
             .iter()
-            .map(|(p, _)| p.name.to_string())
+            .map(|u| u.package.name.as_str())
             .collect();
 
-        let mut result = Vec::new();
-
-        // Keep a copy of all packages that have changed so far
-        let mut all_changed_packages: Vec<(&Package, Version)> = initial_changed_packages.to_vec();
-
-        // Continue updating packages until no more dependencies to update are found
         loop {
+            // A dependency-only release can raise the shared version after the
+            // initial commit-based calculation. Only activate it if an inheriting
+            // package is actually being released, preserving release_commits filtering.
+            let workspace_version = planned_updates
+                .iter()
+                .filter(|u| workspace_version_pkgs.contains(u.package.name.as_str()))
+                .map(|u| &u.version)
+                .max()
+                .map(|version| version.max(initial_workspace_version.unwrap_or(version)))
+                .cloned();
+            if let Some(version) = &workspace_version {
+                for update in planned_updates.iter_mut() {
+                    if workspace_version_pkgs.contains(update.package.name.as_str()) {
+                        update.version = version.clone();
+                    }
+                }
+            }
+            let mut changed_packages: Vec<(&Package, Version)> = planned_updates
+                .iter()
+                .map(|u| (u.package, u.version.clone()))
+                .collect();
+            if let Some(version) = &workspace_version {
+                // Even a filtered sibling physically changes version. Its
+                // dependents must see the new version without releasing the sibling.
+                for p in &inheriting_packages {
+                    if !processed.contains(p.name.as_str()) && &p.version != version {
+                        changed_packages.push((p, version.clone()));
+                    }
+                }
+            }
             let mut any_package_updated = false;
-
-            for p in packages_to_check_for_deps {
-                // Skip packages we've already processed in previous iterations
-                if processed.contains(p.name.as_ref()) {
+            for (p, diff) in packages_to_check_for_deps {
+                if processed.contains(p.name.as_str()) {
                     continue;
                 }
-
-                // Check if this package depends on any changed package
-                if let Ok(deps) = p.dependencies_to_update(
-                    &all_changed_packages,
+                let inherited_version = workspace_version
+                    .as_ref()
+                    .filter(|_| workspace_version_pkgs.contains(p.name.as_str()));
+                let Ok(deps) = p.dependencies_to_update(
+                    &changed_packages,
                     workspace_dependencies,
                     workspace_dir,
                     self.req.should_use_git_only(&p.name),
-                ) && !deps.is_empty()
+                ) else {
+                    continue;
+                };
+                let update = if !deps.is_empty() {
+                    let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
+                    let change = format!(
+                        "chore: updated the following local packages: {}",
+                        deps.join(", ")
+                    );
+                    let next_version = if !diff.is_version_published {
+                        p.version.clone()
+                    } else if p.version.is_prerelease() {
+                        p.version.increment_prerelease()
+                    } else {
+                        p.version.increment_patch()
+                    };
+                    PlannedUpdate {
+                        package: p,
+                        diff: Diff {
+                            commits: vec![Commit::new(NO_COMMIT_ID.to_string(), change)],
+                            semver_check: SemverCheck::Skipped,
+                            ..(*diff).clone()
+                        },
+                        version: next_version.max(
+                            inherited_version
+                                .cloned()
+                                .unwrap_or_else(|| p.version.clone()),
+                        ),
+                    }
+                } else if let Some(version) = inherited_version
+                    && version != &p.version
+                    && !filtered_packages.contains(p.name.as_str())
                 {
-                    // This package depends on changed packages, so it needs to be updated
-                    let update =
-                        self.calculate_package_update_result(&deps, p, &mut old_changelogs)?;
-
-                    result.push(update.clone());
-
-                    // Mark as changed so packages depending on it will be updated in the next iteration
-                    all_changed_packages.push((p, update.1.version.clone()));
-                    processed.insert(p.name.to_string());
-                    any_package_updated = true;
+                    let mut diff = (*diff).clone();
+                    if diff.commits.is_empty() {
+                        diff.commits.push(Commit::new(
+                            NO_COMMIT_ID.to_string(),
+                            "chore: updated workspace version".to_string(),
+                        ));
+                    }
+                    PlannedUpdate {
+                        package: p,
+                        diff,
+                        version: version.clone(),
+                    }
+                } else {
+                    continue;
+                };
+                if let Some((_, version)) = changed_packages
+                    .iter_mut()
+                    .find(|(changed, _)| changed.id == p.id)
+                {
+                    *version = update.version.clone();
+                } else {
+                    changed_packages.push((p, update.version.clone()));
                 }
+                planned_updates.push(update);
+                processed.insert(p.name.as_str());
+                any_package_updated = true;
             }
-
-            // If no packages were updated in this iteration, we're done
             if !any_package_updated {
-                break;
+                return Ok(workspace_version);
             }
         }
-
-        Ok(result)
-    }
-
-    fn calculate_package_update_result(
-        &self,
-        deps: &[&Package],
-        p: &Package,
-        old_changelogs: &mut OldChangelogs,
-    ) -> anyhow::Result<(Package, UpdateResult)> {
-        let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
-        let commits = {
-            let change = format!(
-                "chore: updated the following local packages: {}",
-                deps.join(", ")
-            );
-            vec![Commit::new(NO_COMMIT_ID.to_string(), change)]
-        };
-        let next_version = if p.version.is_prerelease() {
-            p.version.increment_prerelease()
-        } else {
-            p.version.increment_patch()
-        };
-        info!(
-            "{}: dependencies changed. Next version is {next_version}",
-            p.name
-        );
-        let update_result = self.calculate_update_result(
-            commits,
-            next_version,
-            p,
-            SemverCheck::Skipped,
-            None, // No registry_version for dependency updates
-            old_changelogs,
-        )?;
-        Ok((p.clone(), update_result))
     }
 
     fn calculate_update_result(
@@ -657,6 +693,17 @@ impl Updater<'_> {
         let released = registry_package
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
+        // A workspace-only version bump may have no commits in this package's
+        // paths. Recognize it before the walk so dependency updates preserve it.
+        if let Some((released_package, _)) = released
+            && package.version > released_package.package.version
+        {
+            info!(
+                "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
+                package.name, package.version, released_package.package.version
+            );
+            diff.set_version_unpublished(released_package.package.version.clone());
+        }
         let paths_to_check = paths_to_check(package_path, package)?;
         let max_analyze_commits = released
             .is_none()
@@ -709,14 +756,6 @@ impl Updater<'_> {
                         &paths_to_check,
                     )?);
                     continue;
-                }
-                // An already bumped version still needs its changelog updated.
-                if package.version > released_package.package.version && diff.is_version_published {
-                    info!(
-                        "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
-                        package.name, package.version, released_package.package.version
-                    );
-                    diff.set_version_unpublished(released_package.package.version.clone());
                 }
             }
             // A package can contain another package in a subdirectory, so only count
