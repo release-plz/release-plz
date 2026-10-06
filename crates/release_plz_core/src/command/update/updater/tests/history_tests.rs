@@ -111,8 +111,9 @@ impl History {
         self.clone_with(&format!("--depth={depth}"), "shallow")
     }
 
-    /// Continue with a clone that fetches blobs only when a checkout needs
-    /// them, so the files of commits the walk never checks out stay missing.
+    /// Continue with a clone that fetches each blob only when Git first reads
+    /// it, so the files of commits the walk never checks out stay missing
+    /// unless the replay fetches them.
     fn partial_clone(self) -> Self {
         // Serving a filtered clone, and the lazy fetches that follow, needs
         // the source's permission.
@@ -816,8 +817,8 @@ fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
 }
 
 /// The walk checks out only commits that touch the package, so a partial
-/// clone keeps missing the blobs other commits give to unrelated files.
-/// libgit2 cannot fetch them: the replay must not read outside the package.
+/// clone keeps missing the blobs other commits give to unrelated files. The
+/// replay neither reads nor fetches them.
 #[test]
 fn partial_clones_replay_retained_changes_without_outside_blobs() {
     let history = History::with_member_package(|root| {

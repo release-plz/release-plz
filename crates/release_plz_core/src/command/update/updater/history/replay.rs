@@ -13,7 +13,7 @@ use crate::fs_utils;
 /// Replay changes onto other snapshots in an isolated libgit2 repository that
 /// reads the source objects without writing to the source repository.
 pub(super) struct ChangeReplay<'a> {
-    /// The source repository, whose Git fetches the objects a partial clone
+    /// The source repository, whose Git fetches the blobs a partial clone
     /// lacks, see [`Self::fetch_missing_blobs`].
     repository: &'a Repo,
     repo: git2::Repository,
@@ -122,14 +122,12 @@ impl<'a> ChangeReplay<'a> {
     }
 
     /// Fetch the blobs of `trees` that differ from `base`'s and are missing from
-    /// the object database. A partial clone lacks the package blobs of commits
-    /// the walk never checked out, such as a candidate's parent on an excluded
-    /// branch; libgit2 cannot fetch them, but Git does on lookup. Full clones
-    /// miss nothing and spawn no process.
+    /// the object database, such as those of a candidate's parent that the walk
+    /// never checked out. libgit2 cannot fetch them, but Git does on lookup.
+    /// Full clones miss nothing and spawn no process.
     ///
     /// For every path, these diffs hold each distinct blob among the snapshots,
-    /// so the merges and the rename detection find every blob they read. The
-    /// trees are restricted to the package, so only its blobs are fetched.
+    /// so the merges and the rename detection find every blob they read.
     fn fetch_missing_blobs(
         &self,
         base: &git2::Tree<'_>,
@@ -289,10 +287,10 @@ impl<'a> ChangeReplay<'a> {
     /// backend, or `tree` itself when a path is the repository root.
     ///
     /// Merges and rename detection read the blobs of every path whose entries
-    /// differ between the snapshots. A partial clone fetches blobs only when a
-    /// checkout needs them, so files outside the package lack the blobs of the
-    /// commits the walk skipped. Restricting the trees keeps the reads, and the
-    /// fetches of [`Self::fetch_missing_blobs`], within the package.
+    /// differ between the snapshots, and a partial clone lacks those of the
+    /// commits the walk never checked out. Restricting the trees keeps the
+    /// reads, and the fetches of [`Self::fetch_missing_blobs`], within the
+    /// package.
     ///
     /// The restriction hides renames across the package boundary: a file the
     /// target moved out of the package shows as a modify/delete conflict, which
