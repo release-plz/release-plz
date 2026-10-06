@@ -16,61 +16,60 @@ fn package() -> Package {
         .unwrap()
 }
 
+/// A receipt for matrix slot `index`: one executable archive plus its checksum.
 fn receipt(index: usize, total: usize) -> Receipt {
     let package = package();
     serde_json::from_value(json!({
         "schema": 1, "tag": "v1.0.0", "commit": "abc",
         "job": {"run_id": "123", "index": index, "total": total, "target": format!("target-{index}")},
-        "assets": [{"id": index + 1, "name": format!("app-{index}.zip"), "size": 100, "state": "uploaded"}],
+        "assets": [
+            {"id": index * 2 + 1, "name": format!("app-{index}.zip"), "size": 100, "state": "uploaded"},
+            {"id": index * 2 + 2, "name": format!("app-{index}.sha256"), "size": 64, "state": "uploaded"},
+        ],
         "manifest": {
             "dist_version": cargo_dist::VERSION, "announcement_tag": "v1.0.0",
             "releases": [{"app_name": package.name, "app_version": package.version.to_string()}],
-            "artifacts": {format!("app-{index}.zip"): {
-                "name": format!("app-{index}.zip"), "kind": "executable-zip", "target_triples": [format!("target-{index}")]
-            }}
+            "artifacts": {
+                format!("app-{index}.zip"): {
+                    "name": format!("app-{index}.zip"), "kind": "executable-zip", "target_triples": [format!("target-{index}")]
+                },
+                format!("app-{index}.sha256"): {
+                    "name": format!("app-{index}.sha256"), "kind": "checksum", "target_triples": []
+                },
+            }
         }
     })).unwrap()
 }
 
+/// The release assets as they look when every receipt's upload is still in place.
 fn assets(receipts: &[Receipt]) -> Vec<Asset> {
     receipts
         .iter()
-        .flat_map(|r| &r.assets)
-        .map(|a| Asset {
-            id: a.id,
-            name: a.name.clone(),
-            size: a.size,
-            state: a.state.clone(),
-        })
+        .flat_map(|r| r.assets.iter().cloned())
         .collect()
+}
+
+fn validate(receipts: &[Receipt], assets: &[Asset]) -> anyhow::Result<Vec<String>> {
+    validate_receipts(receipts, "123", "v1.0.0", "abc", &package(), assets)
+}
+
+#[track_caller]
+fn assert_rejected(receipts: &[Receipt], assets: &[Asset], message: &str) {
+    let error = validate(receipts, assets).unwrap_err().to_string();
+    assert!(error.contains(message), "{error}");
 }
 
 #[test]
 fn only_complete_matching_matrix_can_be_finalized() {
-    let package = package();
     let mut receipts = vec![receipt(0, 2)];
-    assert!(
-        validate_receipts(
-            &receipts,
-            "123",
-            "v1.0.0",
-            "abc",
-            &package,
-            &assets(&receipts)
-        )
-        .is_err()
+    assert_rejected(
+        &receipts,
+        &assets(&receipts),
+        "distribution matrix is incomplete: got 1 of 2 builds",
     );
     receipts.push(receipt(1, 2));
     assert_eq!(
-        validate_receipts(
-            &receipts,
-            "123",
-            "v1.0.0",
-            "abc",
-            &package,
-            &assets(&receipts)
-        )
-        .unwrap(),
+        validate(&receipts, &assets(&receipts)).unwrap(),
         ["target-0", "target-1"]
     );
     for (run, tag, commit) in [
@@ -78,55 +77,64 @@ fn only_complete_matching_matrix_can_be_finalized() {
         ("123", "v2.0.0", "abc"),
         ("123", "v1.0.0", "def"),
     ] {
+        let error = validate_receipts(&receipts, run, tag, commit, &package(), &assets(&receipts))
+            .unwrap_err()
+            .to_string();
         assert!(
-            validate_receipts(&receipts, run, tag, commit, &package, &assets(&receipts)).is_err()
+            error.contains("does not match this run, tag or commit"),
+            "{error}"
         );
     }
     let mut replaced = assets(&receipts);
     replaced[0].id += 100;
-    assert!(validate_receipts(&receipts, "123", "v1.0.0", "abc", &package, &replaced).is_err());
+    assert_rejected(
+        &receipts,
+        &replaced,
+        "release asset `app-0.zip` is missing or was replaced",
+    );
     receipts[1].job.target = receipts[0].job.target.clone();
-    assert!(
-        validate_receipts(
-            &receipts,
-            "123",
-            "v1.0.0",
-            "abc",
-            &package,
-            &assets(&receipts)
-        )
-        .is_err()
+    assert_rejected(
+        &receipts,
+        &assets(&receipts),
+        "multiple matrix jobs built the same target",
     );
 }
 
 #[test]
 fn receipts_cannot_omit_artifacts_or_reuse_matrix_slots() {
-    let package = package();
     let mut receipts = vec![receipt(0, 2), receipt(1, 2)];
     receipts[1].job.index = 0;
-    assert!(
-        validate_receipts(
-            &receipts,
-            "123",
-            "v1.0.0",
-            "abc",
-            &package,
-            &assets(&receipts)
-        )
-        .is_err()
+    assert_rejected(
+        &receipts,
+        &assets(&receipts),
+        "inconsistent matrix receipts",
     );
     receipts[1].job.index = 1;
+    validate(&receipts, &assets(&receipts)).unwrap();
+    // Dropping the checksum keeps the binary but leaves a manifest artifact unaccounted for.
+    receipts[1].assets.pop();
+    assert_rejected(
+        &receipts,
+        &assets(&receipts),
+        "receipt is missing artifact `app-1.sha256`",
+    );
     receipts[1].assets.clear();
-    assert!(
-        validate_receipts(
-            &receipts,
-            "123",
-            "v1.0.0",
-            "abc",
-            &package,
-            &assets(&receipts)
-        )
-        .is_err()
+    assert_rejected(
+        &receipts,
+        &assets(&receipts),
+        "distribution receipt contains no binaries",
+    );
+    let mut receipts = vec![receipt(0, 1)];
+    receipts[0]
+        .manifest
+        .artifacts
+        .get_mut("app-0.zip")
+        .unwrap()
+        .path = Some("app-0.zip".into());
+    assert_rejected(
+        &receipts,
+        &assets(&receipts),
+        "distribution receipt contains local paths",
     );
 }
 

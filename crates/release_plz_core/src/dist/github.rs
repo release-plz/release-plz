@@ -14,7 +14,7 @@ pub(super) struct GitHubRelease {
     pub upload_url: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(super) struct Asset {
     pub id: u64,
     pub name: String,
