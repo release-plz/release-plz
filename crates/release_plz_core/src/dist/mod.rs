@@ -43,7 +43,7 @@ impl DistRequest {
         ensure!(client.forge == ForgeType::Github, "dist requires GitHub");
         let metadata = request.cargo_metadata();
         let project = Project::new(
-            &metadata.workspace_root.join("Cargo.toml"),
+            &metadata.workspace_root.join(cargo_utils::CARGO_TOML),
             None,
             &HashSet::new(),
             metadata,

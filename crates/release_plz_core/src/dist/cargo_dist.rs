@@ -6,6 +6,8 @@ use std::{
 use anyhow::{Context as _, ensure};
 use cargo_metadata::camino::Utf8PathBuf;
 use cargo_metadata::{Metadata, Package};
+use cargo_utils::CARGO_TOML;
+use serde::Serialize;
 use toml_edit::{DocumentMut, value};
 
 use super::Manifest;
@@ -19,6 +21,31 @@ const EXECUTABLE: &str = "dist";
 pub(super) struct CargoDist {
     _repo: TempRepo,
     root: Utf8PathBuf,
+}
+
+/// The `dist-workspace.toml` written to the temporary workspace.
+#[derive(Serialize)]
+struct DistWorkspace<'a> {
+    workspace: WorkspaceConfig,
+    dist: DistConfig<'a>,
+}
+
+#[derive(Serialize)]
+struct WorkspaceConfig {
+    members: [&'static str; 1],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct DistConfig<'a> {
+    cargo_dist_version: &'static str,
+    /// release-plz drives CI itself: cargo-dist must not generate workflows.
+    ci: [&'static str; 0],
+    hosting: [&'static str; 1],
+    installers: [&'static str; 2],
+    targets: &'a [String],
+    source_tarball: bool,
+    precise_builds: bool,
 }
 
 impl CargoDist {
@@ -64,15 +91,21 @@ impl CargoDist {
             manifest["package"]["repository"] = value(repository);
             fs_err::write(path, manifest.to_string())?;
         }
-        ensure_dist_profile(root.join("Cargo.toml").as_std_path())?;
-        let config = toml::to_string(&serde_json::json!({
-            "workspace": {"members": ["cargo:."]},
-            "dist": {
-                "cargo-dist-version": VERSION, "ci": [], "hosting": ["github"],
-                "installers": ["shell", "powershell"], "targets": targets,
-                "source-tarball": false, "precise-builds": true
-            }
-        }))?;
+        ensure_dist_profile(root.join(CARGO_TOML).as_std_path())?;
+        let config = toml::to_string(&DistWorkspace {
+            workspace: WorkspaceConfig {
+                members: ["cargo:."],
+            },
+            dist: DistConfig {
+                cargo_dist_version: VERSION,
+                ci: [],
+                hosting: ["github"],
+                installers: ["shell", "powershell"],
+                targets,
+                source_tarball: false,
+                precise_builds: true,
+            },
+        })?;
         fs_err::write(root.join("dist-workspace.toml"), config)?;
         Ok(Self { _repo: repo, root })
     }
@@ -190,7 +223,7 @@ mod tests {
     #[test]
     fn missing_dist_profile_inherits_release_without_extra_settings() {
         let temporary = tempfile::tempdir().unwrap();
-        let path = temporary.path().join("Cargo.toml");
+        let path = temporary.path().join(CARGO_TOML);
         for manifest in ["[workspace]\n", "[profile.release]\nlto = true\n"] {
             fs_err::write(&path, manifest).unwrap();
             ensure_dist_profile(&path).unwrap();
@@ -207,7 +240,7 @@ mod tests {
     #[test]
     fn existing_dist_profile_is_preserved() {
         let temporary = tempfile::tempdir().unwrap();
-        let path = temporary.path().join("Cargo.toml");
+        let path = temporary.path().join(CARGO_TOML);
         let manifest = "[profile.dist]\ninherits = 'release'\nlto = false\ncodegen-units = 4\n";
         fs_err::write(&path, manifest).unwrap();
         ensure_dist_profile(&path).unwrap();
