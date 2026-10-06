@@ -4,7 +4,7 @@ use anyhow::{Context as _, ensure};
 use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
 use release_plz_core::{
     GitClient, GitForge, GitHub, ReleaseRequest,
-    dist::{DistJob, DistRequest},
+    dist::{DistJob, DistRequest, run_id},
 };
 use secrecy::SecretString;
 
@@ -68,7 +68,7 @@ impl Dist {
         };
         let request = DistRequest::new(request, tag, client)?;
         if finalize {
-            request.finalize(&release_plz_core::dist::run_id()?).await
+            request.finalize(&run_id()?).await
         } else {
             request.build(DistJob::from_env()?).await
         }

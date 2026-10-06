@@ -4,8 +4,7 @@ use std::{
 };
 
 use anyhow::{Context as _, ensure};
-use cargo_metadata::camino::Utf8PathBuf;
-use cargo_metadata::{Metadata, Package};
+use cargo_metadata::{Metadata, Package, camino::Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use serde::Serialize;
 use toml_edit::{DocumentMut, value};
