@@ -167,11 +167,8 @@ mod tests {
     #[tokio::test]
     async fn username_is_read_from_commit_author() {
         let server = MockServer::start().await;
-        mock_commit_author_query(
-            &server,
-            commit_response(&json!({ "author": { "username": "bob" } })),
-        )
-        .await;
+        let response = commit_response(&json!({ "author": { "username": "bob" } }));
+        mock_commit_author_query(&server, response).await;
         // Go through `GitClient` so the GitLab arm of `get_remote_commit` is covered too.
         let remote_commit = gitlab_client(&server)
             .get_remote_commit("abc")
