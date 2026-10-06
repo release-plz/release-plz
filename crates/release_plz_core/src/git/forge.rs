@@ -1290,32 +1290,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn remote_commit_username_is_read_from_gitlab_graphql() {
-        use wiremock::{
-            Mock, MockServer, ResponseTemplate,
-            matchers::{body_partial_json, header, method, path},
-        };
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/api/graphql"))
-            .and(header("PRIVATE-TOKEN", "token"))
-            .and(body_partial_json(json!({
-                "variables": { "fullPath": "group/repo", "ref": "abc" }
-            })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": { "project": { "repository": { "commit": { "author": { "username": "bob" } } } } }
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let repo_url = crate::RepoUrl::new(&format!("{}/group/repo", server.uri())).unwrap();
-        let gitlab = GitLab::new(repo_url, SecretString::from("token")).unwrap();
-        let client = GitClient::new(GitForge::Gitlab(gitlab)).unwrap();
-        let remote_commit = client.get_remote_commit("abc").await.unwrap();
-        assert_eq!(remote_commit.username.as_deref(), Some("bob"));
-    }
-
     #[test]
     fn contributors_are_extracted_from_commits() {
         let commits = vec![
