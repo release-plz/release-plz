@@ -152,7 +152,7 @@ body = """
             } else {
                 ""
             };
-            let (temp_dir, repo) = init_workspace(
+            let (temp_dir, repo) = released_workspace(
                 &[
                     ("support", "version = \"1.0.0\"\n"),
                     (
@@ -165,11 +165,6 @@ body = """
                     "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n{changelog_config}"
                 ),
             );
-            repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
-                .unwrap();
-            for name in ["support", "consumer"] {
-                repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
-            }
             change_package(&repo, "support", commit);
 
             run_workspace_update(&temp_dir, &repo, None);
@@ -203,7 +198,7 @@ body = """
 
 #[test]
 fn shared_changelog_keeps_entry_matching_another_package_release() {
-    let (temp_dir, repo) = init_workspace(
+    let (temp_dir, repo) = released_workspace(
         &[
             ("support", "version = \"1.0.1\"\n"),
             (
@@ -214,8 +209,6 @@ fn shared_changelog_keeps_entry_matching_another_package_release() {
         "",
         "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n",
     );
-    repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
-        .unwrap();
     // The latest entry of the shared changelog belongs to `support`, but it has
     // the version that `consumer` is about to release.
     fs_err::write(
@@ -224,9 +217,6 @@ fn shared_changelog_keeps_entry_matching_another_package_release() {
     )
     .unwrap();
     repo.add_all_and_commit("chore: release").unwrap();
-    for tag in ["support-v1.0.1", "consumer-v1.0.0"] {
-        repo.git(&["tag", tag]).unwrap();
-    }
     change_package(&repo, "support", "fix: update support");
     change_package(&repo, "consumer", "fix: update consumer");
 
@@ -264,16 +254,11 @@ fn dependency_updates_propagate_through_the_shared_workspace_version() {
         } else {
             "\n[[package]]\nname = \"sibling\"\nrelease = false\n"
         };
-        let (temp_dir, repo) = init_workspace(
+        let (temp_dir, repo) = released_workspace(
             &packages,
             "\n[workspace.package]\nversion = \"1.0.0\"\n",
             &format!("[workspace]\nsemver_check = false\n{release_commits}{sibling_config}"),
         );
-        repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
-            .unwrap();
-        for (name, _) in packages {
-            repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
-        }
         change_package(&repo, "support", "feat: update support");
         if breaking_sibling {
             change_package(&repo, "sibling", "fix!: update sibling");
@@ -330,7 +315,7 @@ fn dependency_updates_respect_prerelease_and_pre_bumped_workspace_versions() {
         ("1.0.0", "1.1.0", "1.1.0", ""),
         ("1.0.0", "1.1.0", "1.1.0", "release_commits = \"^feat:\"\n"),
     ] {
-        let (temp_dir, repo) = init_workspace(
+        let (temp_dir, repo) = released_workspace(
             &[
                 ("support", "version = \"1.0.0\"\n"),
                 (
@@ -341,20 +326,11 @@ fn dependency_updates_respect_prerelease_and_pre_bumped_workspace_versions() {
             &format!("\n[workspace.package]\nversion = \"{published_version}\"\n"),
             &format!("[workspace]\nsemver_check = false\n{release_commits}"),
         );
-        repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
-            .unwrap();
-        repo.git(&["tag", "support-v1.0.0"]).unwrap();
-        repo.git(&["tag", &format!("consumer-v{published_version}")])
-            .unwrap();
         if published_version != current_version {
             let path = repo.directory().join("Cargo.toml");
             let manifest = fs_err::read_to_string(&path).unwrap();
             fs_err::write(path, manifest.replace(published_version, current_version)).unwrap();
-            assert_cmd::Command::new("cargo")
-                .current_dir(repo.directory())
-                .args(["generate-lockfile", "--offline"])
-                .assert()
-                .success();
+            generate_lockfile(repo.directory());
             repo.add_all_and_commit("chore: bump workspace version")
                 .unwrap();
         }
@@ -384,15 +360,26 @@ fn dependency_updates_respect_prerelease_and_pre_bumped_workspace_versions() {
 /// Creates a workspace at `1.0.0` whose packages are already tagged as released
 /// and whose config only treats `feat:` commits as release commits.
 fn workspace_with_feat_release_commits_filter(packages: &[(&str, &str)]) -> (Utf8TempDir, Repo) {
-    let (temp_dir, repo) = init_workspace(
+    released_workspace(
         packages,
         "\n[workspace.package]\nversion = \"1.0.0\"\n",
         "[workspace]\nsemver_check = false\nrelease_commits = \"^feat:\"\n",
-    );
+    )
+}
+
+/// Creates a workspace with [`init_workspace`] whose packages are already tagged
+/// as released at their current version, and whose `origin` remote is on GitHub.
+fn released_workspace(
+    packages: &[(&str, &str)],
+    workspace_package_toml: &str,
+    release_plz_toml: &str,
+) -> (Utf8TempDir, Repo) {
+    let (temp_dir, repo) = init_workspace(packages, workspace_package_toml, release_plz_toml);
     repo.git(&["remote", "add", "origin", "https://github.com/test/project"])
         .unwrap();
-    for (name, _) in packages {
-        repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
+    for package in locked_metadata(repo.directory()).workspace_packages() {
+        repo.tag_lightweight(&format!("{}-v{}", package.name, package.version))
+            .unwrap();
     }
     (temp_dir, repo)
 }
@@ -431,15 +418,19 @@ fn init_workspace(
             .unwrap();
             fs_err::write(package_dir.join("src/lib.rs"), "// Initial release\n").unwrap();
         }
-        assert_cmd::Command::new("cargo")
-            .current_dir(dir)
-            .args(["generate-lockfile", "--offline"])
-            .assert()
-            .success();
+        generate_lockfile(dir);
     }
     fs_err::write(project_dir.join("release-plz.toml"), release_plz_toml).unwrap();
     let repo = Repo::init(&project_dir);
     (temp_dir, repo)
+}
+
+fn generate_lockfile(dir: &Utf8Path) {
+    assert_cmd::Command::new("cargo")
+        .current_dir(dir)
+        .args(["generate-lockfile", "--offline"])
+        .assert()
+        .success();
 }
 
 fn change_package(repo: &Repo, name: &str, commit_message: &str) {
@@ -467,13 +458,17 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
 /// fail if `Cargo.lock` is stale (the symptom of #3086), so this also asserts that
 /// the lockfile was updated.
 fn assert_locked_versions(project_dir: &Utf8Path, expected_versions: &[(&str, &str)]) {
-    let metadata = cargo_metadata::MetadataCommand::new()
-        .current_dir(project_dir)
-        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
-        .exec()
-        .unwrap();
+    let metadata = locked_metadata(project_dir);
     for (name, version) in expected_versions {
         let package = metadata.packages.iter().find(|p| p.name == *name).unwrap();
         assert_eq!(package.version.to_string(), *version, "package: {name}");
     }
+}
+
+fn locked_metadata(project_dir: &Utf8Path) -> cargo_metadata::Metadata {
+    cargo_metadata::MetadataCommand::new()
+        .current_dir(project_dir)
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap()
 }
