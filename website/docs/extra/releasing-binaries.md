@@ -180,7 +180,7 @@ the runner you select.
 Per-job JSON receipts remain release assets alongside cargo-dist's combined
 `dist-manifest.json`. They contain the run ID, commit, target and artifact metadata,
 and allow failed jobs to be retried without an Actions artifact store.
-For more advanced packaging, use cargo-dist independently as described below.
+For more advanced packaging, use cargo-dist or another tool independently, as described below.
 
 ## Releasing binaries after release
 
