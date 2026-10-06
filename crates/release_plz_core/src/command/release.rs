@@ -1593,18 +1593,22 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("binary target"), "{error}");
-        let (_temporary, _repo, request) = distribute_fixture(&server, "");
-        let error = request
-            .with_default_package_config(
-                distribute_config().with_git_release(GitReleaseConfig::enabled(false)),
-            )
-            .validate_git_release_options()
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains("requires git_release_enable and git_tag_enable"),
-            "{error}"
-        );
+        // Both the tag and the release must exist for cargo-dist to attach assets to.
+        for config in [
+            distribute_config().with_git_release(GitReleaseConfig::enabled(false)),
+            distribute_config().with_git_tag(GitTagConfig::enabled(false)),
+        ] {
+            let (_temporary, _repo, request) = distribute_fixture(&server, "");
+            let error = request
+                .with_default_package_config(config)
+                .validate_git_release_options()
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("requires git_release_enable and git_tag_enable"),
+                "{error}"
+            );
+        }
         let (_temporary, _repo, mut request) = distribute_fixture(&server, "");
         request.git_release = None;
         let error = request
