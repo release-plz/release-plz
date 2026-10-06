@@ -100,7 +100,7 @@ impl DistRequest {
     /// Build for this runner and upload assets, then a receipt indicating successful completion.
     pub async fn build(&self, job: DistJob) -> anyhow::Result<()> {
         job.validate()?;
-        self.draft_release().await?;
+        self.require_draft_release().await?;
         let cargo_dist = self.cargo_dist(vec![job.target.clone()])?;
         let mut manifest = self.build_manifest(&cargo_dist, false)?;
         ensure!(
@@ -109,7 +109,7 @@ impl DistRequest {
             job.target
         );
         // The build is slow: a concurrent finalize may have published the release meanwhile.
-        let release = self.draft_release().await?;
+        let release = self.require_draft_release().await?;
         let existing = self.client.dist_assets(&release).await?;
         let assets = self
             .upload_manifest_artifacts(&cargo_dist, &release, &existing, &manifest)
@@ -223,7 +223,8 @@ impl DistRequest {
         Ok(manifest)
     }
 
-    async fn draft_release(&self) -> anyhow::Result<GitHubRelease> {
+    /// Fetch the release for the tag and refuse to continue unless it is still a draft.
+    async fn require_draft_release(&self) -> anyhow::Result<GitHubRelease> {
         let release = self.client.dist_release(&self.tag).await?;
         ensure!(release.draft, "release `{}` is already published", self.tag);
         Ok(release)
