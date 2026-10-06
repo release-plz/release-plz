@@ -416,7 +416,7 @@ impl GitClient {
         }
     }
 
-    fn repo_url(&self) -> String {
+    pub(crate) fn repo_url(&self) -> String {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => {
                 format!(

@@ -23,20 +23,11 @@ pub(super) struct Asset {
 }
 
 impl GitClient {
-    fn dist_url(&self, path: &str) -> String {
-        format!(
-            "{}/repos/{}/{}/{path}",
-            self.remote.base_url.as_str().trim_end_matches('/'),
-            self.remote.owner,
-            self.remote.repo
-        )
-    }
-
     /// Draft releases do not emit Actions release events. Dispatch explicitly instead.
     pub(crate) async fn dispatch_dist(&self, tag: &str) -> anyhow::Result<()> {
         ensure!(self.forge == ForgeType::Github, "dist requires GitHub");
         self.client
-            .post(self.dist_url("dispatches"))
+            .post(format!("{}/dispatches", self.repo_url()))
             .json(&json!({"event_type": "release-plz-dist", "client_payload": {"tag": tag}}))
             .send()
             .await?
@@ -50,7 +41,10 @@ impl GitClient {
         for page in 1.. {
             let releases: Vec<Release> = self
                 .client
-                .get(self.dist_url(&format!("releases?per_page=100&page={page}")))
+                .get(format!(
+                    "{}/releases?per_page=100&page={page}",
+                    self.repo_url()
+                ))
                 .send()
                 .await?
                 .successful_status()
@@ -71,10 +65,11 @@ impl GitClient {
         for page in 1.. {
             let batch: Vec<Asset> = self
                 .client
-                .get(self.dist_url(&format!(
-                    "releases/{}/assets?per_page=100&page={page}",
+                .get(format!(
+                    "{}/releases/{}/assets?per_page=100&page={page}",
+                    self.repo_url(),
                     release.id
-                )))
+                ))
                 .send()
                 .await?
                 .successful_status()
@@ -93,7 +88,7 @@ impl GitClient {
     pub(super) async fn dist_download(&self, asset: &Asset) -> anyhow::Result<Vec<u8>> {
         Ok(self
             .client
-            .get(self.dist_url(&format!("releases/assets/{}", asset.id)))
+            .get(format!("{}/releases/assets/{}", self.repo_url(), asset.id))
             .header(reqwest::header::ACCEPT, "application/octet-stream")
             .send()
             .await?
@@ -115,7 +110,7 @@ impl GitClient {
         for asset in self.dist_assets(release).await? {
             if asset.name == name {
                 self.client
-                    .delete(self.dist_url(&format!("releases/assets/{}", asset.id)))
+                    .delete(format!("{}/releases/assets/{}", self.repo_url(), asset.id))
                     .send()
                     .await?
                     .successful_status()
@@ -154,7 +149,7 @@ impl GitClient {
             payload["make_latest"] = json!(latest.to_string());
         }
         self.client
-            .patch(self.dist_url(&format!("releases/{}", release.id)))
+            .patch(format!("{}/releases/{}", self.repo_url(), release.id))
             .json(&payload)
             .send()
             .await?
