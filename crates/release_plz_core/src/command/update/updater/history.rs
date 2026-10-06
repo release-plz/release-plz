@@ -150,8 +150,8 @@ impl<'a> RetainedChanges<'a> {
     ///
     /// `head_package_files` lists the package-relative files Cargo packages at
     /// HEAD, since a file added or removed since the release is only listed on
-    /// one side; `None` makes every file under the package directory count. It
-    /// only runs when `commits` contains a candidate.
+    /// one side; `None` makes every file under the package directory count.
+    /// `head_package_files` only runs when `commits` contains a candidate.
     pub(super) fn retain_surviving(
         mut self,
         commits: &mut Vec<Commit>,
