@@ -105,8 +105,6 @@ pub async fn commit_author_username(
         })?;
 
     let Some(commit_info) = project.repository.and_then(|repository| repository.commit) else {
-        // The user didn't push the commit to the remote repository.
-        // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
         debug!("Commit {commit} not found in the remote repository");
         return Ok(None);
     };

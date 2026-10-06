@@ -887,7 +887,11 @@ impl GitClient {
         Ok(prs)
     }
 
-    /// Get the username of the author of the given commit.
+    /// Forge information about the given commit.
+    ///
+    /// `username` is `None` if the commit isn't in the remote repository
+    /// (e.g. the user edited files before running release-plz, like with cargo hakari)
+    /// or if the forge can't match the commit author to a user.
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
         let api_path = match self.forge {
             ForgeType::Github => format!("{}/commits/{commit}", self.repo_url()),
@@ -904,8 +908,7 @@ impl GitClient {
         if let Err(err) = response.error_for_status_ref()
             && let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status()
         {
-            // The user didn't push the commit to the remote repository.
-            // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
+            // The commit isn't in the remote repository.
             // I'm not sure why GitHub returns 422 if the commit doesn't exist.
             return Ok(RemoteCommit { username: None });
         }
