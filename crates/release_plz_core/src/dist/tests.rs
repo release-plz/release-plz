@@ -152,6 +152,22 @@ fn release_notes_preserve_existing_changelog() {
 }
 
 #[test]
+fn release_notes_are_replaced_when_finalize_reruns() {
+    let changelog = "## Fixes\n\nFixed things.\n";
+    let once = body_with_installation_notes(changelog, "## Downloads\n\nA link.\n");
+    assert_eq!(
+        body_with_installation_notes(&once, "## Downloads\n\nA link.\n"),
+        once
+    );
+    let updated = body_with_installation_notes(&once, "## Downloads\n\nAnother link.\n");
+    assert!(updated.starts_with("## Fixes\n\nFixed things.\n\n<!-- release-plz-dist -->\n"));
+    assert!(updated.contains("Another link."));
+    assert!(!updated.contains("A link."));
+    assert_eq!(updated.matches("<!-- release-plz-dist -->").count(), 1);
+    assert_eq!(updated.matches("<!-- /release-plz-dist -->").count(), 1);
+}
+
+#[test]
 fn matrix_identity_defaults_to_a_single_host_job() {
     let job = DistJob::from_matrix("123".into(), "", "", "null").unwrap();
     assert_eq!((job.index, job.total), (0, 1));

@@ -523,9 +523,16 @@ fn validate_receipts(
     Ok(targets.into_iter().collect())
 }
 
-fn body_with_installation_notes(changelog: &str, notes: &str) -> String {
+/// Delimits the installation notes appended to the release body.
+const NOTES_START: &str = "<!-- release-plz-dist -->";
+const NOTES_END: &str = "<!-- /release-plz-dist -->";
+
+/// Append `notes` to `body`, replacing the notes of an earlier finalize run so a retry
+/// (for example when `git_release_draft` keeps the release a draft) is idempotent.
+fn body_with_installation_notes(body: &str, notes: &str) -> String {
+    let changelog = body.split(NOTES_START).next().unwrap_or_default();
     format!(
-        "{}\n\n<!-- release-plz-dist -->\n{}\n<!-- /release-plz-dist -->\n",
+        "{}\n\n{NOTES_START}\n{}\n{NOTES_END}\n",
         changelog.trim_end(),
         notes.trim()
     )
