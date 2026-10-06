@@ -33,6 +33,7 @@ jobs:
         uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: cargo-semver-checks@0.50
+      # install-action has no cargo-dist manifest and crates.io lacks 0.33.0; download the pinned release archive instead
       - name: Install cargo-dist
         working-directory: ${{ runner.temp }}
         run: |
