@@ -122,9 +122,8 @@ impl GitClient {
         }
         let url = release
             .upload_url
-            .split('{')
-            .next()
-            .context("missing upload URL")?;
+            .split_once('{')
+            .map_or(release.upload_url.as_str(), |(url, _)| url);
         let mut url = Url::parse(url).context("invalid release upload URL")?;
         url.query_pairs_mut().append_pair("name", name);
         Ok(self
