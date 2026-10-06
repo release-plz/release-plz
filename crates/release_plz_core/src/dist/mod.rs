@@ -194,9 +194,9 @@ impl DistRequest {
                 serde_json::to_vec(&manifest)?,
             )
             .await?;
-        // Publishing is the final write: any earlier failure leaves a recoverable draft.
+        // Updating the release is the final write: any earlier failure leaves a recoverable draft.
         self.client
-            .dist_publish(&release, &body, self.draft, self.latest)
+            .dist_update_release(&release, &body, !self.draft, self.latest)
             .await?;
         if self.draft {
             tracing::info!(

@@ -314,14 +314,15 @@ async fn stops_paging_releases_once_the_tag_is_found() {
 }
 
 #[tokio::test]
-async fn publishing_respects_draft_and_latest_without_touching_prerelease() {
-    for (draft, latest, expected) in [
+async fn release_update_publishes_only_on_request_without_touching_prerelease() {
+    for (publish, latest, expected) in [
         (
-            false,
+            true,
             Some(false),
             json!({"body": "notes", "draft": false, "make_latest": "false"}),
         ),
-        (true, None, json!({"body": "notes", "draft": true})),
+        // A draft kept by `git_release_draft` only receives the new body.
+        (false, None, json!({"body": "notes"})),
     ] {
         let server = MockServer::start().await;
         Mock::given(method("PATCH"))
@@ -339,7 +340,7 @@ async fn publishing_respects_draft_and_latest_without_touching_prerelease() {
             upload_url: "https://uploads.github.com/unused".into(),
         };
         client(&server)
-            .dist_publish(&release, "notes", draft, latest)
+            .dist_update_release(&release, "notes", publish, latest)
             .await
             .unwrap();
     }

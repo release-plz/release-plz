@@ -140,14 +140,18 @@ impl GitClient {
             .await?)
     }
 
-    pub(super) async fn dist_publish(
+    /// Set the release body and, when `publish` is set, turn the draft into a published release.
+    pub(super) async fn dist_update_release(
         &self,
         release: &GitHubRelease,
         body: &str,
-        draft: bool,
+        publish: bool,
         latest: Option<bool>,
     ) -> anyhow::Result<()> {
-        let mut payload = json!({"body": body, "draft": draft});
+        let mut payload = json!({"body": body});
+        if publish {
+            payload["draft"] = json!(false);
+        }
         if let Some(latest) = latest {
             payload["make_latest"] = json!(latest.to_string());
         }
