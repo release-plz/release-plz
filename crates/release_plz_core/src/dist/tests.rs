@@ -525,16 +525,16 @@ fn check_workspace_dist_build(profile_path: &str) {
     )
     .unwrap();
     let package = metadata.packages.iter().find(|p| p.name == "app").unwrap();
-    let targets = vec![cargo_dist::host_target().unwrap()];
     let dist = CargoDist::prepare(
         &project,
         &metadata,
         package,
         "https://github.com/owner/repo",
-        &targets,
+        "app-v1.0.0",
+        vec![cargo_dist::host_target().unwrap()],
     )
     .unwrap();
-    let manifest = dist.build("app-v1.0.0", &targets, false).unwrap();
+    let manifest = dist.build(false).unwrap();
     manifest.validate("app-v1.0.0", package).unwrap();
     assert!(
         manifest

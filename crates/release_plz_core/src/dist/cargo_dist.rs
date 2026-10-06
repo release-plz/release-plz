@@ -21,6 +21,8 @@ const EXECUTABLE: &str = "dist";
 pub(super) struct CargoDist {
     _repo: TempRepo,
     root: Utf8PathBuf,
+    tag: String,
+    targets: Vec<String>,
 }
 
 /// The `dist-workspace.toml` written to the temporary workspace.
@@ -54,7 +56,8 @@ impl CargoDist {
         metadata: &Metadata,
         package: &Package,
         repository: &str,
-        targets: &[String],
+        tag: &str,
+        targets: Vec<String>,
     ) -> anyhow::Result<Self> {
         check_executable(Path::new(EXECUTABLE))?;
         let original_root = project.root();
@@ -101,16 +104,22 @@ impl CargoDist {
                 ci: [],
                 hosting: ["github"],
                 installers: ["shell", "powershell"],
-                targets,
+                targets: &targets,
                 source_tarball: false,
                 precise_builds: true,
             },
         })?;
         fs_err::write(root.join("dist-workspace.toml"), config)?;
-        Ok(Self { _repo: repo, root })
+        Ok(Self {
+            _repo: repo,
+            root,
+            tag: tag.to_owned(),
+            targets,
+        })
     }
 
-    pub fn build(&self, tag: &str, targets: &[String], global: bool) -> anyhow::Result<Manifest> {
+    /// Run `dist build` for the prepared targets: local archives, or the global installers.
+    pub fn build(&self, global: bool) -> anyhow::Result<Manifest> {
         let mut cmd = Command::new(EXECUTABLE);
         cmd.current_dir(&self.root)
             .env("CARGO_TARGET_DIR", self.root.join("target"))
@@ -119,7 +128,7 @@ impl CargoDist {
                 "--output-format=json",
                 "--allow-dirty",
                 "--tag",
-                tag,
+                &self.tag,
                 if global {
                     "--artifacts=global"
                 } else {
@@ -127,7 +136,7 @@ impl CargoDist {
                 },
             ])
             .stderr(Stdio::inherit());
-        for target in targets {
+        for target in &self.targets {
             cmd.args(["--target", target]);
         }
         let output = cmd.output().context("cannot run cargo-dist")?;

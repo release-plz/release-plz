@@ -101,10 +101,8 @@ impl DistRequest {
     pub async fn build(&self, job: DistJob) -> anyhow::Result<()> {
         job.validate()?;
         self.draft_release().await?;
-        let targets = vec![job.target.clone()];
-        let cargo_dist = self.cargo_dist(&targets)?;
-        let mut manifest = cargo_dist.build(&self.tag, &targets, false)?;
-        manifest.validate(&self.tag, &self.package)?;
+        let cargo_dist = self.cargo_dist(vec![job.target.clone()])?;
+        let mut manifest = self.build_manifest(&cargo_dist, false)?;
         ensure!(
             manifest.has_binary_for(&job.target),
             "cargo-dist did not build binaries for {}",
@@ -172,12 +170,11 @@ impl DistRequest {
             &self.package,
             &assets,
         )?;
-        let cargo_dist = self.cargo_dist(&targets)?;
+        let cargo_dist = self.cargo_dist(targets)?;
         for (i, receipt) in receipts.iter().enumerate() {
             cargo_dist.import_manifest(i, &receipt.manifest)?;
         }
-        let mut manifest = cargo_dist.build(&self.tag, &targets, true)?;
-        manifest.validate(&self.tag, &self.package)?;
+        let mut manifest = self.build_manifest(&cargo_dist, true)?;
         self.upload_manifest_artifacts(&cargo_dist, &release, &assets, &manifest)
             .await?;
         let notes = manifest.installation_notes()?;
@@ -208,14 +205,22 @@ impl DistRequest {
         Ok(())
     }
 
-    fn cargo_dist(&self, targets: &[String]) -> anyhow::Result<CargoDist> {
+    fn cargo_dist(&self, targets: Vec<String>) -> anyhow::Result<CargoDist> {
         CargoDist::prepare(
             &self.project,
             self.request.cargo_metadata(),
             &self.package,
             &self.repository,
+            &self.tag,
             targets,
         )
+    }
+
+    /// Run cargo-dist and check that it built exactly this package and tag.
+    fn build_manifest(&self, cargo_dist: &CargoDist, global: bool) -> anyhow::Result<Manifest> {
+        let manifest = cargo_dist.build(global)?;
+        manifest.validate(&self.tag, &self.package)?;
+        Ok(manifest)
     }
 
     async fn draft_release(&self) -> anyhow::Result<GitHubRelease> {
