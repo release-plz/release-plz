@@ -424,6 +424,7 @@ impl Updater<'_> {
             if let Some(version) = &workspace_version {
                 // Even a filtered sibling physically changes version. Its
                 // dependents must see the new version without releasing the sibling.
+                // `update_manifests` updates their requirements with the same rule.
                 for &p in inheriting_packages {
                     if !processed.contains(p.name.as_str()) && &p.version != version {
                         changed_packages.push((p, version.clone()));
