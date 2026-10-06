@@ -760,11 +760,7 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             _ => ResponseTemplate::new(404),
         }
     }).mount(&server).await;
-    let request = ReleaseRequest::new(metadata).with_default_package_config(
-        ReleaseConfig::default()
-            .with_git_only(true)
-            .with_distribute(true),
-    );
+    let request = ReleaseRequest::new(metadata).with_default_package_config(distribute_config());
     let request = DistRequest::new(request, "v1.0.0".into(), github(&server)).unwrap();
     // The full error chain: `successful_status` keeps the HTTP status in the cause.
     async fn finalize_error(request: &DistRequest, run_id: &str) -> String {
