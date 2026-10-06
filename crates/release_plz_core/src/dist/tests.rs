@@ -425,13 +425,7 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             .with_git_only(true)
             .with_distribute(true),
     );
-    let request = DistRequest::new(
-        request,
-        "v1.0.0".into(),
-        client(&server),
-        "https://github.com/owner/repo".into(),
-    )
-    .unwrap();
+    let request = DistRequest::new(request, "v1.0.0".into(), client(&server)).unwrap();
     assert!(request.finalize("123").await.is_err());
     for _ in 0..2 {
         request

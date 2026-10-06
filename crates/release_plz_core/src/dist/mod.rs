@@ -34,13 +34,14 @@ pub struct DistRequest {
 }
 
 impl DistRequest {
-    pub fn new(
-        request: ReleaseRequest,
-        tag: String,
-        client: GitClient,
-        repository: String,
-    ) -> anyhow::Result<Self> {
+    pub fn new(request: ReleaseRequest, tag: String, client: GitClient) -> anyhow::Result<Self> {
         ensure!(client.forge == ForgeType::Github, "dist requires GitHub");
+        // cargo-dist accepts only github.com, including when Git uses a public SSH alias,
+        // so derive the canonical repository URL from the owner and name instead of the remote.
+        let repository = format!(
+            "https://github.com/{}/{}",
+            client.remote.owner, client.remote.repo
+        );
         let metadata = request.cargo_metadata();
         let project = Project::new(
             &metadata.workspace_root.join(cargo_utils::CARGO_TOML),

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, ensure};
 use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
 use release_plz_core::{
-    GitClient, GitForge, GitHub, ReleaseRequest, RepoUrl,
+    GitClient, GitForge, GitHub, ReleaseRequest,
     dist::{DistJob, DistRequest},
 };
 use secrecy::SecretString;
@@ -52,37 +52,28 @@ impl Dist {
         };
         let config = args.config.load()?;
         let metadata = args.cargo_metadata()?;
-        let repo_url = args.get_repo_url(&config)?;
-        let repository = distribution_repository(&repo_url)?;
-        let client = GitClient::new(GitForge::Github(GitHub::from_repo_url(
-            repo_url,
+        let github = GitHub::from_repo_url(
+            args.get_repo_url(&config)?,
             SecretString::from(args.git_token),
-        )?))?;
+        )?;
+        ensure!(
+            !github.is_enterprise(),
+            "binary distribution requires GitHub.com; cargo-dist does not support GitHub Enterprise Server"
+        );
+        let client = GitClient::new(GitForge::Github(github))?;
         let request = config.fill_release_config(false, false, ReleaseRequest::new(metadata))?;
         let tag = match args.tag {
             Some(tag) => tag,
             None => event_tag()?,
         };
         ensure!(!tag.is_empty(), "release tag must not be empty");
-        let request = DistRequest::new(request, tag, client, repository)?;
+        let request = DistRequest::new(request, tag, client)?;
         if finalize {
             request.finalize(&release_plz_core::dist::run_id()?).await
         } else {
             request.build(DistJob::from_env()?).await
         }
     }
-}
-
-fn distribution_repository(repo_url: &RepoUrl) -> anyhow::Result<String> {
-    ensure!(
-        repo_url.is_on_github_dot_com(),
-        "binary distribution requires GitHub.com; cargo-dist does not support GitHub Enterprise Server"
-    );
-    // cargo-dist accepts only github.com, including when Git uses a public SSH alias.
-    Ok(format!(
-        "https://github.com/{}/{}",
-        repo_url.owner, repo_url.name
-    ))
 }
 
 fn event_tag() -> anyhow::Result<String> {
@@ -136,32 +127,5 @@ mod tests {
                 "{error}"
             );
         }
-    }
-
-    #[test]
-    fn distribution_uses_canonical_github_urls_for_public_aliases() {
-        for remote in [
-            "https://github.com/owner/repo.git",
-            "git@github.com:owner/repo.git",
-            "ssh://git@ssh.github.com:443/owner/repo.git",
-            "https://www.github.com/owner/repo.git",
-        ] {
-            let repo_url = RepoUrl::new(remote).unwrap();
-            assert_eq!(
-                distribution_repository(&repo_url).unwrap(),
-                "https://github.com/owner/repo"
-            );
-        }
-    }
-
-    #[test]
-    fn distribution_rejects_enterprise_repositories() {
-        let repo_url = RepoUrl::new("https://github.example.com/owner/repo").unwrap();
-        assert!(
-            distribution_repository(&repo_url)
-                .unwrap_err()
-                .to_string()
-                .contains("does not support GitHub Enterprise Server")
-        );
     }
 }
