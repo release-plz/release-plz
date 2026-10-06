@@ -41,9 +41,10 @@ files of the crate or one of its dependencies.
 ## Does release-plz support repositories with the SHA-256 object format?
 
 Yes, with one limitation.
-When a commit was reverted on a branch and a later merge restored its changes
-(for example with `git merge -s ours`), release-plz checks whether those changes
-are absent from the last release and still present at `HEAD` before listing the commit.
+When a commit was reverted on a branch and a later merge discarded that revert
+(for example with `git merge -s ours`), release-plz checks whether the commit's
+changes are absent from the last release and still present at `HEAD` before
+listing it.
 This check isn't available in repositories using Git's
 [SHA-256 object format](https://git-scm.com/docs/hash-function-transition):
 release-plz treats such commits as already released, so they don't appear in the
