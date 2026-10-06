@@ -118,7 +118,7 @@ impl DistRequest {
         ensure!(!assets.is_empty(), "cargo-dist produced no assets");
         manifest.clear_paths();
         let receipt = Receipt {
-            schema: 1,
+            schema: RECEIPT_SCHEMA,
             job,
             tag: self.tag.clone(),
             commit: self.commit.clone(),
@@ -145,7 +145,7 @@ impl DistRequest {
             return Ok(());
         }
         let assets = self.client.dist_assets(&release).await?;
-        let prefix = format!("release-plz-dist-{run_id}-");
+        let prefix = receipt_prefix(run_id);
         let mut receipts = vec![];
         for asset in &assets {
             if asset.name.starts_with(&prefix) && asset.name.ends_with(".json") {
@@ -325,6 +325,16 @@ fn validate_run_id(run_id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+const RECEIPT_SCHEMA: u32 = 1;
+
+fn receipt_prefix(run_id: &str) -> String {
+    format!("release-plz-dist-{run_id}-")
+}
+
+fn receipt_name(run_id: &str, index: usize) -> String {
+    format!("{}{index}.json", receipt_prefix(run_id))
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Receipt {
     schema: u32,
@@ -337,10 +347,7 @@ struct Receipt {
 
 impl Receipt {
     fn name(&self) -> String {
-        format!(
-            "release-plz-dist-{}-{}.json",
-            self.job.run_id, self.job.index
-        )
+        receipt_name(&self.job.run_id, self.job.index)
     }
 }
 
@@ -451,7 +458,7 @@ fn validate_receipts(
     for receipt in receipts {
         receipt.job.validate()?;
         ensure!(
-            receipt.schema == 1
+            receipt.schema == RECEIPT_SCHEMA
                 && receipt.job.run_id == run_id
                 && receipt.tag == tag
                 && receipt.commit == commit,
