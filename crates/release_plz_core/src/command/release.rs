@@ -1111,6 +1111,9 @@ async fn release_package_git_only(
     }
 }
 
+/// The draft already exists when the dispatch fails, so the user can retry by hand.
+const DISPATCH_FAILED: &str = "draft created, but distribution dispatch failed; trigger the distribution workflow manually with this tag to retry";
+
 /// Create git tag and/or git release for a package.
 async fn create_git_tag_and_release(
     input: &ReleaseRequest,
@@ -1168,8 +1171,10 @@ async fn create_git_tag_and_release(
         };
         git_client.create_release(&git_release_info).await?;
         if package_config.distribute {
-            git_client.dispatch_dist(release_info.git_tag).await
-                .context("draft created, but distribution dispatch failed; trigger the distribution workflow manually with this tag to retry")?;
+            git_client
+                .dispatch_dist(release_info.git_tag)
+                .await
+                .context(DISPATCH_FAILED)?;
         }
     }
 
