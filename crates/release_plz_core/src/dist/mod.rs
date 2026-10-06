@@ -100,8 +100,7 @@ impl DistRequest {
     /// Build for this runner and upload assets, then a receipt indicating successful completion.
     pub async fn build(&self, job: DistJob) -> anyhow::Result<()> {
         job.validate()?;
-        let release = self.client.dist_release(&self.tag).await?;
-        ensure!(release.draft, "release `{}` is already published", self.tag);
+        self.draft_release().await?;
         let targets = vec![job.target.clone()];
         let cargo_dist = CargoDist::prepare(
             &self.project,
@@ -120,6 +119,8 @@ impl DistRequest {
             "cargo-dist did not build binaries for {}",
             job.target
         );
+        // The build is slow: a concurrent finalize may have published the release meanwhile.
+        let release = self.draft_release().await?;
         let assets = self
             .upload_manifest_artifacts(&cargo_dist, &release, &manifest)
             .await?;
@@ -213,6 +214,12 @@ impl DistRequest {
             );
         }
         Ok(())
+    }
+
+    async fn draft_release(&self) -> anyhow::Result<Release> {
+        let release = self.client.dist_release(&self.tag).await?;
+        ensure!(release.draft, "release `{}` is already published", self.tag);
+        Ok(release)
     }
 
     async fn upload_manifest_artifacts(
