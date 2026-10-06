@@ -166,11 +166,11 @@ impl ChangeReplay {
         tree: &git2::Tree<'_>,
         target: &git2::Tree<'_>,
     ) -> anyhow::Result<HashMap<Vec<u8>, Vec<u8>>> {
-        let mut renamed = self
+        let mut rename_diff = self
             .repo
             .diff_tree_to_tree(Some(tree), Some(target), None)?;
-        renamed.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
-        let renamed: HashMap<&[u8], &[u8]> = renamed
+        rename_diff.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
+        let renamed: HashMap<&[u8], &[u8]> = rename_diff
             .deltas()
             .filter(|delta| delta.status() == git2::Delta::Renamed)
             .filter_map(|delta| {
