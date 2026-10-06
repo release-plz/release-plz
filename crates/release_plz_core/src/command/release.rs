@@ -213,7 +213,7 @@ impl ReleaseRequest {
         Ok(token)
     }
 
-    fn validate_git_release_options(&self) -> anyhow::Result<()> {
+    fn validate_distribute_options(&self) -> anyhow::Result<()> {
         for package in &self.metadata.packages {
             let config = self.get_package_config(&package.name);
             if !self.metadata.workspace_members.contains(&package.id)
@@ -249,6 +249,11 @@ impl ReleaseRequest {
                 package.name
             );
         }
+        Ok(())
+    }
+
+    fn validate_git_release_options(&self) -> anyhow::Result<()> {
+        self.validate_distribute_options()?;
         let Some(git_release) = &self.git_release else {
             return Ok(());
         };
