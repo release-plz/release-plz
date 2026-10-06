@@ -1,6 +1,6 @@
 use super::*;
 use crate::{GitForge, GitHub, GitTagConfig, ReleaseConfig};
-use cargo_metadata::camino::Utf8Path;
+use cargo_metadata::{Metadata, camino::Utf8Path};
 use secrecy::SecretString;
 use serde_json::json;
 use wiremock::{
@@ -809,7 +809,9 @@ fn real_cargo_dist_selects_only_the_requested_workspace_package() {
     }
 }
 
-fn check_workspace_dist_build(profile_path: &str) {
+/// A two-member workspace whose `unrelated` member must never be built, with the
+/// `dist` profile declared in `profile_path`.
+fn workspace_fixture(profile_path: &str) -> (tempfile::TempDir, Repo, Metadata, Project) {
     let temporary = tempfile::tempdir().unwrap();
     let repo = Repo::init(temporary.path());
     fs_err::write(
@@ -861,16 +863,24 @@ fn check_workspace_dist_build(profile_path: &str) {
         &config,
     )
     .unwrap();
-    let package = metadata.packages.iter().find(|p| p.name == "app").unwrap();
-    let dist = CargoDist::prepare(
-        &project,
-        &metadata,
-        package,
+    (temporary, repo, metadata, project)
+}
+
+fn prepare_app(project: &Project, metadata: &Metadata) -> anyhow::Result<CargoDist> {
+    CargoDist::prepare(
+        project,
+        metadata,
+        metadata.packages.iter().find(|p| p.name == "app").unwrap(),
         "https://github.com/owner/repo",
         "app-v1.0.0",
         vec![cargo_dist::host_target().unwrap()],
     )
-    .unwrap();
+}
+
+fn check_workspace_dist_build(profile_path: &str) {
+    let (_temporary, repo, metadata, project) = workspace_fixture(profile_path);
+    let package = metadata.packages.iter().find(|p| p.name == "app").unwrap();
+    let dist = prepare_app(&project, &metadata).unwrap();
     let manifest = dist.build(false).unwrap();
     manifest.validate("app-v1.0.0", package).unwrap();
     assert!(
@@ -879,5 +889,42 @@ fn check_workspace_dist_build(profile_path: &str) {
             .keys()
             .all(|name| name.starts_with("app-"))
     );
+    // Only files produced inside the temporary workspace may be uploaded.
+    let error = dist
+        .artifact_bytes(repo.directory().join("Cargo.toml").as_std_path())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("outside the temporary workspace"), "{error}");
+    repo.is_clean().unwrap();
+}
+
+#[test]
+#[ignore = "requires cargo-dist 0.33.0 on PATH; copies the workspace"]
+fn real_cargo_dist_prepare_rejects_existing_dist_configuration() {
+    let (_temporary, repo, metadata, project) = workspace_fixture("Cargo.toml");
+    // The working tree, including untracked files, is what gets copied and prepared.
+    let dist_workspace = repo.directory().join("dist-workspace.toml");
+    fs_err::write(&dist_workspace, "[workspace]\nmembers = ['cargo:.']\n").unwrap();
+    let error = prepare_app(&project, &metadata).unwrap_err().to_string();
+    assert!(
+        error.contains("manages its own cargo-dist configuration"),
+        "{error}"
+    );
+    fs_err::remove_file(&dist_workspace).unwrap();
+    // Any member's own cargo-dist metadata conflicts, not only the distributed one.
+    let manifest = repo.directory().join("unrelated/Cargo.toml");
+    let original = fs_err::read_to_string(&manifest).unwrap();
+    fs_err::write(
+        &manifest,
+        format!("{original}\n[package.metadata.dist]\ndist = true\n"),
+    )
+    .unwrap();
+    let error = prepare_app(&project, &metadata).unwrap_err().to_string();
+    assert!(
+        error.contains("cannot be combined with package.metadata.dist (unrelated)"),
+        "{error}"
+    );
+    fs_err::write(&manifest, original).unwrap();
+    prepare_app(&project, &metadata).unwrap();
     repo.is_clean().unwrap();
 }
