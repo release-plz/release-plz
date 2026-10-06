@@ -104,7 +104,13 @@ pub async fn commit_author_username(
             )
         })?;
 
-    let Some(commit_info) = project.repository.and_then(|repository| repository.commit) else {
+    let repository = project.repository.with_context(|| {
+        format!(
+            "can't read the repository of GitLab project `{full_path}`. Make sure the token has permission to read the repository."
+        )
+    })?;
+
+    let Some(commit_info) = repository.commit else {
         debug!("Commit {commit} not found in the remote repository");
         return Ok(None);
     };
@@ -205,6 +211,22 @@ mod tests {
             error
                 .to_string()
                 .contains("`group/subgroup/repo` not found"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unreadable_repository_is_an_error() {
+        let server = MockServer::start().await;
+        let response = json!({ "data": { "project": { "repository": null } } });
+        mock_commit_author_query(&server, response).await;
+        let error = commit_author_username(&gitlab_client(&server), "abc")
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("can't read the repository of GitLab project `group/subgroup/repo`"),
             "{error}"
         );
     }
