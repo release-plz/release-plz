@@ -58,11 +58,10 @@ impl DistRequest {
                 packages.push(package);
             }
         }
-        ensure!(
-            packages.len() == 1,
-            "tag `{tag}` must select exactly one package with distribute=true"
-        );
-        let package = packages[0].clone();
+        let [package] = packages.as_slice() else {
+            anyhow::bail!("tag `{tag}` must select exactly one package with distribute=true");
+        };
+        let package = (*package).clone();
         ensure!(
             package.targets.iter().any(|target| target.is_bin()),
             "dist requires a binary target"
