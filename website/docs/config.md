@@ -112,7 +112,6 @@ the following sections:
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
 - [`[[package]]`](#the-package-section) — Package-specific configurations.
   - [`name`](#the-name-field) — Package name. *(Required)*.
-  - [`distribute`](#the-distribute-field) — Build and distribute binaries through a draft GitHub release.
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
   - [`changelog_path`](#the-changelog_path-field-package-section) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
@@ -142,6 +141,7 @@ the following sections:
     — Pass `--all-features` to `cargo publish`.
   - [`release`](#the-release-field-package-section) - Enable the processing of this package.
   - [`semver_check`](#the-semver_check-field-package-section) — Run [cargo-semver-checks].
+  - [`distribute`](#the-distribute-field) — Build and distribute binaries through a draft GitHub release.
   - [`version_group`](#the-version_group-field) — Group of packages with the same version.
 - [`[changelog]`](#the-changelog-section) — Changelog configuration.
   - [`header`](#the-header-field) — Changelog header.
