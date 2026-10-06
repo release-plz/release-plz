@@ -121,10 +121,10 @@ impl<'a> ChangeReplay<'a> {
     }
 
     /// Fetch the blobs of `trees` that differ from `base`'s and are missing from
-    /// the object database. The walk checks out only the commits it visits, so a
-    /// partial clone lacks the blobs of other commits, such as a candidate's
-    /// parent on an excluded branch, and libgit2 cannot fetch them; Git does on
-    /// lookup. Full clones miss nothing and spawn no process.
+    /// the object database. A partial clone lacks the package blobs of commits
+    /// the walk never checked out, such as a candidate's parent on an excluded
+    /// branch; libgit2 cannot fetch them, but Git does on lookup. Full clones
+    /// miss nothing and spawn no process.
     ///
     /// For every path, these diffs hold each distinct blob among the snapshots,
     /// so the merges and the rename detection find every blob they read. The
