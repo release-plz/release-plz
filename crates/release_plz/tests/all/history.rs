@@ -408,15 +408,8 @@ async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     let history = unpublished_history("").await;
     history.write_commit(path, "{}\n", "chore: add fixture");
     history.publish_snapshot(&[]);
-
-    // Change the fixture bytes. The `!` in `feat!` marks the commit as breaking.
     let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
-    // Revert on a side branch, then merge with `ours` to keep the breaking
-    // contents. Import a sibling fix too, so the history walk visits the
-    // reverted snapshot that matches the published package.
     let sibling = history.merge_ignored_revert(path, "{}\n");
-    // Keep both commits in the changelog: the surviving breaking change must
-    // bump 0.1.0 to 0.2.0, rather than the sibling fix's patch-only 0.1.1.
     history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
