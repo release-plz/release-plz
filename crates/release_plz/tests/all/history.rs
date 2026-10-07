@@ -350,14 +350,14 @@ async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
     use std::os::unix::fs::PermissionsExt;
 
     // Cover the breaking change both with and without an earlier implementation edit.
-    for sequential in [false, true] {
+    for with_prior_implementation_change in [false, true] {
         let history = api_history(BASE_API).await;
         // Record the executable bit.
         history
             .repo
             .git(&["config", "core.filemode", "true"])
             .unwrap();
-        let implementation = sequential
+        let implementation = with_prior_implementation_change
             .then(|| history.write_commit("src/lib.rs", IMPLEMENTED_API, "chore: implementation"));
         // Combine the mode and API changes in one commit so replay has to distinguish them.
         fs_err::set_permissions(
@@ -367,7 +367,7 @@ async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
         .unwrap();
         let breaking = history.write_commit(
             "src/lib.rs",
-            if sequential {
+            if with_prior_implementation_change {
                 IMPLEMENTED_BREAKING_API
             } else {
                 BREAKING_API
