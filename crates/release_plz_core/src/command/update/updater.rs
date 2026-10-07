@@ -1075,11 +1075,12 @@ struct PackagePaths {
 
 impl PackagePaths {
     fn new(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Self> {
-        let configured_readme = package
-            .readme
-            .as_ref()
-            .map(|readme| package_path.join(readme))
-            .filter(|readme| readme.exists())
+        let configured_readme = crate::package_compare::existing_readme_path(package, package_path);
+        let readme = configured_readme
+            .as_deref()
+            .map(fs_utils::canonicalize_utf8)
+            .transpose()?;
+        let configured_readme = configured_readme
             .map(|readme| -> anyhow::Result<_> {
                 // Normalize `..` and symlinked directories without following
                 // the README link itself.
@@ -1090,7 +1091,7 @@ impl PackagePaths {
             .transpose()?;
         Ok(Self {
             package: package_path.to_path_buf(),
-            readme: crate::local_readme_override(package, package_path)?,
+            readme,
             configured_readme,
         })
     }
