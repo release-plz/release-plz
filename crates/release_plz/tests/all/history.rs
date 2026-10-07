@@ -349,14 +349,17 @@ const IMPLEMENTED_BREAKING_API: &str =
 async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
     use std::os::unix::fs::PermissionsExt;
 
+    // Cover the breaking change both with and without an earlier implementation edit.
     for sequential in [false, true] {
         let history = api_history(BASE_API).await;
+        // Record the executable bit even if the user's Git configuration ignores it.
         history
             .repo
             .git(&["config", "core.filemode", "true"])
             .unwrap();
         let implementation = sequential
             .then(|| history.write_commit("src/lib.rs", IMPLEMENTED_API, "chore: implementation"));
+        // Combine the mode and API changes in one commit so replay has to distinguish them.
         fs_err::set_permissions(
             history.repo.directory().join("src/lib.rs"),
             std::fs::Permissions::from_mode(0o755),
@@ -371,12 +374,17 @@ async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
             },
             "feat!: breaking API and set executable bit",
         );
+        // Visit a merged branch whose contents match the release, but discard its revert.
+        // HEAD still contains the breaking API and any earlier implementation edit,
+        // so both content changes must survive the equal package snapshot.
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         let mut expected = vec![breaking.as_str(), sibling.as_str()];
         expected.extend(implementation.as_deref());
         history.assert_release(&expected, "0.2.0");
 
-        // Keeping only the executable bit must not retain the breaking marker.
+        // Restore the released contents while leaving the executable bit set.
+        // Neither content change should remain in the changelog: only the fixes
+        // survive, so the version bump is now a patch.
         let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
         history.assert_release(&[&restore, &sibling], "0.1.1");
     }
