@@ -115,7 +115,7 @@ impl TestContext {
     }
 
     fn assert_release(&self, commits: &[&str], version: &str) {
-        assert_release(&self.update_history(), commits, version);
+        assert_release(&self.update_history(), commits, version, "");
     }
 
     fn update_history(&self) -> String {
@@ -313,18 +313,22 @@ fn commit_ids(changelog: &str) -> Vec<&str> {
 }
 
 fn assert_commits(changelog: &str, expected: &[&str]) {
+    assert_commits_with_context(changelog, expected, "");
+}
+
+fn assert_commits_with_context(changelog: &str, expected: &[&str], context: &str) {
     let mut actual = commit_ids(changelog);
     actual.sort_unstable();
     let mut expected = expected.to_vec();
     expected.sort_unstable();
-    assert_eq!(actual, expected, "{changelog}");
+    assert_eq!(actual, expected, "{context}\n{changelog}");
 }
 
-fn assert_release(changelog: &str, commits: &[&str], version: &str) {
-    assert_commits(changelog, commits);
+fn assert_release(changelog: &str, commits: &[&str], version: &str, context: &str) {
+    assert_commits_with_context(changelog, commits, context);
     assert!(
         changelog.starts_with(&format!("## {version}\n")),
-        "{changelog}"
+        "{context}\n{changelog}"
     );
 }
 
@@ -332,6 +336,13 @@ const BASE_API: &str = "pub fn api() {}\n\n\n\n\n\npub fn stable() {}\n";
 const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}\n";
 /// A release whose `api` signature differs from both the base and the breaking one.
 const RELEASED_API: &str = "pub fn api(_: u8) {}\n\n\n\n\n\npub fn stable() {}\n";
+
+/// [`BASE_API`] with an implementation change that leaves the API untouched.
+const IMPLEMENTED_API: &str =
+    "pub fn api() { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
+/// [`IMPLEMENTED_API`] with the signature of [`BREAKING_API`].
+const IMPLEMENTED_BREAKING_API: &str =
+    "pub fn api(_: bool) { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
 
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
@@ -401,6 +412,184 @@ async fn sha256_repositories_fall_back_to_ancestry_pruning() {
     assert_eq!(history.repo.current_commit_hash().unwrap().len(), 64);
     let (_breaking, sibling) = revert_breaking_change(&history);
     history.assert_release(&[&sibling], "0.1.1");
+}
+
+#[tokio::test]
+async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
+    for boundary in ["tag", "published", "missing", "equality"] {
+        let history = unpublished_history(BASE_API).await;
+        history.publish_with_boundary(boundary);
+        // The implementation commit also edits the lockfile. Equality ignores it, so the
+        // revert is still an equal snapshot, and undoing the commit on that snapshot
+        // must not count the lockfile it restores as a package change.
+        let lockfile = history.repo.directory().join("Cargo.lock");
+        let contents = fs_err::read_to_string(&lockfile).unwrap();
+        fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
+        let implementation = history.write_commit(
+            "src/lib.rs",
+            IMPLEMENTED_API,
+            "chore: modify implementation",
+        );
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            IMPLEMENTED_BREAKING_API,
+            "feat!: breaking API",
+        );
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        assert_release(
+            &history.update_history(),
+            &[&implementation, &breaking, &sibling],
+            "0.2.0",
+            boundary,
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file() {
+    for sequential in [false, true] {
+        // Visit the discarded change either before or after the equal snapshot.
+        for (discarded_day, discarded_first) in [(2, false), (8, true)] {
+            let case = format!("sequential={sequential}, discarded_day={discarded_day}");
+            let history = api_history(BASE_API).await;
+            let repo = &history.repo;
+            repo.git(&["checkout", "-b", "feature"]).unwrap();
+            let breaking_api = if sequential {
+                IMPLEMENTED_BREAKING_API
+            } else {
+                BREAKING_API
+            };
+            if sequential {
+                history.write_commit_at(
+                    "src/lib.rs",
+                    IMPLEMENTED_API,
+                    "chore: modify implementation",
+                    1,
+                );
+            }
+            let discarded = history.write_commit_at(
+                "src/lib.rs",
+                breaking_api,
+                "feat!: discarded breaking API",
+                discarded_day,
+            );
+            repo.checkout_head().unwrap();
+            history.write_commit_at(
+                "src/lib.rs",
+                &format!("{BASE_API}// temporary\n"),
+                "chore: temporary",
+                3,
+            );
+            repo.git_at(
+                &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+                "2000-01-04T00:00:00 +0000",
+            )
+            .unwrap();
+            let equal = history.write_commit_at("src/lib.rs", BASE_API, "revert: temporary", 5);
+            repo.git(&["checkout", "feature"]).unwrap();
+            let sibling = history.write_commit_at(
+                "src/lib.rs",
+                &format!("{breaking_api}pub fn extra() {{}}\n"),
+                "fix: sibling",
+                9,
+            );
+            repo.checkout_head().unwrap();
+            repo.git_at(
+                &["merge", "--no-ff", "-m", "merge feature again", "feature"],
+                "2000-01-10T00:00:00 +0000",
+            )
+            .unwrap();
+            let merge = repo.current_commit_hash().unwrap();
+            assert_eq!(
+                fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+                format!("{BASE_API}pub fn extra() {{}}\n"),
+                "{case}"
+            );
+            let order = history.walk_order();
+            assert_eq!(
+                order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
+                discarded_first,
+                "{case}: {order}"
+            );
+            assert_release(
+                &history.update_history(),
+                &[&sibling, &merge],
+                "0.1.1",
+                &case,
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
+    for (breaking_survives, version) in [(false, "0.1.1"), (true, "0.2.0")] {
+        let history = api_history(BASE_API).await;
+        let implementation = history.write_commit(
+            "src/lib.rs",
+            IMPLEMENTED_API,
+            "chore: modify implementation",
+        );
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            IMPLEMENTED_BREAKING_API,
+            "feat!: breaking API",
+        );
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        // Evolve the body on the same line, retaining or restoring the signature.
+        // The line-level inverse conflicts in both cases; only one needs a minor bump.
+        let kept = if breaking_survives {
+            IMPLEMENTED_BREAKING_API
+        } else {
+            IMPLEMENTED_API
+        };
+        let evolved = history.write_commit(
+            "src/lib.rs",
+            &kept.replace("/* implementation */", "/* implementation */ /* evolved */"),
+            "fix: evolve implementation",
+        );
+        let expected: &[&str] = if breaking_survives {
+            &[&implementation, &breaking, &sibling, &evolved]
+        } else {
+            &[&implementation, &sibling, &evolved]
+        };
+        assert_release(
+            &history.update_history(),
+            expected,
+            version,
+            &format!("breaking_survives={breaking_survives}"),
+        );
+    }
+}
+
+/// A merge commit can be an ancestor of the equal snapshot too. Its conflict
+/// resolution is undone relative to its first parent, like `git revert -m 1`.
+#[tokio::test]
+async fn a_merge_commit_whose_resolution_survives_is_retained() {
+    let history = api_history(BASE_API).await;
+    let repo = &history.repo;
+    let baseline = repo.current_commit_hash().unwrap();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    repo.git(&["checkout", "-b", "feature", &baseline]).unwrap();
+    history.write_commit(
+        "src/lib.rs",
+        &BASE_API.replace("api() {}", "api() {} // TODO: take a flag"),
+        "chore: plan the flag",
+    );
+    repo.checkout_head().unwrap();
+    assert!(
+        repo.git(&["merge", "--no-ff", "--no-commit", "feature"])
+            .is_err()
+    );
+    // The resolution drops the plan and documents the flag on a line of its own,
+    // so the plan stays excluded although undoing it conflicts on their shared words.
+    let resolved = history.write_commit(
+        "src/lib.rs",
+        &format!("/// Takes a flag.\n{BREAKING_API}"),
+        "merge resolved",
+    );
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    history.assert_release(&[&breaking, &resolved, &sibling], "0.2.0");
 }
 
 #[tokio::test]
@@ -836,6 +1025,7 @@ async fn partial_clones_replay_retained_changes_without_outside_blobs() {
         &partial.check_update(command),
         &[&breaking, &sibling],
         "0.2.0",
+        "",
     );
     let trace = fs_err::read_to_string(trace_path).unwrap();
     assert!(
@@ -897,6 +1087,7 @@ async fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
         &partial.check_update(command),
         &[&breaking, &sibling],
         "0.2.0",
+        "",
     );
     // The CLI fetches into its isolated repository, not the user's clone.
     let trace = fs_err::read_to_string(trace_path).unwrap();
