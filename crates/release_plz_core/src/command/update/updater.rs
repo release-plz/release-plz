@@ -733,8 +733,8 @@ impl Updater<'_> {
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
             // Without a tag or a published commit bounding the walk, a branch
-            // forked before the release keeps every older commit reachable, so
-            // all of them are inspected.
+            // forked before the release keeps its fork point and every ancestor
+            // of it reachable, so all of those are inspected.
             if retained_changes.skips(&current_commit_hash) {
                 continue;
             }
