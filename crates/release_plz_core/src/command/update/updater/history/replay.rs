@@ -14,7 +14,7 @@ use crate::fs_utils;
 /// reads the source objects without writing to the source repository.
 pub(super) struct ChangeReplay<'a> {
     /// The source repository, whose Git fetches the blobs a partial clone
-    /// lacks, see [`Self::fetch_missing_blobs`].
+    /// lacks, see [`Self::fetch_if_missing`].
     source: &'a Repo,
     repo: git2::Repository,
     /// The repository-relative paths the replayed trees are restricted to,
@@ -139,26 +139,28 @@ impl<'a> ChangeReplay<'a> {
             let diff = self.repo.diff_tree_to_tree(Some(base), Some(tree), None)?;
             for delta in diff.deltas() {
                 for (file, side) in [(delta.old_file(), base), (delta.new_file(), *tree)] {
-                    // Deleted sides have a zero id. A miss refreshes the object
-                    // database, so a blob fetched for one tree is found for the
-                    // next.
-                    if file.id().is_zero() || odb.exists(file.id()) {
-                        continue;
+                    // Deleted sides have a zero id. Submodules are commits of
+                    // another repository. Read the kind from the tree entry:
+                    // `DiffFile::mode` panics on legacy modes Git accepts, such
+                    // as 100600.
+                    if !file.id().is_zero() && !is_submodule(side, &file) {
+                        self.fetch_if_missing(&odb, file.id())?;
                     }
-                    // Submodules are commits of another repository. Read the
-                    // kind from the tree entry: `DiffFile::mode` panics on
-                    // legacy modes Git accepts, such as 100600.
-                    if is_submodule(side, &file) {
-                        continue;
-                    }
-                    let id = file.id().to_string();
-                    debug!(
-                        "fetching blob {id} missing from the partial clone to check retained changes"
-                    );
-                    self.source.git(&["cat-file", "-e", &id])?;
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Fetch the blob `id` through Git when the object database lacks it.
+    /// A miss refreshes the object database, so later lookups find it.
+    fn fetch_if_missing(&self, odb: &git2::Odb<'_>, id: git2::Oid) -> anyhow::Result<()> {
+        if odb.exists(id) {
+            return Ok(());
+        }
+        let id = id.to_string();
+        debug!("fetching blob {id} missing from the partial clone to check retained changes");
+        self.source.git(&["cat-file", "-e", &id])?;
         Ok(())
     }
 
@@ -290,7 +292,8 @@ impl<'a> ChangeReplay<'a> {
     /// differ between the snapshots, and a partial clone lacks those of the
     /// commits the walk never checked out. Restricting the trees keeps the
     /// reads, and the fetches of [`Self::fetch_missing_blobs`], within the
-    /// package.
+    /// package. Inserting a blob requires it to exist, so a missing README
+    /// blob is fetched first.
     ///
     /// The restriction hides renames across the package boundary: a file the
     /// target moved out of the package shows as a modify/delete conflict, which
@@ -300,11 +303,15 @@ impl<'a> ChangeReplay<'a> {
         if self.paths.iter().any(|path| path.as_str().is_empty()) {
             return Ok(tree);
         }
+        let odb = self.repo.odb()?;
         let mut update = git2::build::TreeUpdateBuilder::new();
         for path in &self.paths {
             // A path the snapshot lacks selects nothing. The entries keep their
             // ids, so a merge reads the same blobs.
             if let Ok(entry) = tree.get_path(path.as_std_path()) {
+                if entry.kind() == Some(git2::ObjectType::Blob) {
+                    self.fetch_if_missing(&odb, entry.id())?;
+                }
                 update.upsert(path.as_str(), entry.id(), file_mode(&entry)?);
             }
         }

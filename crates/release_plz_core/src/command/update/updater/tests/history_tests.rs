@@ -890,6 +890,54 @@ fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
     assert!(!partial.missing_objects().contains(&baseline_blob));
 }
 
+/// Restricting a tree to the package and its README inserts the README blob,
+/// which must exist. A partial clone lacks the README of a candidate's parent
+/// that the walk never checks out, so the replay fetches it first.
+#[test]
+fn partial_clones_fetch_a_readme_blob_a_replay_needs() {
+    // Cargo detects the README in the package directory.
+    let history = History::with_member_package(|root| {
+        fs_err::write(root.join("pkg/README.md"), "# base\n").unwrap();
+    });
+    let repo = &history.repo;
+    let readme = repo.directory().join("pkg/README.md");
+    let baseline = repo.current_commit_hash().unwrap();
+    // Both branches edit the README, so only the baseline has its original blob.
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    fs_err::write(&readme, "# breaking\n").unwrap();
+    let breaking = history.write_commit("pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
+    repo.checkout_head().unwrap();
+    fs_err::write(&readme, "# released\n").unwrap();
+    let published = history.write_commit("pkg/src/lib.rs", RELEASED_API, "feat: released API");
+    history.publish("pkg/README.md", "# released\n");
+    history.publish("pkg/src/lib.rs", RELEASED_API);
+    // Keep the feature branch's files when merging it into the release.
+    assert!(
+        repo.git(&["merge", "--no-ff", "--no-commit", "feature"])
+            .is_err()
+    );
+    fs_err::write(&readme, "# breaking\n").unwrap();
+    history.write_commit("pkg/src/lib.rs", BREAKING_API, "merge feature");
+    let sibling = history.merge_ignored_change("pkg/src/fix.rs", |root| {
+        fs_err::write(root.join("pkg/src/lib.rs"), RELEASED_API).unwrap();
+        fs_err::write(root.join("pkg/README.md"), "# released\n").unwrap();
+    });
+    let diff = history.diff(Some(&published));
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+
+    let partial = history.partial_clone();
+    let baseline_readme = partial
+        .repo
+        .git(&["rev-parse", &format!("{baseline}:pkg/README.md")])
+        .unwrap();
+    assert!(partial.missing_objects().contains(&baseline_readme));
+    let diff = partial.diff(Some(&published));
+    assert_commits(&diff, &[&breaking, &sibling]);
+    assert_next_version(&diff, &Version::new(0, 2, 0));
+    assert!(!partial.missing_objects().contains(&baseline_readme));
+}
+
 #[test]
 fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
     let history = History::new();
