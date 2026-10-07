@@ -13,7 +13,8 @@ The GitHub action accepts the following input variables:
   *(Defaults to the root directory).*
 - `version`: Release-plz version to use. E.g. `0.3.70`. *(Default: latest version).*
 - `config`: Release-plz config file location.
-  *(Defaults to `release-plz.toml` or `.release-plz.toml`).*
+  *(Defaults to the first existing file among `release-plz.toml`, `.release-plz.toml`,
+  and `.config/release-plz.toml`, in that order).*
 - `token`: Token used to publish to the cargo registry.
   Override the `CARGO_REGISTRY_TOKEN` environment variable, or the `CARGO_REGISTRIES_<NAME>_TOKEN`
   environment variable, used for registry specified in the `registry` input variable.

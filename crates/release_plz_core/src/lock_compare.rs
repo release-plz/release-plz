@@ -2,11 +2,12 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use cargo::{
-    core::{
-        PackageId, Resolve, Workspace,
+    resolver::Resolve,
+    util::CanonicalUrl,
+    workspace::{
+        PackageId, Workspace,
         dependency::{DepKind, Patch},
     },
-    util::CanonicalUrl,
 };
 use cargo_metadata::{Metadata, camino::Utf8Path, semver::Version};
 use tracing::{debug, warn};
@@ -36,7 +37,11 @@ impl WorkspaceLockfile {
                     (id, dependencies)
                 })
                 .collect(),
-            replacements: resolve.replacements().clone(),
+            replacements: resolve
+                .replacements()
+                .iter()
+                .map(|(&package, &replacement)| (package, replacement))
+                .collect(),
         }
     }
 }
@@ -217,7 +222,7 @@ fn reachable_lock_dependencies(
 
 fn is_dev_only_dependency(
     id: PackageId,
-    package: &cargo::core::Package,
+    package: &cargo::workspace::Package,
     patches: &HashMap<CanonicalUrl, Vec<Patch>>,
 ) -> bool {
     let mut matching = package
