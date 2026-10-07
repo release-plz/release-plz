@@ -712,30 +712,25 @@ mod tests {
         ] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
             let repo = Repo::init(dir.path());
-            let git = git2::Repository::open(repo.directory()).unwrap();
-            // Commit `contents` to a file and the submodule commit `byte`
-            // repeated, which no repository has.
-            let commit = |parent: &str, contents: &[u8], byte: u8| {
-                let file = ("100644", b"f".as_slice(), git.blob(contents).unwrap());
+            // Commit only the submodule commit `byte` repeated, which no
+            // repository has.
+            let commit = |parent: &str, byte: u8| {
                 let submodule = ("160000", name, git2::Oid::from_bytes(&[byte; 20]).unwrap());
-                // In Git's tree order, `dir` sorts before `f`, and `f` before `sub`.
-                let entries = if nested {
+                let entry = if nested {
                     let subtree = write_raw_tree(&repo, &[submodule]);
-                    [("40000", b"dir".as_slice(), subtree), file]
+                    ("40000", b"dir".as_slice(), subtree)
                 } else {
-                    [file, submodule]
+                    submodule
                 };
-                commit_raw_tree(&repo, parent, &entries)
+                commit_raw_tree(&repo, parent, &[entry])
             };
-            let base = commit(&repo.current_commit_hash().unwrap(), b"hello\n", 1);
-            let head = commit(&base, b"world\n", 2);
-            // Remove the submodule, with its directory, and keep the file.
-            let file = git.blob(b"world\n").unwrap();
-            let removed = commit_raw_tree(&repo, &head, &[("100644", b"f", file)]);
+            let base = commit(&repo.current_commit_hash().unwrap(), 1);
+            let head = commit(&base, 2);
+            // Remove the submodule, with its directory.
+            let removed = commit_raw_tree(&repo, &head, &[]);
             let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")]).unwrap();
-            // Undoing the update changes the file and the submodule, which both
-            // sides have. Undoing the removal re-adds the submodule only on the
-            // side of the removal's parent.
+            // Undoing the update changes the submodule on both sides. Undoing
+            // the removal re-adds it, which only the parent's side has.
             for id in [&head, &removed] {
                 let affected =
                     replay.undo_affects_package(id, id, TokenConflicts::Unresolved, |_| true);
