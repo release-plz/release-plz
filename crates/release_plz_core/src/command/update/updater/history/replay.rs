@@ -392,10 +392,12 @@ pub(super) enum TokenConflicts {
 }
 
 /// Whether `file`, one side of a delta, is a submodule in `tree`, that side's
-/// tree.
+/// tree. `DiffFile::path` panics on non-UTF-8 paths on Windows: those count
+/// as no submodule, whose commit then fails to fetch.
 fn is_submodule(tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
-    file.path()
-        .and_then(|path| tree.get_path(path).ok())
+    file.path_bytes()
+        .and_then(|path| std::str::from_utf8(path).ok())
+        .and_then(|path| tree.get_path(std::path::Path::new(path)).ok())
         .is_some_and(|entry| entry.kind() == Some(git2::ObjectType::Commit))
 }
 
