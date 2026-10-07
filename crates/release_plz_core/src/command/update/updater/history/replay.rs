@@ -729,9 +729,10 @@ mod tests {
             // Remove the submodule, with its directory.
             let removed = commit_raw_tree(&repo, &head, &[]);
             let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")]).unwrap();
-            // Undoing the update changes the submodule on both sides. Undoing
-            // the removal re-adds it, which only the parent's side has.
-            for id in [&head, &removed] {
+            // Undoing the addition removes the submodule, which only the
+            // commit's side has. Undoing the update changes it on both sides.
+            // Undoing the removal re-adds it, which only the parent's side has.
+            for id in [&base, &head, &removed] {
                 let affected =
                     replay.undo_affects_package(id, id, TokenConflicts::Unresolved, |_| true);
                 assert!(
