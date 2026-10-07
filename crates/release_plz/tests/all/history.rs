@@ -525,7 +525,7 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
 async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
     for (breaking_survives, version) in [(false, "0.1.1"), (true, "0.2.0")] {
         let history = api_history(BASE_API).await;
-        let implementation_commit = history.write_commit(
+        let implementation = history.write_commit(
             "src/lib.rs",
             IMPLEMENTED_API,
             "chore: modify implementation",
@@ -543,20 +543,19 @@ async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers()
         } else {
             IMPLEMENTED_API
         };
-        let evolved = kept.replace("/* implementation */", "/* implementation */ /* sibling */");
-        let evolved_commit =
-            history.write_commit("src/lib.rs", &evolved, "fix: evolve implementation");
-        let mut expected = vec![
-            implementation_commit.as_str(),
-            sibling.as_str(),
-            evolved_commit.as_str(),
-        ];
-        if breaking_survives {
-            expected.push(&breaking);
-        }
+        let evolved = history.write_commit(
+            "src/lib.rs",
+            &kept.replace("/* implementation */", "/* implementation */ /* evolved */"),
+            "fix: evolve implementation",
+        );
+        let expected: &[&str] = if breaking_survives {
+            &[&implementation, &breaking, &sibling, &evolved]
+        } else {
+            &[&implementation, &sibling, &evolved]
+        };
         assert_release(
             &history.update_history(),
-            &expected,
+            expected,
             version,
             &format!("breaking_survives={breaking_survives}"),
         );
