@@ -18,8 +18,7 @@
       matchManagers: [
         'github-actions',
       ],
-      // Every weekend
-      schedule: '* * * * 0,6',
+      extends: ['schedule:weekly'],
       groupName: 'Github Actions',
     },
     {

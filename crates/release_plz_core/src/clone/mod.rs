@@ -17,17 +17,16 @@ use std::process::Command;
 
 use anyhow::{Context, bail};
 
-use cargo::core::dependency::Dependency;
-use cargo::core::{Package, PackageSet};
 use cargo::sources::source::{QueryKind, Source, SourceMap};
 use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
+use cargo::workspace::{Dependency, Package, PackageSet};
 
 use walkdir::WalkDir;
 
 // Re-export cargo types.
 pub use cargo::{
-    core::SourceId,
     util::{CargoResult, GlobalContext},
+    workspace::SourceId,
 };
 
 use crate::fs_utils::strip_prefix;

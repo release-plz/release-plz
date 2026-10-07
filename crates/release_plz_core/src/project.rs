@@ -56,11 +56,9 @@ impl Project {
         debug!("manifest_dir: {manifest_dir:?}");
         let root = root_repo_path_from_manifest_dir(&manifest_dir)?;
         debug!("project_root: {root:?}");
-        let mut packages = workspace_packages(metadata)?;
+        let mut packages = workspace_packages_at(metadata, &manifest_dir)?;
         check_overrides_typos(&packages, overrides)?;
         let mut release_metadata = HashMap::new();
-        override_packages_path(&mut packages, metadata, &manifest_dir)
-            .context("failed to override packages path")?;
 
         let packages_names: Vec<String> = packages.iter().map(|p| p.name.to_string()).collect();
         packages.retain(|p| {
@@ -307,6 +305,18 @@ pub fn new_project_root(
         .file_name()
         .context("cannot get project root dirname")?;
     Ok(new_project_root_parent.join(project_root_dirname))
+}
+
+/// Workspace members, with paths relative to the specified `manifest_dir`.
+/// See [`override_packages_path`].
+pub(crate) fn workspace_packages_at(
+    metadata: &Metadata,
+    manifest_dir: &Utf8Path,
+) -> anyhow::Result<Vec<Package>> {
+    let mut packages = workspace_packages(metadata)?;
+    override_packages_path(&mut packages, metadata, manifest_dir)
+        .context("failed to override packages path")?;
+    Ok(packages)
 }
 
 /// Cargo metadata contains package paths of the original user project.
