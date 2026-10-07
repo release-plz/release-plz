@@ -8,7 +8,7 @@ use tracing::warn;
 use crate::{
     diff::Commit,
     fs_utils,
-    package_compare::{CARGO_TOML_ORIG, is_generated_package_file},
+    package_compare::{CARGO_VCS_INFO, is_generated_package_file},
 };
 
 use super::PackagePaths;
@@ -251,15 +251,14 @@ impl<'a> RetainedChanges<'a> {
         };
         let path = Utf8Path::new(path);
         let PackagePaths { package, readme } = &self.relative_paths;
-        // Cargo generates metadata only at the package root. A nested
-        // `.cargo_vcs_info.json` is an ordinary packaged file.
-        if path
-            .strip_prefix(package)
-            .is_ok_and(|path| is_generated_package_file(path.as_str()))
-        {
-            return false;
-        }
-        if matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG)) {
+        // Package equality ignores every lockfile and original manifest, but
+        // Cargo generates `.cargo_vcs_info.json` only at the package root: a
+        // nested one is an ordinary packaged file.
+        let is_ignored = match path.file_name() {
+            Some(CARGO_VCS_INFO) => path.parent() == Some(package.as_path()),
+            name => name.is_some_and(is_generated_package_file),
+        };
+        if is_ignored {
             return false;
         }
         if readme.as_deref() == Some(path) {
