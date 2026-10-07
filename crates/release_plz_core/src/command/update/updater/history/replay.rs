@@ -643,18 +643,15 @@ mod tests {
         fs_err::write(repo.directory().join("f"), "hello\n").unwrap();
         repo.add_all_and_commit("base").unwrap();
         let base = repo.current_commit_hash().unwrap();
-        let blob = |path: &str| {
-            let blob = repo.git(&["rev-parse", &format!("HEAD:{path}")]).unwrap();
-            git2::Oid::from_str(&blob).unwrap()
-        };
-        // Undo a commit that gives `f` the legacy mode and the blob `id`.
-        let undo_legacy_mode = |id: git2::Oid| {
+        let readme = repo.git(&["rev-parse", "HEAD:README.md"]).unwrap();
+        let readme = git2::Oid::from_str(&readme).unwrap();
+        let blob =
+            |content: &[u8]| git2::Oid::hash_object(git2::ObjectType::Blob, content).unwrap();
+        // Undo a commit that gives `f` the legacy mode and the blob `f_blob`.
+        let undo_legacy_mode = |f_blob: git2::Oid| {
             // libgit2's `TreeBuilder` rejects the legacy mode: write the raw tree.
             let mut tree = Vec::new();
-            for (mode, path, id) in [
-                ("100644", "README.md", blob("README.md")),
-                ("100600", "f", id),
-            ] {
+            for (mode, path, id) in [("100644", "README.md", readme), ("100600", "f", f_blob)] {
                 tree.extend_from_slice(format!("{mode} {path}\0").as_bytes());
                 tree.extend_from_slice(id.as_bytes());
             }
@@ -671,9 +668,9 @@ mod tests {
             let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
             replay.undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
         };
-        assert!(!undo_legacy_mode(blob("f")).unwrap());
+        assert!(!undo_legacy_mode(blob(b"hello\n")).unwrap());
         // Without a promisor remote, Git cannot fetch a blob no repository has.
-        let missing = git2::Oid::hash_object(git2::ObjectType::Blob, b"missing\n").unwrap();
+        let missing = blob(b"missing\n");
         let error = undo_legacy_mode(missing).unwrap_err();
         assert!(
             format!("{error:#}").contains(&missing.to_string()),
