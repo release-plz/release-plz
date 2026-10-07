@@ -352,7 +352,7 @@ async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
     // Cover the breaking change both with and without an earlier implementation edit.
     for sequential in [false, true] {
         let history = api_history(BASE_API).await;
-        // Record the executable bit even if the user's Git configuration ignores it.
+        // Record the executable bit.
         history
             .repo
             .git(&["config", "core.filemode", "true"])
