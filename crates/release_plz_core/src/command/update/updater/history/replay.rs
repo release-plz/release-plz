@@ -620,7 +620,8 @@ mod tests {
     /// A legacy file mode Git accepts, such as the 100600 old importers wrote,
     /// makes `DiffFile::mode` panic. The replay selects the repository root,
     /// so its trees keep the raw mode: `restrict` rewrites a selected file's
-    /// entry with the normalized mode.
+    /// entry with the normalized mode. A blob the object database has replays;
+    /// fetching a missing one fails without a promisor remote, but never panics.
     #[test]
     fn legacy_file_modes_do_not_abort_the_replay() {
         let dir = fs_utils::Utf8TempDir::new().unwrap();
@@ -629,27 +630,41 @@ mod tests {
         fs_err::write(repo.directory().join("f"), "hello\n").unwrap();
         repo.add_all_and_commit("base").unwrap();
         let base = repo.current_commit_hash().unwrap();
-        // libgit2's `TreeBuilder` rejects the legacy mode: write the raw tree.
-        let mut tree = Vec::new();
-        for (mode, path) in [("100644", "README.md"), ("100600", "f")] {
+        let blob = |path: &str| {
             let blob = repo.git(&["rev-parse", &format!("HEAD:{path}")]).unwrap();
-            tree.extend_from_slice(format!("{mode} {path}\0").as_bytes());
-            tree.extend_from_slice(git2::Oid::from_str(&blob).unwrap().as_bytes());
-        }
-        let tree = git2::Repository::open(repo.directory())
-            .unwrap()
-            .odb()
-            .unwrap()
-            .write(git2::ObjectType::Tree, &tree)
-            .unwrap()
-            .to_string();
-        let commit = repo
-            .git(&["commit-tree", &tree, "-p", &base, "-m", "legacy mode"])
-            .unwrap();
-        let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
-        let affects = replay
-            .undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
-            .unwrap();
-        assert!(!affects);
+            git2::Oid::from_str(&blob).unwrap()
+        };
+        // Undo a commit that gives `f` the legacy mode and the blob `id`.
+        let undo_legacy_mode = |id: git2::Oid| {
+            // libgit2's `TreeBuilder` rejects the legacy mode: write the raw tree.
+            let mut tree = Vec::new();
+            for (mode, path, id) in [
+                ("100644", "README.md", blob("README.md")),
+                ("100600", "f", id),
+            ] {
+                tree.extend_from_slice(format!("{mode} {path}\0").as_bytes());
+                tree.extend_from_slice(id.as_bytes());
+            }
+            let tree = git2::Repository::open(repo.directory())
+                .unwrap()
+                .odb()
+                .unwrap()
+                .write(git2::ObjectType::Tree, &tree)
+                .unwrap()
+                .to_string();
+            let commit = repo
+                .git(&["commit-tree", &tree, "-p", &base, "-m", "legacy mode"])
+                .unwrap();
+            let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
+            replay.undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
+        };
+        assert!(!undo_legacy_mode(blob("f")).unwrap());
+        // Without a promisor remote, Git cannot fetch a blob no repository has.
+        let missing = git2::Oid::hash_object(git2::ObjectType::Blob, b"missing\n").unwrap();
+        let error = undo_legacy_mode(missing).unwrap_err();
+        assert!(
+            format!("{error:#}").contains(&missing.to_string()),
+            "{error:#}"
+        );
     }
 }
