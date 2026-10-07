@@ -5,9 +5,6 @@ mod update_config;
 pub mod update_request;
 pub mod updater;
 
-#[cfg(test)]
-mod tests;
-
 use crate::{PackagePath, tmp_repo::TempRepo};
 use crate::{fs_utils, root_repo_path_from_manifest_dir};
 use anyhow::Context;

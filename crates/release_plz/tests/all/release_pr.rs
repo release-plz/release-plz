@@ -1,5 +1,5 @@
 use crate::helpers::{
-    TEST_REGISTRY,
+    TEST_REGISTRY, assert_locked_versions,
     package::{PackageType, TestPackage},
     test_context::TestContext,
     today,
@@ -7,6 +7,135 @@ use crate::helpers::{
 use assert_cmd::Command;
 use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
+
+/// Tag a git-only workspace at 1.0.0, with package manifests that can inherit
+/// the workspace version. `config` adds package overrides to release-plz.toml.
+async fn released_workspace_with_shared_version(
+    packages: &[(&str, &str)],
+    config: &str,
+) -> TestContext {
+    let members: Vec<_> = packages
+        .iter()
+        .map(|(name, _)| TestPackage::new(name).with_type(PackageType::Lib))
+        .collect();
+    let context = TestContext::new_workspace_with_packages(&members).await;
+    let mut root = LocalManifest::try_new(&context.repo_dir().join(CARGO_TOML)).unwrap();
+    root.data["workspace"]["package"]["version"] = "1.0.0".into();
+    root.write().unwrap();
+    for (name, manifest) in packages {
+        fs_err::write(
+            context.package_path(name).join(CARGO_TOML),
+            format!("[package]\nname = {name:?}\nedition = \"2024\"\n{manifest}"),
+        )
+        .unwrap();
+    }
+    context.run_cargo_check();
+    context.write_release_plz_toml(&format!(
+        "[workspace]\ngit_only = true\npublish = false\nsemver_check = false\n{config}"
+    ));
+    for (name, _) in packages {
+        context
+            .repo
+            .tag_lightweight(&format!("{name}-v1.0.0"))
+            .unwrap();
+    }
+    context.repo.git(&["push", "--tags"]).unwrap();
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
+    let context = released_workspace_with_shared_version(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+            ("sibling", "version.workspace = true\n"),
+            (
+                "downstream",
+                "version = \"1.0.0\"\n[dependencies]\nsibling = { path = \"../sibling\", version = \"=1.0.0\" }\n",
+            ),
+        ],
+        "\n[[package]]\nname = \"sibling\"\nrelease = false\n",
+    )
+    .await;
+    fs_err::write(
+        context.package_path("support").join("src/lib.rs"),
+        "pub fn new() {}\n",
+    )
+    .unwrap();
+    context.push_all_changes("feat: update support");
+
+    // release-pr relocates the checkout while retaining the original Cargo metadata.
+    context.run_release_pr().success();
+    context.repo.is_clean().unwrap();
+    context.merge_release_pr().await;
+
+    let changelog =
+        fs_err::read_to_string(context.package_path("downstream").join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+    assert!(changelog.contains("sibling"), "{changelog}");
+    assert!(
+        !context
+            .package_path("sibling")
+            .join("CHANGELOG.md")
+            .exists()
+    );
+    assert_locked_versions(
+        &context.repo_dir(),
+        &[
+            ("support", "1.1.0"),
+            ("consumer", "1.0.1"),
+            ("sibling", "1.0.1"),
+            ("downstream", "1.0.1"),
+        ],
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_pre_bumped_shared_versions_update_dependency_requirements() {
+    let context = released_workspace_with_shared_version(
+        &[
+            ("upstream", "version.workspace = true\n"),
+            (
+                "downstream",
+                "version = \"1.0.0\"\n[dependencies]\nupstream = { path = \"../upstream\", version = \"^1.0.0\" }\n",
+            ),
+        ],
+        "",
+    )
+    .await;
+    let path = context.repo_dir().join(CARGO_TOML);
+    let manifest = fs_err::read_to_string(&path).unwrap();
+    fs_err::write(path, manifest.replace("1.0.0", "1.1.0")).unwrap();
+    fs_err::write(
+        context.package_path("upstream").join("src/lib.rs"),
+        "pub fn new() {}\n",
+    )
+    .unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("feat: update upstream and bump workspace version");
+
+    context.run_release_pr().success();
+    context.repo.is_clean().unwrap();
+    context.merge_release_pr().await;
+
+    let downstream =
+        fs_err::read_to_string(context.package_path("downstream").join(CARGO_TOML)).unwrap();
+    // The old caret requirement still resolves, but its lower bound must advance.
+    assert!(downstream.contains("version = \"^1.1.0\""), "{downstream}");
+    let changelog =
+        fs_err::read_to_string(context.package_path("upstream").join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("## [1.1.0]"), "{changelog}");
+    assert_locked_versions(
+        &context.repo_dir(),
+        &[("upstream", "1.1.0"), ("downstream", "1.0.1")],
+    );
+}
 
 fn assert_cargo_semver_checks_is_installed() {
     assert!(

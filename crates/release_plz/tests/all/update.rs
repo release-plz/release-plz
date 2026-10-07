@@ -2,7 +2,7 @@ use cargo_metadata::camino::Utf8Path;
 use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::cmd::release_plz_cmd;
+use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
 
 #[test]
 fn update_workspace_with_detached_head() {
@@ -571,23 +571,4 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
     }
     let output = cmd.assert().success().get_output().stdout.clone();
     String::from_utf8(output).unwrap()
-}
-
-/// Reads the resolved package versions with `--locked`, which makes `cargo metadata`
-/// fail if `Cargo.lock` is stale (the symptom of #3086), so this also asserts that
-/// the lockfile was updated.
-fn assert_locked_versions(project_dir: &Utf8Path, expected_versions: &[(&str, &str)]) {
-    let metadata = locked_metadata(project_dir);
-    for (name, version) in expected_versions {
-        let package = metadata.packages.iter().find(|p| p.name == *name).unwrap();
-        assert_eq!(package.version.to_string(), *version, "package: {name}");
-    }
-}
-
-fn locked_metadata(project_dir: &Utf8Path) -> cargo_metadata::Metadata {
-    cargo_metadata::MetadataCommand::new()
-        .current_dir(project_dir)
-        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
-        .exec()
-        .unwrap()
 }
