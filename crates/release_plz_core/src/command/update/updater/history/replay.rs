@@ -191,7 +191,7 @@ impl<'a> ChangeReplay<'a> {
 
     /// Prove that the target adopted the edits to the candidate's changed
     /// tokens, independently of other edits in the same file. Missing files,
-    /// mode changes and unsupported text still need the ordinary tree replay.
+    /// type changes and unsupported text still need the ordinary tree replay.
     fn edited_tokens_leave_file_unchanged(
         &self,
         trees: [&git2::Tree<'_>; 4],
@@ -213,7 +213,7 @@ impl<'a> ChangeReplay<'a> {
             return Ok(false);
         };
         let entries = [parent, changed, edited, target];
-        if !same_regular_file_mode(
+        if !regular_file_modes(
             entries
                 .each_ref()
                 .map(|entry| entry.filemode().cast_unsigned()),
@@ -376,10 +376,12 @@ impl<'a> ChangeReplay<'a> {
             .deltas()
             // Conflicted paths were checked above, including nonconflicting hunks.
             .filter(|delta| delta.status() != git2::Delta::Conflicted)
+            // Package equality ignores executable bits when contents are unchanged.
+            .filter(|delta| delta.old_file().id() != delta.new_file().id())
             .any(|delta| delta_paths(&delta).any(&includes)))
     }
 
-    /// Binary, large, rename, deletion and mode conflicts cannot establish absence.
+    /// Binary, large, rename, deletion and type conflicts cannot establish absence.
     fn conflict_leaves_file_unchanged(
         &self,
         conflict: &git2::IndexConflict,
@@ -392,7 +394,7 @@ impl<'a> ChangeReplay<'a> {
         };
         if ancestor.path != ours.path
             || theirs.path != ours.path
-            || !same_regular_file_mode([ancestor.mode, ours.mode, theirs.mode])
+            || !regular_file_modes([ancestor.mode, ours.mode, theirs.mode])
         {
             return Ok(false);
         }
@@ -447,11 +449,12 @@ fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
     fs_utils::canonicalize_utf8(&repository.directory().join(objects))
 }
 
-/// Whether all `modes` are the same regular-file mode, so that merging the
-/// contents as text is meaningful. Type and mode changes cannot establish
-/// absence.
-fn same_regular_file_mode<const N: usize>(modes: [u32; N]) -> bool {
-    modes.iter().all(|mode| *mode == modes[0]) && matches!(modes[0], 0o100_644 | 0o100_755)
+/// Whether all `modes` describe regular files, so that merging the contents as
+/// text is meaningful. Package equality ignores differences in executable bits.
+fn regular_file_modes<const N: usize>(modes: [u32; N]) -> bool {
+    modes
+        .into_iter()
+        .all(|mode| matches!(mode, 0o100_644 | 0o100_755))
 }
 
 /// Whether undoing a text conflict leaves the target unchanged. Independent

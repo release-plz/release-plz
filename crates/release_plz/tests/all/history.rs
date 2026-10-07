@@ -344,6 +344,62 @@ const IMPLEMENTED_API: &str =
 const IMPLEMENTED_BREAKING_API: &str =
     "pub fn api(_: bool) { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
 
+#[cfg(unix)]
+#[tokio::test]
+async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
+    let history = api_history(BASE_API).await;
+    assert_retained_changes_with_executable_bit(&history, BREAKING_API, &[]);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn executable_bit_changes_do_not_hide_retained_sequential_package_changes() {
+    let history = api_history(BASE_API).await;
+    let implementation =
+        history.write_commit("src/lib.rs", IMPLEMENTED_API, "chore: implementation");
+    assert_retained_changes_with_executable_bit(
+        &history,
+        IMPLEMENTED_BREAKING_API,
+        &[&implementation],
+    );
+}
+
+#[cfg(unix)]
+fn assert_retained_changes_with_executable_bit(
+    history: &TestContext,
+    breaking_api: &str,
+    prior_changes: &[&str],
+) {
+    use std::os::unix::fs::PermissionsExt;
+
+    // Record the executable bit.
+    history
+        .repo
+        .git(&["config", "core.filemode", "true"])
+        .unwrap();
+    // Combine the mode and API changes in one commit so replay has to distinguish them.
+    fs_err::set_permissions(
+        history.repo.directory().join("src/lib.rs"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let breaking = history.write_commit(
+        "src/lib.rs",
+        breaking_api,
+        "feat!: breaking API and set executable bit",
+    );
+    // Discard the merged branch's revert: HEAD still contains all content changes.
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    let mut retained = prior_changes.to_vec();
+    retained.extend([breaking.as_str(), sibling.as_str()]);
+    history.assert_release(&retained, "0.2.0");
+
+    // Restore the released contents while leaving the executable bit set.
+    // All content changes should disappear, leaving only a patch bump.
+    let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+    history.assert_release(&[&restore, &sibling], "0.1.1");
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {
