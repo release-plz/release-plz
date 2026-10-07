@@ -48,7 +48,7 @@ jobs:
         include:
           - os: windows-2022
           - os: ubuntu-22.04
-          - os: macos-14
+          - os: macos-15
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
