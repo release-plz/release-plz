@@ -41,7 +41,7 @@ async fn api_history(released: &str) -> TestContext {
     context
 }
 
-async fn file_history(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
+async fn write_files_and_publish(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
     let context = unpublished_history(BASE_API).await;
     write_extra(context.repo.directory());
     context
@@ -369,7 +369,7 @@ async fn ignored_file_changes_do_not_hide_a_retained_package_change() {
         "src/Cargo.lock",
         "src/Cargo.toml.orig",
     ] {
-        let history = file_history(|root| {
+        let history = write_files_and_publish(|root| {
             let mut manifest = LocalManifest::try_new(&root.join(CARGO_TOML)).unwrap();
             manifest.data["package"]["exclude"] =
                 toml_edit::value(["ignored.txt"].into_iter().collect::<toml_edit::Array>());
@@ -497,7 +497,7 @@ async fn symlink_target_changes_do_not_hide_a_retained_package_change() {
     use std::os::unix::fs::symlink;
 
     for (was_symlink, conflicting) in [(false, false), (true, false), (true, true)] {
-        let history = file_history(|root| {
+        let history = write_files_and_publish(|root| {
             for target in ["a.txt", "b.txt", "c.txt"] {
                 fs_err::write(root.join("src").join(target), target).unwrap();
             }
@@ -536,7 +536,7 @@ async fn symlink_presence_changes_keep_their_breaking_change_marker() {
     use std::os::unix::fs::symlink;
 
     for added in [false, true] {
-        let history = file_history(|root| {
+        let history = write_files_and_publish(|root| {
             fs_err::write(root.join("src/target.txt"), "fixture\n").unwrap();
             if !added {
                 symlink("target.txt", root.join("src/link.txt")).unwrap();
@@ -635,7 +635,7 @@ async fn readme_symlink_changes_keep_their_breaking_change_marker() {
             symlink("old.md", root.join("README.md")).unwrap();
         };
         let history = if package_dir.is_empty() {
-            file_history(write_extra).await
+            write_files_and_publish(write_extra).await
         } else {
             let history = member_history(write_extra).await;
             history.publish_snapshot(&[]);
@@ -667,7 +667,7 @@ async fn readme_symlink_changes_keep_their_breaking_change_marker() {
 
 #[tokio::test]
 async fn sequential_readme_edits_keep_their_breaking_change_marker() {
-    let history = file_history(|root| {
+    let history = write_files_and_publish(|root| {
         configure_readme(root, "README.md");
         fs_err::write(root.join("README.md"), BASE_API).unwrap();
     })
@@ -686,7 +686,7 @@ async fn sequential_readme_edits_keep_their_breaking_change_marker() {
 #[tokio::test]
 async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     let path = "src/.cargo_vcs_info.json";
-    let history = file_history(|root| {
+    let history = write_files_and_publish(|root| {
         fs_err::write(root.join(path), "{}\n").unwrap();
     })
     .await;
@@ -710,7 +710,7 @@ async fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
 #[cfg(unix)]
 #[tokio::test]
 async fn retained_changes_are_checked_when_the_repository_path_is_not_canonical() {
-    let history = file_history(|root| {
+    let history = write_files_and_publish(|root| {
         configure_readme(root, "README.md");
         fs_err::write(root.join("README.md"), "# API\n").unwrap();
     })
