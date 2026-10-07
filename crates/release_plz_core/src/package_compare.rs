@@ -310,22 +310,27 @@ pub fn local_readme_override(
     package: &Package,
     local_package_path: &Utf8Path,
 ) -> anyhow::Result<Option<Utf8PathBuf>> {
-    package
-        .readme
-        .as_ref()
-        .and_then(|readme| {
-            let readme_path = local_package_path.join(readme);
-            if !readme_path.exists() {
-                tracing::warn!(
-                    "README path '{}' doesn't exist for package '{}'. Hint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
-                    readme_path,
-                    package.name
-                );
-                return None;
-            }
-            Some(fs_utils::canonicalize_utf8(&readme_path))
-        })
+    existing_readme_path(package, local_package_path)
+        .map(|readme_path| fs_utils::canonicalize_utf8(&readme_path))
         .transpose()
+}
+
+/// The README path configured in `Cargo.toml`, joined to `local_package_path`
+/// but not canonicalized, when it exists.
+pub(crate) fn existing_readme_path(
+    package: &Package,
+    local_package_path: &Utf8Path,
+) -> Option<Utf8PathBuf> {
+    let readme_path = local_package_path.join(package.readme.as_ref()?);
+    if !readme_path.exists() {
+        tracing::warn!(
+            "README path '{}' doesn't exist for package '{}'. Hint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
+            readme_path,
+            package.name
+        );
+        return None;
+    }
+    Some(readme_path)
 }
 
 fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {
