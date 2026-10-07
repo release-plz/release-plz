@@ -633,25 +633,31 @@ mod tests {
         assert!(restricted_blobs(&["missing"]).is_empty());
     }
 
-    /// Commit on top of `parent` the tree of `entries`, each a mode, a path and
-    /// an id, written raw: libgit2's `TreeBuilder` rejects legacy modes, and
-    /// `Repo::git` takes no non-UTF-8 paths. Nothing sorts the raw tree, so
-    /// `entries` must be in Git's tree order.
-    fn commit_raw_tree(repo: &Repo, parent: &str, entries: &[(&str, &[u8], git2::Oid)]) -> String {
+    /// Write the tree of `entries`, each a mode, a name and an id, raw:
+    /// libgit2's `TreeBuilder` rejects legacy modes, and `Repo::git` takes no
+    /// non-UTF-8 paths. Nothing sorts the raw tree, so `entries` must be in
+    /// Git's tree order: by name bytes, a directory's name compared as if it
+    /// ended with `/`.
+    fn write_raw_tree(repo: &Repo, entries: &[(&str, &[u8], git2::Oid)]) -> git2::Oid {
         let mut tree = Vec::new();
-        for (mode, path, id) in entries {
+        for (mode, name, id) in entries {
             tree.extend_from_slice(format!("{mode} ").as_bytes());
-            tree.extend_from_slice(path);
+            tree.extend_from_slice(name);
             tree.push(0);
             tree.extend_from_slice(id.as_bytes());
         }
-        let tree = git2::Repository::open(repo.directory())
+        git2::Repository::open(repo.directory())
             .unwrap()
             .odb()
             .unwrap()
             .write(git2::ObjectType::Tree, &tree)
             .unwrap()
-            .to_string();
+    }
+
+    /// Commit on top of `parent` the tree of `entries`, written by
+    /// [`write_raw_tree`].
+    fn commit_raw_tree(repo: &Repo, parent: &str, entries: &[(&str, &[u8], git2::Oid)]) -> String {
+        let tree = write_raw_tree(repo, entries).to_string();
         repo.git(&["commit-tree", &tree, "-p", parent, "-m", "raw tree"])
             .unwrap()
     }
@@ -697,24 +703,33 @@ mod tests {
     /// must not fetch them, whatever the submodule's path.
     #[test]
     fn submodules_are_not_fetched() {
-        for submodule in [b"sub".as_slice(), b"sub\xff"] {
+        // Each name at the repository root and nested in the directory `dir`.
+        for (name, nested) in [
+            (b"sub".as_slice(), false),
+            (b"sub\xff", false),
+            (b"sub", true),
+            (b"sub\xff", true),
+        ] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
             let repo = Repo::init(dir.path());
             let git = git2::Repository::open(repo.directory()).unwrap();
             // Commit `contents` to a file and the submodule commit `byte`
             // repeated, which no repository has.
             let commit = |parent: &str, contents: &[u8], byte: u8| {
-                let file = git.blob(contents).unwrap();
-                let gitlink = git2::Oid::from_bytes(&[byte; 20]).unwrap();
-                commit_raw_tree(
-                    &repo,
-                    parent,
-                    &[("100644", b"f", file), ("160000", submodule, gitlink)],
-                )
+                let file = ("100644", b"f".as_slice(), git.blob(contents).unwrap());
+                let submodule = ("160000", name, git2::Oid::from_bytes(&[byte; 20]).unwrap());
+                // In Git's tree order, `dir` sorts before `f`, and `f` before `sub`.
+                let entries = if nested {
+                    let subtree = write_raw_tree(&repo, &[submodule]);
+                    [("40000", b"dir".as_slice(), subtree), file]
+                } else {
+                    [file, submodule]
+                };
+                commit_raw_tree(&repo, parent, &entries)
             };
             let base = commit(&repo.current_commit_hash().unwrap(), b"hello\n", 1);
             let head = commit(&base, b"world\n", 2);
-            // Remove the submodule and keep the file.
+            // Remove the submodule, with its directory, and keep the file.
             let file = git.blob(b"world\n").unwrap();
             let removed = commit_raw_tree(&repo, &head, &[("100644", b"f", file)]);
             let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")]).unwrap();
@@ -726,8 +741,9 @@ mod tests {
                     replay.undo_affects_package(id, id, TokenConflicts::Unresolved, |_| true);
                 assert!(
                     matches!(affected, Ok(true)),
-                    "{} at {id}: {affected:?}",
-                    submodule.escape_ascii()
+                    "{}{} at {id}: {affected:?}",
+                    if nested { "dir/" } else { "" },
+                    name.escape_ascii()
                 );
             }
         }
