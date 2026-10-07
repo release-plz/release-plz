@@ -97,7 +97,7 @@ impl Updater<'_> {
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
-        for (p, diff) in &packages_diffs {
+        for (p, diff) in packages_diffs {
             let group_has_release_commit = || {
                 self.req
                     .get_package_config(&p.name)
@@ -112,7 +112,7 @@ impl Updater<'_> {
                 info!("{}: no commit matches the `release_commits` regex", p.name);
                 // We need to update this package only if one of its dependencies has changed.
                 filtered_packages.insert(p.name.as_str());
-                packages_to_check_for_deps.push((*p, diff));
+                packages_to_check_for_deps.push((p, diff));
                 continue;
             }
             let next_version = self.get_next_version(
@@ -120,7 +120,7 @@ impl Updater<'_> {
                 p,
                 &workspace_version_pkgs,
                 &version_groups,
-                diff,
+                &diff,
             )?;
             debug!(
                 "package: {}, diff: {diff:?}, next_version: {next_version}",
@@ -138,14 +138,14 @@ impl Updater<'_> {
             {
                 planned_updates.push(PlannedUpdate {
                     package: p,
-                    diff: diff.clone(),
+                    diff,
                     version: next_version,
                 });
             } else {
                 // We need to update this package only if one of its dependencies has changed.
                 // This includes already bumped (unpublished) versions without new commits:
                 // a dependency change can still release them.
-                packages_to_check_for_deps.push((*p, diff));
+                packages_to_check_for_deps.push((p, diff));
             }
         }
 
@@ -385,7 +385,7 @@ impl Updater<'_> {
     /// Propagate dependency and shared-version changes until no more packages need a release.
     fn dependent_packages_update<'a>(
         &self,
-        packages_to_check_for_deps: &[(&'a Package, &Diff)],
+        packages_to_check_for_deps: &[(&'a Package, Diff)],
         planned_updates: &mut Vec<PlannedUpdate<'a>>,
         inheriting_packages: &[&Package],
         workspace_version_pkgs: &HashSet<String>,
@@ -483,7 +483,7 @@ impl Updater<'_> {
                     diff: Diff {
                         commits: vec![Commit::new(NO_COMMIT_ID.to_string(), change)],
                         semver_check: SemverCheck::Skipped,
-                        ..(*diff).clone()
+                        ..diff.clone()
                     },
                     version,
                 };
