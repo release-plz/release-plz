@@ -570,6 +570,50 @@ async fn symlink_presence_changes_keep_their_breaking_change_marker() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn equivalent_external_readme_symlink_targets_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::symlink;
+
+    for (target, partial) in [("new.md", false), ("docs/alias.md", true)] {
+        let history = member_history(|root| {
+            configure_readme(&root.join("crates/pkg"), "../../README.md");
+            for target in ["old.md", "new.md"] {
+                fs_err::write(root.join(target), "# same documentation\n").unwrap();
+            }
+            fs_err::create_dir(root.join("docs")).unwrap();
+            symlink("../new.md", root.join("docs/alias.md")).unwrap();
+            fs_err::remove_file(root.join("README.md")).unwrap();
+            symlink("old.md", root.join("README.md")).unwrap();
+        })
+        .await;
+        history.publish_snapshot(&[]);
+        let old_link = history.repo.git(&["rev-parse", "HEAD:README.md"]).unwrap();
+        let readme = history.repo.directory().join("README.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink(target, readme).unwrap();
+        // The replay must resolve the old target from the historical snapshot.
+        fs_err::remove_file(history.repo.directory().join("old.md")).unwrap();
+        let breaking =
+            history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
+            fs_err::write(root.join("crates/pkg/src/lib.rs"), BASE_API).unwrap();
+        });
+        let history = if partial {
+            let history = history.partial_clone();
+            assert!(history.missing_objects().contains(&old_link));
+            history
+        } else {
+            history
+        };
+        let changelog = history.update_history();
+        let commits = commit_ids(&changelog);
+        assert!(commits.contains(&breaking.as_str()), "{changelog}");
+        assert!(commits.contains(&sibling.as_str()), "{changelog}");
+        assert!(changelog.starts_with("## 0.2.0\n"), "{changelog}");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn readme_symlink_changes_keep_their_breaking_change_marker() {
     use std::os::unix::fs::symlink;
 

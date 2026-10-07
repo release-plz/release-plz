@@ -174,9 +174,14 @@ impl<'a> RetainedChanges<'a> {
         // A replay that cannot be built, for example on a SHA-256 repository,
         // is reported once: without evidence, ancestry pruning then applies to
         // every candidate.
-        let replay = ChangeReplay::new(self.repository, &self.head, &self.relative_paths.all())
-            .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
-            .ok();
+        let replay = ChangeReplay::new(
+            self.repository,
+            &self.head,
+            &self.relative_paths.all(),
+            self.relative_paths.configured_readme.as_deref(),
+        )
+        .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
+        .ok();
         commits.retain(|commit| self.retains(replay.as_ref(), &commit.id));
         Ok(())
     }
@@ -375,7 +380,7 @@ mod tests {
             package_files.as_deref().unwrap_or_default(),
         );
         changes.add_package_files(package_files);
-        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all()).unwrap();
+        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all(), None).unwrap();
         (changes, replay)
     }
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Write as _,
 };
 
@@ -22,6 +22,8 @@ pub(super) struct ChangeReplay<'a> {
     paths: Vec<Utf8PathBuf>,
     /// Whether native Git materializes symlinks as links in checked-out snapshots.
     symlinks: bool,
+    /// The configured README is compared by its contents, including through links.
+    readme: Option<Utf8PathBuf>,
 }
 
 /// A replayed change, classified the same way as package snapshot equality.
@@ -41,6 +43,7 @@ impl<'a> ChangeReplay<'a> {
         repository: &'a Repo,
         head: &str,
         paths: &[&Utf8Path],
+        readme: Option<&Utf8Path>,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(
             git2::Oid::from_str(head).is_ok(),
@@ -74,6 +77,7 @@ impl<'a> ChangeReplay<'a> {
             repo,
             paths: paths.iter().map(|path| path.to_path_buf()).collect(),
             symlinks,
+            readme: readme.map(Utf8Path::to_path_buf),
         })
     }
 
@@ -306,7 +310,85 @@ impl<'a> ChangeReplay<'a> {
 
     /// The tree of `commit`, restricted as [`Self::restrict`] describes.
     fn tree<'r>(&'r self, commit: &git2::Commit<'r>) -> anyhow::Result<git2::Tree<'r>> {
-        self.restrict(commit.tree()?)
+        let tree = commit.tree()?;
+        // Resolve against the full snapshot: historical link targets may be
+        // outside the package and differ from the README's target at HEAD.
+        let readme = self
+            .readme
+            .as_deref()
+            .filter(|_| self.symlinks)
+            .map(|path| self.readme_target(&tree, path))
+            .transpose()?
+            .flatten();
+        let tree = self.restrict(tree)?;
+        let Some((path, id)) = readme else {
+            return Ok(tree);
+        };
+        // Replaying link pointer bytes would count retargeting a README even
+        // when both targets have identical contents. Use the bytes equality reads.
+        let id = git2::build::TreeUpdateBuilder::new()
+            .upsert(path.as_str(), id, git2::FileMode::Blob)
+            .create_updated(&self.repo, &tree)?;
+        Ok(self.repo.find_tree(id)?)
+    }
+
+    /// Dereference a README link using only this snapshot's objects. Unsupported
+    /// or missing targets keep the original entry for conservative replay.
+    fn readme_target<'p>(
+        &self,
+        tree: &git2::Tree<'_>,
+        path: &'p Utf8Path,
+    ) -> anyhow::Result<Option<(&'p Utf8Path, git2::Oid)>> {
+        if !tree
+            .get_path(path.as_std_path())
+            .is_ok_and(|entry| entry.filemode() == i32::from(git2::FileMode::Link))
+        {
+            return Ok(None);
+        }
+        let mut pending: VecDeque<_> = path.components().map(|c| c.as_str().to_owned()).collect();
+        let mut resolved = Utf8PathBuf::new();
+        let mut links = 0;
+        while let Some(component) = pending.pop_front() {
+            match component.as_str() {
+                "." => continue,
+                ".." => {
+                    if !resolved.pop() {
+                        return Ok(None);
+                    }
+                    continue;
+                }
+                _ => resolved.push(component),
+            }
+            let Ok(entry) = tree.get_path(resolved.as_std_path()) else {
+                return Ok(None);
+            };
+            if entry.filemode() == i32::from(git2::FileMode::Link) {
+                // Match the usual filesystem limit and terminate cyclic links.
+                links += 1;
+                if links > 40 {
+                    return Ok(None);
+                }
+                self.fetch_if_missing(entry.id())?;
+                let blob = self.repo.find_blob(entry.id())?;
+                let Ok(target) = std::str::from_utf8(blob.content()) else {
+                    return Ok(None);
+                };
+                let target = Utf8Path::new(target);
+                if target.is_absolute() {
+                    return Ok(None);
+                }
+                resolved.pop();
+                for component in target.components().rev() {
+                    pending.push_front(component.as_str().to_owned());
+                }
+            }
+        }
+        let entry = tree.get_path(resolved.as_std_path())?;
+        if entry.kind() != Some(git2::ObjectType::Blob) {
+            return Ok(None);
+        }
+        self.fetch_if_missing(entry.id())?;
+        Ok(Some((path, entry.id())))
     }
 
     /// The tree a change is relative to: the first parent's, as `git revert -m 1`
@@ -632,7 +714,7 @@ mod tests {
         let head = repo.current_commit_hash().unwrap();
         let restricted_blobs = |paths: &[&str]| {
             let paths: Vec<_> = paths.iter().map(Utf8Path::new).collect();
-            let replay = ChangeReplay::new(&repo, &head, &paths).unwrap();
+            let replay = ChangeReplay::new(&repo, &head, &paths, None).unwrap();
             let commit = replay.commit(&head).unwrap();
             let tree = replay.tree(&commit).unwrap();
             let blobs = blob_paths(&tree);
@@ -737,7 +819,7 @@ mod tests {
                 ("100600", b"f", f_blob),
             ];
             let commit = commit_raw_tree(&repo, &base, &entries);
-            let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
+            let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")], None).unwrap();
             replay.undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
         };
         assert!(!undo_legacy_mode(blob(b"hello\n")).unwrap());
@@ -779,7 +861,7 @@ mod tests {
             let head = commit(&base, 2);
             // Remove the submodule, with its directory.
             let removed = commit_raw_tree(&repo, &head, &[]);
-            let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")]).unwrap();
+            let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")], None).unwrap();
             // Undoing the addition removes the submodule, which only the
             // commit's side has. Undoing the update changes it on both sides.
             // Undoing the removal re-adds it, which only the parent's side has.
