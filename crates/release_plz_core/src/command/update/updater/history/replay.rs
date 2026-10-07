@@ -716,15 +716,22 @@ mod tests {
             };
             let base = commit(&repo.current_commit_hash().unwrap(), b"hello\n", 1);
             let head = commit(&base, b"world\n", 2);
-            let replay = ChangeReplay::new(&repo, &head, &[Utf8Path::new("")]).unwrap();
-            // Undoing the update at HEAD changes the file and the submodule.
-            let affected =
-                replay.undo_affects_package(&head, &head, TokenConflicts::Unresolved, |_| true);
-            assert!(
-                matches!(affected, Ok(true)),
-                "{}: {affected:?}",
-                submodule.escape_ascii()
-            );
+            // Remove the submodule and keep the file.
+            let file = git.blob(b"world\n").unwrap();
+            let removed = commit_raw_tree(&repo, &head, &[("100644", b"f", file)]);
+            let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")]).unwrap();
+            // Undoing the update changes the file and the submodule, which both
+            // sides have. Undoing the removal re-adds the submodule only on the
+            // side of the removal's parent.
+            for id in [&head, &removed] {
+                let affected =
+                    replay.undo_affects_package(id, id, TokenConflicts::Unresolved, |_| true);
+                assert!(
+                    matches!(affected, Ok(true)),
+                    "{} at {id}: {affected:?}",
+                    submodule.escape_ascii()
+                );
+            }
         }
     }
 }
