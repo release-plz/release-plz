@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.6...release_plz_core-v0.38.7) - 2026-10-07
+
+### Added
+
+- populate GitLab commit author usernames in changelog ([#3124](https://github.com/release-plz/release-plz/pull/3124))
+
+### Fixed
+
+- retain changes surviving equal package snapshots ([#3079](https://github.com/release-plz/release-plz/pull/3079))
+- *(update)* propagate dependency bumps through workspace versions ([#3128](https://github.com/release-plz/release-plz/pull/3128))
+- *(gitlab)* use canonical merge request links ([#3127](https://github.com/release-plz/release-plz/pull/3127))
+- *(changelog)* retain PR metadata without contributor usernames ([#3126](https://github.com/release-plz/release-plz/pull/3126))
+- *(changelog)* initialize git-cliff continue field explicitly ([#3101](https://github.com/release-plz/release-plz/pull/3101))
+- *(changelog)* collect package history across merged branches ([#3078](https://github.com/release-plz/release-plz/pull/3078))
+
+### Other
+
+- Update to cargo 0.100.0 ([#3118](https://github.com/release-plz/release-plz/pull/3118))
+
 ## [0.38.6](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.5...release_plz_core-v0.38.6) - 2026-09-19
 
 ### Fixed
