@@ -41,6 +41,17 @@ async fn api_history(released: &str) -> TestContext {
     context
 }
 
+async fn write_files_and_publish(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
+    let context = unpublished_history(BASE_API).await;
+    write_extra(context.repo.directory());
+    context
+        .repo
+        .add_all_and_commit("chore: file fixtures")
+        .unwrap();
+    context.publish_snapshot(&[]);
+    context
+}
+
 async fn member_history(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(PACKAGE).with_type(PackageType::Lib)
@@ -398,6 +409,18 @@ fn assert_retained_changes_with_executable_bit(
     // All content changes should disappear, leaving only a patch bump.
     let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
     history.assert_release(&[&restore, &sibling], "0.1.1");
+}
+
+#[tokio::test]
+async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
+    let path = "src/.cargo_vcs_info.json";
+    let history = write_files_and_publish(|root| {
+        fs_err::write(root.join(path), "{}\n").unwrap();
+    })
+    .await;
+    let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
+    let sibling = history.merge_ignored_revert(path, "{}\n");
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
 /// In a `history` equal to the release, add a breaking change and revert it on
