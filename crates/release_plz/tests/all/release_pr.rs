@@ -46,9 +46,6 @@ async fn released_workspace_with_shared_version(
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
-    // consumer depends on support; downstream depends on sibling. The two chains
-    // are connected by consumer and sibling inheriting workspace.package.version,
-    // even though sibling has its own release disabled.
     let context = released_workspace_with_shared_version(
         &[
             ("support", "version = \"1.0.0\"\n"),
