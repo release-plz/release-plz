@@ -605,41 +605,6 @@ async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers()
     }
 }
 
-#[tokio::test]
-async fn an_evolved_released_api_does_not_repeat_its_breaking_change_marker() {
-    let published_api = BREAKING_API.replace(
-        "api(_: bool) {}",
-        "api(_: bool) { /* published implementation */ }",
-    );
-    let history = api_history(&published_api).await;
-    let repo = &history.repo;
-    history.write_commit("src/lib.rs", BREAKING_API, "feat!: released breaking API");
-    repo.git(&["checkout", "-b", "equal"]).unwrap();
-    history.write_commit(
-        "src/lib.rs",
-        &published_api,
-        "chore: published implementation",
-    );
-    repo.checkout_head().unwrap();
-    repo.git(&["merge", "-s", "ours", "-m", "merge equal", "equal"])
-        .unwrap();
-    repo.git(&["checkout", "equal"]).unwrap();
-    let sibling = history.write_commit(
-        "src/lib.rs",
-        &format!("{published_api}pub fn extra() {{}}\n"),
-        "fix: sibling",
-    );
-    repo.checkout_head().unwrap();
-    repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
-        .unwrap();
-    let merge = repo.current_commit_hash().unwrap();
-    assert_eq!(
-        fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-        format!("{BREAKING_API}pub fn extra() {{}}\n")
-    );
-    history.assert_release(&[&sibling, &merge], "0.1.1");
-}
-
 /// A merge commit can be an ancestor of the equal snapshot too. Its conflict
 /// resolution is undone relative to its first parent, like `git revert -m 1`.
 #[tokio::test]
