@@ -732,9 +732,10 @@ impl Updater<'_> {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
-            // Without a tag or a published commit bounding the walk, a branch forked
-            // before the release and merged after it keeps its fork point and every
-            // ancestor of it reachable, so all of those are inspected.
+            // Without a tag or a published commit bounding the walk, a branch that
+            // changes the package, forked before the release and merged after it,
+            // keeps its fork point and every ancestor of it reachable, so all of
+            // those are inspected.
             if retained_changes.skips(&current_commit_hash) {
                 continue;
             }
