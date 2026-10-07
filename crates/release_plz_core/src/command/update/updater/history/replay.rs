@@ -630,6 +630,29 @@ mod tests {
         assert!(restricted_blobs(&["missing"]).is_empty());
     }
 
+    /// Commit on top of `parent` the tree of `entries`, each a mode, a path and
+    /// an id, written raw: libgit2's `TreeBuilder` rejects legacy modes, and
+    /// `Repo::git` takes no non-UTF-8 paths. Nothing sorts the raw tree, so
+    /// `entries` must be in Git's tree order.
+    fn commit_raw_tree(repo: &Repo, parent: &str, entries: &[(&str, &[u8], git2::Oid)]) -> String {
+        let mut tree = Vec::new();
+        for (mode, path, id) in entries {
+            tree.extend_from_slice(format!("{mode} ").as_bytes());
+            tree.extend_from_slice(path);
+            tree.push(0);
+            tree.extend_from_slice(id.as_bytes());
+        }
+        let tree = git2::Repository::open(repo.directory())
+            .unwrap()
+            .odb()
+            .unwrap()
+            .write(git2::ObjectType::Tree, &tree)
+            .unwrap()
+            .to_string();
+        repo.git(&["commit-tree", &tree, "-p", parent, "-m", "raw tree"])
+            .unwrap()
+    }
+
     /// A legacy file mode Git accepts, such as the 100600 old importers wrote,
     /// makes `DiffFile::mode` panic. The replay selects the repository root,
     /// so its trees keep the raw mode: `restrict` rewrites a selected file's
@@ -649,22 +672,11 @@ mod tests {
             |content: &[u8]| git2::Oid::hash_object(git2::ObjectType::Blob, content).unwrap();
         // Undo a commit that gives `f` the legacy mode and the blob `f_blob`.
         let undo_legacy_mode = |f_blob: git2::Oid| {
-            // libgit2's `TreeBuilder` rejects the legacy mode: write the raw tree.
-            let mut tree = Vec::new();
-            for (mode, path, id) in [("100644", "README.md", readme), ("100600", "f", f_blob)] {
-                tree.extend_from_slice(format!("{mode} {path}\0").as_bytes());
-                tree.extend_from_slice(id.as_bytes());
-            }
-            let tree = git2::Repository::open(repo.directory())
-                .unwrap()
-                .odb()
-                .unwrap()
-                .write(git2::ObjectType::Tree, &tree)
-                .unwrap()
-                .to_string();
-            let commit = repo
-                .git(&["commit-tree", &tree, "-p", &base, "-m", "legacy mode"])
-                .unwrap();
+            let entries = [
+                ("100644", b"README.md".as_slice(), readme),
+                ("100600", b"f", f_blob),
+            ];
+            let commit = commit_raw_tree(&repo, &base, &entries);
             let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
             replay.undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
         };
@@ -682,43 +694,37 @@ mod tests {
     /// must not fetch them, whatever the submodule's path.
     #[test]
     fn submodules_are_not_fetched() {
-        #[cfg(target_os = "linux")]
-        use std::os::unix::ffi::OsStrExt as _;
-        use std::path::Path;
-
         for submodule in [
-            Path::new("sub"),
-            // Windows paths must be UTF-8; test invalid ones on Linux, as elsewhere.
-            #[cfg(target_os = "linux")]
-            Path::new(std::ffi::OsStr::from_bytes(b"sub\xff")),
+            b"sub".as_slice(),
+            // Windows paths must be UTF-8.
+            #[cfg(unix)]
+            b"sub\xff",
         ] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
             let repo = Repo::init(dir.path());
-            // Commit `contents` to a file and the submodule commit `id`, which
-            // no repository has.
-            let commit = |contents: &str, id: &str, message: &str| {
-                fs_err::write(repo.directory().join("f"), contents).unwrap();
-                repo.git(&["add", "f"]).unwrap();
-                // Record the gitlink, which the worktree lacks, in the index.
-                // `Repo::git` takes no non-UTF-8 arguments.
-                let status = std::process::Command::new("git")
-                    .current_dir(repo.directory())
-                    .args(["update-index", "--add", "--cacheinfo", "160000", id])
-                    .arg(submodule)
-                    .status()
-                    .unwrap();
-                assert!(status.success());
-                // Commit the index: `git add` would stage the gitlink's deletion.
-                repo.git(&["commit", "-m", message]).unwrap();
-                repo.current_commit_hash().unwrap()
+            let git = git2::Repository::open(repo.directory()).unwrap();
+            // Commit `contents` to a file and the submodule commit `byte`
+            // repeated, which no repository has.
+            let commit = |parent: &str, contents: &[u8], byte: u8| {
+                let file = git.blob(contents).unwrap();
+                let gitlink = git2::Oid::from_bytes(&[byte; 20]).unwrap();
+                commit_raw_tree(
+                    &repo,
+                    parent,
+                    &[("100644", b"f", file), ("160000", submodule, gitlink)],
+                )
             };
-            commit("hello\n", &"1".repeat(40), "base");
-            let head = commit("world\n", &"2".repeat(40), "update");
+            let base = commit(&repo.current_commit_hash().unwrap(), b"hello\n", 1);
+            let head = commit(&base, b"world\n", 2);
             let replay = ChangeReplay::new(&repo, &head, &[Utf8Path::new("")]).unwrap();
             // Undoing the update at HEAD changes the file and the submodule.
             let affected =
                 replay.undo_affects_package(&head, &head, TokenConflicts::Unresolved, |_| true);
-            assert!(matches!(affected, Ok(true)), "{submodule:?}: {affected:?}");
+            assert!(
+                matches!(affected, Ok(true)),
+                "{}: {affected:?}",
+                submodule.escape_ascii()
+            );
         }
     }
 }
