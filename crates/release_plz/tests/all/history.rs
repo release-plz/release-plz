@@ -340,6 +340,9 @@ const RELEASED_API: &str = "pub fn api(_: u8) {}\n\n\n\n\n\npub fn stable() {}\n
 /// [`BASE_API`] with an implementation change that leaves the API untouched.
 const IMPLEMENTED_API: &str =
     "pub fn api() { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
+/// [`IMPLEMENTED_API`] with the signature of [`BREAKING_API`].
+const IMPLEMENTED_BREAKING_API: &str =
+    "pub fn api(_: bool) { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
 
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
@@ -413,7 +416,6 @@ async fn sha256_repositories_fall_back_to_ancestry_pruning() {
 
 #[tokio::test]
 async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
-    let breaking_api = IMPLEMENTED_API.replace("api()", "api(_: bool)");
     for boundary in ["tag", "published", "missing", "equality"] {
         let history = unpublished_history(BASE_API).await;
         history.publish_with_boundary(boundary);
@@ -428,7 +430,11 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
             IMPLEMENTED_API,
             "chore: modify implementation",
         );
-        let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: breaking API");
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            IMPLEMENTED_BREAKING_API,
+            "feat!: breaking API",
+        );
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         assert_release(
             &history.update_history(),
@@ -448,23 +454,22 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
             let history = api_history(BASE_API).await;
             let repo = &history.repo;
             repo.git(&["checkout", "-b", "feature"]).unwrap();
-            let implementation = if sequential {
-                IMPLEMENTED_API
+            let breaking_api = if sequential {
+                IMPLEMENTED_BREAKING_API
             } else {
-                BASE_API
+                BREAKING_API
             };
-            let breaking_api = implementation.replace("api()", "api(_: bool)");
             if sequential {
                 history.write_commit_at(
                     "src/lib.rs",
-                    implementation,
+                    IMPLEMENTED_API,
                     "chore: modify implementation",
                     1,
                 );
             }
             let discarded = history.write_commit_at(
                 "src/lib.rs",
-                &breaking_api,
+                breaking_api,
                 "feat!: discarded breaking API",
                 discarded_day,
             );
@@ -518,7 +523,6 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
 
 #[tokio::test]
 async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
-    let breaking_api = IMPLEMENTED_API.replace("api()", "api(_: bool)");
     for (breaking_survives, version) in [(false, "0.1.1"), (true, "0.2.0")] {
         let history = api_history(BASE_API).await;
         let implementation_commit = history.write_commit(
@@ -526,12 +530,16 @@ async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers()
             IMPLEMENTED_API,
             "chore: modify implementation",
         );
-        let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: breaking API");
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            IMPLEMENTED_BREAKING_API,
+            "feat!: breaking API",
+        );
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         // Evolve the body on the same line, retaining or restoring the signature.
         // The line-level inverse conflicts in both cases; only one needs a minor bump.
         let kept = if breaking_survives {
-            &breaking_api
+            IMPLEMENTED_BREAKING_API
         } else {
             IMPLEMENTED_API
         };
