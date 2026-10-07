@@ -169,8 +169,13 @@ impl TestContext {
     }
 
     pub fn run_cargo_publish(&self, package_name: &str) {
+        self.cargo_publish_command(package_name).assert().success();
+    }
+
+    pub fn cargo_publish_command(&self, package_name: &str) -> assert_cmd::Command {
         let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
-        assert_cmd::Command::new("cargo")
+        let mut command = assert_cmd::Command::new("cargo");
+        command
             .current_dir(self.repo.directory())
             .env("CARGO_TARGET_DIR", self.cargo_target_dir())
             .env(token_env_var, format!("Bearer {}", self.gitea.token))
@@ -178,20 +183,24 @@ impl TestContext {
             .arg("-p")
             .arg(package_name)
             .arg("--registry")
-            .arg(TEST_REGISTRY)
-            .assert()
-            .success();
+            .arg(TEST_REGISTRY);
+        command
     }
 
     pub fn run_update(&self) -> Assert {
-        super::cmd::release_plz_cmd(&self.cargo_target_dir())
+        self.update_command().assert()
+    }
+
+    pub fn update_command(&self) -> assert_cmd::Command {
+        let mut command = super::cmd::release_plz_cmd(&self.cargo_target_dir());
+        command
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .arg("update")
             .arg("--verbose")
             .arg("--registry")
-            .arg(TEST_REGISTRY)
-            .assert()
+            .arg(TEST_REGISTRY);
+        command
     }
 
     pub fn run_release_pr(&self) -> Assert {
@@ -237,8 +246,7 @@ impl TestContext {
     }
 
     pub fn repo_dir(&self) -> Utf8PathBuf {
-        let path = self.test_dir.path().join(&self.gitea.repo);
-        canonicalize_utf8(&path).unwrap()
+        canonicalize_utf8(self.repo.directory()).unwrap()
     }
 
     pub async fn opened_release_prs(&self) -> Vec<GitPr> {
