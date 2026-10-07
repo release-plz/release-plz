@@ -553,14 +553,13 @@ impl Updater<'_> {
         old_changelog: &OldChangelog,
     ) -> anyhow::Result<UpdateResult> {
         let repo_url = self.req.repo_url();
+        // Use registry_version as the previous version when available (version already
+        // bumped case), otherwise use package.version (normal case)
+        let previous_version = registry_version.as_ref().unwrap_or(&package.version);
         let release_link = {
-            // Use registry_version for prev_tag when available (version already bumped case),
-            // otherwise use package.version (normal case)
-            let prev_version = registry_version
-                .as_ref()
-                .unwrap_or(&package.version)
-                .to_string();
-            let prev_tag = self.project.git_tag(&package.name, &prev_version)?;
+            let prev_tag = self
+                .project
+                .git_tag(&package.name, &previous_version.to_string())?;
             let next_tag = self.project.git_tag(&package.name, &version.to_string())?;
             repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
         };
@@ -597,6 +596,7 @@ impl Updater<'_> {
                         }),
                         release_link.as_deref(),
                         package,
+                        previous_version,
                     )
                 })
                 .transpose()
@@ -1041,6 +1041,10 @@ struct ChangelogRepo<'a> {
 /// - the entire changelog (with the new entries);
 /// - the new changelog entry alone
 ///   (i.e. changelog body update without header and footer).
+///
+/// `previous_version` is the version `package` is released from, used when the
+/// old changelog can't tell it.
+#[allow(clippy::too_many_arguments)]
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
@@ -1049,6 +1053,7 @@ fn get_changelog(
     repo: Option<ChangelogRepo<'_>>,
     release_link: Option<&str>,
     package: &Package,
+    previous_version: &Version,
 ) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
@@ -1091,7 +1096,7 @@ fn get_changelog(
             // The latest release of a shared changelog can belong to another package.
             let last_version = last_version
                 .filter(|_| !old_changelog.is_shared())
-                .unwrap_or(package.version.to_string());
+                .unwrap_or_else(|| previous_version.to_string());
             changelog_builder = changelog_builder.with_previous_version(last_version);
         } else if let Some(last_version) = last_version
             && let Some(old_changelog) = old_changelog.current()
@@ -1284,6 +1289,7 @@ mod tests {
                 None,
                 None,
                 &package,
+                &package.version,
             )
             .unwrap();
             assert_eq!(old_changelog.current().unwrap(), new.0);

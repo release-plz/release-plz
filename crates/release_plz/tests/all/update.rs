@@ -183,6 +183,54 @@ fn dependency_updates_pass_previous_versions_to_shared_changelog_template_when_v
     );
 }
 
+#[test]
+fn shared_changelog_previous_version_of_bumped_package_is_its_registry_version() {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("published", "version.workspace = true\n"),
+            ("unpublished", "version.workspace = true\n"),
+        ],
+        "\n[workspace.package]\nversion = \"1.0.0\"\n",
+        &format!(
+            "[workspace]\nsemver_check = false\nchangelog_path = \"CHANGELOG.md\"\n{PREVIOUS_VERSION_CHANGELOG_CONFIG}"
+        ),
+    );
+    // Bump the workspace version, but only publish `published` at 1.1.0.
+    let path = repo.directory().join("Cargo.toml");
+    let manifest = fs_err::read_to_string(&path).unwrap();
+    fs_err::write(path, manifest.replace("1.0.0", "1.1.0")).unwrap();
+    generate_lockfile(repo.directory());
+    repo.add_all_and_commit("chore: bump workspace version")
+        .unwrap();
+    repo.tag_lightweight("published-v1.1.0").unwrap();
+    let registry_dir = temp_dir.path().join("registry");
+    let path = registry_dir.join("published/Cargo.toml");
+    let manifest = fs_err::read_to_string(&path).unwrap();
+    fs_err::write(
+        path,
+        manifest.replace("version.workspace = true", "version = \"1.1.0\""),
+    )
+    .unwrap();
+    generate_lockfile(&registry_dir);
+    change_package(&repo, "published", "fix: update published");
+    change_package(&repo, "unpublished", "fix: update unpublished");
+
+    let summary = run_workspace_update(&temp_dir, &repo, None);
+
+    assert!(
+        summary.contains("`unpublished`: 1.0.0 -> 1.1.1"),
+        "{summary}"
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("CHANGELOG.md")).unwrap();
+    // `unpublished` never released 1.1.0, its local version.
+    for line in [
+        "## [1.1.1] published previous=1.1.0",
+        "## [1.1.1] unpublished previous=1.0.0",
+    ] {
+        assert!(changelog.contains(line), "{line}: {changelog}");
+    }
+}
+
 /// Renders the package name and its previous version in each release header.
 const PREVIOUS_VERSION_CHANGELOG_CONFIG: &str = r#"
 [changelog]
