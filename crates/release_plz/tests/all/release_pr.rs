@@ -46,6 +46,9 @@ async fn released_workspace_with_shared_version(
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
+    // consumer depends on support; downstream depends on sibling. The two chains
+    // are connected by consumer and sibling inheriting workspace.package.version,
+    // even though sibling has its own release disabled.
     let context = released_workspace_with_shared_version(
         &[
             ("support", "version = \"1.0.0\"\n"),
@@ -62,6 +65,8 @@ async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
         "\n[[package]]\nname = \"sibling\"\nrelease = false\n",
     )
     .await;
+    // Only support changes. Its minor bump breaks consumer's exact requirement,
+    // so consumer needs a dependency-only patch release of the shared version.
     fs_err::write(
         context.package_path("support").join("src/lib.rs"),
         "pub fn new() {}\n",
@@ -70,10 +75,14 @@ async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
     context.push_all_changes("feat: update support");
 
     // release-pr relocates the checkout while retaining the original Cargo metadata.
+    // The disabled sibling must still be resolved in that copy to find downstream.
     context.run_release_pr().success();
+    // Preparing the PR must leave the original checkout clean.
     context.repo.is_clean().unwrap();
     context.merge_release_pr().await;
 
+    // The shared version change requires a downstream release, but sibling's
+    // disabled release must not produce a changelog of its own.
     let changelog =
         fs_err::read_to_string(context.package_path("downstream").join("CHANGELOG.md")).unwrap();
     assert!(changelog.contains("## [1.0.1]"), "{changelog}");
@@ -84,6 +93,8 @@ async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
             .join("CHANGELOG.md")
             .exists()
     );
+    // sibling still inherits the bumped version. Checking with --locked also
+    // verifies that the merged manifests and lockfile agree on every version.
     assert_locked_versions(
         &context.repo_dir(),
         &[
