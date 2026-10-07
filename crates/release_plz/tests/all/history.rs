@@ -568,31 +568,24 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
 
 #[tokio::test]
 async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
-    for breaking_survives in [false, true] {
+    let breaking_api = IMPLEMENTED_API.replace("api()", "api(_: bool)");
+    for (breaking_survives, version) in [(false, "0.1.1"), (true, "0.2.0")] {
         let history = api_history(BASE_API).await;
         let implementation_commit = history.write_commit(
             "src/lib.rs",
             IMPLEMENTED_API,
             "chore: modify implementation",
         );
-        let breaking = history.write_commit(
-            "src/lib.rs",
-            &IMPLEMENTED_API.replace("api()", "api(_: bool)"),
-            "feat!: breaking API",
-        );
+        let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: breaking API");
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         // Evolve the body on the same line, retaining or restoring the signature.
         // The line-level inverse conflicts in both cases; only one needs a minor bump.
-        let evolved = IMPLEMENTED_API
-            .replace("/* implementation */", "/* implementation */ /* sibling */")
-            .replace(
-                "api()",
-                if breaking_survives {
-                    "api(_: bool)"
-                } else {
-                    "api()"
-                },
-            );
+        let kept = if breaking_survives {
+            &breaking_api
+        } else {
+            IMPLEMENTED_API
+        };
+        let evolved = kept.replace("/* implementation */", "/* implementation */ /* sibling */");
         let evolved_commit =
             history.write_commit("src/lib.rs", &evolved, "fix: evolve implementation");
         let mut expected = vec![
@@ -606,7 +599,7 @@ async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers()
         assert_release(
             &history.update_history(),
             &expected,
-            if breaking_survives { "0.2.0" } else { "0.1.1" },
+            version,
             &format!("breaking_survives={breaking_survives}"),
         );
     }
