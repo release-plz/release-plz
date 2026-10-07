@@ -139,7 +139,7 @@ impl<'a> ChangeReplay<'a> {
                 for (file, side) in [(delta.old_file(), base), (delta.new_file(), *tree)] {
                     // Deleted sides have a zero id. Submodules are commits of
                     // another repository.
-                    if !file.id().is_zero() && !is_submodule(side, &file) {
+                    if !file.id().is_zero() && !self.is_submodule(side, &file) {
                         self.fetch_if_missing(file.id())?;
                     }
                 }
@@ -159,6 +159,34 @@ impl<'a> ChangeReplay<'a> {
         debug!("fetching blob {id} missing from the partial clone to check retained changes");
         self.source.git(&["cat-file", "-e", &id])?;
         Ok(())
+    }
+
+    /// Whether `file`, one side of a delta, is a submodule in `tree`, that
+    /// side's tree. Read the kind from the tree entry, since `DiffFile::mode`
+    /// panics on legacy modes Git accepts, such as 100600. Walk the path bytes
+    /// down the trees, since on Windows `DiffFile::path` panics on non-UTF-8
+    /// paths and `Tree::get_path` rejects them and turns backslashes into
+    /// slashes. A failed lookup finds no submodule.
+    fn is_submodule(&self, tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
+        let Some(path) = file.path_bytes() else {
+            return false;
+        };
+        let mut components = path.split(|byte| *byte == b'/');
+        // `split` yields at least one component, the entry's name.
+        let name = components.next_back().unwrap_or_default();
+        let mut tree = tree.clone();
+        for directory in components {
+            let Some(subtree) = tree
+                .get_name_bytes(directory)
+                .filter(|entry| entry.kind() == Some(git2::ObjectType::Tree))
+                .and_then(|entry| self.repo.find_tree(entry.id()).ok())
+            else {
+                return false;
+            };
+            tree = subtree;
+        }
+        tree.get_name_bytes(name)
+            .is_some_and(|entry| entry.kind() == Some(git2::ObjectType::Commit))
     }
 
     /// Prove that the target adopted the edits to the candidate's changed
@@ -385,31 +413,6 @@ pub(super) enum TokenConflicts {
     FavorTarget,
     /// Leave them unresolved, so that they count as changes.
     Unresolved,
-}
-
-/// Whether `file`, one side of a delta, is a submodule in `tree`, that side's
-/// tree. Read the kind from the tree entry and the path as bytes:
-/// `DiffFile::mode` panics on legacy modes Git accepts, such as 100600, and
-/// `DiffFile::path` on non-UTF-8 paths on Windows, where such a submodule then
-/// goes undetected and fetching its commit fails.
-fn is_submodule(tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
-    file.path_bytes()
-        .and_then(path_from_bytes)
-        .and_then(|path| tree.get_path(path).ok())
-        .is_some_and(|entry| entry.kind() == Some(git2::ObjectType::Commit))
-}
-
-/// `bytes` as a path, as Git records it. Windows paths must be UTF-8.
-#[cfg(unix)]
-fn path_from_bytes(bytes: &[u8]) -> Option<&std::path::Path> {
-    use std::os::unix::ffi::OsStrExt as _;
-    Some(std::path::Path::new(std::ffi::OsStr::from_bytes(bytes)))
-}
-
-/// `bytes` as a path, as Git records it. Windows paths must be UTF-8.
-#[cfg(not(unix))]
-fn path_from_bytes(bytes: &[u8]) -> Option<&std::path::Path> {
-    std::str::from_utf8(bytes).ok().map(std::path::Path::new)
 }
 
 /// The mode of `entry` as [`git2::build::TreeUpdateBuilder`] takes it.
@@ -694,12 +697,7 @@ mod tests {
     /// must not fetch them, whatever the submodule's path.
     #[test]
     fn submodules_are_not_fetched() {
-        for submodule in [
-            b"sub".as_slice(),
-            // Windows paths must be UTF-8.
-            #[cfg(unix)]
-            b"sub\xff",
-        ] {
+        for submodule in [b"sub".as_slice(), b"sub\xff"] {
             let dir = fs_utils::Utf8TempDir::new().unwrap();
             let repo = Repo::init(dir.path());
             let git = git2::Repository::open(repo.directory()).unwrap();
