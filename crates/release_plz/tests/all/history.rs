@@ -338,9 +338,8 @@ const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}
 const RELEASED_API: &str = "pub fn api(_: u8) {}\n\n\n\n\n\npub fn stable() {}\n";
 
 /// [`BASE_API`] with an implementation change that leaves the API untouched.
-fn implemented_api() -> String {
-    BASE_API.replace("api() {}", "api() { /* implementation */ }")
-}
+const IMPLEMENTED_API: &str =
+    "pub fn api() { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
 
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
@@ -422,9 +421,9 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                 history.publish_with_boundary(boundary);
                 let repo = &history.repo;
                 let implementation = if sequential {
-                    implemented_api()
+                    IMPLEMENTED_API
                 } else {
-                    BASE_API.to_owned()
+                    BASE_API
                 };
                 let breaking_api = implementation.replace("api()", "api(_: bool)");
                 let implementation_commit = sequential.then(|| {
@@ -435,7 +434,7 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                     fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
                     history.write_commit_at(
                         "src/lib.rs",
-                        &implementation,
+                        implementation,
                         "chore: modify implementation",
                         4,
                     )
@@ -500,15 +499,15 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
             let repo = &history.repo;
             repo.git(&["checkout", "-b", "feature"]).unwrap();
             let implementation = if sequential {
-                implemented_api()
+                IMPLEMENTED_API
             } else {
-                BASE_API.to_owned()
+                BASE_API
             };
             let breaking_api = implementation.replace("api()", "api(_: bool)");
             if sequential {
                 history.write_commit_at(
                     "src/lib.rs",
-                    &implementation,
+                    implementation,
                     "chore: modify implementation",
                     1,
                 );
@@ -571,21 +570,20 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
 async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers() {
     for breaking_survives in [false, true] {
         let history = api_history(BASE_API).await;
-        let implementation = implemented_api();
         let implementation_commit = history.write_commit(
             "src/lib.rs",
-            &implementation,
+            IMPLEMENTED_API,
             "chore: modify implementation",
         );
         let breaking = history.write_commit(
             "src/lib.rs",
-            &implementation.replace("api()", "api(_: bool)"),
+            &IMPLEMENTED_API.replace("api()", "api(_: bool)"),
             "feat!: breaking API",
         );
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         // Evolve the body on the same line, retaining or restoring the signature.
         // The line-level inverse conflicts in both cases; only one needs a minor bump.
-        let evolved = implementation
+        let evolved = IMPLEMENTED_API
             .replace("/* implementation */", "/* implementation */ /* sibling */")
             .replace(
                 "api()",
