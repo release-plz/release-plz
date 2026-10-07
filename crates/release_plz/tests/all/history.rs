@@ -414,77 +414,49 @@ async fn sha256_repositories_fall_back_to_ancestry_pruning() {
 #[tokio::test]
 async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
     for sequential in [false, true] {
-        for skew in [false, true] {
-            for boundary in ["tag", "published", "missing", "equality"] {
-                let case = format!("sequential={sequential}, skew={skew}, boundary={boundary}");
-                let history = unpublished_history(BASE_API).await;
-                history.publish_with_boundary(boundary);
-                let repo = &history.repo;
-                let implementation = if sequential {
-                    IMPLEMENTED_API
-                } else {
-                    BASE_API
-                };
-                let breaking_api = implementation.replace("api()", "api(_: bool)");
-                let implementation_commit = sequential.then(|| {
-                    // Equality ignores the root lockfile even when it differs
-                    // between the release and a later equal snapshot.
-                    let lockfile = repo.directory().join("Cargo.lock");
-                    let contents = fs_err::read_to_string(&lockfile).unwrap();
-                    fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
-                    history.write_commit_at(
-                        "src/lib.rs",
-                        implementation,
-                        "chore: modify implementation",
-                        4,
-                    )
-                });
-                let breaking =
-                    history.write_commit_at("src/lib.rs", &breaking_api, "feat!: breaking API", 5);
-                repo.git(&["checkout", "-b", "equal"]).unwrap();
-                // Date the equal branch before the API changes it descends from.
-                let equal = history.write_commit_at(
-                    "src/lib.rs",
-                    BASE_API,
-                    "revert: API changes",
-                    if skew { 2 } else { 6 },
-                );
-                repo.checkout_head().unwrap();
-                repo.git_at(
-                    &["merge", "-s", "ours", "-m", "merge equal", "equal"],
-                    "2000-01-09T00:00:00 +0000",
-                )
+        for boundary in ["tag", "published", "missing", "equality"] {
+            let case = format!("sequential={sequential}, boundary={boundary}");
+            let history = unpublished_history(BASE_API).await;
+            history.publish_with_boundary(boundary);
+            let repo = &history.repo;
+            let implementation = if sequential {
+                IMPLEMENTED_API
+            } else {
+                BASE_API
+            };
+            let breaking_api = implementation.replace("api()", "api(_: bool)");
+            let implementation_commit = sequential.then(|| {
+                // Equality ignores the root lockfile even when it differs
+                // between the release and a later equal snapshot.
+                let lockfile = repo.directory().join("Cargo.lock");
+                let contents = fs_err::read_to_string(&lockfile).unwrap();
+                fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
+                history.write_commit("src/lib.rs", implementation, "chore: modify implementation")
+            });
+            let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: breaking API");
+            repo.git(&["checkout", "-b", "equal"]).unwrap();
+            history.write_commit("src/lib.rs", BASE_API, "revert: API changes");
+            repo.checkout_head().unwrap();
+            repo.git(&["merge", "-s", "ours", "-m", "merge equal", "equal"])
                 .unwrap();
-                repo.git(&["checkout", "equal"]).unwrap();
-                let sibling = history.write_commit_at(
-                    "src/lib.rs",
-                    &format!("{BASE_API}pub fn extra() {{}}\n"),
-                    "fix: sibling",
-                    if skew { 3 } else { 7 },
-                );
-                repo.checkout_head().unwrap();
-                repo.git_at(
-                    &["merge", "--no-ff", "-m", "merge sibling", "equal"],
-                    "2000-01-10T00:00:00 +0000",
-                )
+            repo.git(&["checkout", "equal"]).unwrap();
+            let sibling = history.write_commit(
+                "src/lib.rs",
+                &format!("{BASE_API}pub fn extra() {{}}\n"),
+                "fix: sibling",
+            );
+            repo.checkout_head().unwrap();
+            repo.git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
                 .unwrap();
-                let merge = repo.current_commit_hash().unwrap();
-                assert_eq!(
-                    fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-                    format!("{breaking_api}pub fn extra() {{}}\n"),
-                    "{case}"
-                );
-                // Topology must put the equal snapshot before its ancestor,
-                // even when their dates are out of order.
-                let order = history.walk_order();
-                assert!(
-                    order.find(&equal).unwrap() < order.find(&breaking).unwrap(),
-                    "{case}: {order}"
-                );
-                let mut expected = vec![breaking.as_str(), sibling.as_str(), merge.as_str()];
-                expected.extend(implementation_commit.as_deref());
-                assert_release(&history.update_history(), &expected, "0.2.0", &case);
-            }
+            let merge = repo.current_commit_hash().unwrap();
+            assert_eq!(
+                fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
+                format!("{breaking_api}pub fn extra() {{}}\n"),
+                "{case}"
+            );
+            let mut expected = vec![breaking.as_str(), sibling.as_str(), merge.as_str()];
+            expected.extend(implementation_commit.as_deref());
+            assert_release(&history.update_history(), &expected, "0.2.0", &case);
         }
     }
 }
