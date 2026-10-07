@@ -854,47 +854,11 @@ fn partial_clones_replay_retained_changes_without_outside_blobs() {
 }
 
 /// A candidate's parent on a branch the release excludes is never checked
-/// out, so a partial clone lacks its package blobs. The replay fetches them.
+/// out, so a partial clone lacks its package blobs. The replay fetches them,
+/// the README's before inserting it into the restricted tree, which requires
+/// the blob to exist.
 #[test]
 fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
-    let history = api_history();
-    let repo = &history.repo;
-    let baseline = repo.current_commit_hash().unwrap();
-    repo.git(&["checkout", "-b", "feature"]).unwrap();
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    repo.checkout_head().unwrap();
-    let published = history.write_commit("src/lib.rs", RELEASED_API, "feat: released API");
-    history.publish("src/lib.rs", RELEASED_API);
-    // Keep the breaking change when merging the feature branch into the release.
-    assert!(
-        repo.git(&["merge", "--no-ff", "--no-commit", "feature"])
-            .is_err()
-    );
-    history.write_commit("src/lib.rs", BREAKING_API, "merge feature");
-    let sibling = history.merge_ignored_revert("src/lib.rs", RELEASED_API);
-    let diff = history.diff(Some(&published));
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
-
-    let partial = history.partial_clone();
-    let baseline_blob = partial
-        .repo
-        .git(&["rev-parse", &format!("{baseline}:src/lib.rs")])
-        .unwrap();
-    assert!(partial.missing_objects().contains(&baseline_blob));
-    // Undoing the breaking change reads its parent's API file, which the
-    // baseline alone has: an ancestor of the release the walk never visits.
-    let diff = partial.diff(Some(&published));
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
-    assert!(!partial.missing_objects().contains(&baseline_blob));
-}
-
-/// Restricting a tree to the package and its README inserts the README blob,
-/// which must exist. A partial clone lacks the README of a candidate's parent
-/// that the walk never checks out, so the replay fetches it first.
-#[test]
-fn partial_clones_fetch_a_readme_blob_a_replay_needs() {
     // Cargo detects the README in the package directory.
     let history = History::with_member_package(|root| {
         fs_err::write(root.join("pkg/README.md"), "# base\n").unwrap();
@@ -902,7 +866,8 @@ fn partial_clones_fetch_a_readme_blob_a_replay_needs() {
     let repo = &history.repo;
     let readme = repo.directory().join("pkg/README.md");
     let baseline = repo.current_commit_hash().unwrap();
-    // Both branches edit the README, so only the baseline has its original blob.
+    // Both branches edit the API and the README, so only the baseline has
+    // their original blobs.
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     fs_err::write(&readme, "# breaking\n").unwrap();
     let breaking = history.write_commit("pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
@@ -927,15 +892,19 @@ fn partial_clones_fetch_a_readme_blob_a_replay_needs() {
     assert_next_version(&diff, &Version::new(0, 2, 0));
 
     let partial = history.partial_clone();
-    let baseline_readme = partial
-        .repo
-        .git(&["rev-parse", &format!("{baseline}:pkg/README.md")])
-        .unwrap();
-    assert!(partial.missing_objects().contains(&baseline_readme));
+    let baseline_blobs = ["pkg/src/lib.rs", "pkg/README.md"].map(|path| {
+        partial
+            .repo
+            .git(&["rev-parse", &format!("{baseline}:{path}")])
+            .unwrap()
+    });
+    let missing = partial.missing_objects();
+    assert!(baseline_blobs.iter().all(|blob| missing.contains(blob)));
     let diff = partial.diff(Some(&published));
     assert_commits(&diff, &[&breaking, &sibling]);
     assert_next_version(&diff, &Version::new(0, 2, 0));
-    assert!(!partial.missing_objects().contains(&baseline_readme));
+    let missing = partial.missing_objects();
+    assert!(!baseline_blobs.iter().any(|blob| missing.contains(blob)));
 }
 
 #[test]
