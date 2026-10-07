@@ -392,13 +392,26 @@ pub(super) enum TokenConflicts {
 }
 
 /// Whether `file`, one side of a delta, is a submodule in `tree`, that side's
-/// tree. `DiffFile::path` panics on non-UTF-8 paths on Windows: those count
-/// as no submodule, whose commit then fails to fetch.
+/// tree. `DiffFile::path` panics on non-UTF-8 paths on Windows, where those
+/// count as no submodule, whose commit then fails to fetch.
 fn is_submodule(tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
     file.path_bytes()
-        .and_then(|path| std::str::from_utf8(path).ok())
-        .and_then(|path| tree.get_path(std::path::Path::new(path)).ok())
+        .and_then(path_from_bytes)
+        .and_then(|path| tree.get_path(path).ok())
         .is_some_and(|entry| entry.kind() == Some(git2::ObjectType::Commit))
+}
+
+/// `bytes` as a path, as Git records it. Windows paths must be UTF-8.
+#[cfg(unix)]
+fn path_from_bytes(bytes: &[u8]) -> Option<&std::path::Path> {
+    use std::os::unix::ffi::OsStrExt as _;
+    Some(std::path::Path::new(std::ffi::OsStr::from_bytes(bytes)))
+}
+
+/// `bytes` as a path, as Git records it. Windows paths must be UTF-8.
+#[cfg(not(unix))]
+fn path_from_bytes(bytes: &[u8]) -> Option<&std::path::Path> {
+    std::str::from_utf8(bytes).ok().map(std::path::Path::new)
 }
 
 /// The mode of `entry` as [`git2::build::TreeUpdateBuilder`] takes it.
