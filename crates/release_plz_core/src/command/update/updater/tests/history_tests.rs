@@ -47,7 +47,8 @@ impl History {
     }
 
     /// A workspace whose member `pkg` holds the package with [`BASE_API`].
-    /// `write_extra` adds files outside the package to the workspace root.
+    /// `write_extra` adds more files, inside or outside `pkg`, given the
+    /// workspace root.
     fn with_member_package(write_extra: impl Fn(&Utf8Path)) -> Self {
         Self::with_packages(|root| {
             fs_err::write(
