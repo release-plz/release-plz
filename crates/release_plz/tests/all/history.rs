@@ -507,9 +507,9 @@ async fn an_already_released_breaking_change_is_not_repeated_after_body_edits() 
     for released_api in [
         "api(_: bool) { /* published implementation */ }",
         "api(_: bool) { println!(\"hello\"); }",
-        "api(_: bool) { let enabled: bool = true; }",
-        "api(_: bool) { let predicate = |_: bool| {}; }",
-        "api(_: bool) { fn helper(_: bool) {} }",
+        "api(_: bool) { let _enabled: bool = true; }",
+        "api(_: bool) { let _predicate = |_: bool| {}; }",
+        "api(_: bool) { fn _helper(_: bool) {} }",
     ] {
         let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
         let history = api_history(&released_api).await;
@@ -719,17 +719,17 @@ async fn a_released_evolution_is_not_repeated_after_independent_release_edits_ar
 /// the change, and HEAD has both.
 #[tokio::test]
 async fn a_release_edit_next_to_a_retained_change_keeps_its_marker() {
-    let history = unpublished_history("pub fn api(a: i32) {}\n").await;
-    history.publish_snapshot(&[("src/lib.rs", "pub fn api(a: i64) {}\n")]);
+    let history = unpublished_history("pub fn api(_a: i32) {}\n").await;
+    history.publish_snapshot(&[("src/lib.rs", "pub fn api(_a: i64) {}\n")]);
     let breaking = history.write_commit(
         "src/lib.rs",
-        "pub fn api(a: i32, b: u8) {}\n",
+        "pub fn api(_a: i32, _b: u8) {}\n",
         "feat!: add a parameter",
     );
-    let sibling = history.merge_ignored_revert("src/lib.rs", "pub fn api(a: i64) {}\n");
+    let sibling = history.merge_ignored_revert("src/lib.rs", "pub fn api(_a: i64) {}\n");
     let adopted = history.write_commit(
         "src/lib.rs",
-        "pub fn api(a: i64, b: u8) {}\n",
+        "pub fn api(_a: i64, _b: u8) {}\n",
         "chore: adopt the released type",
     );
 
