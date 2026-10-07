@@ -87,7 +87,20 @@ fn update_manifests(
             .write()
             .context("can't update workspace version")?;
 
-        for (pkg, _) in workspace_pkgs {
+        // Every inheriting member changes version, even when it isn't released
+        // (e.g. filtered by release_commits or with `release = false`).
+        // Keep references to those members in sync too.
+        // `Updater::dependent_packages_update` releases their dependents with the same rule.
+        for pkg in all_packages {
+            // Workspace names remain stable when release-pr relocates the
+            // checkout, whereas Cargo package IDs include the original path.
+            let is_planned = workspace_pkgs.iter().any(|(p, _)| p.name == pkg.name);
+            let changes_version = is_planned
+                || (pkg.version != *new_workspace_version
+                    && LocalManifest::try_new(&pkg.manifest_path)?.version_is_inherited());
+            if !changes_version {
+                continue;
+            }
             let package_path = pkg.package_path()?;
             update_dependencies(
                 all_packages,

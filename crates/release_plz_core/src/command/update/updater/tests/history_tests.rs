@@ -3,6 +3,7 @@ use crate::{
     command::update::UpdateConfig,
     test_utils::{generate_lockfile, write_package},
 };
+use cargo_utils::CARGO_TOML;
 
 const PACKAGE: &str = "history-test";
 
