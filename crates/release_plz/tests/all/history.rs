@@ -41,17 +41,6 @@ async fn api_history(released: &str) -> TestContext {
     context
 }
 
-async fn write_files_and_publish(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
-    let context = unpublished_history(BASE_API).await;
-    write_extra(context.repo.directory());
-    context
-        .repo
-        .add_all_and_commit("chore: file fixtures")
-        .unwrap();
-    context.publish_snapshot(&[]);
-    context
-}
-
 async fn member_history(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new(PACKAGE).with_type(PackageType::Lib)
@@ -416,13 +405,9 @@ async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     // Cargo generates this file at the package root, but under src/ it is
     // an ordinary packaged file whose contents affect the release.
     let path = "src/.cargo_vcs_info.json";
-    let history = write_files_and_publish(|root| {
-        // Create the fixture in the test repository with an empty JSON object
-        // and a trailing newline. Unwrap so a write error fails the test.
-        // The helper publishes these initial contents as version 0.1.0.
-        fs_err::write(root.join(path), "{}\n").unwrap();
-    })
-    .await;
+    let history = unpublished_history("").await;
+    history.write_commit(path, "{}\n", "chore: add fixture");
+    history.publish_snapshot(&[]);
 
     // Change the fixture bytes. The `!` in `feat!` marks the commit as breaking.
     let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
