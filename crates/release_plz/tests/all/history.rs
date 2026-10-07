@@ -349,45 +349,65 @@ const IMPLEMENTED_BREAKING_API: &str =
 async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
     use std::os::unix::fs::PermissionsExt;
 
-    // Cover the breaking change both with and without an earlier implementation edit.
-    for with_prior_implementation_change in [false, true] {
-        let history = api_history(BASE_API).await;
-        // Record the executable bit.
-        history
-            .repo
-            .git(&["config", "core.filemode", "true"])
-            .unwrap();
-        let implementation = with_prior_implementation_change
-            .then(|| history.write_commit("src/lib.rs", IMPLEMENTED_API, "chore: implementation"));
-        // Combine the mode and API changes in one commit so replay has to distinguish them.
-        fs_err::set_permissions(
-            history.repo.directory().join("src/lib.rs"),
-            std::fs::Permissions::from_mode(0o755),
-        )
+    let history = api_history(BASE_API).await;
+    // Record the executable bit.
+    history
+        .repo
+        .git(&["config", "core.filemode", "true"])
         .unwrap();
-        let breaking = history.write_commit(
-            "src/lib.rs",
-            if with_prior_implementation_change {
-                IMPLEMENTED_BREAKING_API
-            } else {
-                BREAKING_API
-            },
-            "feat!: breaking API and set executable bit",
-        );
-        // Visit a merged branch whose contents match the release, but discard its revert.
-        // HEAD still contains the breaking API and any earlier implementation edit,
-        // so both content changes must survive the equal package snapshot.
-        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
-        let mut expected = vec![breaking.as_str(), sibling.as_str()];
-        expected.extend(implementation.as_deref());
-        history.assert_release(&expected, "0.2.0");
+    // Combine the mode and API changes in one commit so replay has to distinguish them.
+    fs_err::set_permissions(
+        history.repo.directory().join("src/lib.rs"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let breaking = history.write_commit(
+        "src/lib.rs",
+        BREAKING_API,
+        "feat!: breaking API and set executable bit",
+    );
+    // Discard the merged branch's revert: HEAD still contains the breaking API.
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 
-        // Restore the released contents while leaving the executable bit set.
-        // Neither content change should remain in the changelog: only the fixes
-        // survive, so the version bump is now a patch.
-        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
-        history.assert_release(&[&restore, &sibling], "0.1.1");
-    }
+    // Restore the released contents while leaving the executable bit set.
+    // The breaking change should disappear, leaving only a patch bump.
+    let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+    history.assert_release(&[&restore, &sibling], "0.1.1");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn executable_bit_changes_do_not_hide_retained_sequential_package_changes() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let history = api_history(BASE_API).await;
+    // Record the executable bit.
+    history
+        .repo
+        .git(&["config", "core.filemode", "true"])
+        .unwrap();
+    let implementation =
+        history.write_commit("src/lib.rs", IMPLEMENTED_API, "chore: implementation");
+    // Combine the mode and API changes in one commit so replay has to distinguish them.
+    fs_err::set_permissions(
+        history.repo.directory().join("src/lib.rs"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let breaking = history.write_commit(
+        "src/lib.rs",
+        IMPLEMENTED_BREAKING_API,
+        "feat!: breaking API and set executable bit",
+    );
+    // Discard the merged branch's revert: HEAD still contains both content changes.
+    let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+    history.assert_release(&[&implementation, &breaking, &sibling], "0.2.0");
+
+    // Restore the released contents while leaving the executable bit set.
+    // Both content changes should disappear, leaving only a patch bump.
+    let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+    history.assert_release(&[&restore, &sibling], "0.1.1");
 }
 
 /// In a `history` equal to the release, add a breaking change and revert it on
