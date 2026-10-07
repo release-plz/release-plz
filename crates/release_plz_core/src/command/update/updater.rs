@@ -142,7 +142,8 @@ impl Updater<'_> {
                     version: next_version,
                 });
             } else {
-                // We need to update this package only if one of its dependencies has changed.
+                // We need to update this package only if one of its dependencies or the
+                // workspace version it inherits changes.
                 // This includes already bumped (unpublished) versions without new commits:
                 // a dependency change can still release them.
                 packages_to_check_for_deps.push((p, diff));
@@ -383,6 +384,7 @@ impl Updater<'_> {
     }
 
     /// Propagate dependency and shared-version changes until no more packages need a release.
+    /// Returns the new workspace version if a package inheriting it is released.
     fn dependent_packages_update<'a>(
         &self,
         packages_to_check_for_deps: &[(&'a Package, Diff)],
@@ -423,8 +425,9 @@ impl Updater<'_> {
                 .map(|u| (u.package, u.version.clone()))
                 .collect();
             if let Some(version) = &workspace_version {
-                // Even a filtered sibling physically changes version. Its
-                // dependents must see the new version without releasing the sibling.
+                // Every inheriting member physically changes version, even if it isn't
+                // released (e.g. filtered by release_commits or with `release = false`).
+                // Its dependents must see the new version without releasing the member.
                 // `update_manifests` updates their requirements with the same rule.
                 for &p in inheriting_packages {
                     if !processed.contains(p.name.as_str()) && &p.version != version {

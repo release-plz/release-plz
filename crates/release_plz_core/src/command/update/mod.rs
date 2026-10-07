@@ -90,8 +90,9 @@ fn update_manifests(
             .write()
             .context("can't update workspace version")?;
 
-        // Every inheriting member changes version, even when release_commits
-        // excludes its own release. Keep references to those members in sync too.
+        // Every inheriting member changes version, even when it isn't released
+        // (e.g. filtered by release_commits or with `release = false`).
+        // Keep references to those members in sync too.
         // `Updater::dependent_packages_update` releases their dependents with the same rule.
         for pkg in all_packages {
             // Workspace names remain stable when release-pr relocates the
