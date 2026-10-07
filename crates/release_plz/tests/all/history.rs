@@ -115,7 +115,7 @@ impl TestContext {
     }
 
     fn assert_release(&self, commits: &[&str], version: &str) {
-        assert_release(&self.update_history(), commits, version);
+        assert_release(&self.update_history(), commits, version, "");
     }
 
     fn update_history(&self) -> String {
@@ -313,18 +313,22 @@ fn commit_ids(changelog: &str) -> Vec<&str> {
 }
 
 fn assert_commits(changelog: &str, expected: &[&str]) {
+    assert_commits_with_context(changelog, expected, "");
+}
+
+fn assert_commits_with_context(changelog: &str, expected: &[&str], context: &str) {
     let mut actual = commit_ids(changelog);
     actual.sort_unstable();
     let mut expected = expected.to_vec();
     expected.sort_unstable();
-    assert_eq!(actual, expected, "{changelog}");
+    assert_eq!(actual, expected, "{context}\n{changelog}");
 }
 
-fn assert_release(changelog: &str, commits: &[&str], version: &str) {
-    assert_commits(changelog, commits);
+fn assert_release(changelog: &str, commits: &[&str], version: &str, context: &str) {
+    assert_commits_with_context(changelog, commits, context);
     assert!(
         changelog.starts_with(&format!("## {version}\n")),
-        "{changelog}"
+        "{context}\n{changelog}"
     );
 }
 
@@ -413,6 +417,7 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
     for sequential in [false, true] {
         for skew in [false, true] {
             for boundary in ["tag", "published", "missing", "equality"] {
+                let case = format!("sequential={sequential}, skew={skew}, boundary={boundary}");
                 let history = unpublished_history(BASE_API).await;
                 history.publish_with_boundary(boundary);
                 let repo = &history.repo;
@@ -467,18 +472,19 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
                 let merge = repo.current_commit_hash().unwrap();
                 assert_eq!(
                     fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-                    format!("{breaking_api}pub fn extra() {{}}\n")
+                    format!("{breaking_api}pub fn extra() {{}}\n"),
+                    "{case}"
                 );
                 // Topology must put the equal snapshot before its ancestor,
                 // even when their dates are out of order.
                 let order = history.walk_order();
                 assert!(
                     order.find(&equal).unwrap() < order.find(&breaking).unwrap(),
-                    "skew={skew}: {order}"
+                    "{case}: {order}"
                 );
                 let mut expected = vec![breaking.as_str(), sibling.as_str(), merge.as_str()];
                 expected.extend(implementation_commit.as_deref());
-                history.assert_release(&expected, "0.2.0");
+                assert_release(&history.update_history(), &expected, "0.2.0", &case);
             }
         }
     }
@@ -489,6 +495,7 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
     for sequential in [false, true] {
         // Visit the discarded change either before or after the equal snapshot.
         for (discarded_day, discarded_first) in [(2, false), (8, true)] {
+            let case = format!("sequential={sequential}, discarded_day={discarded_day}");
             let history = api_history(BASE_API).await;
             let repo = &history.repo;
             repo.git(&["checkout", "-b", "feature"]).unwrap();
@@ -541,15 +548,21 @@ async fn a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file(
             let merge = repo.current_commit_hash().unwrap();
             assert_eq!(
                 fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-                format!("{BASE_API}pub fn extra() {{}}\n")
+                format!("{BASE_API}pub fn extra() {{}}\n"),
+                "{case}"
             );
             let order = history.walk_order();
             assert_eq!(
                 order.find(&discarded).unwrap() < order.find(&equal).unwrap(),
                 discarded_first,
-                "{order}"
+                "{case}: {order}"
             );
-            history.assert_release(&[&sibling, &merge], "0.1.1");
+            assert_release(
+                &history.update_history(),
+                &[&sibling, &merge],
+                "0.1.1",
+                &case,
+            );
         }
     }
 }
@@ -592,7 +605,12 @@ async fn later_same_line_edits_preserve_only_surviving_breaking_change_markers()
         if breaking_survives {
             expected.push(&breaking);
         }
-        history.assert_release(&expected, if breaking_survives { "0.2.0" } else { "0.1.1" });
+        assert_release(
+            &history.update_history(),
+            &expected,
+            if breaking_survives { "0.2.0" } else { "0.1.1" },
+            &format!("breaking_survives={breaking_survives}"),
+        );
     }
 }
 
@@ -1093,6 +1111,7 @@ async fn partial_clones_replay_retained_changes_without_outside_blobs() {
         &partial.check_update(command),
         &[&breaking, &sibling],
         "0.2.0",
+        "",
     );
     let trace = fs_err::read_to_string(trace_path).unwrap();
     assert!(
@@ -1154,6 +1173,7 @@ async fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
         &partial.check_update(command),
         &[&breaking, &sibling],
         "0.2.0",
+        "",
     );
     // The CLI fetches into its isolated repository, not the user's clone.
     let trace = fs_err::read_to_string(trace_path).unwrap();
