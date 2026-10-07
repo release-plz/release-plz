@@ -123,8 +123,7 @@ impl<'a> ChangeReplay<'a> {
 
     /// Fetch the blobs of `trees` that differ from `base`'s and are missing from
     /// the object database, such as those of a candidate's parent that the walk
-    /// never checked out. libgit2 cannot fetch them, but Git does on lookup.
-    /// Full clones miss nothing and spawn no process.
+    /// never checked out. Full clones miss nothing and spawn no process.
     ///
     /// For every path, these diffs hold each distinct blob among the snapshots,
     /// so the merges and the rename detection find every blob they read.
@@ -133,7 +132,6 @@ impl<'a> ChangeReplay<'a> {
         base: &git2::Tree<'_>,
         trees: &[&git2::Tree<'_>],
     ) -> anyhow::Result<()> {
-        let odb = self.repo.odb()?;
         for tree in trees {
             // Without rename detection, the diff reads no blobs itself.
             let diff = self.repo.diff_tree_to_tree(Some(base), Some(tree), None)?;
@@ -144,7 +142,7 @@ impl<'a> ChangeReplay<'a> {
                     // `DiffFile::mode` panics on legacy modes Git accepts, such
                     // as 100600.
                     if !file.id().is_zero() && !is_submodule(side, &file) {
-                        self.fetch_if_missing(&odb, file.id())?;
+                        self.fetch_if_missing(file.id())?;
                     }
                 }
             }
@@ -152,10 +150,11 @@ impl<'a> ChangeReplay<'a> {
         Ok(())
     }
 
-    /// Fetch the blob `id` through Git when the object database lacks it.
-    /// A miss refreshes the object database, so later lookups find it.
-    fn fetch_if_missing(&self, odb: &git2::Odb<'_>, id: git2::Oid) -> anyhow::Result<()> {
-        if odb.exists(id) {
+    /// Fetch the blob `id` through Git when the object database lacks it:
+    /// libgit2 cannot fetch from a promisor remote, but Git does on lookup. A
+    /// miss refreshes the object database, so later lookups find the blob.
+    fn fetch_if_missing(&self, id: git2::Oid) -> anyhow::Result<()> {
+        if self.repo.odb()?.exists(id) {
             return Ok(());
         }
         let id = id.to_string();
@@ -303,14 +302,13 @@ impl<'a> ChangeReplay<'a> {
         if self.paths.iter().any(|path| path.as_str().is_empty()) {
             return Ok(tree);
         }
-        let odb = self.repo.odb()?;
         let mut update = git2::build::TreeUpdateBuilder::new();
         for path in &self.paths {
             // A path the snapshot lacks selects nothing. The entries keep their
             // ids, so a merge reads the same blobs.
             if let Ok(entry) = tree.get_path(path.as_std_path()) {
                 if entry.kind() == Some(git2::ObjectType::Blob) {
-                    self.fetch_if_missing(&odb, entry.id())?;
+                    self.fetch_if_missing(entry.id())?;
                 }
                 update.upsert(path.as_str(), entry.id(), file_mode(&entry)?);
             }
