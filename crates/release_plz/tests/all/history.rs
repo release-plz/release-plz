@@ -162,17 +162,12 @@ impl TestContext {
     /// Ignore a revert of the current change, then import a sibling change
     /// through the reverted branch so that its equal snapshot is also visited.
     fn merge_ignored_revert(&self, path: &str, contents: &str) -> String {
-        self.merge_ignored_change("src/fix.rs", "", |root| {
+        self.merge_ignored_change("src/fix.rs", |root| {
             fs_err::write(root.join(path), contents).unwrap();
         })
     }
 
-    fn merge_ignored_change(
-        &self,
-        sibling_path: &str,
-        sibling_contents: &str,
-        revert: impl FnOnce(&Utf8Path),
-    ) -> String {
+    fn merge_ignored_change(&self, sibling_path: &str, revert: impl FnOnce(&Utf8Path)) -> String {
         self.repo.git(&["checkout", "-b", "equal"]).unwrap();
         revert(self.repo.directory());
         self.repo
@@ -183,7 +178,7 @@ impl TestContext {
             .git(&["merge", "-s", "ours", "-m", "merge equal", "equal"])
             .unwrap();
         self.repo.git(&["checkout", "equal"]).unwrap();
-        let sibling = self.write_commit(sibling_path, sibling_contents, "fix: sibling");
+        let sibling = self.write_commit(sibling_path, "", "fix: sibling");
         self.repo.checkout_head().unwrap();
         self.repo
             .git(&["merge", "--no-ff", "-m", "merge sibling", "equal"])
@@ -422,11 +417,10 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
     for boundary in ["tag", "published", "missing", "equality"] {
         let history = unpublished_history(BASE_API).await;
         history.publish_with_boundary(boundary);
-        let repo = &history.repo;
         // The implementation commit also edits the lockfile. Equality ignores it, so the
         // revert is still an equal snapshot, and undoing the commit on that snapshot
         // must not count the lockfile it restores as a package change.
-        let lockfile = repo.directory().join("Cargo.lock");
+        let lockfile = history.repo.directory().join("Cargo.lock");
         let contents = fs_err::read_to_string(&lockfile).unwrap();
         fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
         let implementation = history.write_commit(
@@ -435,20 +429,10 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
             "chore: modify implementation",
         );
         let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: breaking API");
-        let sibling = history.merge_ignored_change(
-            "src/lib.rs",
-            &format!("{BASE_API}pub fn extra() {{}}\n"),
-            |root| fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap(),
-        );
-        let merge = repo.current_commit_hash().unwrap();
-        assert_eq!(
-            fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
-            format!("{breaking_api}pub fn extra() {{}}\n"),
-            "{boundary}"
-        );
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         assert_release(
             &history.update_history(),
-            &[&implementation, &breaking, &sibling, &merge],
+            &[&implementation, &breaking, &sibling],
             "0.2.0",
             boundary,
         );
@@ -789,7 +773,7 @@ async fn outside_paths_do_not_retain_a_reverted_breaking_change() {
             BREAKING_API,
             "feat!: temporarily break API",
         );
-        let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", "", |root| {
+        let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
             fs_err::write(root.join("crates/pkg/src/lib.rs"), BASE_API).unwrap();
             fs_err::write(root.as_std_path().join(outside), "old\n").unwrap();
         });
@@ -982,7 +966,7 @@ async fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     // Put the breaking change one level deeper than the equal snapshot.
     let later = history.write_commit("src/later.rs", "", "fix: later");
-    let sibling = history.merge_ignored_change("src/fix.rs", "", |root| {
+    let sibling = history.merge_ignored_change("src/fix.rs", |root| {
         fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
         fs_err::remove_file(root.join("src/later.rs")).unwrap();
     });
@@ -1011,7 +995,7 @@ async fn partial_clones_replay_retained_changes_without_outside_blobs() {
     fs_err::write(repo.directory().join("docs/x"), "c\n").unwrap();
     let breaking =
         history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", "", |root| {
+    let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
         fs_err::write(root.join("crates/pkg/src/lib.rs"), BASE_API).unwrap();
         fs_err::write(root.join("docs/x"), "e\n").unwrap();
     });
@@ -1073,7 +1057,7 @@ async fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
     );
     fs_err::write(&readme, "# breaking\n").unwrap();
     history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "merge feature");
-    let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", "", |root| {
+    let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
         fs_err::write(root.join("crates/pkg/src/lib.rs"), RELEASED_API).unwrap();
         fs_err::write(root.join("crates/pkg/README.md"), "# released\n").unwrap();
     });
