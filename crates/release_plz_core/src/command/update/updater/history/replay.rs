@@ -682,4 +682,48 @@ mod tests {
             "{error:#}"
         );
     }
+
+    /// A submodule's commits belong to another repository, so the replay
+    /// must not fetch them, whatever the submodule's path.
+    #[test]
+    fn submodules_are_not_fetched() {
+        #[cfg(target_os = "linux")]
+        use std::os::unix::ffi::OsStrExt as _;
+        use std::path::Path;
+
+        for submodule in [
+            Path::new("sub"),
+            // Windows paths must be UTF-8; test invalid ones on Linux, as elsewhere.
+            #[cfg(target_os = "linux")]
+            Path::new(std::ffi::OsStr::from_bytes(b"sub\xff")),
+        ] {
+            let dir = fs_utils::Utf8TempDir::new().unwrap();
+            let repo = Repo::init(dir.path());
+            // Commit `contents` to a file and the submodule commit `id`, which
+            // no repository has.
+            let commit = |contents: &str, id: &str, message: &str| {
+                fs_err::write(repo.directory().join("f"), contents).unwrap();
+                repo.git(&["add", "f"]).unwrap();
+                // Record the gitlink, which the worktree lacks, in the index.
+                // `Repo::git` takes no non-UTF-8 arguments.
+                let status = std::process::Command::new("git")
+                    .current_dir(repo.directory())
+                    .args(["update-index", "--add", "--cacheinfo", "160000", id])
+                    .arg(submodule)
+                    .status()
+                    .unwrap();
+                assert!(status.success());
+                // Commit the index: `git add` would stage the gitlink's deletion.
+                repo.git(&["commit", "-m", message]).unwrap();
+                repo.current_commit_hash().unwrap()
+            };
+            commit("hello\n", &"1".repeat(40), "base");
+            let head = commit("world\n", &"2".repeat(40), "update");
+            let replay = ChangeReplay::new(&repo, &head, &[Utf8Path::new("")]).unwrap();
+            // Undoing the update at HEAD changes the file and the submodule.
+            let affected =
+                replay.undo_affects_package(&head, &head, TokenConflicts::Unresolved, |_| true);
+            assert!(matches!(affected, Ok(true)), "{submodule:?}: {affected:?}");
+        }
+    }
 }
