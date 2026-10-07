@@ -87,12 +87,16 @@ and open an issue if it's not clear enough.
 ## Does release-plz support repositories with the SHA-256 object format?
 
 Yes, with one limitation.
-When a commit was reverted on a branch and a later merge discarded that revert
+
+When a commit is reverted on a branch and a later merge discards that revert
 (for example with `git merge -s ours`), release-plz checks whether the commit's
-changes are absent from the last release and still present at `HEAD` before
-listing it.
+changes are absent from the last release and still present at `HEAD`.
+
 This check isn't available in repositories using Git's
-[SHA-256 object format](https://git-scm.com/docs/hash-function-transition):
-release-plz treats such commits as already released, so they don't appear in the
-changelog and don't affect the version bump.
-PRs adding this check for SHA-256 repositories are welcome.
+[SHA-256 object format](https://git-scm.com/docs/hash-function-transition).
+Release-plz treats these commits as already released, so they don't appear in
+the changelog and don't affect the version bump.
+
+This check relies on libgit2, whose SHA-256 support is experimental in the version
+release-plz uses. We plan to support this check for SHA-256 repositories once
+stable support is available by default through our `git2` dependency.
