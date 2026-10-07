@@ -423,8 +423,9 @@ async fn an_ignored_revert_does_not_hide_surviving_sequential_api_changes() {
         let history = unpublished_history(BASE_API).await;
         history.publish_with_boundary(boundary);
         let repo = &history.repo;
-        // Equality ignores the root lockfile even when it differs
-        // between the release and a later equal snapshot.
+        // The implementation commit also edits the lockfile. Equality ignores it, so the
+        // revert is still an equal snapshot, and undoing the commit on that snapshot
+        // must not count the lockfile it restores as a package change.
         let lockfile = repo.directory().join("Cargo.lock");
         let contents = fs_err::read_to_string(&lockfile).unwrap();
         fs_err::write(lockfile, format!("{contents}# preparation\n")).unwrap();
