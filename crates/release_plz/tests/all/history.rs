@@ -1,82 +1,162 @@
-use super::*;
-use crate::{
-    command::update::UpdateConfig,
-    test_utils::{generate_lockfile, write_package},
-};
+//! Exercise history selection through the CLI and packages published to Gitea.
+
+use cargo_metadata::camino::Utf8Path;
 use cargo_utils::CARGO_TOML;
+use git_cmd::Repo;
 
-const PACKAGE: &str = "history-test";
+use crate::helpers::{
+    locked_metadata,
+    package::{PackageType, TestPackage},
+    test_context::TestContext,
+};
 
-struct History {
-    repo: Repo,
-    registry: Repo,
-    _dir: fs_utils::Utf8TempDir,
+const PACKAGE: &str = "pkg";
+const HISTORY_CONFIG: &str = r#"
+[workspace]
+semver_check = false
+
+[changelog]
+header = ""
+body = """
+## {{ version }}
+{% for commit in commits %}{{ commit.id }} {{ commit.raw_message }}
+{% endfor %}
+"""
+"#;
+
+async fn unpublished_history(contents: &str) -> TestContext {
+    let context = TestContext::new().await;
+    context
+        .repo
+        .git(&["config", "core.autocrlf", "false"])
+        .unwrap();
+    fs_err::write(context.repo.directory().join("src/lib.rs"), contents).unwrap();
+    context.write_release_plz_toml(HISTORY_CONFIG);
+    context
 }
 
-impl History {
-    fn new() -> Self {
-        Self::with_packages(|root| write_package(root, PACKAGE, "0.1.0", ""))
-    }
+async fn api_history(released: &str) -> TestContext {
+    let context = unpublished_history(if released.is_empty() { "" } else { BASE_API }).await;
+    context.publish_snapshot(&[("src/lib.rs", released)]);
+    context
+}
 
-    fn with_packages(write_packages: impl Fn(&Utf8Path)) -> Self {
-        Self::with_packages_in_format(write_packages, "sha1")
-    }
+async fn member_history(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new(PACKAGE).with_type(PackageType::Lib)
+    ])
+    .await;
+    context
+        .repo
+        .git(&["config", "core.autocrlf", "false"])
+        .unwrap();
+    fs_err::write(
+        context.repo.directory().join("crates/pkg/src/lib.rs"),
+        BASE_API,
+    )
+    .unwrap();
+    write_extra(context.repo.directory());
+    // Cargo lists a generated lockfile; keep its path resolvable in historical snapshots.
+    fs_err::copy(
+        context.repo.directory().join("Cargo.lock"),
+        context.package_path(PACKAGE).join("Cargo.lock"),
+    )
+    .unwrap();
+    context.write_release_plz_toml(HISTORY_CONFIG);
+    context
+}
 
-    fn with_packages_in_format(write_packages: impl Fn(&Utf8Path), object_format: &str) -> Self {
-        let dir = fs_utils::Utf8TempDir::new().unwrap();
-        // Resolve symlinks (such as macOS's /var) so metadata and project paths agree.
-        let root = fs_utils::canonicalize_utf8(dir.path()).unwrap();
-        let [repo, registry] = ["local", "registry"].map(|name| {
-            let path = root.join(name);
-            fs_err::create_dir(&path).unwrap();
-            let repo = Repo::init_with_object_format(path, object_format);
-            // Keep checked-out files byte-identical to the LF-only registry fixtures.
-            repo.git(&["config", "core.autocrlf", "false"]).unwrap();
-            write_packages(repo.directory());
-            fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
-            generate_lockfile(repo.directory());
-            repo.add_all_and_commit("chore: published baseline")
-                .unwrap();
-            repo
-        });
-        Self {
-            repo,
-            registry,
-            _dir: dir,
+impl TestContext {
+    fn publish_with_boundary(&self, boundary: &str) {
+        match boundary {
+            "published" => self.run_cargo_publish(self.history_package().name.as_str()),
+            "tag" | "equality" | "missing" => {
+                let published = self.publish_snapshot(&[]);
+                if boundary == "tag" {
+                    self.repo.tag_lightweight("v0.1.0").unwrap();
+                } else if boundary == "missing" {
+                    self.repo
+                        .git(&["reflog", "expire", "--expire=now", "--all"])
+                        .unwrap();
+                    self.repo.git(&["gc", "--prune=now"]).unwrap();
+                    assert!(self.repo.git(&["cat-file", "-e", &published]).is_err());
+                }
+            }
+            other => panic!("unknown boundary {other}"),
         }
     }
 
-    /// A workspace whose member `pkg` holds the package with [`BASE_API`].
-    /// `write_extra` adds more files, inside or outside `pkg`, given the
-    /// workspace root.
-    fn with_member_package(write_extra: impl Fn(&Utf8Path)) -> Self {
-        Self::with_packages(|root| {
-            fs_err::write(
-                root.join("Cargo.toml"),
-                "[workspace]\nmembers = [\"pkg\"]\nresolver = \"2\"\n",
-            )
+    fn history_package(&self) -> cargo_metadata::Package {
+        locked_metadata(self.repo.directory())
+            .workspace_packages()
+            .into_iter()
+            .find(|p| p.name == PACKAGE || p.name.as_str() == self.gitea.repo)
+            .unwrap()
+            .clone()
+    }
+
+    /// Publish an independent snapshot: its commit cannot bound any local lineage,
+    /// so the update has to discover equal package contents during the walk.
+    fn publish_snapshot(&self, files: &[(&str, &str)]) -> String {
+        self.repo
+            .git(&["checkout", "--orphan", "published"])
             .unwrap();
-            write_package(&root.join("pkg"), PACKAGE, "0.1.0", "");
-            fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
-            write_extra(root);
-            generate_lockfile(root);
-            // Keep package listing successful, independently of its fallback.
-            fs_err::copy(root.join("Cargo.lock"), root.join("pkg/Cargo.lock")).unwrap();
-        })
+        for (path, contents) in files {
+            fs_err::write(self.repo.directory().join(path), contents).unwrap();
+        }
+        self.repo
+            .add_all_and_commit("chore: published snapshot")
+            .unwrap();
+        let published = self.repo.current_commit_hash().unwrap();
+        self.run_cargo_publish(self.history_package().name.as_str());
+        self.repo.checkout_head().unwrap();
+        self.repo.git(&["branch", "-D", "published"]).unwrap();
+        published
+    }
+
+    fn assert_release(&self, commits: &[&str], version: &str) {
+        assert_release(&self.update_history(), commits, version);
+    }
+
+    fn update_history(&self) -> String {
+        self.check_update(self.update_command())
+    }
+
+    fn check_update(&self, mut command: assert_cmd::Command) -> String {
+        let package = self.history_package();
+        let head = self.repo.current_commit_hash().unwrap();
+        command
+            .args([
+                "--package",
+                package.name.as_str(),
+                "--repo-url",
+                &self.gitea.repo_clone_url(),
+            ])
+            .assert()
+            .success();
+        assert_eq!(self.repo.current_commit_hash().unwrap(), head);
+        let changelog = package.manifest_path.with_file_name("CHANGELOG.md");
+        let contents = if changelog.exists() {
+            let contents = fs_err::read_to_string(&changelog).unwrap();
+            let version = self.history_package().version;
+            assert!(
+                contents.trim().starts_with(&format!("## {version}\n")),
+                "{contents}"
+            );
+            fs_err::remove_file(changelog).unwrap();
+            contents
+        } else {
+            String::new()
+        };
+        // Each assertion can be followed by another edit of the same history.
+        self.repo.git(&["reset", "--hard", "HEAD"]).unwrap();
+        contents.trim().to_string()
     }
 
     fn write_commit(&self, path: &str, contents: &str, message: &str) -> String {
         fs_err::write(self.repo.directory().join(path), contents).unwrap();
         self.repo.add_all_and_commit(message).unwrap();
         self.repo.current_commit_hash().unwrap()
-    }
-
-    /// Make `contents` at `path` part of the published release.
-    fn publish(&self, path: &str, contents: &str) {
-        fs_err::write(self.registry.directory().join(path), contents).unwrap();
-        self.registry
-            .add_all_and_commit("chore: published release")
-            .unwrap();
     }
 
     /// Ignore a revert of the current change, then import a sibling change
@@ -106,12 +186,6 @@ impl History {
         sibling
     }
 
-    /// Continue with a clone of the newest `depth` commits, whose missing
-    /// history cannot be replayed.
-    fn shallow_clone(self, depth: u8) -> Self {
-        self.clone_with(&format!("--depth={depth}"), "shallow")
-    }
-
     /// Continue with a clone that fetches each blob only when Git first reads
     /// it, so the files of commits the walk never checks out stay missing
     /// unless the replay fetches them.
@@ -125,7 +199,7 @@ impl History {
     }
 
     /// Clone the repository with `option` into the sibling directory `name`.
-    fn clone_with(self, option: &str, name: &str) -> Self {
+    fn clone_with(mut self, option: &str, name: &str) -> Self {
         let root = self.repo.directory().parent().unwrap();
         // Local clones copy every object: force the transport that honors
         // depth and filters.
@@ -142,10 +216,8 @@ impl History {
             ],
         )
         .unwrap();
-        Self {
-            repo: Repo::new(root.join(name)).unwrap(),
-            ..self
-        }
+        self.repo = Repo::new(root.join(name)).unwrap();
+        self
     }
 
     /// The objects reachable from HEAD that this clone does not have.
@@ -174,8 +246,8 @@ impl History {
     }
 
     /// Two sibling branches off the current commit, each merged back with a
-    /// `--no-ff` merge. Returns the baseline and the two sibling commits.
-    fn two_merged_siblings(&self) -> (String, String, String) {
+    /// `--no-ff` merge. Returns the two sibling commits.
+    fn two_merged_siblings(&self) -> (String, String) {
         let repo = &self.repo;
         let baseline = repo.current_commit_hash().unwrap();
         repo.git(&["checkout", "-b", "one"]).unwrap();
@@ -187,10 +259,10 @@ impl History {
             repo.git(&["merge", "--no-ff", "-m", "merge sibling", branch])
                 .unwrap();
         }
-        (baseline, one, two)
+        (one, two)
     }
 
-    /// Publish `released`, break the API and branch `late` off the breaking
+    /// Break the API and branch `late` off the breaking
     /// change; then evolve `src/lib.rs` to `released` on the mainline, commit
     /// `after_contents` at `after_path` and merge `late` back. Returns the late
     /// and the after commits.
@@ -201,7 +273,6 @@ impl History {
         after_contents: &str,
     ) -> (String, String) {
         let repo = &self.repo;
-        self.publish("src/lib.rs", released);
         self.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
         repo.git(&["checkout", "-b", "late"]).unwrap();
         let late = self.write_commit("src/late.rs", "", "fix: late branch");
@@ -231,73 +302,30 @@ impl History {
             .git(&["rev-list", "--date-order", "HEAD", "--", "."])
             .unwrap()
     }
-
-    fn diff(&self, published_at: Option<&str>) -> Diff {
-        let metadata =
-            cargo_utils::get_manifest_metadata(&self.registry.directory().join(CARGO_TOML))
-                .unwrap();
-        let package = cargo_utils::workspace_package(&metadata, PACKAGE).unwrap();
-        self.diff_with(
-            Some(RegistryPackage::new(
-                package.clone(),
-                published_at.map(str::to_owned),
-            )),
-            &self.request(),
-        )
-        .unwrap()
-    }
-
-    fn request(&self) -> UpdateRequest {
-        let metadata =
-            cargo_utils::get_manifest_metadata(&self.repo.directory().join(CARGO_TOML)).unwrap();
-        UpdateRequest::new(metadata).unwrap()
-    }
-
-    fn diff_with(
-        &self,
-        published: Option<RegistryPackage>,
-        request: &UpdateRequest,
-    ) -> anyhow::Result<Diff> {
-        let tip = self.repo.current_commit_hash().unwrap();
-        let metadata = request.cargo_metadata();
-        let package = cargo_utils::workspace_package(metadata, PACKAGE).unwrap();
-        let project = Project::new(
-            request.local_manifest(),
-            None,
-            &HashSet::new(),
-            metadata,
-            request,
-        )
-        .unwrap();
-        let registry_packages = PackagesCollection::default().with_packages(
-            published
-                .into_iter()
-                .map(|p| (p.package.name.to_string(), p))
-                .collect(),
-        );
-        let diff = Updater {
-            project: &project,
-            req: request,
-        }
-        .get_diff(package, &registry_packages, &self.repo)?;
-        assert_eq!(self.repo.current_commit_hash().unwrap(), tip);
-        Ok(diff)
-    }
 }
 
-fn commit_ids(diff: &Diff) -> Vec<&str> {
-    diff.commits
-        .iter()
-        .map(|commit| commit.id.as_str())
+fn commit_ids(changelog: &str) -> Vec<&str> {
+    changelog
+        .lines()
+        .filter(|line| !line.starts_with("## "))
+        .filter_map(|line| line.split_once(' ').map(|(id, _)| id))
         .collect()
 }
 
-fn assert_commits(diff: &Diff, expected: &[&str]) {
-    let mut actual = commit_ids(diff);
+fn assert_commits(changelog: &str, expected: &[&str]) {
+    let mut actual = commit_ids(changelog);
     actual.sort_unstable();
     let mut expected = expected.to_vec();
     expected.sort_unstable();
-    assert_eq!(actual, expected, "{:?}", diff.commits);
+    assert_eq!(actual, expected, "{changelog}");
+}
+
+fn assert_release(changelog: &str, commits: &[&str], version: &str) {
+    assert_commits(changelog, commits);
+    assert!(
+        changelog.starts_with(&format!("## {version}\n")),
+        "{changelog}"
+    );
 }
 
 const BASE_API: &str = "pub fn api() {}\n\n\n\n\n\npub fn stable() {}\n";
@@ -305,29 +333,10 @@ const BREAKING_API: &str = "pub fn api(_: bool) {}\n\n\n\n\n\npub fn stable() {}
 /// A release whose `api` signature differs from both the base and the breaking one.
 const RELEASED_API: &str = "pub fn api(_: u8) {}\n\n\n\n\n\npub fn stable() {}\n";
 
-/// A commit hash that no repository contains, as after a history rewrite.
-fn missing_commit() -> String {
-    "0".repeat(40)
-}
-
-fn api_history() -> History {
-    History::with_packages(|root| {
-        write_package(root, PACKAGE, "0.1.0", "");
-        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
-    })
-}
-
-fn assert_next_version(diff: &Diff, expected: &Version) {
-    assert_eq!(
-        Version::new(0, 1, 0).next_from_diff(diff, next_version::VersionUpdater::default()),
-        *expected
-    );
-}
-
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
-fn revert_breaking_change(history: &History) -> (String, String) {
-    assert_commits(&history.diff(None), &[]);
+fn revert_breaking_change(history: &TestContext) -> (String, String) {
+    assert_commits(&history.update_history(), &[]);
     let breaking = history.write_commit(
         "src/lib.rs",
         "pub fn temporary() {}\n",
@@ -339,9 +348,9 @@ fn revert_breaking_change(history: &History) -> (String, String) {
 
 /// libgit2 cannot open a repository with this extension, but the replay only
 /// reads its object database, so the reverted change is still retained.
-#[test]
-fn partial_clone_extension_does_not_prevent_updates() {
-    let history = History::new();
+#[tokio::test]
+async fn partial_clone_extension_does_not_prevent_updates() {
+    let history = api_history("").await;
     history
         .repo
         .git(&["config", "core.repositoryformatversion", "1"])
@@ -351,29 +360,52 @@ fn partial_clone_extension_does_not_prevent_updates() {
         .git(&["config", "extensions.partialClone", "origin"])
         .unwrap();
     let (breaking, sibling) = revert_breaking_change(&history);
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
 /// libgit2 cannot read SHA-256 objects, so a change reverted on a merged
 /// branch cannot be checked and ancestry pruning applies, as it did before.
-#[test]
-fn sha256_repositories_fall_back_to_ancestry_pruning() {
-    let history = History::with_packages_in_format(
-        |root| write_package(root, PACKAGE, "0.1.0", ""),
-        "sha256",
+#[tokio::test]
+async fn sha256_repositories_fall_back_to_ancestry_pruning() {
+    let mut history = unpublished_history("").await;
+    // Cargo's SHA-256 fallback omits hidden files; publish the same file set.
+    let manifest = fs_err::read_to_string(history.repo.directory().join(CARGO_TOML)).unwrap();
+    history.write_commit(
+        CARGO_TOML,
+        &manifest.replace(
+            "[package]",
+            "[package]\nexclude = [\".cargo\", \".gitignore\"]",
+        ),
+        "chore: exclude hidden files",
     );
+    history.publish_snapshot(&[]);
+    let root = history.repo.directory().to_owned();
+    fs_err::remove_dir_all(root.join(".git")).unwrap();
+    git_cmd::git_in_dir(
+        &root,
+        &["init", "--object-format=sha256", "--initial-branch=main"],
+    )
+    .unwrap();
+    history.repo.git(&["config", "user.name", "test"]).unwrap();
+    history
+        .repo
+        .git(&["config", "user.email", "test@example.com"])
+        .unwrap();
+    history.repo.disable_gpg_signing().unwrap();
+    history
+        .repo
+        .git(&["remote", "add", "origin", &history.gitea.repo_clone_url()])
+        .unwrap();
+    history.repo.add_all_and_commit("chore: baseline").unwrap();
+    history.repo = Repo::new(&root).unwrap();
     assert_eq!(history.repo.current_commit_hash().unwrap().len(), 64);
     let (_breaking, sibling) = revert_breaking_change(&history);
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&sibling]);
-    assert_next_version(&diff, &Version::new(0, 1, 1));
+    history.assert_release(&[&sibling], "0.1.1");
 }
 
-#[test]
-fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
-    let history = api_history();
+#[tokio::test]
+async fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
+    let history = api_history(BASE_API).await;
     let repo = &history.repo;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     repo.git(&["checkout", "-b", "equal"]).unwrap();
@@ -399,33 +431,30 @@ fn conflict_resolution_can_preserve_a_change_reverted_on_another_branch() {
         fs_err::read_to_string(repo.directory().join("src/lib.rs")).unwrap(),
         format!("{BREAKING_API}pub fn extra() {{}}\n")
     );
-    let diff = history.diff(None);
     // Both merges resolve `src/lib.rs` to contents that differ from all their parents.
-    assert_commits(&diff, &[&breaking, &prepared, &resolved, &sibling, &merge]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(
+        &[&breaking, &prepared, &resolved, &sibling, &merge],
+        "0.2.0",
+    );
 }
 
-#[test]
-fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
-    let history = api_history();
-    history.publish("src/lib.rs", RELEASED_API);
+#[tokio::test]
+async fn a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release() {
+    let history = api_history(RELEASED_API).await;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     let sibling = history.merge_ignored_revert("src/lib.rs", RELEASED_API);
 
     // Undoing `api(bool)` to `api()` conflicts with the released `api(u8)`.
     // HEAD still has `api(bool)`, so its breaking-change marker must survive.
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
-#[test]
-fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
-    let history = api_history();
-    history.publish("src/lib.rs", RELEASED_API);
+#[tokio::test]
+async fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
+    let history = api_history(RELEASED_API).await;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    history.merge_ignored_revert("src/lib.rs", RELEASED_API);
-    history.write_commit(
+    let sibling = history.merge_ignored_revert("src/lib.rs", RELEASED_API);
+    let attributes = history.write_commit(
         ".gitattributes",
         "src/lib.rs merge=union\n",
         "chore: merge attributes",
@@ -433,13 +462,11 @@ fn head_merge_attributes_do_not_discard_an_unreleased_breaking_change() {
 
     // The union rule at HEAD must not mask the release-side API conflict
     // during the hypothetical revert.
-    let diff = history.diff(None);
-    assert!(commit_ids(&diff).contains(&breaking.as_str()));
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling, &attributes], "0.2.0");
 }
 
-#[test]
-fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
+#[tokio::test]
+async fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
     let union_merge_configurations: [fn(&Repo); 3] = [
         |repo| {
             fs_err::write(
@@ -459,8 +486,7 @@ fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
         },
     ];
     for configure in union_merge_configurations {
-        let history = api_history();
-        history.publish("src/lib.rs", RELEASED_API);
+        let history = api_history(RELEASED_API).await;
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
         let sibling = history.merge_ignored_revert("src/lib.rs", RELEASED_API);
         let repo = &history.repo;
@@ -471,15 +497,13 @@ fn local_merge_configuration_does_not_discard_an_unreleased_breaking_change() {
         // These sources still apply to a bare repository with an empty index.
         // A retained-change check must use ordinary text conflicts independently
         // of both the checked-out snapshot and the user's merge configuration.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&breaking, &sibling]);
-        assert_next_version(&diff, &Version::new(0, 2, 0));
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
         assert_eq!(fs_err::read(&config_path).unwrap(), config_before);
     }
 }
 
-#[test]
-fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
+#[tokio::test]
+async fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
     for released_api in [
         "api(_: bool) { /* published implementation */ }",
         "api(_: bool) { println!(\"hello\"); }",
@@ -487,22 +511,19 @@ fn an_already_released_breaking_change_is_not_repeated_after_body_edits() {
         "api(_: bool) { let predicate = |_: bool| {}; }",
         "api(_: bool) { fn helper(_: bool) {} }",
     ] {
-        let history = api_history();
         let released_api = BREAKING_API.replace("api(_: bool) {}", released_api);
-        history.publish("src/lib.rs", &released_api);
+        let history = api_history(&released_api).await;
         history.write_commit("src/lib.rs", BREAKING_API, "feat!: already released API");
         let sibling = history.merge_ignored_revert("src/lib.rs", &released_api);
 
         // The release already contains the breaking signature. Its later body edit
         // must not make a line-level revert conflict look like an absent signature.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&sibling]);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+        history.assert_release(&[&sibling], "0.1.1");
     }
 }
 
-#[test]
-fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
+#[tokio::test]
+async fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
     for fixed_api in [
         "api() { /* fixed implementation */ }",
         "api() { println!(\"hello\"); }",
@@ -515,7 +536,7 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
         "api() { println!(\"(\"); let predicate = |_: bool| {}; }",
         "api() { /* ( */ fn helper(_: bool) {} }",
     ] {
-        let history = api_history();
+        let history = api_history(BASE_API).await;
         history.write_commit("src/lib.rs", BREAKING_API, "feat!: temporarily break API");
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         let fixed = history.write_commit(
@@ -526,40 +547,25 @@ fn a_reverted_breaking_change_with_later_body_edits_is_not_released() {
 
         // Body edits conflict with a line-level inverse. Repeated punctuation
         // or a private helper's parameter must not align with the removed parameter.
-        let diff = history.diff(None);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
-        assert_commits(&diff, &[&sibling, &fixed]);
+        history.assert_release(&[&sibling, &fixed], "0.1.1");
     }
 }
 
-#[test]
-fn a_change_reverted_everywhere_is_not_retained_for_a_discarded_release_edit() {
-    let history = api_history();
+#[tokio::test]
+async fn a_change_reverted_everywhere_is_not_retained_for_a_discarded_release_edit() {
     let released = format!("{BASE_API}// released comment\n");
-    history.publish("src/lib.rs", &released);
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let reverted = history.write_commit("src/lib.rs", BASE_API, "fix: revert breaking API");
+    let history = api_history(&released).await;
+    history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    history.write_commit("src/lib.rs", BASE_API, "fix: revert breaking API");
     // The release reverts the change too and edits next to it. The keep-mine
     // merge discards that edit, so HEAD differs from the release in the changed
     // file without carrying the change.
     let sibling = history.merge_ignored_revert("src/lib.rs", &released);
-    let diff = history.diff(None);
-    assert!(
-        !commit_ids(&diff).contains(&breaking.as_str()),
-        "{:?}",
-        diff.commits
-    );
-    assert!(
-        !commit_ids(&diff).contains(&reverted.as_str()),
-        "{:?}",
-        diff.commits
-    );
-    assert_commits(&diff, &[&sibling]);
-    assert_next_version(&diff, &Version::new(0, 1, 1));
+    history.assert_release(&[&sibling], "0.1.1");
 }
 
-#[test]
-fn outside_paths_do_not_retain_a_reverted_breaking_change() {
+#[tokio::test]
+async fn outside_paths_do_not_retain_a_reverted_breaking_change() {
     #[cfg(target_os = "linux")]
     use std::os::unix::ffi::OsStrExt as _;
     use std::path::Path;
@@ -570,37 +576,49 @@ fn outside_paths_do_not_retain_a_reverted_breaking_change() {
         #[cfg(target_os = "linux")]
         Path::new(std::ffi::OsStr::from_bytes(b"outside/\xff.txt")),
     ] {
-        let history = History::with_member_package(|root| {
+        let history = member_history(|root| {
             fs_err::create_dir(root.join("outside")).unwrap();
             fs_err::write(root.as_std_path().join(outside), "old\n").unwrap();
-        });
-        assert!(get_package_files(&history.repo.directory().join("pkg"), &history.repo).is_ok());
+        })
+        .await;
+        history.publish_snapshot(&[]);
         fs_err::write(
             history.repo.directory().as_std_path().join(outside),
             "new\n",
         )
         .unwrap();
         history.write_commit(
-            "pkg/src/lib.rs",
+            "crates/pkg/src/lib.rs",
             BREAKING_API,
             "feat!: temporarily break API",
         );
-        let sibling = history.merge_ignored_change("pkg/src/fix.rs", |root| {
-            fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+        let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
+            fs_err::write(root.join("crates/pkg/src/lib.rs"), BASE_API).unwrap();
             fs_err::write(root.as_std_path().join(outside), "old\n").unwrap();
         });
-        let fixed = history.write_commit("pkg/src/lib.rs", BASE_API, "fix: revert breaking API");
+        let fixed = history.write_commit(
+            "crates/pkg/src/lib.rs",
+            BASE_API,
+            "fix: revert breaking API",
+        );
 
+        // The CLI only copies UTF-8 paths. Keep the invalid path in historical
+        // snapshots, where it must still be excluded from the replay.
+        if outside.to_str().is_none() {
+            fs_err::remove_file(history.repo.directory().as_std_path().join(outside)).unwrap();
+            history
+                .repo
+                .add_all_and_commit("chore: remove outside file")
+                .unwrap();
+        }
         // Only the outside edit survives. Its encoding must not decide whether
         // this package retains the breaking-change marker.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&sibling, &fixed]);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+        history.assert_release(&[&sibling, &fixed], "0.1.1");
     }
 }
 
-#[test]
-fn later_api_edits_preserve_a_retained_breaking_change_marker() {
+#[tokio::test]
+async fn later_api_edits_preserve_a_retained_breaking_change_marker() {
     for updated_api in [
         "api(_: u8) {}",
         "api(_: bool) { /* evolved implementation */ }",
@@ -612,7 +630,7 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
         "api(_: u8) { let predicate = |_: bool| {}; }",
         "api(_: u8) { fn helper(_: bool) {} }",
     ] {
-        let history = api_history();
+        let history = api_history(BASE_API).await;
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         let evolved = history.write_commit(
@@ -623,15 +641,13 @@ fn later_api_edits_preserve_a_retained_breaking_change_marker() {
 
         // Undoing the signature after a body edit is clean but changes HEAD;
         // an evolved argument leaves a token conflict. Both retain the marker.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&breaking, &sibling, &evolved]);
-        assert_next_version(&diff, &Version::new(0, 2, 0));
+        history.assert_release(&[&breaking, &sibling, &evolved], "0.2.0");
     }
 }
 
-#[test]
-fn a_partly_reverted_breaking_change_keeps_its_marker_after_body_edits() {
-    let history = api_history();
+#[tokio::test]
+async fn a_partly_reverted_breaking_change_keeps_its_marker_after_body_edits() {
+    let history = api_history(BASE_API).await;
     let breaking_api = BREAKING_API.replace("stable()", "stable(_: bool)");
     let breaking = history.write_commit("src/lib.rs", &breaking_api, "feat!: break two APIs");
     let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
@@ -642,82 +658,69 @@ fn a_partly_reverted_breaking_change_keeps_its_marker_after_body_edits() {
 
     // The first signature is restored despite the private repeated tokens, but
     // undoing the second signature still changes HEAD. Keep the whole marker.
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling, &fixed]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling, &fixed], "0.2.0");
 }
 
-#[test]
-fn a_retained_change_moved_within_a_file_keeps_its_marker() {
+#[tokio::test]
+async fn a_retained_change_moved_within_a_file_keeps_its_marker() {
     for moved_api in [
         format!("pub mod moved {{ {BREAKING_API} }}\n"),
         format!("pub mod earlier {{ pub fn api() {{}} }}\npub mod moved {{ {BREAKING_API} }}\n"),
     ] {
-        let history = api_history();
+        let history = api_history(BASE_API).await;
         let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: break API");
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         let moved = history.write_commit("src/lib.rs", &moved_api, "chore: move API");
 
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&breaking, &sibling, &moved]);
-        assert_next_version(&diff, &Version::new(0, 2, 0));
+        history.assert_release(&[&breaking, &sibling, &moved], "0.2.0");
     }
 }
 
 /// The release contains an evolution of the breaking change, so the tokens of
 /// the change's inverse conflict with the release and with HEAD alike.
-#[test]
-fn a_released_evolution_of_a_breaking_change_is_not_repeated() {
+#[tokio::test]
+async fn a_released_evolution_of_a_breaking_change_is_not_repeated() {
     // A change after the release can touch the same file or another one.
     for (after_path, after_contents) in [
         ("src/after.rs", String::new()),
         ("src/lib.rs", format!("{RELEASED_API}pub fn after() {{}}\n")),
     ] {
-        let history = api_history();
+        let history = api_history(RELEASED_API).await;
         let (late, after) = history.merge_late_branch(RELEASED_API, after_path, &after_contents);
 
         // Without a tag or published commit, only the equal snapshot bounds the
         // walk, and the late branch reaches the breaking change through another
         // lineage. HEAD has the released evolution: the change is not repeated.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&after, &late]);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+        history.assert_release(&[&after, &late], "0.1.1");
     }
 }
 
-#[test]
-fn a_released_evolution_is_not_repeated_after_independent_release_edits_are_removed() {
+#[tokio::test]
+async fn a_released_evolution_is_not_repeated_after_independent_release_edits_are_removed() {
     for released in [
         format!("{RELEASED_API}// unrelated released comment\n"),
         RELEASED_API.replace("api(_: u8) {}", "api(_: u8) { /* released body */ }"),
     ] {
-        let history = api_history();
+        let history = api_history(&released).await;
         let (late, after) = history.merge_late_branch(&released, "src/lib.rs", RELEASED_API);
 
         // The late branch reaches the original breaking commit, but HEAD has
         // its released evolution. Unrelated removed text in the same file,
         // including the same line, must not repeat that breaking marker.
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&after, &late]);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+        history.assert_release(&[&after, &late], "0.1.1");
 
         // The same proof must follow the API file when HEAD renames it.
         let renamed = history.rename_api_file();
-        let diff = history.diff(None);
-        assert_commits(&diff, &[&after, &late, &renamed]);
-        assert_next_version(&diff, &Version::new(0, 1, 1));
+        history.assert_release(&[&after, &late, &renamed], "0.1.1");
     }
 }
 
 /// The release changed the token next to the breaking change without taking
 /// the change, and HEAD has both.
-#[test]
-fn a_release_edit_next_to_a_retained_change_keeps_its_marker() {
-    let history = History::with_packages(|root| {
-        write_package(root, PACKAGE, "0.1.0", "");
-        fs_err::write(root.join("src/lib.rs"), "pub fn api(a: i32) {}\n").unwrap();
-    });
-    history.publish("src/lib.rs", "pub fn api(a: i64) {}\n");
+#[tokio::test]
+async fn a_release_edit_next_to_a_retained_change_keeps_its_marker() {
+    let history = unpublished_history("pub fn api(a: i32) {}\n").await;
+    history.publish_snapshot(&[("src/lib.rs", "pub fn api(a: i64) {}\n")]);
     let breaking = history.write_commit(
         "src/lib.rs",
         "pub fn api(a: i32, b: u8) {}\n",
@@ -732,39 +735,24 @@ fn a_release_edit_next_to_a_retained_change_keeps_its_marker() {
 
     // Undoing the parameter conflicts with the release's edit of the adjacent
     // token, and equally at HEAD. HEAD still has the parameter the release lacks.
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling, &adopted]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling, &adopted], "0.2.0");
 }
 
-#[test]
-fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
+#[tokio::test]
+async fn a_retained_api_deletion_keeps_its_breaking_change_marker() {
     for boundary in ["tag", "published", "missing", "equality"] {
-        let history = api_history();
-        let baseline = history.repo.current_commit_hash().unwrap();
-        let missing = missing_commit();
-        let published_at = match boundary {
-            "tag" => {
-                history.repo.tag_lightweight("v0.1.0").unwrap();
-                None
-            }
-            "published" => Some(baseline.as_str()),
-            "missing" => Some(missing.as_str()),
-            "equality" => None,
-            other => unreachable!("unknown boundary {other}"),
-        };
+        let history = unpublished_history(BASE_API).await;
+        history.publish_with_boundary(boundary);
         let breaking =
             history.write_commit("src/lib.rs", "pub fn stable() {}\n", "feat!: remove API");
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
-        let diff = history.diff(published_at);
-        assert_commits(&diff, &[&breaking, &sibling]);
-        assert_next_version(&diff, &Version::new(0, 2, 0));
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
     }
 }
 
-#[test]
-fn a_retained_change_can_move_to_a_different_file() {
-    let history = api_history();
+#[tokio::test]
+async fn a_retained_change_can_move_to_a_different_file() {
+    let history = api_history(BASE_API).await;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
     history
@@ -778,26 +766,22 @@ fn a_retained_change_can_move_to_a_different_file() {
         "mod api;\npub use api::*;\n",
         "chore: move API",
     );
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling, &moved]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling, &moved], "0.2.0");
 }
 
-#[test]
-fn a_retained_change_survives_a_rename_at_head() {
-    let history = api_history();
+#[tokio::test]
+async fn a_retained_change_survives_a_rename_at_head() {
+    let history = api_history(BASE_API).await;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
     // Nothing is left at the old path, so the replay must follow the rename.
     let renamed = history.rename_api_file();
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling, &renamed]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling, &renamed], "0.2.0");
 }
 
-#[test]
-fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
-    let history = api_history();
+#[tokio::test]
+async fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
+    let history = api_history(BASE_API).await;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     // Put the breaking change one level deeper than the equal snapshot.
     let later = history.write_commit("src/later.rs", "", "fix: later");
@@ -805,39 +789,36 @@ fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
         fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
         fs_err::remove_file(root.join("src/later.rs")).unwrap();
     });
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &later, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &later, &sibling], "0.2.0");
 
     // Four levels keep the equal snapshot and the breaking change, but not
     // the parent its revert needs. Without evidence, ancestry pruning applies.
-    let shallow = history.shallow_clone(4);
-    let diff = shallow.diff(None);
-    assert_commits(&diff, &[&later, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 1, 1));
+    let shallow = history.clone_with("--depth=4", "shallow");
+    shallow.assert_release(&[&later, &sibling], "0.1.1");
 }
 
 /// The walk checks out only commits that touch the package, so a partial
 /// clone keeps missing the blobs other commits give to unrelated files. The
 /// replay neither reads nor fetches them.
-#[test]
-fn partial_clones_replay_retained_changes_without_outside_blobs() {
-    let history = History::with_member_package(|root| {
+#[tokio::test]
+async fn partial_clones_replay_retained_changes_without_outside_blobs() {
+    let history = member_history(|root| {
         fs_err::create_dir(root.join("docs")).unwrap();
         fs_err::write(root.join("docs/x"), "base\n").unwrap();
-    });
+    })
+    .await;
+    history.publish_snapshot(&[]);
     let repo = &history.repo;
     // The parent of the breaking change touches only the outside file.
     let outside = history.write_commit("docs/x", "p\n", "docs: outside the package");
     fs_err::write(repo.directory().join("docs/x"), "c\n").unwrap();
-    let breaking = history.write_commit("pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let sibling = history.merge_ignored_change("pkg/src/fix.rs", |root| {
-        fs_err::write(root.join("pkg/src/lib.rs"), BASE_API).unwrap();
+    let breaking =
+        history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
+        fs_err::write(root.join("crates/pkg/src/lib.rs"), BASE_API).unwrap();
         fs_err::write(root.join("docs/x"), "e\n").unwrap();
     });
-    let diff = history.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 
     let partial = history.partial_clone();
     let outside_blob = partial
@@ -848,52 +829,60 @@ fn partial_clones_replay_retained_changes_without_outside_blobs() {
     // Undoing the breaking change merges the outside file of its parent, of
     // the equal snapshot and of HEAD, which all differ, unless the replay
     // stays within the package.
-    let diff = partial.diff(None);
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
-    assert!(partial.missing_objects().contains(&outside_blob));
+    let trace_path = partial.cargo_target_dir().join("git-trace");
+    let mut command = partial.update_command();
+    command.env("GIT_TRACE", &trace_path);
+    assert_release(
+        &partial.check_update(command),
+        &[&breaking, &sibling],
+        "0.2.0",
+    );
+    let trace = fs_err::read_to_string(trace_path).unwrap();
+    assert!(
+        !trace.contains(&outside_blob),
+        "unexpected outside fetch: {trace}"
+    );
 }
 
 /// A candidate's parent on a branch the release excludes is never checked
 /// out, so a partial clone lacks its package blobs. The replay fetches them,
 /// the README's before inserting it into the restricted tree, which requires
 /// the blob to exist.
-#[test]
-fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
+#[tokio::test]
+async fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
     // Cargo detects the README in the package directory.
-    let history = History::with_member_package(|root| {
-        fs_err::write(root.join("pkg/README.md"), "# base\n").unwrap();
-    });
+    let history = member_history(|root| {
+        fs_err::write(root.join("crates/pkg/README.md"), "# base\n").unwrap();
+    })
+    .await;
     let repo = &history.repo;
-    let readme = repo.directory().join("pkg/README.md");
+    let readme = repo.directory().join("crates/pkg/README.md");
     let baseline = repo.current_commit_hash().unwrap();
     // Both branches edit the API and the README, so only the baseline has
     // their original blobs.
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     fs_err::write(&readme, "# breaking\n").unwrap();
-    let breaking = history.write_commit("pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let breaking =
+        history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
     repo.checkout_head().unwrap();
     fs_err::write(&readme, "# released\n").unwrap();
-    let published = history.write_commit("pkg/src/lib.rs", RELEASED_API, "feat: released API");
-    history.publish("pkg/README.md", "# released\n");
-    history.publish("pkg/src/lib.rs", RELEASED_API);
+    history.write_commit("crates/pkg/src/lib.rs", RELEASED_API, "feat: released API");
+    history.run_cargo_publish(PACKAGE);
     // Keep the feature branch's files when merging it into the release.
     assert!(
         repo.git(&["merge", "--no-ff", "--no-commit", "feature"])
             .is_err()
     );
     fs_err::write(&readme, "# breaking\n").unwrap();
-    history.write_commit("pkg/src/lib.rs", BREAKING_API, "merge feature");
-    let sibling = history.merge_ignored_change("pkg/src/fix.rs", |root| {
-        fs_err::write(root.join("pkg/src/lib.rs"), RELEASED_API).unwrap();
-        fs_err::write(root.join("pkg/README.md"), "# released\n").unwrap();
+    history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "merge feature");
+    let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
+        fs_err::write(root.join("crates/pkg/src/lib.rs"), RELEASED_API).unwrap();
+        fs_err::write(root.join("crates/pkg/README.md"), "# released\n").unwrap();
     });
-    let diff = history.diff(Some(&published));
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 
     let partial = history.partial_clone();
-    let baseline_blobs = ["pkg/src/lib.rs", "pkg/README.md"].map(|path| {
+    let baseline_blobs = ["crates/pkg/src/lib.rs", "crates/pkg/README.md"].map(|path| {
         partial
             .repo
             .git(&["rev-parse", &format!("{baseline}:{path}")])
@@ -901,81 +890,102 @@ fn partial_clones_fetch_the_package_blobs_a_replay_needs() {
     });
     let missing = partial.missing_objects();
     assert!(baseline_blobs.iter().all(|blob| missing.contains(blob)));
-    let diff = partial.diff(Some(&published));
-    assert_commits(&diff, &[&breaking, &sibling]);
-    assert_next_version(&diff, &Version::new(0, 2, 0));
-    let missing = partial.missing_objects();
-    assert!(!baseline_blobs.iter().any(|blob| missing.contains(blob)));
+    let trace_path = partial.cargo_target_dir().join("git-trace");
+    let mut command = partial.update_command();
+    command.env("GIT_TRACE", &trace_path);
+    assert_release(
+        &partial.check_update(command),
+        &[&breaking, &sibling],
+        "0.2.0",
+    );
+    // The CLI fetches into its isolated repository, not the user's clone.
+    let trace = fs_err::read_to_string(trace_path).unwrap();
+    for blob in baseline_blobs {
+        assert!(trace.contains(&blob), "missing fetch of {blob}: {trace}");
+    }
 }
 
-#[test]
-fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
-    let history = History::new();
-    let repo = &history.repo;
-    let (baseline, one, two) = history.two_merged_siblings();
-    repo.git(&["tag", "v0.1.0", &baseline]).unwrap();
-    let expected = [one.as_str(), two.as_str()];
-    assert_commits(&history.diff(None), &expected);
-    repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
-    for published_at in [Some(baseline.as_str()), None] {
-        assert_commits(&history.diff(published_at), &expected);
+#[tokio::test]
+async fn sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary() {
+    for boundary in ["tag", "published", "equality"] {
+        let history = unpublished_history("").await;
+        history.publish_with_boundary(boundary);
+        let (one, two) = history.two_merged_siblings();
+        assert_commits(&history.update_history(), &[&one, &two]);
     }
 }
 
 /// A release from a dirty tree can differ from every committed snapshot.
-#[test]
-fn the_published_commit_bounds_the_walk_without_an_equal_snapshot() {
-    let history = History::new();
-    let published = history.write_commit("src/released.rs", "", "feat: released");
-    history.publish(
-        "src/released.rs",
-        "// published from a modified working tree\n",
-    );
-    let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
-    // No local snapshot equals the release, so nothing else bounds the walk.
-    assert!(commit_ids(&history.diff(None)).contains(&published.as_str()));
-    assert_commits(&history.diff(Some(&published)), &[&unreleased]);
+#[tokio::test]
+async fn the_published_commit_bounds_the_walk_without_an_equal_snapshot() {
+    for published_boundary in [false, true] {
+        let history = unpublished_history("").await;
+        let published = history.write_commit("src/released.rs", "", "feat: released");
+        let released = "// published from a modified working tree\n";
+        if published_boundary {
+            fs_err::write(history.repo.directory().join("src/released.rs"), released).unwrap();
+            history
+                .cargo_publish_command(&history.gitea.repo)
+                .arg("--allow-dirty")
+                .assert()
+                .success();
+            history.repo.git(&["restore", "src/released.rs"]).unwrap();
+        } else {
+            history.publish_snapshot(&[("src/released.rs", released)]);
+        }
+        let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
+        let changelog = history.update_history();
+        if published_boundary {
+            assert_commits(&changelog, &[&unreleased]);
+        } else {
+            // No local snapshot equals the release, so nothing bounds the walk.
+            assert!(
+                commit_ids(&changelog).contains(&published.as_str()),
+                "{changelog}"
+            );
+        }
+    }
 }
 
 /// A history rewrite can remove the published commit; ignore that boundary.
-#[test]
-fn a_published_commit_missing_from_the_repository_is_ignored() {
-    let history = History::new();
+#[tokio::test]
+async fn a_published_commit_missing_from_the_repository_is_ignored() {
+    let history = unpublished_history("").await;
+    history.publish_with_boundary("missing");
     let unreleased = history.write_commit("src/unreleased.rs", "", "feat: unreleased");
-    let missing = missing_commit();
-    assert_commits(&history.diff(Some(&missing)), &[&unreleased]);
+    assert_commits(&history.update_history(), &[&unreleased]);
 }
 
-#[test]
-fn late_merge_keeps_mainline_changes_after_the_release() {
-    let history = History::new();
+#[tokio::test]
+async fn late_merge_keeps_mainline_changes_after_the_release() {
+    let history = unpublished_history("").await;
     let repo = &history.repo;
     repo.git(&["checkout", "-b", "old-branch"]).unwrap();
     let branch = history.write_commit("src/branch.rs", "", "fix: old branch");
     repo.checkout_head().unwrap();
     history.write_commit("src/released.rs", "", "feat: already released");
-    history.publish("src/released.rs", "");
+    history.run_cargo_publish(&history.gitea.repo);
     repo.tag_lightweight("v0.1.0").unwrap();
     let mainline = history.write_commit("src/mainline.rs", "", "fix: mainline");
     repo.git(&["merge", "--no-ff", "-m", "merge old branch", "old-branch"])
         .unwrap();
-    assert_commits(&history.diff(None), &[&branch, &mainline]);
+    assert_commits(&history.update_history(), &[&branch, &mainline]);
 }
 
-#[test]
-fn final_revert_does_not_release_reverted_changes() {
-    let history = History::new();
+#[tokio::test]
+async fn final_revert_does_not_release_reverted_changes() {
+    let history = api_history("").await;
     history.repo.tag_lightweight("v0.1.0").unwrap();
     history.write_commit("src/lib.rs", "pub fn temporary() {}\n", "feat: temporary");
     history.write_commit("src/lib.rs", "", "revert: temporary");
-    assert!(history.diff(None).commits.is_empty());
+    assert!(history.update_history().is_empty());
     history.repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
-    assert!(history.diff(None).commits.is_empty());
+    assert!(history.update_history().is_empty());
 }
 
-#[test]
-fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
-    let history = History::new();
+#[tokio::test]
+async fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
+    let history = api_history("").await;
     let repo = &history.repo;
     repo.git(&["checkout", "-b", "branch"]).unwrap();
     history.write_commit("src/lib.rs", "pub fn temporary() {}\n", "feat: temporary");
@@ -989,13 +999,13 @@ fn equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes() {
         .unwrap();
     let order = history.walk_order();
     assert!(order.find(&equal).unwrap() < order.find(&sibling).unwrap());
-    assert_commits(&history.diff(None), &[&branch, &sibling]);
+    assert_commits(&history.update_history(), &[&branch, &sibling]);
 }
 
 /// Each branch reverts to the released tree before contributing a fix.
-#[test]
-fn every_lineage_stops_at_its_own_equal_snapshot() {
-    let history = History::new();
+#[tokio::test]
+async fn every_lineage_stops_at_its_own_equal_snapshot() {
+    let history = api_history("").await;
     let repo = &history.repo;
     let baseline = repo.current_commit_hash().unwrap();
     repo.git(&["checkout", "-b", "one"]).unwrap();
@@ -1029,15 +1039,15 @@ fn every_lineage_stops_at_its_own_equal_snapshot() {
     assert!(order.find(&equal_one).unwrap() < order.find(&equal_two).unwrap());
     assert!(order.find(&equal_two).unwrap() < order.find(&reverted_one).unwrap());
     assert!(order.find(&equal_two).unwrap() < order.find(&reverted_two).unwrap());
-    assert_commits(&history.diff(None), &[&one, &two, &unreleased]);
+    assert_commits(&history.update_history(), &[&one, &two, &unreleased]);
 }
 
 /// History simplification hides one parent of an "ours" merge. Pruning an equal
 /// snapshot must still remove that ancestor, whichever one the walk visits first.
-#[test]
-fn discarded_ancestors_are_pruned_in_either_visit_order() {
+#[tokio::test]
+async fn discarded_ancestors_are_pruned_in_either_visit_order() {
     for (discarded_day, discarded_first) in [(1, false), (6, true)] {
-        let history = History::new();
+        let history = api_history("").await;
         let repo = &history.repo;
         repo.git(&["checkout", "-b", "feature"]).unwrap();
         let discarded = history.write_commit_at(
@@ -1077,136 +1087,130 @@ fn discarded_ancestors_are_pruned_in_either_visit_order() {
             discarded_first,
             "{order}"
         );
-        assert_commits(&history.diff(None), &[&unreleased]);
+        assert_commits(&history.update_history(), &[&unreleased]);
     }
 }
 
-#[test]
-fn workspace_dependency_updates_are_detected_without_package_commits() {
+#[tokio::test]
+async fn workspace_dependency_updates_are_detected_without_package_commits() {
     for update_lockfile in [false, true] {
-        let history = History::with_packages(|root| {
-            fs_err::write(
-                root.join(CARGO_TOML),
-                "[workspace]\nmembers = [\"app\", \"dep\"]\nresolver = \"2\"\n\
-                 [workspace.dependencies]\nhistory-dependency = \"1\"\n\
-                 [patch.crates-io]\nhistory-dependency = { path = \"dep\" }\n",
-            )
-            .unwrap();
-            write_package(
-                &root.join("app"),
-                PACKAGE,
-                "0.1.0",
-                "[dependencies]\nhistory-dependency.workspace = true\n",
-            );
-            // Lockfile changes only trigger releases for executables.
-            fs_err::write(root.join("app/src/main.rs"), "fn main() {}\n").unwrap();
-            write_package(&root.join("dep"), "history-dependency", "1.0.0", "");
-        });
+        let history = TestContext::new_workspace_with_packages(&[
+            TestPackage::new(PACKAGE),
+            TestPackage::new("history-dependency").with_type(PackageType::Lib),
+        ])
+        .await;
         let repo = &history.repo;
-        repo.tag_lightweight("history-test-v0.1.0").unwrap();
-        assert!(history.diff(None).commits.is_empty());
+        history.run_cargo_publish("history-dependency");
+        let manifest = repo.directory().join(CARGO_TOML);
+        let contents = fs_err::read_to_string(&manifest).unwrap();
+        fs_err::write(&manifest, format!("{contents}\n[workspace.dependencies]\nhistory-dependency = {{ version = \"0.1\", registry = \"test-registry\" }}\n")).unwrap();
+        let app = history.package_path(PACKAGE).join(CARGO_TOML);
+        let contents = fs_err::read_to_string(&app).unwrap();
+        fs_err::write(
+            app,
+            format!("{contents}\nhistory-dependency.workspace = true\n"),
+        )
+        .unwrap();
+        history.run_cargo_check();
+        history.write_release_plz_toml(HISTORY_CONFIG);
+        history.run_cargo_publish(PACKAGE);
+        repo.tag_lightweight("pkg-v0.1.0").unwrap();
+        assert!(history.update_history().is_empty());
         let (path, old, new, expected) = if update_lockfile {
             (
-                "dep/Cargo.toml",
-                "1.0.0",
-                "1.0.1",
+                "crates/history-dependency/Cargo.toml",
+                "0.1.0",
+                "0.1.1",
                 "chore: update Cargo.lock dependencies",
             )
         } else {
             (
                 "Cargo.toml",
-                "history-dependency = \"1\"",
-                "history-dependency = \">=1.0.0\"",
+                "version = \"0.1\"",
+                "version = \">=0.1.0\"",
                 "chore: update Cargo.toml dependencies",
             )
         };
         let manifest = repo.directory().join(path);
         let contents = fs_err::read_to_string(&manifest).unwrap();
         fs_err::write(manifest, contents.replace(old, new)).unwrap();
-        generate_lockfile(repo.directory());
+        if update_lockfile {
+            repo.add_all_and_commit("chore: bump dependency").unwrap();
+            history.run_cargo_publish("history-dependency");
+            assert_cmd::Command::new("cargo")
+                .current_dir(repo.directory())
+                .arg("update")
+                .assert()
+                .success();
+        }
+        history.run_cargo_check();
         repo.add_all_and_commit("chore: workspace dependencies")
             .unwrap();
         assert!(
-            repo.git(&["rev-list", "history-test-v0.1.0..HEAD", "--", "app"])
+            repo.git(&["rev-list", "pkg-v0.1.0..HEAD", "--", "crates/pkg"])
                 .unwrap()
                 .is_empty()
         );
-        let diff = history.diff(None);
-        assert_eq!(diff.commits.len(), 1);
-        assert_eq!(diff.commits[0].message, expected);
-        assert_eq!(diff.commits[0].id, NO_COMMIT_ID);
+        let changelog = history.update_history();
+        assert_commits(&changelog, &["0000000"]);
+        assert!(changelog.contains(expected), "{changelog}");
     }
 }
 
-#[test]
-fn first_release_respects_the_commit_limit() {
-    let history = History::new();
-    let baseline = history.repo.current_commit_hash().unwrap();
-    // `Repo::init` commits a README before the package baseline.
-    let readme = history
-        .repo
-        .git(&["rev-parse", &format!("{baseline}^")])
-        .unwrap();
-    let one = history.write_commit("src/one.rs", "", "fix: one");
-    let two = history.write_commit("src/two.rs", "", "fix: two");
+#[tokio::test]
+async fn first_release_respects_the_commit_limit() {
+    let history = unpublished_history("").await;
+    history.write_commit("src/one.rs", "", "fix: one");
+    history.write_commit("src/two.rs", "", "fix: two");
+    let all = history.walk_order();
+    let expected: Vec<_> = all.lines().collect();
     // Zero means no limit. Commits must be collected newest first.
-    let expected: [&str; 4] = [&two, &one, &baseline, &readme];
     for (limit, expected) in [(1, &expected[..1]), (2, &expected[..2]), (0, &expected[..])] {
-        let request = history.request().with_max_analyze_commits(Some(limit));
-        let diff = history.diff_with(None, &request).unwrap();
-        assert_eq!(commit_ids(&diff), expected, "commit limit: {limit}");
+        let mut command = history.update_command();
+        command.args(["--max-analyze-commits", &limit.to_string()]);
+        let changelog = history.check_update(command);
+        assert_eq!(commit_ids(&changelog), expected, "commit limit: {limit}");
     }
 }
 
 /// Unpublished packages have only the tag to bound their history.
-#[test]
-fn a_tag_bounds_the_history_of_a_package_that_is_not_published() {
-    let history = History::new();
+#[tokio::test]
+async fn a_tag_bounds_the_history_of_a_package_that_is_not_published() {
+    let history = unpublished_history("").await;
+    history.write_release_plz_toml(&HISTORY_CONFIG.replace(
+        "semver_check = false",
+        "semver_check = false\npublish = false",
+    ));
     history.write_commit("src/released.rs", "", "feat: released by the tag");
     history.repo.tag_lightweight("v0.1.0").unwrap();
     let unreleased = history.write_commit("src/unreleased.rs", "", "feat: after the tag");
-    let request = history.request().with_default_package_config(UpdateConfig {
-        publish: false,
-        ..UpdateConfig::default()
-    });
-    let diff = history.diff_with(None, &request).unwrap();
-    assert_commits(&diff, &[&unreleased]);
+    assert_commits(&history.update_history(), &[&unreleased]);
 }
 
-#[test]
-fn a_blocking_dirty_working_tree_hints_at_the_allow_dirty_option() {
-    let history = History::new();
+#[tokio::test]
+async fn allow_dirty_preserves_uncommitted_changes() {
+    let history = unpublished_history("").await;
     history.write_commit("src/lib.rs", "pub fn one() {}\n", "feat: one");
     history.write_commit("src/lib.rs", "pub fn two() {}\n", "feat: two");
-    // Uncommitted changes that checking out the previous commit would overwrite.
-    fs_err::write(
-        history.repo.directory().join("src/lib.rs"),
-        "pub fn dirty() {}\n",
-    )
-    .unwrap();
-    let error = format!(
-        "{:#}",
-        history.diff_with(None, &history.request()).unwrap_err()
-    );
-    assert!(
-        error.contains("The allow-dirty option can't be used in this case"),
-        "{error}"
-    );
+    let lib = history.repo.directory().join("src/lib.rs");
+    let dirty = "pub fn dirty() {}\n";
+    fs_err::write(&lib, dirty).unwrap();
+    let output = history.run_update().failure();
+    let error = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(error.contains("uncommitted changes"), "{error}");
+    history
+        .update_command()
+        .arg("--allow-dirty")
+        .assert()
+        .success();
+    assert_eq!(fs_err::read_to_string(lib).unwrap(), dirty);
 }
 
-#[test]
-fn a_tip_matching_the_release_releases_nothing_although_its_branches_differ() {
-    let history = History::new();
+#[tokio::test]
+async fn a_tip_matching_the_release_releases_nothing_although_its_branches_differ() {
+    let history = unpublished_history("").await;
     history.two_merged_siblings();
-    // The release already contains both siblings, so nothing is left to release
-    // even though neither sibling matches the release on its own: only the merge
-    // commit does.
-    for file in ["src/one.rs", "src/two.rs"] {
-        fs_err::write(history.registry.directory().join(file), "").unwrap();
-    }
-    history
-        .registry
-        .add_all_and_commit("published release")
-        .unwrap();
-    assert!(history.diff(None).commits.is_empty());
+    // Neither sibling matches the published tree; their merge does.
+    history.publish_snapshot(&[]);
+    assert!(history.update_history().is_empty());
 }

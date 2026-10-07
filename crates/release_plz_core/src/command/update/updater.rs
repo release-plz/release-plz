@@ -1229,8 +1229,6 @@ fn get_repo_path(
 mod tests {
     use super::*;
 
-    mod history_tests;
-
     #[test]
     fn contributors_are_unique_and_have_usernames() {
         let commits = [
