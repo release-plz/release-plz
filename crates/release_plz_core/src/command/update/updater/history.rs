@@ -251,9 +251,9 @@ impl<'a> RetainedChanges<'a> {
         };
         let path = Utf8Path::new(path);
         let PackagePaths { package, readme } = &self.relative_paths;
-        // Package equality ignores every lockfile and original manifest, but
-        // Cargo generates `.cargo_vcs_info.json` only at the package root: a
-        // nested one is an ordinary packaged file.
+        // Package equality ignores the contents of every `Cargo.lock` and
+        // `Cargo.toml.orig`, but only the package root's `.cargo_vcs_info.json`:
+        // a nested one is an ordinary packaged file.
         let is_ignored = match path.file_name() {
             Some(CARGO_VCS_INFO) => path.parent() == Some(package.as_path()),
             name => name.is_some_and(is_generated_package_file),
