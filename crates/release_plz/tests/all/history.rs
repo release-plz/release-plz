@@ -581,7 +581,8 @@ async fn a_merge_commit_whose_resolution_survives_is_retained() {
         repo.git(&["merge", "--no-ff", "--no-commit", "feature"])
             .is_err()
     );
-    // The resolution drops the plan and documents the flag on a line of its own.
+    // The resolution drops the plan and documents the flag on a line of its own,
+    // so the plan stays excluded although undoing it conflicts on their shared words.
     let resolved = history.write_commit(
         "src/lib.rs",
         &format!("/// Takes a flag.\n{BREAKING_API}"),
