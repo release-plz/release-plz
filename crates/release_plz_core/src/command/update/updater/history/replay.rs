@@ -31,6 +31,8 @@ pub(super) struct ChangeReplay<'a> {
 pub(super) struct FileChange<'a> {
     pub(super) path: &'a [u8],
     pub(super) changes_presence: bool,
+    /// Whether the target holds a symlink at `path`. Only looked up for
+    /// content changes, since a presence change counts regardless.
     pub(super) target_is_symlink: bool,
 }
 
@@ -118,11 +120,11 @@ impl<'a> ChangeReplay<'a> {
         let edited = self.tree(&self.commit(edited)?)?;
         let parent = self.first_parent_tree(&commit)?;
         self.fetch_missing_blobs(&tree, &[&parent, &edited, &target])?;
+        // Select paths conservatively here: the final replay decides whether
+        // their presence or only their contents changed.
+        let includes_path = |path: &[u8]| includes(self.file_change(path, true, &target));
         let mut changed = HashSet::new();
         for (path, target_path) in self.changed_paths(&parent, &tree, &target)? {
-            // Select paths conservatively here: the final replay decides
-            // whether their presence or only their contents changed.
-            let includes_path = |path: &[u8]| includes(self.file_change(path, true, &target));
             if (includes_path(&path) || includes_path(&target_path))
                 && !self.edited_tokens_leave_file_unchanged(
                     [&parent, &tree, &edited, &target],
@@ -500,7 +502,8 @@ impl<'a> ChangeReplay<'a> {
         changes_presence: bool,
         target: &git2::Tree<'_>,
     ) -> FileChange<'p> {
-        let target_is_symlink = self.symlinks
+        let target_is_symlink = !changes_presence
+            && self.symlinks
             && std::str::from_utf8(path).is_ok_and(|path| {
                 target
                     .get_path(std::path::Path::new(path))
