@@ -138,9 +138,7 @@ impl<'a> ChangeReplay<'a> {
             for delta in diff.deltas() {
                 for (file, side) in [(delta.old_file(), base), (delta.new_file(), *tree)] {
                     // Deleted sides have a zero id. Submodules are commits of
-                    // another repository. Read the kind from the tree entry:
-                    // `DiffFile::mode` panics on legacy modes Git accepts, such
-                    // as 100600.
+                    // another repository.
                     if !file.id().is_zero() && !is_submodule(side, &file) {
                         self.fetch_if_missing(file.id())?;
                     }
@@ -390,8 +388,10 @@ pub(super) enum TokenConflicts {
 }
 
 /// Whether `file`, one side of a delta, is a submodule in `tree`, that side's
-/// tree. `DiffFile::path` panics on non-UTF-8 paths on Windows, where those
-/// count as no submodule, whose commit then fails to fetch.
+/// tree. Read the kind from the tree entry and the path as bytes:
+/// `DiffFile::mode` panics on legacy modes Git accepts, such as 100600, and
+/// `DiffFile::path` on non-UTF-8 paths on Windows, where such a submodule then
+/// goes undetected and fetching its commit fails.
 fn is_submodule(tree: &git2::Tree<'_>, file: &git2::DiffFile<'_>) -> bool {
     file.path_bytes()
         .and_then(path_from_bytes)
