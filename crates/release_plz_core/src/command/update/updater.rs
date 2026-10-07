@@ -559,12 +559,16 @@ impl Updater<'_> {
         // Use registry_version as the previous version when available (version already
         // bumped case), otherwise use package.version (normal case)
         let previous_version = registry_version.as_ref().unwrap_or(&package.version);
-        let release_link = {
+        let changelog_repo = {
             let prev_tag = self
                 .project
                 .git_tag(&package.name, &previous_version.to_string())?;
             let next_tag = self.project.git_tag(&package.name, &version.to_string())?;
-            repo_url.map(|r| r.git_release_link(&prev_tag, &next_tag))
+            repo_url.map(|url| ChangelogRepo {
+                url,
+                forge: self.req.forge_type(),
+                release_link: url.git_release_link(&prev_tag, &next_tag),
+            })
         };
 
         let changelog_outcome = {
@@ -593,11 +597,7 @@ impl Updater<'_> {
                         &version,
                         Some(r),
                         old_changelog,
-                        repo_url.map(|url| ChangelogRepo {
-                            url,
-                            forge: self.req.forge_type(),
-                        }),
-                        release_link.as_deref(),
+                        changelog_repo,
                         package,
                         previous_version,
                     )
@@ -1038,6 +1038,7 @@ fn paths_to_check(package_path: &Utf8Path, package: &Package) -> anyhow::Result<
 struct ChangelogRepo<'a> {
     url: &'a RepoUrl,
     forge: ForgeType,
+    release_link: String,
 }
 
 /// Return the following tuple:
@@ -1047,14 +1048,12 @@ struct ChangelogRepo<'a> {
 ///
 /// `previous_version` is the version `package` is released from, used when the
 /// old changelog can't tell it.
-#[allow(clippy::too_many_arguments)]
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
     changelog_req: Option<ChangelogRequest>,
     old_changelog: &OldChangelog,
     repo: Option<ChangelogRepo<'_>>,
-    release_link: Option<&str>,
     package: &Package,
     previous_version: &Version,
 ) -> anyhow::Result<(String, String)> {
@@ -1072,10 +1071,8 @@ fn get_changelog(
         if let Some(config) = changelog_req.changelog_config {
             changelog_builder = changelog_builder.with_config(config);
         }
-        if let Some(link) = release_link {
-            changelog_builder = changelog_builder.with_release_link(link);
-        }
         if let Some(repo) = repo {
+            changelog_builder = changelog_builder.with_release_link(repo.release_link);
             let repo_url = repo.url;
             let remote = Remote {
                 owner: repo_url.owner.clone(),
@@ -1289,7 +1286,6 @@ mod tests {
                 &next_version,
                 Some(changelog_req.clone()),
                 &old_changelog,
-                None,
                 None,
                 &package,
                 &package.version,
