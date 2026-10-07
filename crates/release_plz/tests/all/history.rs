@@ -344,6 +344,44 @@ const IMPLEMENTED_API: &str =
 const IMPLEMENTED_BREAKING_API: &str =
     "pub fn api(_: bool) { /* implementation */ }\n\n\n\n\n\npub fn stable() {}\n";
 
+#[cfg(unix)]
+#[tokio::test]
+async fn executable_bit_changes_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for sequential in [false, true] {
+        let history = api_history(BASE_API).await;
+        history
+            .repo
+            .git(&["config", "core.filemode", "true"])
+            .unwrap();
+        let implementation = sequential
+            .then(|| history.write_commit("src/lib.rs", IMPLEMENTED_API, "chore: implementation"));
+        fs_err::set_permissions(
+            history.repo.directory().join("src/lib.rs"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        let breaking = history.write_commit(
+            "src/lib.rs",
+            if sequential {
+                IMPLEMENTED_BREAKING_API
+            } else {
+                BREAKING_API
+            },
+            "feat!: breaking API and set executable bit",
+        );
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        let mut expected = vec![breaking.as_str(), sibling.as_str()];
+        expected.extend(implementation.as_deref());
+        history.assert_release(&expected, "0.2.0");
+
+        // Keeping only the executable bit must not retain the breaking marker.
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        history.assert_release(&[&restore, &sibling], "0.1.1");
+    }
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {
