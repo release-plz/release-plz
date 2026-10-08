@@ -45,6 +45,7 @@ tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 cargo_utils = { path = "../cargo_utils" }
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
 test_logs = { path = "../test_logs" }
@@ -65,3 +66,15 @@ pkg-fmt = "zip"
 
 [package.metadata.binstall.overrides.aarch64-pc-windows-msvc]
 pkg-fmt = "zip"
+
+[[bench]]
+name = "update"
+harness = false
+
+[[bench]]
+name = "manifest_updates"
+harness = false
+
+[[bench]]
+name = "builder"
+harness = false

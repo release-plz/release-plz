@@ -1,0 +1,29 @@
+Gnuplot not found, using plotters backend
+Benchmarking changelog_builder/configured/1
+Benchmarking changelog_builder/configured/1: Warming up for 1.0000 s
+Benchmarking changelog_builder/configured/1: Collecting 50 samples in estimated 3.0260 s (140k iterations)
+Benchmarking changelog_builder/configured/1: Analyzing
+changelog_builder/configured/1
+                        time:   [12.511 µs 12.872 µs 13.339 µs]
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+Benchmarking changelog_builder/configured/10
+Benchmarking changelog_builder/configured/10: Warming up for 1.0000 s
+Benchmarking changelog_builder/configured/10: Collecting 50 samples in estimated 3.0237 s (46k iterations)
+Benchmarking changelog_builder/configured/10: Analyzing
+changelog_builder/configured/10
+                        time:   [44.431 µs 44.903 µs 45.536 µs]
+Found 2 outliers among 50 measurements (4.00%)
+  1 (2.00%) high mild
+  1 (2.00%) high severe
+Benchmarking changelog_builder/configured/1000
+Benchmarking changelog_builder/configured/1000: Warming up for 1.0000 s
+
+Warning: Unable to complete 50 samples in 3.0s. You may wish to increase target time to 5.2s, enable flat sampling, or reduce sample count to 20.
+Benchmarking changelog_builder/configured/1000: Collecting 50 samples in estimated 5.1891 s (1275 iterations)
+Benchmarking changelog_builder/configured/1000: Analyzing
+changelog_builder/configured/1000
+                        time:   [3.8257 ms 3.9970 ms 4.1331 ms]
+Found 3 outliers among 50 measurements (6.00%)
+  3 (6.00%) high mild
+

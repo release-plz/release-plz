@@ -1,0 +1,30 @@
+   Compiling cargo_utils v0.1.85 (/workspace/perf-lab/changelog-builder/crates/cargo_utils)
+   Compiling next_version v0.3.2 (/workspace/perf-lab/changelog-builder/crates/next_version)
+   Compiling git_cmd v0.8.0 (/workspace/perf-lab/changelog-builder/crates/git_cmd)
+   Compiling test_logs v0.1.34 (/workspace/perf-lab/changelog-builder/crates/test_logs)
+   Compiling fake_package v0.1.0 (/workspace/perf-lab/changelog-builder/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-lab/changelog-builder/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 22.87s
+     Running unittests src/lib.rs (/workspace/perf-target/release/deps/release_plz_core-59e18b962b5c7cc6)
+
+running 17 tests
+test changelog::tests::changelog_has_commit_id ... ok
+test changelog::tests::changelog_entry_with_link_is_generated ... ok
+test changelog::tests::changelog_entries_are_generated ... ok
+test changelog::empty_changelog_is_updated ... ok
+test changelog::tests::changelog_is_updated ... ok
+test changelog_parser::tests::changelog_header_is_parsed ... ok
+test changelog::tests::changelog_sort_newest ... ok
+test changelog_parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test changelog_parser::tests::changelog_header_with_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test changelog::tests::changelog_without_header_is_updated ... ok
+test changelog_parser::tests::changelog_header_isnt_recognized ... ok
+test changelog::tests::generated_changelog_is_updated_correctly ... ok
+test changelog_parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test command::update::updater::tests::same_version_is_not_added_to_changelog ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
+
