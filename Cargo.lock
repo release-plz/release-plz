@@ -4480,7 +4480,7 @@ dependencies = [
  "flate2",
  "fs-err",
  "git-cliff-core",
- "git-conventional 0.12.9",
+ "git-conventional 1.1.0",
  "git2",
  "git_cmd",
  "ignore",
