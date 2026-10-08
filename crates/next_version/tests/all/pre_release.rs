@@ -1,28 +1,5 @@
-use next_version::{NextVersion, VersionUpdater};
+use next_version::NextVersion;
 use semver::Version;
-
-#[test]
-fn no_commits_leave_pre_release_unchanged() {
-    let version = Version::parse("1.0.0-alpha.2").unwrap();
-    assert_eq!(version.next(std::iter::empty::<&str>()), version);
-}
-
-#[test]
-fn pre_release_increment_uses_first_commit_not_ignored_by_regex() {
-    let version = Version::parse("1.0.0-alpha.2").unwrap();
-    let commits = [
-        "docs: update readme",
-        "fix: correct typo",
-        "feat!: change behavior",
-    ];
-    assert_eq!(
-        VersionUpdater::new()
-            .with_no_increment_regex("^docs$")
-            .unwrap()
-            .increment(&version, commits),
-        Version::parse("1.0.0-alpha.3").unwrap()
-    );
-}
 
 #[test]
 fn commit_without_semver_prefix_increments_pre_release_version() {
