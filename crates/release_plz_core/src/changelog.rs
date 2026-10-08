@@ -102,7 +102,7 @@ impl Changelog<'_> {
     }
 
     fn changelog_config(&self, header: Option<String>) -> Config {
-        let user_config = self.config.clone().unwrap_or(default_git_cliff_config());
+        let user_config = self.config.clone().unwrap_or_else(default_git_cliff_config);
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
             git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
