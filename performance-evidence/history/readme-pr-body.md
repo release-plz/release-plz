@@ -1,5 +1,7 @@
 Compare packaged contents before querying README metadata. A historical snapshot whose packaged files already differ can skip `cargo metadata`; equal or inconclusive file comparisons still check the README, including README files outside the package. Lockfile-restoration failures remain fatal, and a changed README can still establish inequality when package listing fails.
 
+A separate process trace of the offline 100-commit fixture confirms that `cargo metadata` subprocesses fall from **103 to 3**; package-listing and Git subprocess counts are unchanged. Traced runs are not used for the elapsed-time measurements below.
+
 Observed `update/history_100` elapsed time fell **27.58%** (median of three independent Criterion mean estimates).
 
 | #3146 scenario | Before: runs 1, 2, 3 (ms) | After: runs 1, 2, 3 (ms) | Median before → after (ms) | Time reduction |

@@ -1,0 +1,21 @@
+   Compiling cargo_utils v0.1.85 (/workspace/perf-order/crates/cargo_utils)
+   Compiling next_version v0.3.2 (/workspace/perf-order/crates/next_version)
+   Compiling git_cmd v0.8.0 (/workspace/perf-order/crates/git_cmd)
+   Compiling test_logs v0.1.34 (/workspace/perf-order/crates/test_logs)
+   Compiling fake_package v0.1.0 (/workspace/perf-order/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-order/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 26.91s
+     Running unittests src/lib.rs (perf-target/release/deps/release_plz_core-6ebb5387d1779434)
+
+running 8 tests
+test release_order::tests::single_package_is_returned ... ok
+test release_order::tests::two_packages_cycle_is_detected ... ok
+test release_order::tests::three_packages_are_ordered ... ok
+test release_order::tests::three_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_is_ok ... ok
+test release_order::tests::two_packages_dev_cycle_with_package_in_features_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_with_random_feature_is_ok ... ok
+test release_order::tests::workspace_release_order_is_correct ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 172 filtered out; finished in 0.02s
+

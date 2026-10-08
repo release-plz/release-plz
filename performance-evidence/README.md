@@ -69,3 +69,17 @@ before timing and keep fixture construction outside the clock.
 
 Raw results and per-change summaries are stored alongside the harnesses. The PR
 descriptions record the relevant before/after triples, limitations and tests.
+
+## CLI process profiling
+
+`cli-process-summary.json` records a separate `strace` comparison of the offline
+100-commit fixture. Deferring README metadata reduces Cargo metadata subprocesses
+from 103 to 3; Cargo package-listing, Rust compiler and Git subprocess counts are
+unchanged. Raw traces are included. These traced runs are separate from the
+three untraced timing runs and are not used to compute elapsed-time improvements.
+
+To trace an already-built binary:
+
+```sh
+python3 performance-evidence/profile-cli.py /absolute/path/to/release-plz my-trace
+```

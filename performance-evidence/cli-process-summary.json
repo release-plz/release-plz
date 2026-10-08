@@ -1,0 +1,15 @@
+{
+  "before": {
+    "cargo_metadata": 103,
+    "cargo_package": 102,
+    "rustc": 105,
+    "git": 423
+  },
+  "after": {
+    "cargo_metadata": 3,
+    "cargo_package": 102,
+    "rustc": 105,
+    "git": 423
+  },
+  "note": "Separate strace runs of the offline 100-commit fixture; counts only. Elapsed-time claims use three untraced Criterion runs per variant."
+}
