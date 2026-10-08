@@ -12,12 +12,7 @@ use crate::{
     cargo::{read_package_metadata, run_cargo_with_env},
     fs_utils,
 };
-use std::{
-    cell::OnceCell,
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    io::{self, Read},
-};
+use std::{cell::OnceCell, io::Read};
 
 /// Cargo stores the original manifest under this name when it packages a crate,
 /// so its presence tells an extracted registry package from a plain source tree.
@@ -331,19 +326,30 @@ pub(crate) fn existing_readme_path(
 }
 
 fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {
-    let hash1 = file_hash(first).with_context(|| format!("cannot determine hash of {first:?}"))?;
-    let hash2 =
-        file_hash(second).with_context(|| format!("cannot determine hash of {second:?}"))?;
-    Ok(hash1 == hash2)
-}
-
-fn file_hash(file: &Utf8Path) -> io::Result<u64> {
-    let buffer = &mut vec![];
-    fs_err::File::open(file)?.read_to_end(buffer)?;
-    let mut hasher = DefaultHasher::new();
-    buffer.hash(&mut hasher);
-    let hash = hasher.finish();
-    Ok(hash)
+    const BUFFER_SIZE: usize = 8192;
+    let mut first = fs_err::File::open(first)?;
+    let mut second = fs_err::File::open(second)?;
+    let mut first_bytes = Vec::with_capacity(BUFFER_SIZE);
+    let mut second_bytes = Vec::with_capacity(BUFFER_SIZE);
+    loop {
+        // Fill each chunk despite short or interrupted reads.
+        first
+            .by_ref()
+            .take(BUFFER_SIZE as u64)
+            .read_to_end(&mut first_bytes)?;
+        second
+            .by_ref()
+            .take(BUFFER_SIZE as u64)
+            .read_to_end(&mut second_bytes)?;
+        if first_bytes != second_bytes {
+            return Ok(false);
+        }
+        if first_bytes.is_empty() {
+            return Ok(true);
+        }
+        first_bytes.clear();
+        second_bytes.clear();
+    }
 }
 
 #[cfg(test)]
@@ -351,6 +357,42 @@ mod tests {
     use super::*;
     use crate::cargo::run_cargo;
     use crate::fs_utils::Utf8TempDir;
+
+    #[test]
+    fn compare_files_handles_empty_files_and_buffer_boundaries() {
+        let dir = Utf8TempDir::new().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        for len in [0, 1, 8191, 8192, 8193, 24_593] {
+            let contents = vec![b'a'; len];
+            fs_err::write(&first, &contents).unwrap();
+            fs_err::write(&second, &contents).unwrap();
+            assert!(are_files_equal(&first, &second).unwrap());
+
+            for offset in [0, len / 2, len.saturating_sub(1)] {
+                if offset < len {
+                    let mut changed = contents.clone();
+                    changed[offset] = b'b';
+                    fs_err::write(&second, changed).unwrap();
+                    assert!(!are_files_equal(&first, &second).unwrap());
+                }
+            }
+            fs_err::write(&second, [contents.as_slice(), b"a"].concat()).unwrap();
+            assert!(!are_files_equal(&first, &second).unwrap());
+            assert!(!are_files_equal(&second, &first).unwrap());
+        }
+    }
+
+    #[test]
+    fn compare_files_reports_missing_files() {
+        let dir = Utf8TempDir::new().unwrap();
+        let existing = dir.path().join("existing");
+        let missing = dir.path().join("missing");
+        fs_err::write(&existing, "content").unwrap();
+
+        assert!(are_files_equal(&existing, &missing).is_err());
+        assert!(are_files_equal(&missing, &existing).is_err());
+    }
 
     #[test]
     fn unpacked_package_is_listed_without_running_cargo() {
