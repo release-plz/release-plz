@@ -825,7 +825,8 @@ impl Updater<'_> {
             })?
             .context("cannot compare packages");
         // Most historical snapshots already differ in their packaged files.
-        // Read README metadata only when that comparison cannot decide equality.
+        // Read README metadata only when that comparison cannot decide equality
+        // (because `cargo metadata` is slower).
         if matches!(packages_equal, Ok(false)) {
             return Ok(false);
         }
