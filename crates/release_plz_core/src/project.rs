@@ -8,10 +8,7 @@ use cargo_metadata::{
 use cargo_utils::CARGO_TOML;
 use tracing::debug;
 
-use crate::{
-    PackagePath as _,
-    tera::{default_tag_name_template, tera_context},
-};
+use crate::{PackagePath as _, tera::tera_context};
 use crate::{
     Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
     fs_utils::{self, strip_prefix},
@@ -159,20 +156,24 @@ impl Project {
         let (template_name, template) = match field {
             TemplateField::GitTagName => (
                 "tag_name",
-                release_metadata.and_then(|m| m.tag_name_template.clone()),
+                release_metadata.and_then(|m| m.tag_name_template.as_deref()),
             ),
             TemplateField::ReleaseName => (
                 "release_name",
-                release_metadata.and_then(|m| m.release_name_template.clone()),
+                release_metadata.and_then(|m| m.release_name_template.as_deref()),
             ),
         };
 
-        let template = template.unwrap_or_else(|| {
-            default_tag_name_template(self.contains_multiple_releasable_packages)
-        });
+        let Some(template) = template else {
+            return Ok(if self.contains_multiple_releasable_packages {
+                format!("{package_name}-v{version}")
+            } else {
+                format!("v{version}")
+            });
+        };
 
         let context = tera_context(package_name, version);
-        crate::tera::render_template(&template, &context, template_name)
+        crate::tera::render_template(template, &context, template_name)
     }
 
     pub fn cargo_lock_path(&self) -> Utf8PathBuf {
@@ -465,6 +466,10 @@ mod tests {
         assert_eq!(workspace.workspace_packages().len(), 2);
         assert!(workspace.contains_multiple_releasable_packages());
         assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+        assert_eq!(
+            workspace.release_name("one", "0.1.0").unwrap(),
+            "one-v0.1.0"
+        );
 
         // Narrowing the packages with `--package` must keep the tag names that the
         // whole workspace creates, otherwise the release tags could not be found.
@@ -480,6 +485,7 @@ mod tests {
         assert_eq!(narrowed.workspace_packages().len(), 1);
         assert!(narrowed.contains_multiple_releasable_packages());
         assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+        assert_eq!(narrowed.release_name("one", "0.1.0").unwrap(), "one-v0.1.0");
     }
 
     #[test]
@@ -489,6 +495,10 @@ mod tests {
             .expect("Should ok");
         let git_tag = project.git_tag("typo_test", "0.1.0").unwrap();
         assert_eq!(git_tag, "v0.1.0");
+        assert_eq!(
+            project.release_name("typo_test", "0.1.0").unwrap(),
+            "v0.1.0"
+        );
     }
 
     #[test]
