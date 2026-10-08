@@ -221,15 +221,23 @@ pub(super) fn update_dependencies(
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    // Only path dependencies can refer to a workspace package. Metadata includes
-    // target-specific, build and dev dependencies, so other member manifests
-    // cannot contain a requirement to update.
+    // Metadata resolves renamed, target-specific, build and dev dependencies.
+    // Use the package name because dependency paths still point to the original
+    // checkout when release-pr updates a temporary copy of the workspace.
+    let updated_package = all_packages
+        .iter()
+        .find(|pkg| pkg.manifest_path.parent() == Some(package_path));
     // Always scan the workspace manifest because cargo metadata omits
     // [workspace.dependencies] entries that no member inherits.
     let all_manifests = iter::once(workspace_manifest).chain(
         all_packages
             .iter()
-            .filter(|pkg| pkg.dependencies.iter().any(|dep| dep.path.is_some()))
+            .filter(|pkg| {
+                pkg.dependencies.iter().any(|dep| {
+                    dep.path.is_some()
+                        && updated_package.is_none_or(|updated| dep.name == updated.name.as_str())
+                })
+            })
             .map(|pkg| pkg.manifest_path.as_path()),
     );
     for manifest in all_manifests {
