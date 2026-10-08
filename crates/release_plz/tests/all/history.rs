@@ -493,6 +493,24 @@ async fn nested_metadata_edits_deleted_at_head_are_not_retained() {
     }
 }
 
+#[tokio::test]
+async fn nested_metadata_deletions_are_not_credited_to_content_edits() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = api_history(RELEASED_API).await;
+        let fixture = history.write_commit(path, "original\n", "chore: add fixture");
+        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            fs_err::remove_file(root.join(path)).unwrap();
+            fs_err::write(root.join("src/lib.rs"), RELEASED_API).unwrap();
+        });
+        // HEAD follows the released API but keeps the fixture the release
+        // deleted: its addition differs, not the breaking commit's edit.
+        let follow = history.write_commit("src/lib.rs", RELEASED_API, "fix: follow the release");
+        history.assert_release(&[&fixture, &follow, &sibling], "0.1.1");
+    }
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {

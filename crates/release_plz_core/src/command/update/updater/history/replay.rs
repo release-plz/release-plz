@@ -248,6 +248,8 @@ impl<'a> ChangeReplay<'a> {
 
     /// The paths of the change from `parent` to `tree`, mapped to their paths
     /// in `target`: a merge applies edits to a renamed file at its new path.
+    /// Changes package equality ignores leave their paths out, so the merge
+    /// cannot credit the change with adding or removing a file it only edited.
     fn changed_paths(
         &self,
         parent: &git2::Tree<'_>,
@@ -273,6 +275,7 @@ impl<'a> ChangeReplay<'a> {
             .diff_tree_to_tree(Some(parent), Some(tree), None)?;
         Ok(changed
             .deltas()
+            .filter(|delta| !package_equality_ignores(delta))
             .flat_map(|delta| delta_paths(&delta))
             .map(|path| {
                 (
