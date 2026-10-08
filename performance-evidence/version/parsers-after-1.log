@@ -1,0 +1,35 @@
+    Finished `bench` profile [optimized] target(s) in 0.34s
+     Running benches/changelog_render.rs (/workspace/perf-target/release/deps/changelog_render-48f3861422a3f7f1)
+Gnuplot not found, using plotters backend
+Benchmarking default_git_config
+Benchmarking default_git_config: Warming up for 1.0000 s
+Benchmarking default_git_config: Collecting 30 samples in estimated 2.0004 s (1.1M iterations)
+Benchmarking default_git_config: Analyzing
+default_git_config      time:   [1.7469 µs 1.7597 µs 1.7792 µs]
+                        change: [−99.356% −99.338% −99.323%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+
+Benchmarking changelog_generate/10
+Benchmarking changelog_generate/10: Warming up for 1.0000 s
+Benchmarking changelog_generate/10: Collecting 30 samples in estimated 2.2179 s (3720 iterations)
+Benchmarking changelog_generate/10: Analyzing
+changelog_generate/10   time:   [589.25 µs 601.26 µs 616.05 µs]
+                        change: [−62.052% −61.232% −60.422%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 30 measurements (10.00%)
+  1 (3.33%) low mild
+  2 (6.67%) high mild
+Benchmarking changelog_generate/100
+Benchmarking changelog_generate/100: Warming up for 1.0000 s
+Benchmarking changelog_generate/100: Collecting 30 samples in estimated 2.7330 s (930 iterations)
+Benchmarking changelog_generate/100: Analyzing
+changelog_generate/100  time:   [2.9153 ms 2.9360 ms 2.9589 ms]
+                        change: [−24.067% −22.461% −20.766%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 30 measurements (13.33%)
+  2 (6.67%) high mild
+  2 (6.67%) high severe
+

@@ -1,0 +1,47 @@
+{
+  "default_git_config": {
+    "before": [
+      266.59,
+      266.4,
+      263.77
+    ],
+    "after": [
+      1.7597,
+      1.7278,
+      1.8262
+    ],
+    "reduction_percent": 99.33945195195194,
+    "median_before_us": 266.4,
+    "median_after_us": 1.7597
+  },
+  "changelog_generate/10": {
+    "before": [
+      1546.6,
+      1588.6,
+      1554.5
+    ],
+    "after": [
+      601.26,
+      603.09,
+      601.67
+    ],
+    "reduction_percent": 61.29495014474107,
+    "median_before_us": 1554.5,
+    "median_after_us": 601.67
+  },
+  "changelog_generate/100": {
+    "before": [
+      3936.0,
+      4260.2,
+      3863.5
+    ],
+    "after": [
+      2936.0,
+      2865.2000000000003,
+      2953.3999999999996
+    ],
+    "reduction_percent": 25.40650406504065,
+    "median_before_us": 3936.0,
+    "median_after_us": 2936.0
+  }
+}
