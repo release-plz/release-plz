@@ -132,27 +132,20 @@ impl VersionIncrement {
         commit_messages: &[impl AsRef<str>],
         updater: &VersionUpdater,
     ) -> Self {
-        let can_increment_major = current.major != 0 || updater.breaking_always_increment_major;
         let mut conventional_commits = Vec::new();
         let mut non_conventional_messages = Vec::new();
-        let mut is_breaking_minor_bump = false;
+        let mut is_there_a_breaking_change = false;
 
         for msg in commit_messages {
             let msg = msg.as_ref();
             match Commit::parse(msg) {
                 Ok(commit) => {
                     if commit.breaking() {
-                        // No other commit can request a larger increment.
-                        if can_increment_major {
+                        if current.major != 0 || updater.breaking_always_increment_major {
+                            // No other commit can request a larger increment.
                             return Self::Major;
                         }
-                        if current.minor != 0 {
-                            if updater.custom_major_increment_regex.is_none() {
-                                return Self::Minor;
-                            }
-                            is_breaking_minor_bump = true;
-                        }
-                        // Custom regexes can request a larger increment, even on 0.x versions.
+                        is_there_a_breaking_change = true;
                     }
                     conventional_commits.push(commit);
                 }
@@ -179,7 +172,9 @@ impl VersionIncrement {
                 is_there_a_feature()
                     && (current.major != 0 || updater.features_always_increment_minor)
             };
-            is_breaking_minor_bump
+            // In 0.0.x, breaking changes only increment the patch.
+            let is_breaking_bump = is_there_a_breaking_change && current.minor != 0;
+            is_breaking_bump
                 || is_feat_bump()
                 || is_there_a_custom_match(
                     updater.custom_minor_increment_regex.as_ref(),
