@@ -479,23 +479,32 @@ async fn nested_metadata_deletions_in_the_release_do_not_hide_a_retained_package
 }
 
 #[tokio::test]
-async fn nested_metadata_edits_deleted_at_head_are_not_retained() {
+async fn nested_metadata_edits_discarded_at_head_are_not_retained() {
     let path = "src/Cargo.lock";
-    let history = unpublished_history(BASE_API).await;
-    history.write_commit(path, "original\n", "chore: add fixture");
-    history.publish_snapshot(&[("src/lib.rs", RELEASED_API)]);
-    fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
-    history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let sibling = history.merge_ignored_change("src/fix.rs", |root| {
-        fs_err::write(root.join(path), "reverted\n").unwrap();
-        fs_err::write(root.join("src/lib.rs"), RELEASED_API).unwrap();
-    });
-    // HEAD restores the API from before the breaking commit and deletes the
-    // fixture, discarding the commit's edit to it. HEAD's API differs from
-    // the release's, so only undoing the commit at HEAD shows it is gone.
-    history.repo.git(&["rm", path]).unwrap();
-    let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
-    history.assert_release(&[&restore, &sibling], "0.1.1");
+    // The fixture at HEAD: deleted, or rewritten with other contents.
+    for head_fixture in [None, Some("head\n")] {
+        let history = unpublished_history(BASE_API).await;
+        history.write_commit(path, "original\n", "chore: add fixture");
+        history.publish_snapshot(&[("src/lib.rs", RELEASED_API)]);
+        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            fs_err::write(root.join(path), "reverted\n").unwrap();
+            fs_err::write(root.join("src/lib.rs"), RELEASED_API).unwrap();
+        });
+        // HEAD restores the API from before the breaking commit and deletes or
+        // rewrites the fixture, discarding the commit's edit to it. Undoing the
+        // edit at HEAD then conflicts with the deletion or the rewrite. HEAD's
+        // API differs from the release's, so only undoing the commit at HEAD
+        // shows it is gone.
+        let fixture = history.repo.directory().join(path);
+        match head_fixture {
+            Some(contents) => fs_err::write(fixture, contents).unwrap(),
+            None => fs_err::remove_file(fixture).unwrap(),
+        }
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        history.assert_release(&[&restore, &sibling], "0.1.1");
+    }
 }
 
 #[tokio::test]
