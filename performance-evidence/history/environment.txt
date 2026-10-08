@@ -1,0 +1,14 @@
+Base: release-plz/release-plz main 72465264edf1d99b35e5b02bb01dd71b525b88f8
+Benchmark source: PR #3146, temporary common overlay at ../benchmark-3146.patch
+Rust: rustc 1.99.0 (b940084d7 2026-09-28), cargo 1.99.0
+Host: x86_64-unknown-linux-gnu Linux
+Build: optimized Cargo bench profile, default features
+Scenarios: update/history_100; update/workspace_10_one_change
+Criterion: sample_size=10, Flat, warmup=1 s, measurement=5 s (unmodified PR settings)
+Measurements: 3 independent invocations per variant; order before/cached-lock/readme, readme/cached-lock/before, before/cached-lock/readme
+All builds, tests, and benchmark invocations serialized with flock /workspace/perf-bench.lock.
+The standalone update-bench binary uses CARGO_BIN_EXE_release-plz; before each invocation, the selected preserved CLI binary is copied into that embedded target path.
+Fixture setup/reset and output/version/changelog validation outside timed region. Cargo offline during measured commands.
+Per-run reported values are Criterion mean point estimates; headline is median across the three per-run means.
+Local workspace source/Cargo.toml mtimes are refreshed before each variant build; logs verify release_plz_core recompilation to avoid stale shared-target artifacts across worktrees.
+Criterion automatic change fields compare with the immediately preceding invocation, which may be another candidate due to interleaving. The reported PR improvements instead compare saved mean estimates for each candidate against the preserved main baseline.

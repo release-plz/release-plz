@@ -1,0 +1,23 @@
+Gnuplot not found, using plotters backend
+Benchmarking update/history_100
+Benchmarking update/history_100: Warming up for 1.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 74.6s.
+Benchmarking update/history_100: Collecting 10 samples in estimated 74.649 s (10 iterations)
+Benchmarking update/history_100: Analyzing
+update/history_100      time:   [7.1000 s 7.1691 s 7.2306 s]
+                        change: [+0.3232% +1.8018% +3.2780%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking update/workspace_10_one_change
+Benchmarking update/workspace_10_one_change: Warming up for 1.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 13.7s.
+Benchmarking update/workspace_10_one_change: Collecting 10 samples in estimated 13.726 s (10 iterations)
+Benchmarking update/workspace_10_one_change: Analyzing
+update/workspace_10_one_change
+                        time:   [1.3903 s 1.4589 s 1.5331 s]
+                        change: [+2.2795% +7.6828% +13.463%] (p = 0.02 < 0.05)
+                        Performance has regressed.
+

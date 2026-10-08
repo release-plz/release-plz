@@ -1,0 +1,29 @@
+   Compiling release-plz v0.3.170 (/workspace/perf-history/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 12.27s
+     Running tests/all/main.rs (/workspace/perf-target/release/deps/all-1e04c02bc6f570c7)
+
+running 21 tests
+test update::dependency_updates_preserve_shared_changelog_entries_and_previous_versions ... ok
+test update::dependency_updates_pass_previous_versions_to_shared_changelog_template ... ok
+test update::dependency_updates_pass_previous_versions_to_shared_changelog_template_when_versions_differ ... ok
+test update::dependency_updates_preserve_shared_changelog_previous_versions_when_versions_differ ... ok
+test update::dependency_updates_propagate_through_a_release_disabled_sibling ... ok
+test update::dependency_updates_propagate_through_a_release_commits_filtered_sibling ... ok
+test update::dependency_updates_propagate_through_the_shared_workspace_version ... ok
+test update::dependency_updates_propagate_through_a_breaking_filtered_sibling ... ok
+test update::dependency_updates_respect_prerelease_workspace_versions ... ok
+test update::dependency_updates_respect_pre_bumped_workspace_versions ... ok
+test update::dependency_updates_respect_pre_bumped_workspace_versions_with_release_commits_filter ... ok
+test update::release_commits_does_not_bump_workspace_for_independent_release ... ok
+test update::release_commits_leaves_filtered_workspace_unchanged ... ok
+test update::release_commits_keeps_workspace_bump_for_dependency_updates ... ok
+test update::release_commits_preserves_shared_workspace_version_calculation ... ok
+test update::shared_changelog_keeps_entry_matching_another_package_release ... ok
+test update::update_relocated_workspace_preserves_original_manifests ... ok
+test update::update_refreshes_package_files_for_each_historical_snapshot ... ok
+test update::shared_changelog_previous_version_of_bumped_package_is_its_registry_version ... ok
+test update::update_workspace_with_detached_head ... ok
+test update::update_workspace_with_detached_head_and_explicit_repo_url ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 130 filtered out; finished in 3.74s
+

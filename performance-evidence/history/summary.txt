@@ -1,0 +1,8 @@
+history_100
+before: runs_ms=[7119.1610303, 7169.1293942, 7084.9809049], median_ms=7119.161, reduction=0.00%
+cached-lock: runs_ms=[6983.9657509, 7042.2400823, 6990.8751277], median_ms=6990.875, reduction=1.80%
+readme: runs_ms=[5155.9531822, 5099.376512100001, 5187.5241225], median_ms=5155.953, reduction=27.58%
+workspace_10_one_change
+before: runs_ms=[1389.1299525, 1458.8650195999999, 1351.8107483], median_ms=1389.130, reduction=0.00%
+cached-lock: runs_ms=[1355.1486582999999, 1354.779403, 1396.5243776], median_ms=1355.149, reduction=2.45%
+readme: runs_ms=[1314.2693144, 1329.5467303, 1332.0720400999999], median_ms=1329.547, reduction=4.29%
