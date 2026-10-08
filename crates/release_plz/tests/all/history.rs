@@ -483,14 +483,16 @@ async fn nested_metadata_edits_deleted_at_head_are_not_retained() {
     let path = "src/Cargo.lock";
     let history = unpublished_history(BASE_API).await;
     history.write_commit(path, "original\n", "chore: add fixture");
-    history.publish_snapshot(&[]);
+    history.publish_snapshot(&[("src/lib.rs", RELEASED_API)]);
     fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
     history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     let sibling = history.merge_ignored_change("src/fix.rs", |root| {
         fs_err::write(root.join(path), "reverted\n").unwrap();
-        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+        fs_err::write(root.join("src/lib.rs"), RELEASED_API).unwrap();
     });
-    // Deleting the fixture discards the breaking commit's edit to it.
+    // HEAD restores the API from before the breaking commit and deletes the
+    // fixture, discarding the commit's edit to it. HEAD's API differs from
+    // the release's, so only undoing the commit at HEAD shows it is gone.
     history.repo.git(&["rm", path]).unwrap();
     let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
     history.assert_release(&[&restore, &sibling], "0.1.1");
