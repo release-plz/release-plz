@@ -46,6 +46,31 @@ async fn update_relocated_workspace_preserves_original_manifests() {
 }
 
 #[test]
+fn update_refreshes_package_files_for_each_historical_snapshot() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    let package = repo.directory().join("one");
+    fs_err::write(package.join("src/old.rs"), "pub fn added() {}\n").unwrap();
+    repo.add_all_and_commit("feat: add module").unwrap();
+    fs_err::rename(package.join("src/old.rs"), package.join("src/new.rs")).unwrap();
+    repo.add_all_and_commit("fix: rename module").unwrap();
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(repo.directory(), &[("one", "1.1.0")]);
+    let changelog = fs_err::read_to_string(package.join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("add module"), "{changelog}");
+    assert!(changelog.contains("rename module"), "{changelog}");
+    // There is no release tag: the initial snapshot bounds the walk by package
+    // equality. Reusing HEAD's file list would miss that boundary and include
+    // the initial commit, whose message Repo::init sets to "add README".
+    assert!(!changelog.contains("add README"), "{changelog}");
+}
+
+#[test]
 fn update_workspace_with_detached_head() {
     update_detached_workspace(None);
 }
