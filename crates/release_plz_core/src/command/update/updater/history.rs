@@ -8,7 +8,7 @@ use tracing::warn;
 use crate::{
     diff::Commit,
     fs_utils,
-    package_compare::{CARGO_TOML_ORIG, is_generated_package_file},
+    package_compare::{has_ignored_contents, is_generated_package_file},
 };
 
 use super::PackagePaths;
@@ -259,9 +259,7 @@ impl<'a> RetainedChanges<'a> {
         }
         // Nested metadata contributes to the file list, even when equality
         // ignores its contents. Nested VCS metadata is compared normally.
-        if !change.changes_presence
-            && matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
-        {
+        if !change.changes_presence && has_ignored_contents(path) {
             return false;
         }
         if readme.as_deref() == Some(path) {
