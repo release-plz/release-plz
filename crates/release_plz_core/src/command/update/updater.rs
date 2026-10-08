@@ -267,8 +267,15 @@ impl Updater<'_> {
         // Store diff for each package. This operation is not thread safe, so we do it in one
         // package at a time.
 
-        let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = self
-            .packages_to_process()
+        let packages = self.packages_to_process();
+        // Each successful get_diff restores HEAD before returning, so the
+        // following packages can reuse the checkout left by the previous one.
+        if !packages.is_empty() {
+            repository
+                .checkout_head()
+                .context("can't checkout head to calculate diff")?;
+        }
+        let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = packages
             .iter()
             .map(|&p| {
                 let diff = self
@@ -639,9 +646,6 @@ impl Updater<'_> {
         let package_path = get_package_path(package, repository, self.project.root())
             .context("failed to determine package path")?;
 
-        repository
-            .checkout_head()
-            .context("can't checkout head to calculate diff")?;
         let registry_package = registry_packages.get_registry_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let git_tag = self
