@@ -223,8 +223,9 @@ pub(super) fn update_dependencies(
 ) -> anyhow::Result<()> {
     // Only path dependencies can refer to a workspace package. Metadata includes
     // target-specific, build and dev dependencies, so other member manifests
-    // cannot contain a requirement to update. Always inspect the workspace
-    // manifest, which can contain unused dependency templates.
+    // cannot contain a requirement to update.
+    // Always scan the workspace manifest because cargo metadata omits
+    // [workspace.dependencies] entries that no member inherits.
     let all_manifests = iter::once(workspace_manifest).chain(
         all_packages
             .iter()
