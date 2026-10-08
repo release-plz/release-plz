@@ -148,6 +148,8 @@ impl VersionIncrement {
                         if current.minor != 0 {
                             return Self::Minor;
                         }
+                        // In 0.0.x, breaking changes only increment the patch,
+                        // so later commits can still request a minor increment.
                     }
                     conventional_commits.push(commit);
                 }
