@@ -28,6 +28,8 @@ chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
 git-cliff-core.workspace = true
+# Match the parser used by git-cliff-core.
+git-conventional = "0.12.9"
 ignore.workspace = true
 parse-changelog.workspace = true
 regex.workspace = true
