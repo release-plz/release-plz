@@ -71,6 +71,39 @@ fn update_refreshes_package_files_for_each_historical_snapshot() {
 }
 
 #[test]
+fn update_detects_readme_changes_outside_the_package() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\nreadme = \"../README.md\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    fs_err::copy(
+        repo.directory().join("README.md"),
+        temp_dir.path().join("registry/README.md"),
+    )
+    .unwrap();
+    run_workspace_update(&temp_dir, &repo, None);
+    repo.is_clean().unwrap();
+
+    // Cargo lists the external README under a generated package-relative name.
+    // Package contents can compare equal, so the separate README check matters.
+    fs_err::write(
+        repo.directory().join("README.md"),
+        "# Updated documentation\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: improve documentation")
+        .unwrap();
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("improve documentation"), "{changelog}");
+    assert!(!changelog.contains("add README"), "{changelog}");
+}
+
+#[test]
 fn update_workspace_with_detached_head() {
     update_detached_workspace(None);
 }
