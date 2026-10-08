@@ -413,11 +413,15 @@ async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
+/// Files whose contents package equality ignores, while their presence below
+/// the package root still changes the packaged file list.
+const NESTED_METADATA_FILES: [&str; 2] = ["src/Cargo.lock", "src/Cargo.toml.orig"];
+
 #[tokio::test]
 async fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
-    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+    for path in NESTED_METADATA_FILES {
         let history = api_history(BASE_API).await;
-        let breaking = history.write_commit(path, "fixture\n", "feat!: fixture format");
+        let breaking = history.write_commit(path, "fixture\n", "feat!: add fixture");
         let sibling = history.merge_ignored_change("src/fix.rs", |root| {
             fs_err::remove_file(root.join(path)).unwrap();
         });
@@ -427,13 +431,14 @@ async fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
 
 #[tokio::test]
 async fn nested_metadata_file_deletions_keep_their_breaking_change_marker() {
-    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+    for path in NESTED_METADATA_FILES {
         let history = unpublished_history(BASE_API).await;
         history.write_commit(path, "fixture\n", "chore: add fixture");
         history.publish_snapshot(&[]);
-        fs_err::remove_file(history.repo.directory().join(path)).unwrap();
-        // Keep the commit in the initial file selection so replay checks the
-        // deletion. Package equality ignores this lockfile's contents.
+        history.repo.git(&["rm", path]).unwrap();
+        // The walk only counts commits touching a file Cargo packages at that
+        // commit, which a deleted file no longer is. Also touch the root
+        // lockfile: Cargo packages it, but package equality ignores it.
         let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
         let breaking = history.write_commit(
             "Cargo.lock",
@@ -447,7 +452,7 @@ async fn nested_metadata_file_deletions_keep_their_breaking_change_marker() {
 
 #[tokio::test]
 async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change() {
-    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+    for path in NESTED_METADATA_FILES {
         let history = unpublished_history(BASE_API).await;
         history.write_commit(path, "original\n", "chore: add fixture");
         history.publish_snapshot(&[]);
@@ -460,7 +465,7 @@ async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change()
 
 #[tokio::test]
 async fn nested_metadata_deletions_in_the_release_do_not_hide_a_retained_package_change() {
-    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+    for path in NESTED_METADATA_FILES {
         let history = api_history(BASE_API).await;
         let fixture = history.write_commit(path, "original\n", "chore: add fixture");
         fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
@@ -476,7 +481,7 @@ async fn nested_metadata_deletions_in_the_release_do_not_hide_a_retained_package
 
 #[tokio::test]
 async fn nested_metadata_edits_deleted_at_head_are_not_retained() {
-    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+    for path in NESTED_METADATA_FILES {
         let history = unpublished_history(BASE_API).await;
         history.write_commit(path, "original\n", "chore: add fixture");
         history.publish_snapshot(&[]);
@@ -495,7 +500,7 @@ async fn nested_metadata_edits_deleted_at_head_are_not_retained() {
 
 #[tokio::test]
 async fn nested_metadata_deletions_are_not_credited_to_content_edits() {
-    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+    for path in NESTED_METADATA_FILES {
         let history = api_history(RELEASED_API).await;
         let fixture = history.write_commit(path, "original\n", "chore: add fixture");
         fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
