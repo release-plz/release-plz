@@ -516,6 +516,29 @@ async fn nested_metadata_deletions_are_not_credited_to_content_edits() {
     }
 }
 
+#[tokio::test]
+async fn package_root_metadata_presence_changes_are_not_retained() {
+    let history = api_history(BASE_API).await;
+    // Package equality ignores the root lockfile entirely, even whether it
+    // exists. Untrack it, so that the breaking commit adds it back.
+    history
+        .repo
+        .git(&["rm", "-q", "--cached", "Cargo.lock"])
+        .unwrap();
+    history
+        .repo
+        .git(&["commit", "-q", "-m", "chore: remove lockfile"])
+        .unwrap();
+    history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+        fs_err::remove_file(root.join("Cargo.lock")).unwrap();
+        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+    });
+    // Of the breaking commit's changes, HEAD keeps only the lockfile.
+    let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+    history.assert_release(&[&restore, &sibling], "0.1.1");
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {
