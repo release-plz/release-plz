@@ -86,7 +86,7 @@ impl VersionIncrement {
             return commits.next().map(|_| Self::Prerelease);
         }
 
-        let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
+        let commit_messages: Vec<_> = commits.collect();
 
         if commit_messages.is_empty() {
             None
@@ -129,16 +129,17 @@ impl VersionIncrement {
     /// If no conventional commits are present, the version is incremented as a Patch
     fn from_conventional_commits(
         current: &Version,
-        commit_messages: &[String],
+        commit_messages: &[impl AsRef<str>],
         updater: &VersionUpdater,
     ) -> Self {
         let mut conventional_commits = Vec::new();
         let mut non_conventional_messages = Vec::new();
 
         for msg in commit_messages {
+            let msg = msg.as_ref();
             match Commit::parse(msg) {
                 Ok(commit) => conventional_commits.push(commit),
-                Err(_) => non_conventional_messages.push(msg.as_str()),
+                Err(_) => non_conventional_messages.push(msg),
             }
         }
 
