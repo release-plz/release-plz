@@ -439,13 +439,14 @@ fn file_mode(entry: &git2::TreeEntry<'_>) -> anyhow::Result<git2::FileMode> {
         })
 }
 
-/// Whether package equality ignores `delta`: it ignores executable bits when
-/// contents are unchanged, and edits to files whose contents it ignores, but
-/// not their addition or removal.
+/// Whether package equality ignores `delta`: a modification that changes only
+/// executable bits, or that edits a file whose contents it ignores. Other
+/// changes count, such as additions and removals, which change the packaged
+/// file list.
 fn package_equality_ignores(delta: &git2::DiffDelta<'_>) -> bool {
-    delta.old_file().id() == delta.new_file().id()
-        || (!matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted)
-            && delta_paths(delta).all(ignores_contents))
+    delta.status() == git2::Delta::Modified
+        && (delta.old_file().id() == delta.new_file().id()
+            || delta_paths(delta).all(ignores_contents))
 }
 
 /// Whether package equality ignores `conflict`, as [`package_equality_ignores`]
