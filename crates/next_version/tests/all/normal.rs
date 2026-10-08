@@ -82,22 +82,26 @@ fn commit_with_breaking_change_increments_major_version_when_major_and_minor_are
 }
 
 #[test]
-fn breaking_change_followed_by_other_commits() {
+fn breaking_change_among_other_commits() {
     for breaking in [
         "feat!: break user",
         "feat: change behavior\n\nBREAKING CHANGE: break user",
     ] {
-        let commits = [breaking, "feat: add feature", "fix: correct behavior"];
-        for (version, expected) in [
-            (Version::new(0, 0, 3), Version::new(0, 0, 4)),
-            (Version::new(0, 2, 3), Version::new(0, 3, 0)),
-            (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+        for commits in [
+            [breaking, "feat: add feature", "fix: correct behavior"],
+            ["fix: correct behavior", "feat: add feature", breaking],
         ] {
-            assert_eq!(
-                version.next(commits),
-                expected,
-                "{breaking:?} from {version}"
-            );
+            for (version, expected) in [
+                (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+                (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+                (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+            ] {
+                assert_eq!(
+                    version.next(commits),
+                    expected,
+                    "{commits:?} from {version}"
+                );
+            }
         }
     }
 }
