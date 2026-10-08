@@ -73,22 +73,23 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let commit_messages: Vec<String> = commits
-            .into_iter()
-            .filter_map(|c| {
-                let message = c.as_ref();
-                let should_skip = updater
-                    .no_increment_regex
-                    .as_ref()
-                    .is_some_and(|regex| commit_matches_custom_regex(regex, message));
-                (!should_skip).then(|| message.to_string())
-            })
-            .collect();
+        let mut commits = commits.into_iter().filter(|c| {
+            let message = c.as_ref();
+            let should_skip = updater
+                .no_increment_regex
+                .as_ref()
+                .is_some_and(|regex| commit_matches_custom_regex(regex, message));
+            !should_skip
+        });
+
+        if !current_version.pre.is_empty() {
+            return commits.next().map(|_| Self::Prerelease);
+        }
+
+        let commit_messages: Vec<String> = commits.map(|c| c.as_ref().to_string()).collect();
 
         if commit_messages.is_empty() {
             None
-        } else if !current_version.pre.is_empty() {
-            Some(Self::Prerelease)
         } else {
             // Parse commits and keep only the ones that follow conventional commits specification.
             Some(Self::from_conventional_commits(
