@@ -52,3 +52,9 @@ cargo bench --locked -p release-plz --bench manifest_updates
 Extends the manifest benchmark from PR #3146 with 10- and 100-package dependency chains, retaining the independent 100-package control. Each call updates package-0 with alternating versions; dependent and unrelated requirements are checked outside timing. Metadata and fixture creation are excluded. Three pairs reverse order in pair 2. Raw runs and complete slope-estimate tables are in `manifest/`. The chain cases improve in all three pairs; the independent control has a 13.61% slower median and mixed per-pair direction. These are manifest-editing measurements, not whole-command speedups.
 
 Two further candidates were rejected: broader changelog configuration ownership regressed measured workloads, and coalescing file metadata queries did not improve consistently across three controlled runs. No production PR was opened for either.
+
+## Production PRs and final validation
+
+Six independent PRs target main: #3170 (changelog config borrowing), #3171 (workspace HEAD restoration), #3172 (cached history lockfile restoration), #3173 (lazy default config), #3174 (workspace version selection), and #3175 (dependent manifest filtering). Their diffs contain no benchmark code or dependencies. Each PR describes its own three before/after measurements and workload limitations.
+
+All six production changes were also tested together with main's dependency update at `6a9b933f`: 456 tests passed, zero failed, and three were ignored. Formatting and Clippy with warnings denied passed. Commands, counts, and test summaries are retained in `validation/`. The aggregate commit identifier is local validation bookkeeping; the independently published production commits are the PR heads.

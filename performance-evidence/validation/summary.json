@@ -1,0 +1,15 @@
+{
+  "passed": 456,
+  "failed": 0,
+  "ignored": 3,
+  "test_suites": 16,
+  "format": "passed",
+  "clippy": "passed, warnings denied",
+  "aggregate_commit": "944a15bc5fb544d4f4b42ee98b122d3a864a9f98",
+  "main_compatibility": "6a9b933f56f7c860f529c57e394b28132cf7fe15",
+  "commands": [
+    "cargo fmt --all -- --check",
+    "cargo test --locked --all-features --workspace",
+    "cargo clippy --locked --all-targets --all-features --workspace -- -D warnings"
+  ]
+}
