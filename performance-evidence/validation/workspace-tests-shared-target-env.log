@@ -1,0 +1,462 @@
+   Compiling cargo_utils v0.1.85 (/workspace/perf-validation/crates/cargo_utils)
+   Compiling next_version v0.3.2 (/workspace/perf-validation/crates/next_version)
+   Compiling git_cmd v0.8.0 (/workspace/perf-validation/crates/git_cmd)
+   Compiling test_logs v0.1.34 (/workspace/perf-validation/crates/test_logs)
+   Compiling fake_package v0.1.0 (/workspace/perf-validation/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-validation/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-validation/crates/release_plz)
+    Finished `test` profile [unoptimized] target(s) in 12.92s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/cargo_utils-d1c8bd10c6e89dd2)
+
+running 7 tests
+test registry::tests::cargo_info_token_env_var_name_for_crates_io_works ... ok
+test registry::tests::test_get_registry_env_var_name ... ok
+test registry::tests::cargo_info_token_env_var_name_invalid_registry_fails ... ok
+test registry::tests::cargo_info_token_env_var_name_normalizes_dashes ... ok
+test token::tests::test_parse_cargo_credentials_empty ... ok
+test token::tests::test_parse_cargo_credentials_both ... ok
+test token::tests::test_parse_cargo_credentials_cratesio_only ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/fake_package-d19c8faa2f1febc3)
+
+running 3 tests
+test package::tests::unpublishable_package_has_no_registries ... ok
+test package::tests::default_package_has_no_publish_restriction_and_no_targets ... ok
+test package::tests::builders_set_publish_and_targets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/git_cmd-d766f42a6d9787ea)
+
+running 17 tests
+test tests::changes_files_except_typechanges_are_detected ... ok
+test tests::clean_project_is_recognized ... ok
+test tests::configured_upstream_is_used ... ok
+test tests::commit_range_uses_the_given_tip_and_exclusions ... ok
+test tests::commit_range_ignores_missing_but_not_unreachable_boundaries ... ok
+test tests::dirty_project_is_recognized ... ok
+test tests::commit_limit_keeps_the_newest_commit_of_every_branch ... ok
+test tests::current_commit_is_retrieved ... ok
+test tests::detached_head_is_restored_after_checking_out_history ... ok
+test tests::existing_tag_is_recognized ... ok
+test tests::inexistent_previous_commit_detected ... ok
+test tests::non_existing_tag_is_recognized ... ok
+test tests::full_history_ancestors_keep_the_parent_a_simplified_walk_drops ... ok
+test tests::previous_commit_is_retrieved ... ok
+test tests::full_history_ancestors_exclude_each_release_boundary ... ok
+test tests::tags_are_retrieved ... ok
+test tests::simplified_parents_start_at_the_first_kept_commit ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/next_version-a6c07568ebd2bd3b)
+
+running 4 tests
+test version_increment::tests::returns_false_for_conventional_commit_with_matching_description_but_not_type ... ok
+test version_increment::tests::returns_true_for_matching_conventional_commit_type ... ok
+test version_increment::tests::returns_false_for_empty_commits_list ... ok
+test version_increment::tests::returns_true_for_matching_non_conventional_commit ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/all/main.rs (/workspace/release-plz/target/debug/deps/all-657a2d3a22f9f1bc)
+
+running 29 tests
+test normal::commit_with_breaking_change_increments_major_version_when_major_is_zero ... ok
+test normal::commit_with_breaking_change_increments_major_version ... ok
+test normal::commit_with_breaking_change_increments_minor_version_when_major_is_zero ... ok
+test normal::breaking_changes_keep_version_zero_rules_when_followed_by_other_commits ... ok
+test normal::commit_with_feat_semver_prefix_increments_minor_version_when_major_is_zero ... ok
+test normal::commit_with_feat_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_feat_semver_prefix_increments_patch_version_when_major_is_zero ... ok
+test normal::commit_with_scope ... ok
+test normal::commit_with_fix_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_scope_minor ... ok
+test normal::commit_with_scope_whitespace ... ok
+test normal::commit_without_semver_prefix_increments_patch_version ... ok
+test normal::conventional_commit_with_matching_description_does_not_trigger_custom_regex ... ok
+test normal::commit_with_custom_minor_increment_regex_increments_minor_version ... ok
+test normal::commit_with_custom_major_increment_regex_increments_major_version ... ok
+test normal::no_increment_regex_does_not_match_conventional_commit_description ... ok
+test normal::non_conventional_commit_with_custom_major_increment_regex_increments_major_version ... ok
+test normal::ignored_breaking_change_does_not_trigger_a_bump ... ok
+test normal::no_increment_regex_filters_matching_commits_but_keeps_other_bumps ... ok
+test normal::non_conventional_commit_with_custom_minor_increment_regex_increments_minor_version ... ok
+test pre_release::commit_with_breaking_change_increments_pre_release_version ... ok
+test pre_release::commit_without_semver_prefix_increments_pre_release_version ... ok
+test normal::non_conventional_commit_with_no_increment_regex_does_not_increment_version ... ok
+test pre_release::dot_1_is_added_to_character_identifier_in_pre_release ... ok
+test pre_release::dot_1_is_added_to_last_identifier_in_pre_release ... ok
+test normal::no_increment_regex_skips_prerelease_increment ... ok
+test pre_release::dot_1_is_added_to_unversioned_pre_release ... ok
+test pre_release::no_commits_leave_pre_release_unchanged ... ok
+test pre_release::pre_release_increment_uses_first_commit_not_ignored_by_regex ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/workspace/release-plz/target/debug/deps/release_plz-4dd294d0708a6ddc)
+
+running 39 tests
+test args::config_path::tests::load_config_ignores_dot_config_regular_file ... ok
+test args::config_path::tests::load_config_no_config_file_uses_default ... ok
+test args::config_path::tests::load_config_with_invalid_toml ... ok
+test args::config_path::tests::load_config_with_specified_path_not_found ... ok
+test args::git_forge::tests::explicit_github_forge_accepts_enterprise_host ... ok
+test args::git_forge::tests::implicit_github_forge_rejects_unknown_host ... ok
+test args::config_path::tests::load_config_with_specified_path_success ... ok
+test args::config_path::tests::load_config_uses_first_existing_default_path ... ok
+test args::release_pr::tests::git_github_url_is_parsed ... ok
+test args::release_pr::tests::gitea_url_is_parsed ... ok
+test args::release_pr::tests::https_github_url_is_parsed ... ok
+test args::release::tests::default_config_is_converted_to_default_release_request ... ok
+test args::release::tests::input_generates_correct_release_request ... ok
+test args::release::tests::package_config_is_overriden ... ok
+test config::tests::config_is_deserialized ... ok
+test config::tests::config_is_serialized ... ok
+test config::tests::config_package_release_is_deserialized_false ... ok
+test config::tests::config_package_release_is_deserialized_true ... ok
+test config::tests::config_without_update_config_is_deserialized ... ok
+test config::tests::config_workspace_release_is_deserialized_false ... ok
+test config::tests::config_workspace_release_is_deserialized_true ... ok
+test config::tests::custom_minor_increment_regex_is_deserialized ... ok
+test config::tests::custom_minor_increment_regex_is_serialized ... ok
+test changelog_config::tests::test_deserialize_toml ... ok
+test config::tests::test_parse_duration ... ok
+test config::tests::wrong_changelog_section_is_not_deserialized ... ok
+test config::tests::wrong_config_section_is_not_deserialized ... ok
+test config::tests::wrong_package_section_is_not_deserialized ... ok
+test config::tests::wrong_workspace_section_is_not_deserialized ... ok
+test changelog_config::tests::test_commit_parser_continue ... ok
+test args::update::tests::input_generates_correct_release_request ... ok
+test generate_schema::tests::schema_contains_id_field ... ok
+test init::actions_yaml_string_with_persist_credentials_is_correct ... ok
+test init::actions_yaml_string_with_trusted_publishing_is_correct ... ok
+test init::tests::actions_yaml_string_is_correct ... ok
+test update_checker::tests::version_is_extracted ... ok
+test init::tests::actions_yaml_string_with_custom_token_is_correct ... ok
+test config::tests::generated_release_notes_respect_workspace_defaults_and_package_overrides ... ok
+test generate_schema::tests::schema_is_up_to_date ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/all/main.rs (/workspace/release-plz/target/debug/deps/all-ca999d28180a254c)
+
+running 111 tests
+test changelog::can_generate_single_changelog_for_multiple_packages_in_pr ... ignored
+test changelog::can_generate_single_changelog_for_multiple_packages_locally ... ignored
+test changelog::pr_link_is_expanded ... ignored
+test changelog::raw_message_contains_entire_commit_message ... ignored
+test changelog::release_plz_adds_changelog_on_new_project ... ignored
+test changelog::release_plz_adds_custom_changelog ... ignored
+test changelog::release_plz_does_not_open_release_pr_if_there_are_no_release_commits ... ignored
+test changelog::release_plz_releases_a_new_project ... ignored
+test git_only::git_only_breaking_change ... ignored
+test git_only::git_only_checks_semver_with_versionless_private_dependencies ... ignored
+test git_only::git_only_detects_changes_to_inherited_readme ... ignored
+test git_only::git_only_does_not_release_binary_for_library_dev_dependency_update ... ignored
+test git_only::git_only_does_not_release_unrelated_binaries_for_workspace_lock_changes ... ignored
+test git_only::git_only_feat_commit_minor_bump ... ignored
+test git_only::git_only_finds_highest_version_tag ... ignored
+test git_only::git_only_ignores_non_matching_tags ... ignored
+test git_only::git_only_invalid_tag_format ... ignored
+test git_only::git_only_mixed_annotated_and_lightweight_tags ... ignored
+test git_only::git_only_multiple_packages_changed_workspace ... ignored
+test git_only::git_only_no_matching_tag_creates_initial_release ... ignored
+test git_only::git_only_no_tags_creates_initial_release ... ignored
+test git_only::git_only_per_package_prefix ... ignored
+test git_only::git_only_processes_packages_with_publish_false_in_manifest ... ignored
+test git_only::git_only_release_creates_tag ... ignored
+test git_only::git_only_release_does_not_check_crates_io ... ignored
+test git_only::git_only_releases_dependents_of_versionless_private_libraries_together ... ignored
+test git_only::git_only_releases_workspace_with_versionless_private_dependencies ... ignored
+test git_only::git_only_respects_release_commits_regex ... ignored
+test git_only::git_only_update_handles_non_verifiable_release ... ignored
+test git_only::git_only_update_handles_packages_sharing_a_release_tag ... ignored
+test git_only::git_only_update_handles_root_package_path_dependencies ... ignored
+test git_only::git_only_update_handles_workspace_path_dependencies_at_different_commits ... ignored
+test git_only::git_only_updates_root_package_with_versionless_dependency ... ignored
+test git_only::git_only_with_custom_tag_name ... ignored
+test git_only::git_only_with_default_tag_name ... ignored
+test git_only::git_only_with_lightweight_tags ... ignored
+test git_only::git_only_with_package_overrides_keeps_workspace_git_only ... ignored
+test git_only::git_only_with_publish_disabled_succeeds ... ignored
+test git_only::git_only_with_publish_enabled_fails_validation ... ignored
+test git_only::git_only_with_publish_enabled_fails_validation_release_cmd ... ignored
+test git_only::git_only_workspace_level_applies_to_all ... ignored
+test git_only::git_only_workspace_with_package_publish_enabled_fails ... ignored
+test helpers::gitea::gitea_new::can_create_gitea_repository ... ignored
+test release::release_info_contains_prs_in_changelog ... ignored
+test release::release_plz_can_do_backports ... ignored
+test release::release_plz_does_not_release_a_new_project_if_release_always_is_false ... ignored
+test release::release_plz_does_not_releases_twice ... ignored
+test release::release_plz_releases_a_new_project_with_custom_release ... ignored
+test release::release_plz_releases_a_new_project_with_custom_tag_name ... ignored
+test release::release_plz_releases_after_release_pr_merged ... ignored
+test release_pr::changelog_is_not_updated_if_version_already_exists_in_changelog ... ignored
+test release_pr::changelog_is_updated_correctly_if_no_new_line_after_h1 ... ignored
+test release_pr::release_plz_adds_labels_to_release_pr ... ignored
+test release_pr::release_plz_can_do_backport_prs ... ignored
+test release_pr::release_plz_detects_cargo_lock_updates_from_registry ... ignored
+test release_pr::release_plz_detects_edited_readme_cargo_toml_field ... ignored
+test release_pr::release_plz_detects_symlink_package_changes ... ignored
+test release_pr::release_plz_does_not_release_version_group_without_matching_release_commits ... ignored
+test release_pr::release_plz_doesnt_add_invalid_labels_to_release_pr ... ignored
+test release_pr::release_plz_handles_invalid_readme_path_gracefully ... ignored
+test release_pr::release_plz_handles_nonexistent_readme_path_in_cargo_toml ... ignored
+test release_pr::release_plz_honors_features_always_increment_minor_flag ... ignored
+test release_pr::release_plz_opens_pr_with_breaking_changes ... ignored
+test release_pr::release_plz_opens_pr_with_breaking_changes_after_rlib_to_lib ... ignored
+test release_pr::release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib ... ignored
+test release_pr::release_plz_opens_pr_with_default_config ... ignored
+test release_pr::release_plz_opens_pr_with_two_packages_and_default_config ... ignored
+test release_pr::release_plz_opens_pr_without_breaking_changes ... ignored
+test release_pr::release_plz_should_fail_for_multi_package_pr ... ignored
+test release_pr::release_plz_should_set_custom_pr_details ... ignored
+test release_pr::release_plz_updates_binary_when_library_changes ... ignored
+test release_pr::release_plz_updates_binary_when_library_changes_commit_regex ... ignored
+test release_pr::release_plz_updates_binary_when_library_has_breaking_changes ... ignored
+test release_pr::release_plz_updates_binary_with_no_commits_and_dependency_change ... ignored
+test release_pr::release_plz_updates_changelog_when_version_already_bumped ... ignored
+test release_pr::release_plz_updates_commit_message_when_version_changes ... ignored
+test release_pr::release_plz_updates_whole_version_group_with_matching_release_commits ... ignored
+test release_pr::release_plz_works_with_valid_readme_path ... ignored
+test release_pr::release_pr_pre_bumped_shared_versions_update_dependency_requirements ... ignored
+test release_pr::release_pr_shared_versions_propagate_through_unreleased_siblings ... ignored
+test set_version::set_version_requires_package_names_without_workspace_version ... ok
+test set_version::set_version_preserves_inheritance_for_single_package ... ok
+test completion_test::test_generate_completions ... ok
+test set_version::set_version_does_not_rewrite_manifests_without_dependency_changes ... ok
+test set_version::set_version_updates_shared_workspace_changelog_once ... ok
+test set_version::set_version_updates_inherited_workspace_version ... ok
+test set_version::set_version_updates_target_dependencies_and_unused_workspace_templates ... ok
+test set_version::set_version_updates_version_in_package ... ok
+test set_version::set_version_updates_version_in_workspace ... ok
+test update::dependency_updates_pass_previous_versions_to_shared_changelog_template ... ok
+test update::dependency_updates_pass_previous_versions_to_shared_changelog_template_when_versions_differ ... ok
+test update::dependency_updates_preserve_shared_changelog_entries_and_previous_versions ... ok
+test update::dependency_updates_preserve_shared_changelog_previous_versions_when_versions_differ ... ok
+test update::dependency_updates_propagate_through_a_release_disabled_sibling ... ok
+test update::dependency_updates_propagate_through_a_release_commits_filtered_sibling ... ok
+test update::dependency_updates_propagate_through_the_shared_workspace_version ... ok
+test update::dependency_updates_propagate_through_a_breaking_filtered_sibling ... ok
+test update::dependency_updates_respect_prerelease_workspace_versions ... ok
+test update::dependency_updates_respect_pre_bumped_workspace_versions ... ok
+test update::dependency_updates_respect_pre_bumped_workspace_versions_with_release_commits_filter ... ok
+test update::release_commits_does_not_bump_workspace_for_independent_release ... ok
+test update::release_commits_leaves_filtered_workspace_unchanged ... ok
+test update::release_commits_keeps_workspace_bump_for_dependency_updates ... ok
+test update::release_commits_preserves_shared_workspace_version_calculation ... ok
+test update::shared_changelog_keeps_entry_matching_another_package_release ... ok
+test update::update_refreshes_package_files_for_each_historical_snapshot ... ok
+test update::update_relocated_workspace_preserves_original_manifests ... ok
+test update::update_detects_readme_changes_outside_the_package ... ok
+test update::shared_changelog_previous_version_of_bumped_package_is_its_registry_version ... ok
+test update::update_workspace_with_detached_head ... ok
+test update::update_workspace_with_detached_head_and_explicit_repo_url ... ok
+
+test result: ok. 31 passed; 0 failed; 80 ignored; 0 measured; 0 filtered out; finished in 2.53s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/release_plz_core-268dc00618656016)
+
+running 183 tests
+test changelog::tests::changelog_has_commit_id ... ok
+test changelog::tests::changelog_entry_with_link_is_generated ... ok
+test changelog::tests::changelog_entries_are_generated ... ok
+test changelog::empty_changelog_is_updated ... ok
+test changelog::tests::changelog_is_updated ... ok
+test changelog_parser::tests::changelog_header_is_parsed ... ok
+test changelog::tests::changelog_sort_newest ... ok
+test changelog_parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test changelog_parser::tests::changelog_header_with_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test changelog::tests::changelog_without_header_is_updated ... ok
+test changelog_parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test changelog::tests::generated_changelog_is_updated_correctly ... ok
+test changelog_parser::tests::changelog_header_isnt_recognized ... ok
+test command::release::tests::check_publish_fields_works ... ok
+test command::release::tests::check_publish_fields_skips_git_only_packages ... ok
+test command::release::tests::generated_release_notes_allow_disabled_release_on_other_forges ... ok
+test command::release::tests::git_release_config_pre_release_auto_works ... ok
+test command::release::tests::git_release_config_pre_release_default_works ... ok
+test command::release::tests::git_release_config_pre_release_pre_works ... ok
+test command::release::tests::git_only_packages_are_never_published ... ok
+test command::release::tests::release_config_git_only_reaches_release_rule ... ok
+test command::release::tests::generated_release_notes_are_validated_before_accessing_the_repository ... ok
+test command::release::tests::release_request_registry_token_env_works ... ok
+test command::release::tests::should_reference_env_var_provided_index ... ok
+test command::release_pr::tests::github_cleans_up_temporary_branch_when_force_push_fails ... ok
+test command::release_pr::tests::github_cleans_up_temporary_branch_when_graphql_commit_fails ... ok
+test command::release::tests::release_ignores_pr_commits_outside_detached_history ... ok
+test command::release::tests::release_with_detached_head_respects_release_always ... ok
+test command::release_pr::tests::github_refuses_to_update_pr_on_non_release_branch ... ok
+test command::trusted_publishing::tests::audience_from_url_works ... ok
+test command::release_pr::tests::release_pr_rejects_detached_head_before_accessing_forge ... ok
+test command::update::update_config::tests::version_updater_with_custom_major_regex ... ok
+test command::update::update_config::tests::version_updater_with_custom_minor_regex ... ok
+test command::update::update_config::tests::version_updater_with_invalid_regex ... ok
+test command::update::update_config::tests::version_updater_without_custom_regex ... ok
+test command::release_pr::tests::github_updates_existing_pr_without_git_remote_access ... ok
+test command::update::updater::history::replay::tests::legacy_file_modes_do_not_abort_the_replay ... ok
+test command::update::updater::history::replay::tests::replayed_trees_hold_only_the_package_and_its_readme ... ok
+test command::update::updater::history::tests::a_merge_commit_is_replayed_relative_to_its_first_parent ... ok
+test command::update::updater::history::tests::a_root_commit_can_be_replayed ... ok
+test command::update::updater::history::replay::tests::submodules_are_not_fetched ... ok
+test command::update::package_dependencies::tests::versionless_and_workspace_dependencies_to_update ... ok
+test command::update::updater::history::tests::non_utf8_paths_are_scoped_to_the_package_directory ... ok
+test command::release::tests::release_uses_prepared_commit_and_restores_checkout ... ok
+test command::update::updater::history::tests::global_merge_attributes_are_isolated ... ok
+test command::update::updater::tests::contributors_are_unique_and_have_usernames ... ok
+test command::update::updater::tests::only_rust_library_targets_are_libraries ... ok
+test command::update::updater::tests::same_version_is_not_added_to_changelog ... ok
+test command::update::updater::tests::target_with_cdylib_and_rlib_kinds_is_a_library ... ok
+test copy_dir::tests::file_deleted_during_copy_is_ignored ... ok
+test command::update::updater::history::tests::merge_configuration_is_isolated_without_changing_worktree_indexes ... ok
+test copy_dir::tests::git_file_is_copied_despite_ignore_rules ... ok
+test command::update::updater::history::tests::undoing_a_deletion_re_adds_the_original_packaged_path ... ok
+test copy_dir::tests::ignored_symlink_ancestors_preserve_tracked_deletions ... ok
+test copy_dir::tests::ignored_tracked_file_replaced_by_directory_preserves_deletion ... ok
+test command::update::updater::history::tests::release_conflicts_do_not_prove_partly_released_or_binary_changes_absent ... ok
+test copy_dir::tests::ignored_tracked_paths_preserve_whitespace ... ok
+test copy_dir::tests::is_dir_copied_correctly ... ok
+test copy_dir::tests::is_symlink_created_before_file_exists ... ok
+test copy_dir::tests::is_symlink_created_if_file_exists ... ok
+test copy_dir::tests::ignored_tracked_files_preserve_working_tree_changes ... ok
+test copy_dir::tests::tracked_directory_replaced_by_file_is_copied ... ok
+test copy_dir::tests::git_metadata_is_copied_despite_ignore_rules ... ok
+test copy_dir::tests::tracked_files_are_copied_with_split_and_sparse_indexes ... ok
+test diff::tests::conventional_commit_check_uses_the_message ... ok
+test diff::tests::remote_is_omitted_from_cliff_commit_without_remote_info ... ok
+test diff::tests::remote_pr_number_is_kept_in_cliff_commit_without_username ... ok
+test diff::tests::test_is_commit_message_matched ... ok
+test diff::tests::test_is_commit_message_not_matched ... ok
+test download::tests::downloading_non_existing_package_does_not_error ... ignored, requires network
+test download::tests::one_package_is_downloaded ... ignored, requires network
+test download::tests::two_packages_are_downloaded ... ignored, requires network
+test git::forge::tests::contributors_are_extracted_from_commits ... ok
+test copy_dir::tests::tracked_files_are_copied_despite_ignore_rules ... ok
+test git::forge::tests::generated_release_notes_reject_unsupported_forges ... ok
+test copy_dir::tests::ignored_tracked_submodule_files_are_copied ... ok
+test git::github_graphql::tests::github_commit_query ... ok
+test git::github_graphql::tests::graphql_endpoint_from_rest_base_dotcom ... ok
+test git::github_graphql::tests::graphql_endpoint_from_rest_base_ghes ... ok
+test git::github_graphql::tests::graphql_endpoint_from_rest_base_ghes_with_port ... ok
+test git::gitlab_graphql::tests::graphql_endpoint_is_derived_from_rest_base ... ok
+test git::gitlab_graphql::tests::graphql_errors_are_reported ... ok
+test git::forge::tests::remote_commit_username_is_read_from_rest_commit ... ok
+test copy_dir::tests::submodule_absolute_symlinks_preserve_outer_copy_root ... ok
+test git::gitlab_graphql::tests::missing_project_is_an_error ... ok
+test git::forge::tests::generated_release_notes_are_sent_only_when_configured_on_github ... ok
+test git::gitlab_graphql::tests::unreadable_repository_is_an_error ... ok
+test git::gitlab_graphql::tests::username_is_none_when_commit_is_not_in_remote_repository ... ok
+test git::gitlab_graphql::tests::username_is_none_when_no_user_matches_author_email ... ok
+test git::gitlab_graphql::tests::username_is_read_from_commit_author ... ok
+test lock_compare::tests::registry_lock_comparison_skips_missing_lockfiles ... ok
+test lock_compare::tests::lock_comparison_fails_on_stale_local_lockfile ... ok
+test lock_compare::tests::registry_lock_comparison_detects_update_when_another_member_keeps_old_version ... ok
+test lock_compare::tests::released_workspace_fails_on_invalid_lockfile ... ok
+test lock_compare::tests::registry_workspace_lock_comparison_ignores_other_members_dependencies ... ok
+test lock_compare::tests::workspace_lock_comparison_distinguishes_same_named_path_packages ... ok
+test lock_compare::tests::workspace_lock_comparison_follows_source_qualified_git_dependencies ... ok
+test lock_compare::tests::workspace_lock_comparison_ignores_transitive_dev_dependencies ... ok
+test lock_compare::tests::workspace_lock_comparison_distinguishes_path_and_git_packages ... ok
+test lock_compare::tests::workspace_lock_comparison_distinguishes_dependency_sources ... ok
+test lock_compare::tests::workspace_lock_comparison_ignores_git_dev_dependency_with_plus_in_branch ... ok
+test lock_compare::tests::workspace_lock_comparison_treats_stale_released_lockfile_as_updated ... ok
+test lock_compare::tests::workspace_lock_comparison_ignores_unrelated_packages ... ok
+test lock_compare::tests::workspace_lock_comparison_uses_lockfile_committed_at_release ... ok
+test next_ver::tests::git_only_packages_share_released_workspace_metadata ... ok
+test next_ver::tests::git_only_reconstruction_uses_historical_cargo_config ... ok
+test next_ver::tests::packages_taking_part_in_a_release ... ok
+test next_ver::tests::reconstruction_preserves_existing_package_named_worktree ... ok
+test lock_compare::tests::workspace_lock_comparison_preserves_replaced_path_dependencies ... ok
+test package_compare::tests::compare_files_handles_empty_files_and_buffer_boundaries ... ok
+test package_compare::tests::compare_files_reports_missing_files ... ok
+test package_compare::tests::compare_packaged_files_ignores_extraction_marker ... ok
+test package_compare::tests::compare_packaged_files_ignores_lockfile_presence_and_contents ... ok
+test next_ver::tests::git_only_reconstructs_package_without_running_build_script ... ok
+test package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes ... FAILED
+test package_compare::tests::unpacked_package_is_listed_without_running_cargo ... ok
+test pr::tests::default_pr_body_template_renders ... ok
+test pr_parser::tests::parse_pr_correctly ... ok
+test pr_parser::tests::parse_pr_links_for_all_forges ... ok
+test package_compare::tests::package_without_original_manifest_uses_cargo_file_selection ... ok
+test project::tests::project_new_no_release_will_error ... ok
+test project::tests::project_release_and_tag_template_some ... ok
+test project::tests::project_tag_template_none ... ok
+test project::tests::test_empty_override ... ok
+test project::tests::test_for_typos ... ok
+test project::tests::test_license_file ... ok
+test project::tests::single_package_does_not_change_default_tag_template ... ok
+test project::tests::test_successful_override ... ok
+test release_order::tests::single_package_is_returned ... ok
+test release_order::tests::three_packages_are_ordered ... ok
+test release_order::tests::three_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_is_ok ... ok
+test release_order::tests::two_packages_dev_cycle_with_package_in_features_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_with_random_feature_is_ok ... ok
+test project::tests::test_typo_in_crate_names ... ok
+test release_regex::tests::release_regex_custom_template ... ok
+test release_regex::tests::release_regex_escapes_special_chars_in_package_name ... ok
+test release_regex::tests::release_regex_escapes_special_chars_in_template ... ok
+test release_regex::tests::release_regex_invalid_tera_syntax ... ok
+test release_regex::tests::release_regex_package_and_version_template ... ok
+test release_order::tests::workspace_release_order_is_correct ... ok
+test repo_url::tests::file_url_does_not_identify_a_provider ... ok
+test repo_url::tests::gh_release_link_for_crates_already_published ... ok
+test repo_url::tests::gh_release_link_works_for_first_release ... ok
+test repo_url::tests::git_pr_link_uses_merge_requests_for_gitlab ... ok
+test repo_url::tests::git_pr_link_uses_pull_for_github_including_enterprise ... ok
+test repo_url::tests::git_pr_link_uses_pulls_for_gitea ... ok
+test repo_url::tests::github_api_url_dotcom ... ok
+test repo_url::tests::github_api_url_dotcom_aliases ... ok
+test repo_url::tests::github_api_url_dotcom_http_still_uses_https ... ok
+test repo_url::tests::github_api_url_enterprise_https ... ok
+test repo_url::tests::github_api_url_enterprise_ssh_origin ... ok
+test repo_url::tests::github_enterprise_git_transport_uses_https_without_git_port ... ok
+test release_regex::tests::release_regex_version_only_template ... ok
+test repo_url::tests::github_enterprise_https_port_is_kept_for_api_and_web_links ... ok
+test repo_url::tests::github_enterprise_ssh_port_is_not_reused_for_https ... ok
+test repo_url::tests::gitlab_api_url ... ok
+test repo_url::tests::scp_hosts_can_match_url_schemes ... ok
+test repo_url::tests::scp_style_ipv6_url ... ok
+test repo_url::tests::scp_style_path_can_contain_ipv6_separator_characters ... ok
+test repo_url::tests::ssh_scheme_aliases_use_https_for_gitlab_api ... ok
+test repo_url::tests::standard_git_url_parts ... ok
+test repo_url::tests::trailing_slash_is_removed_from_repo_path ... ok
+test repo_url::tests::windows_file_paths_do_not_identify_a_provider ... ok
+test lock_compare::tests::workspace_lock_comparison_preserves_patched_path_dependencies ... ok
+test tera::tests::default_body_template_is_rendered ... ok
+test tera::tests::default_tag_template_multi_package ... ok
+test tera::tests::default_tag_template_single_package ... ok
+test tera::tests::template_renders_custom_format ... ok
+test tera::tests::template_renders_package_and_version ... ok
+test tera::tests::template_renders_version_only ... ok
+test url_utils::tests::url_components_are_percent_encoded ... ok
+test version::tests::next_version_bumps_0_x_minor_version_for_features ... ok
+test version::tests::next_version_doesnt_bump_0_x_minor_version_for_features ... ok
+test version::tests::next_version_of_existing_package_is_updated ... ok
+test version::tests::next_version_of_new_package_is_unchanged ... ok
+test package_compare::tests::compare_source_packages_uses_cargo_file_selection ... ok
+test semver_check::tests::only_major_changes_are_incompatible ... ok
+test semver_check::tests::checks_private_library_with_versionless_dependency ... ok
+
+failures:
+
+---- package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes stdout ----
+
+thread 'package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes' (55926) panicked at crates/release_plz_core/src/package_compare.rs:458:89:
+called `Result::unwrap()` on an `Err` value: Custom { kind: NotFound, error: Error { kind: OpenFile, source: Os { code: 2, kind: NotFound, message: "No such file or directory" }, path: "/tmp/.tmp9TduSP/target/package/example-0.1.0.crate" } }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes
+
+test result: FAILED. 179 passed; 1 failed; 3 ignored; 0 measured; 0 filtered out; finished in 2.67s
+
+error: test failed, to rerun pass `-p release_plz_core --lib`

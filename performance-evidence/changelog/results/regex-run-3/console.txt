@@ -1,0 +1,36 @@
+Gnuplot not found, using plotters backend
+Benchmarking changelog_pr_regex/default_git_config/before
+Benchmarking changelog_pr_regex/default_git_config/before: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/default_git_config/before: Collecting 50 samples in estimated 3.0101 s (246k iterations)
+Benchmarking changelog_pr_regex/default_git_config/before: Analyzing
+changelog_pr_regex/default_git_config/before
+                        time:   [11.627 µs 11.766 µs 11.918 µs]
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+Benchmarking changelog_pr_regex/default_git_config/after
+Benchmarking changelog_pr_regex/default_git_config/after: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/default_git_config/after: Collecting 50 samples in estimated 3.0002 s (1.6M iterations)
+Benchmarking changelog_pr_regex/default_git_config/after: Analyzing
+changelog_pr_regex/default_git_config/after
+                        time:   [1.7811 µs 1.8085 µs 1.8345 µs]
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+Benchmarking changelog_pr_regex/build_and_generate/before
+Benchmarking changelog_pr_regex/build_and_generate/before: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/build_and_generate/before: Collecting 50 samples in estimated 3.2918 s (8925 iterations)
+Benchmarking changelog_pr_regex/build_and_generate/before: Analyzing
+changelog_pr_regex/build_and_generate/before
+                        time:   [365.66 µs 376.08 µs 390.41 µs]
+Found 3 outliers among 50 measurements (6.00%)
+  1 (2.00%) high mild
+  2 (4.00%) high severe
+Benchmarking changelog_pr_regex/build_and_generate/after
+Benchmarking changelog_pr_regex/build_and_generate/after: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/build_and_generate/after: Collecting 50 samples in estimated 3.0791 s (10k iterations)
+Benchmarking changelog_pr_regex/build_and_generate/after: Analyzing
+changelog_pr_regex/build_and_generate/after
+                        time:   [309.31 µs 321.30 µs 337.00 µs]
+Found 4 outliers among 50 measurements (8.00%)
+  2 (4.00%) high mild
+  2 (4.00%) high severe
+

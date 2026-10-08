@@ -1,0 +1,116 @@
+{
+  "baseline": {
+    "inherited_lookup templates=50": {
+      "runs_ns": [
+        27357.756,
+        25991.073,
+        25174.784
+      ],
+      "mean_ns": 26174.537666666667,
+      "mean_reduction_percent": 0.0
+    },
+    "inherited_lookup templates=500": {
+      "runs_ns": [
+        34648.004,
+        34225.342,
+        33216.698
+      ],
+      "mean_ns": 34030.01466666666,
+      "mean_reduction_percent": 0.0
+    },
+    "independent_dependents consumers=10": {
+      "runs_ns": [
+        44104.368,
+        46364.808,
+        46569.951
+      ],
+      "mean_ns": 45679.709,
+      "mean_reduction_percent": 0.0
+    },
+    "independent_dependents consumers=100": {
+      "runs_ns": [
+        457133.633,
+        481548.878,
+        473712.39
+      ],
+      "mean_ns": 470798.3003333333,
+      "mean_reduction_percent": 0.0
+    }
+  },
+  "indexed": {
+    "inherited_lookup templates=50": {
+      "runs_ns": [
+        25031.545,
+        25463.258,
+        25044.892
+      ],
+      "mean_ns": 25179.898333333334,
+      "mean_reduction_percent": 3.800026369138154
+    },
+    "inherited_lookup templates=500": {
+      "runs_ns": [
+        26122.477,
+        25784.436,
+        26859.849
+      ],
+      "mean_ns": 26255.587333333333,
+      "mean_reduction_percent": 22.845794835782407
+    },
+    "independent_dependents consumers=10": {
+      "runs_ns": [
+        48219.444,
+        45781.935,
+        46496.622
+      ],
+      "mean_ns": 46832.667,
+      "mean_reduction_percent": -2.5240046953889372
+    },
+    "independent_dependents consumers=100": {
+      "runs_ns": [
+        477668.464,
+        467104.279,
+        507903.153
+      ],
+      "mean_ns": 484225.29866666667,
+      "mean_reduction_percent": -2.851964062705159
+    }
+  },
+  "pathless": {
+    "inherited_lookup templates=50": {
+      "runs_ns": [
+        25320.652,
+        26267.117,
+        25610.115
+      ],
+      "mean_ns": 25732.628,
+      "mean_reduction_percent": 1.6883189009654909
+    },
+    "inherited_lookup templates=500": {
+      "runs_ns": [
+        33699.872,
+        33907.203,
+        33465.42
+      ],
+      "mean_ns": 33690.831666666665,
+      "mean_reduction_percent": 0.9967171725383861
+    },
+    "independent_dependents consumers=10": {
+      "runs_ns": [
+        87.129,
+        85.65,
+        85.183
+      ],
+      "mean_ns": 85.98733333333334,
+      "mean_reduction_percent": 99.81176033031792
+    },
+    "independent_dependents consumers=100": {
+      "runs_ns": [
+        849.344,
+        820.391,
+        874.76
+      ],
+      "mean_ns": 848.165,
+      "mean_reduction_percent": 99.81984535640858
+    }
+  }
+}

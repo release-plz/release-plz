@@ -1,0 +1,14 @@
+
+running 9 tests
+test after::tests::test_is_commit_message_matched ... ok
+test after::tests::conventional_commit_check_uses_the_message ... ok
+test after::tests::remote_pr_number_is_kept_in_cliff_commit_without_username ... ok
+test after::tests::remote_is_omitted_from_cliff_commit_without_remote_info ... ok
+test after::tests::test_is_commit_message_not_matched ... ok
+test before::tests::remote_is_omitted_from_cliff_commit_without_remote_info ... ok
+test before::tests::remote_pr_number_is_kept_in_cliff_commit_without_username ... ok
+test before::tests::test_is_commit_message_matched ... ok
+test before::tests::test_is_commit_message_not_matched ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

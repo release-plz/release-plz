@@ -1,0 +1,32 @@
+Gnuplot not found, using plotters backend
+Benchmarking changelog_pr_regex/default_git_config/before
+Benchmarking changelog_pr_regex/default_git_config/before: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/default_git_config/before: Collecting 50 samples in estimated 3.0039 s (245k iterations)
+Benchmarking changelog_pr_regex/default_git_config/before: Analyzing
+changelog_pr_regex/default_git_config/before
+                        time:   [12.091 µs 12.393 µs 12.697 µs]
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+Benchmarking changelog_pr_regex/default_git_config/after
+Benchmarking changelog_pr_regex/default_git_config/after: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/default_git_config/after: Collecting 50 samples in estimated 3.0022 s (1.7M iterations)
+Benchmarking changelog_pr_regex/default_git_config/after: Analyzing
+changelog_pr_regex/default_git_config/after
+                        time:   [1.7875 µs 1.8212 µs 1.8541 µs]
+Benchmarking changelog_pr_regex/build_and_generate/before
+Benchmarking changelog_pr_regex/build_and_generate/before: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/build_and_generate/before: Collecting 50 samples in estimated 3.2484 s (8925 iterations)
+Benchmarking changelog_pr_regex/build_and_generate/before: Analyzing
+changelog_pr_regex/build_and_generate/before
+                        time:   [358.60 µs 362.12 µs 366.36 µs]
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+Benchmarking changelog_pr_regex/build_and_generate/after
+Benchmarking changelog_pr_regex/build_and_generate/after: Warming up for 1.0000 s
+Benchmarking changelog_pr_regex/build_and_generate/after: Collecting 50 samples in estimated 3.1314 s (10k iterations)
+Benchmarking changelog_pr_regex/build_and_generate/after: Analyzing
+changelog_pr_regex/build_and_generate/after
+                        time:   [316.27 µs 321.42 µs 327.65 µs]
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+

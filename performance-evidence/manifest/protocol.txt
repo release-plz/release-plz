@@ -1,0 +1,47 @@
+Benchmark methodology
+
+Portable reproduction (from an evidence checkout with all three production
+commits fetched into the local repository):
+python3 run.py /path/to/release-plz /path/to/new-results-directory
+python3 summarize.py /path/to/new-results-directory
+
+The runner uses release optimization and tests each revision independently:
+baseline 6e42d3c2, indexed lookup 3cb1bd4a, pathless fast path 5291c26b.
+It records build output, focused correctness-test output, and all timing output.
+
+The following paths describe the original measurement environment:
+
+Source: /workspace/manifest-benchmark-harness.rs, appended temporarily with
+include!("/workspace/manifest-benchmark-harness.rs");
+to crates/release_plz_core/src/command/update/package_dependencies.rs.
+
+Build optimized test executable:
+source /workspace/.devtools/activate.sh
+CARGO_TARGET_DIR=/workspace/release-plz/target cargo test --locked --release -p release_plz_core --lib --no-run
+
+Run the resulting executable (preserve independent copies for baseline and each branch):
+<test-executable> benchmark_dependency_propagation --ignored --nocapture --test-threads=1
+
+Fixtures are created in private temporary directories before timing. Real cargo
+metadata resolves workspace inheritance and renamed path dependencies. The timed
+operation calls the production PackageDependencies::dependencies_to_update method,
+including reading/parsing consumer manifests, resolving dependency templates,
+canonicalizing paths, and returning dependencies whose requirement needs updating.
+The harness asserts the exact expected result for every operation.
+
+inherited_lookup: workspace with 50 or 500 local support packages/templates, one
+consumer with 10 aliases inherited uniformly across those templates. The final
+used support package changes from 0.1.0 to 0.2.0, so all ten declarations are scanned.
+
+independent_dependents: 10 or 100 independent consumer packages with no path
+dependencies are checked against one updated workspace package. This models the
+independent workspace shape in benchmark PR #3146 while isolating dependency
+propagation from Git history, Cargo subprocesses, and file-copy work.
+
+Each case warms up for 100 operations, then runs batches of 100 operations until
+at least three seconds of timing have elapsed. Report elapsed nanoseconds divided
+by completed operations. Run baseline and each independent variant three times,
+alternating preserved binaries with no simultaneous builds or other benchmarks.
+
+Only production changes are committed. This harness and all results remain
+outside the production PR branches.

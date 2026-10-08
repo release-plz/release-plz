@@ -1,0 +1,29 @@
+warning: Cargo.toml: file `/workspace/changelog-header-bench/src/main.rs` found to be present in multiple build targets:
+  * `bin` target `changelog-header-bench`
+  * `bench` target `headers`
+warning: `changelog-header-bench` (manifest) generated 1 warning
+   Compiling changelog-header-bench v0.0.0 (/workspace/changelog-header-bench)
+    Finished `release` profile [optimized] target(s) in 0.57s
+     Running unittests src/main.rs (/workspace/changelog-bench-target/release/deps/changelog_header_bench-e0cc70be24e7b1fc)
+
+running 17 tests
+test after::tests::changelog_header_is_parsed ... ok
+test after::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test after::tests::changelog_header_with_versions_is_parsed ... ok
+test after::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test after::tests::changelog_header_without_unreleased_is_parsed ... ok
+test after::tests::changelog_with_unreleased_section_is_parsed ... ok
+test after::tests::changelog_header_isnt_recognized ... ok
+test before::tests::changelog_header_is_parsed ... ok
+test before::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test after::tests::changelog_without_unreleased_section_is_parsed ... ok
+test before::tests::changelog_header_with_versions_is_parsed ... ok
+test before::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test before::tests::changelog_with_unreleased_section_is_parsed ... ok
+test before::tests::changelog_without_unreleased_section_is_parsed ... ok
+test before::tests::changelog_header_isnt_recognized ... ok
+test before::tests::changelog_header_without_unreleased_is_parsed ... ok
+test parity::preserves_all_header_matching_cases ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

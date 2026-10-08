@@ -1,0 +1,10 @@
+{
+  "rustc -V": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "cargo -V": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "git rev-parse origin/main": "6e42d3c20d11a5aee4b046c0a7e4f35f7e15d506",
+  "git rev-parse origin/bench-3146": "517963a958d3cf693ac83f270e3e648a4b4949d2",
+  "uname -sr": "Linux 6.18.44",
+  "nproc": "5",
+  "cpu": "AMD EPYC 9V74 80-Core Processor (5 virtual CPUs)",
+  "protocol": "Sequential before/after measurements; no concurrent builds during timed runs. Optimized release profile, warm filesystem caches. Three runs per version."
+}

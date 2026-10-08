@@ -1,0 +1,7 @@
+rustc 1.99.0 (b940084d7 2026-09-28)
+cargo 1.99.0 (5f94df478 2026-08-27)
+Linux x86_64
+AMD EPYC 9V74 80-Core Processor
+5 exposed logical CPUs
+Optimized release profile; no simultaneous builds/tests/other benchmarks.
+Timing command: source /workspace/.devtools/activate.sh && python3 /workspace/perf-results/manifest/measure.py

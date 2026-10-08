@@ -1,0 +1,67 @@
+warning: Cargo.toml: file `/workspace/changelog-header-bench/src/main.rs` found to be present in multiple build targets:
+  * `bin` target `changelog-header-bench`
+  * `bench` target `headers`
+warning: `changelog-header-bench` (manifest) generated 1 warning
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.26
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.6
+   Compiling memchr v2.8.3
+   Compiling autocfg v1.5.1
+   Compiling syn v2.0.119
+   Compiling zmij v1.0.23
+   Compiling zerocopy v0.8.59
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling zerocopy-derive v0.8.59
+   Compiling serde_json v1.0.151
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.14
+   Compiling cc v1.6.0
+   Compiling num-traits v0.2.19
+   Compiling aho-corasick v1.1.5
+   Compiling libc v0.2.190
+   Compiling cfg-if v1.0.5
+   Compiling itoa v1.0.18
+   Compiling regex-syntax v0.8.11
+   Compiling regex-automata v0.4.18
+   Compiling half v2.7.1
+   Compiling alloca v0.4.0
+   Compiling either v1.18.0
+   Compiling ciborium-io v0.2.2
+   Compiling thiserror v2.0.21
+   Compiling clap_lex v1.1.1
+   Compiling anstyle v1.0.14
+   Compiling camino v1.2.6
+   Compiling plotters-backend v0.3.7
+   Compiling plotters-svg v0.3.7
+   Compiling clap_builder v4.6.7
+   Compiling ciborium-ll v0.2.2
+   Compiling itertools v0.13.0
+   Compiling regex v1.13.1
+   Compiling fs-err v3.3.2
+   Compiling thiserror-impl v2.0.21
+   Compiling anyhow v1.0.104
+   Compiling same-file v1.0.6
+   Compiling hashbrown v0.17.1
+   Compiling equivalent v1.0.2
+   Compiling cast v0.3.0
+   Compiling criterion-plot v0.8.2
+   Compiling indexmap v2.14.2
+   Compiling walkdir v2.5.0
+   Compiling page_size v0.6.0
+   Compiling plotters v0.3.7
+   Compiling clap v4.6.7
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling cargo-platform v0.3.3
+   Compiling semver v1.0.28
+   Compiling oorandom v11.1.5
+   Compiling anes v0.1.6
+   Compiling cargo_metadata v0.23.1
+   Compiling criterion v0.8.2
+   Compiling parse-changelog v0.6.17
+   Compiling changelog-header-bench v0.0.0 (/workspace/changelog-header-bench)
+    Finished `bench` profile [optimized] target(s) in 1m 09s
+  Executable src/main.rs (/workspace/changelog-bench-target/release/deps/headers-48abfbc69e2f7869)

@@ -1,0 +1,524 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index d6cbc19e..2996a075 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -4480,6 +4480,7 @@ dependencies = [
+  "flate2",
+  "fs-err",
+  "git-cliff-core",
++ "git-conventional 0.12.9",
+  "git2",
+  "git_cmd",
+  "ignore",
+diff --git a/crates/git_cmd/src/lib.rs b/crates/git_cmd/src/lib.rs
+index bc9159b3..85923d88 100644
+--- a/crates/git_cmd/src/lib.rs
++++ b/crates/git_cmd/src/lib.rs
+@@ -122,15 +122,21 @@ impl Repo {
+         Ok(changed_files)
+     }
+ 
+-    /// Get files changed in the current commit
+-    pub fn files_of_current_commit(&self) -> anyhow::Result<HashSet<Utf8PathBuf>> {
+-        let output = self.git(&["show", "--oneline", "--name-only", "--pretty=format:"])?;
+-        let changed_files = output
++    /// Get the current commit's message and changed files with one Git command.
++    pub fn current_commit_message_and_files(
++        &self,
++    ) -> anyhow::Result<(String, HashSet<Utf8PathBuf>)> {
++        let output = self.git(&["show", "--name-only", "--pretty=format:%B%x00"])?;
++        let (message, files) = output
++            .split_once('\0')
++            .context("missing separator between commit message and files")?;
++        let changed_files = files
+             .lines()
+             .map(|l| l.trim())
++            .filter(|line| !line.is_empty())
+             .map(Utf8PathBuf::from)
+             .collect();
+-        Ok(changed_files)
++        Ok((message.trim().to_owned(), changed_files))
+     }
+ 
+     pub fn changes_except_typechanges(&self) -> anyhow::Result<Vec<String>> {
+@@ -898,6 +904,13 @@ mod tests {
+         test_logs::init();
+         let repository_dir = tempdir().unwrap();
+         let repo = Repo::init(&repository_dir);
++        assert_eq!(
++            repo.current_commit_message_and_files().unwrap(),
++            (
++                "add README".to_owned(),
++                HashSet::from([Utf8PathBuf::from("README.md")])
++            )
++        );
+         let file1 = repository_dir.as_ref().join("file1.txt");
+ 
+         let commit_message = r"feat: my feature
+@@ -911,6 +924,20 @@ mod tests {
+             repo.add_all_and_commit(commit_message).unwrap();
+         }
+         assert_eq!(repo.current_commit_message().unwrap(), commit_message);
++        assert_eq!(
++            repo.current_commit_message_and_files().unwrap(),
++            (
++                commit_message.to_owned(),
++                HashSet::from([Utf8PathBuf::from("file1.txt")])
++            )
++        );
++
++        repo.git(&["commit", "--allow-empty", "-m", commit_message])
++            .unwrap();
++        assert_eq!(
++            repo.current_commit_message_and_files().unwrap(),
++            (commit_message.to_owned(), HashSet::new())
++        );
+     }
+ 
+     #[test]
+diff --git a/crates/next_version/src/version_increment.rs b/crates/next_version/src/version_increment.rs
+index 1cb40821..36da90b8 100644
+--- a/crates/next_version/src/version_increment.rs
++++ b/crates/next_version/src/version_increment.rs
+@@ -138,7 +138,18 @@ impl VersionIncrement {
+         for msg in commit_messages {
+             let msg = msg.as_ref();
+             match Commit::parse(msg) {
+-                Ok(commit) => conventional_commits.push(commit),
++                Ok(commit) => {
++                    if commit.breaking() {
++                        // No later commit can request a larger increment.
++                        if current.major != 0 || updater.breaking_always_increment_major {
++                            return Self::Major;
++                        }
++                        if current.minor != 0 {
++                            return Self::Minor;
++                        }
++                    }
++                    conventional_commits.push(commit);
++                }
+                 Err(_) => non_conventional_messages.push(msg),
+             }
+         }
+diff --git a/crates/next_version/tests/all/normal.rs b/crates/next_version/tests/all/normal.rs
+index d082e487..38b2156f 100644
+--- a/crates/next_version/tests/all/normal.rs
++++ b/crates/next_version/tests/all/normal.rs
+@@ -49,6 +49,38 @@ fn commit_with_breaking_change_increments_major_version() {
+     assert_eq!(version.next(commits), Version::new(2, 0, 0));
+ }
+ 
++#[test]
++fn breaking_changes_keep_version_zero_rules_when_followed_by_other_commits() {
++    for breaking in [
++        "feat!: break user",
++        "feat: change behavior\n\nBREAKING CHANGE: break user",
++    ] {
++        let commits = [breaking, "feat: add feature", "fix: correct behavior"];
++        for (version, expected) in [
++            (Version::new(0, 0, 3), Version::new(0, 0, 4)),
++            (Version::new(0, 2, 3), Version::new(0, 3, 0)),
++            (Version::new(1, 2, 3), Version::new(2, 0, 0)),
++        ] {
++            assert_eq!(version.next(commits), expected);
++        }
++    }
++}
++
++#[test]
++fn ignored_breaking_change_does_not_trigger_a_bump() {
++    let version = Version::new(1, 2, 3);
++    assert_eq!(
++        VersionUpdater::new()
++            .with_no_increment_regex("^docs$")
++            .unwrap()
++            .increment(
++                &version,
++                ["docs!: change documentation", "fix: correct behavior"]
++            ),
++        Version::new(1, 2, 4)
++    );
++}
++
+ #[test]
+ fn commit_with_breaking_change_increments_minor_version_when_major_is_zero() {
+     let commits = ["feat!: break user"];
+diff --git a/crates/release_plz_core/Cargo.toml b/crates/release_plz_core/Cargo.toml
+index cf81f9f1..d6aeee67 100644
+--- a/crates/release_plz_core/Cargo.toml
++++ b/crates/release_plz_core/Cargo.toml
+@@ -28,6 +28,8 @@ chrono = { workspace = true, features = ["clock"] }
+ dunce.workspace = true
+ fs-err = { workspace = true, features = ["tokio"] }
+ git-cliff-core.workspace = true
++# Match the parser used by git-cliff-core.
++git-conventional = "0.12.9"
+ ignore.workspace = true
+ parse-changelog.workspace = true
+ regex.workspace = true
+diff --git a/crates/release_plz_core/src/changelog.rs b/crates/release_plz_core/src/changelog.rs
+index 22ec69e2..e8ef3b84 100644
+--- a/crates/release_plz_core/src/changelog.rs
++++ b/crates/release_plz_core/src/changelog.rs
+@@ -441,10 +441,12 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
+         sort_commits: "newest".to_string(),
+         commit_preprocessors: pr_link
+             .map(|pr_link| {
++                static PR_NUMBER: LazyLock<Regex> =
++                    LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
+                 // Replace #123 with [#123](https://link_to_pr).
+                 // If the number refers to an issue, GitHub redirects the PR link to the issue link.
+                 vec![TextProcessor {
+-                    pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
++                    pattern: PR_NUMBER.clone(),
+                     replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
+                     replace_command: None,
+                 }]
+diff --git a/crates/release_plz_core/src/changelog_parser.rs b/crates/release_plz_core/src/changelog_parser.rs
+index 9c5d4d34..c7694c61 100644
+--- a/crates/release_plz_core/src/changelog_parser.rs
++++ b/crates/release_plz_core/src/changelog_parser.rs
+@@ -16,8 +16,8 @@ pub fn parse_header(changelog: &str) -> Option<String> {
+         Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*?)(\n## )").unwrap()
+     });
+ 
+-    if let Some(captures) = FIRST_RE.captures(changelog) {
+-        return Some(captures[0].to_string());
++    if let Some(header) = FIRST_RE.find(changelog) {
++        return Some(header.as_str().to_string());
+     }
+ 
+     if let Some(captures) = SECOND_RE.captures(changelog) {
+diff --git a/crates/release_plz_core/src/command/update/package_dependencies.rs b/crates/release_plz_core/src/command/update/package_dependencies.rs
+index 019e3878..242c9777 100644
+--- a/crates/release_plz_core/src/command/update/package_dependencies.rs
++++ b/crates/release_plz_core/src/command/update/package_dependencies.rs
+@@ -24,6 +24,12 @@ impl PackageDependencies for Package {
+         workspace_dir: &Utf8Path,
+         include_versionless: bool,
+     ) -> anyhow::Result<Vec<&'a Package>> {
++        // Metadata resolves inherited, renamed and target-specific dependencies.
++        // Without a path dependency, none can refer to an updated workspace member.
++        if !self.dependencies.iter().any(|dep| dep.path.is_some()) {
++            return Ok(Vec::new());
++        }
++
+         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
+         // empty `version` in Cargo.toml and `version = "*"`
+         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
+@@ -45,9 +51,8 @@ impl PackageDependencies for Package {
+                                     // The dependency of the package Cargo.toml is inherited from the workspace,
+                                     // so we find the dependency of the workspace and use it instead.
+                                     let dep = workspace_dependencies
+-                                        .iter()
+-                                        .find(|(n, _)| n == &name)
+-                                        .and_then(|(_, d)| d.as_table_like())
++                                        .get(name)
++                                        .and_then(|d| d.as_table_like())
+                                         .unwrap_or(d);
+                                     // Return also the path of the Cargo.toml so that we can resolve the
+                                     // relative path of the dependency later.
+diff --git a/crates/release_plz_core/src/command/update/updater.rs b/crates/release_plz_core/src/command/update/updater.rs
+index 9a054bbe..d95979db 100644
+--- a/crates/release_plz_core/src/command/update/updater.rs
++++ b/crates/release_plz_core/src/command/update/updater.rs
+@@ -773,16 +773,13 @@ impl Updater<'_> {
+             }
+             // A package can contain another package in a subdirectory, so only count
+             // commits that touch files Cargo would package for this package.
+-            if self.are_changed_files_in_package(
++            if let Some(message) = self.package_commit_message(
+                 package_path,
+                 repository,
+                 &current_commit_hash,
+                 &local_package_files,
+             )? {
+-                diff.commits.push(Commit::new(
+-                    current_commit_hash,
+-                    repository.current_commit_message()?,
+-                ));
++                diff.commits.push(Commit::new(current_commit_hash, message));
+             }
+         }
+         repository
+@@ -953,30 +950,39 @@ impl Updater<'_> {
+         Ok(next_version)
+     }
+ 
++    /// The current commit's message if it changes files in this package.
+     /// `hash` is only used for logging purposes.
+-    fn are_changed_files_in_package(
++    fn package_commit_message(
+         &self,
+         package_path: &Utf8Path,
+         repository: &Repo,
+         hash: &str,
+         package_files: &PackageFiles,
+-    ) -> anyhow::Result<bool> {
+-        let package_files_res = self.with_cargo_lock_restored(repository, || {
+-            get_package_files(package_path, repository, package_files)
+-        })?;
++    ) -> anyhow::Result<Option<String>> {
++        let get_files = || get_package_files(package_path, repository, package_files);
++        let package_files_res = if package_files.is_cached() {
++            // Equality already listed this snapshot's files and restored Cargo.lock.
++            // Reusing that list cannot introduce another lockfile change.
++            get_files()
++        } else {
++            self.with_cargo_lock_restored(repository, get_files)?
++        };
+         let Ok(package_files) = package_files_res.inspect_err(|e| {
+             debug!("failed to get package files at commit {hash}: {e:?}");
+         }) else {
+             // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
+-            return Ok(true);
++            return repository.current_commit_message().map(Some);
+         };
+-        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
+-            warn!("failed to get changed files of commit {hash}: {e:?}");
+-        }) else {
++        let Ok((message, changed_files)) = repository
++            .current_commit_message_and_files()
++            .inspect_err(|e| {
++                warn!("failed to get changed files of commit {hash}: {e:?}");
++            })
++        else {
+             // Assume that this commit contains changes to the package.
+-            return Ok(true);
++            return repository.current_commit_message().map(Some);
+         };
+-        Ok(!package_files.is_disjoint(&changed_files))
++        Ok((!package_files.is_disjoint(&changed_files)).then_some(message))
+     }
+ 
+     /// List the files Cargo packages in the current checkout, relative to the
+diff --git a/crates/release_plz_core/src/diff.rs b/crates/release_plz_core/src/diff.rs
+index 91f98fc0..c127a211 100644
+--- a/crates/release_plz_core/src/diff.rs
++++ b/crates/release_plz_core/src/diff.rs
+@@ -42,8 +42,7 @@ impl Commit {
+     }
+ 
+     pub fn is_conventional(&self) -> bool {
+-        let cliff = self.to_cliff_commit();
+-        cliff.into_conventional().is_ok()
++        git_conventional::Commit::parse(&self.message).is_ok()
+     }
+ 
+     pub fn to_cliff_commit(&self) -> git_cliff_core::commit::Commit<'_> {
+@@ -122,6 +121,22 @@ mod tests {
+         diff
+     }
+ 
++    #[test]
++    fn conventional_commit_check_uses_the_message() {
++        for (message, expected) in [
++            ("feat: add feature", true),
++            ("fix(scope): correct behavior", true),
++            ("feat!: change behavior", true),
++            ("feat: add feature\n\nBREAKING CHANGE: new API", true),
++            ("update readme", false),
++            ("", false),
++            ("update readme\n\nfeat: this is only the body", false),
++        ] {
++            let commit = Commit::new("1e6903d".to_string(), message.to_string());
++            assert_eq!(commit.is_conventional(), expected, "{message:?}");
++        }
++    }
++
+     #[test]
+     fn test_is_commit_message_matched() {
+         let diff = create_diff();
+diff --git a/crates/release_plz_core/src/package_compare.rs b/crates/release_plz_core/src/package_compare.rs
+index 8d27449b..670366ab 100644
+--- a/crates/release_plz_core/src/package_compare.rs
++++ b/crates/release_plz_core/src/package_compare.rs
+@@ -12,12 +12,7 @@ use crate::{
+     cargo::{read_package_metadata, run_cargo_with_env},
+     fs_utils,
+ };
+-use std::{
+-    cell::OnceCell,
+-    collections::hash_map::DefaultHasher,
+-    hash::{Hash, Hasher},
+-    io::{self, Read},
+-};
++use std::{cell::OnceCell, io::Read};
+ 
+ /// Cargo stores the original manifest under this name when it packages a crate,
+ /// so its presence tells an extracted registry package from a plain source tree.
+@@ -54,6 +49,10 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
+ pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
+ 
+ impl PackageFiles {
++    pub(crate) fn is_cached(&self) -> bool {
++        self.0.get().is_some()
++    }
++
+     /// The files of `package`, relative to its directory.
+     pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
+         if let Some(files) = self.0.get() {
+@@ -331,19 +330,30 @@ pub(crate) fn existing_readme_path(
+ }
+ 
+ fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {
+-    let hash1 = file_hash(first).with_context(|| format!("cannot determine hash of {first:?}"))?;
+-    let hash2 =
+-        file_hash(second).with_context(|| format!("cannot determine hash of {second:?}"))?;
+-    Ok(hash1 == hash2)
+-}
+-
+-fn file_hash(file: &Utf8Path) -> io::Result<u64> {
+-    let buffer = &mut vec![];
+-    fs_err::File::open(file)?.read_to_end(buffer)?;
+-    let mut hasher = DefaultHasher::new();
+-    buffer.hash(&mut hasher);
+-    let hash = hasher.finish();
+-    Ok(hash)
++    const BUFFER_SIZE: usize = 8192;
++    let mut first = fs_err::File::open(first)?;
++    let mut second = fs_err::File::open(second)?;
++    let mut first_bytes = Vec::with_capacity(BUFFER_SIZE);
++    let mut second_bytes = Vec::with_capacity(BUFFER_SIZE);
++    loop {
++        // Fill each chunk despite short or interrupted reads.
++        first
++            .by_ref()
++            .take(BUFFER_SIZE as u64)
++            .read_to_end(&mut first_bytes)?;
++        second
++            .by_ref()
++            .take(BUFFER_SIZE as u64)
++            .read_to_end(&mut second_bytes)?;
++        if first_bytes != second_bytes {
++            return Ok(false);
++        }
++        if first_bytes.is_empty() {
++            return Ok(true);
++        }
++        first_bytes.clear();
++        second_bytes.clear();
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -352,6 +362,42 @@ mod tests {
+     use crate::cargo::run_cargo;
+     use crate::fs_utils::Utf8TempDir;
+ 
++    #[test]
++    fn compare_files_handles_empty_files_and_buffer_boundaries() {
++        let dir = Utf8TempDir::new().unwrap();
++        let first = dir.path().join("first");
++        let second = dir.path().join("second");
++        for len in [0, 1, 8191, 8192, 8193, 24_593] {
++            let contents = vec![b'a'; len];
++            fs_err::write(&first, &contents).unwrap();
++            fs_err::write(&second, &contents).unwrap();
++            assert!(are_files_equal(&first, &second).unwrap());
++
++            for offset in [0, len / 2, len.saturating_sub(1)] {
++                if offset < len {
++                    let mut changed = contents.clone();
++                    changed[offset] = b'b';
++                    fs_err::write(&second, changed).unwrap();
++                    assert!(!are_files_equal(&first, &second).unwrap());
++                }
++            }
++            fs_err::write(&second, [contents.as_slice(), b"a"].concat()).unwrap();
++            assert!(!are_files_equal(&first, &second).unwrap());
++            assert!(!are_files_equal(&second, &first).unwrap());
++        }
++    }
++
++    #[test]
++    fn compare_files_reports_missing_files() {
++        let dir = Utf8TempDir::new().unwrap();
++        let existing = dir.path().join("existing");
++        let missing = dir.path().join("missing");
++        fs_err::write(&existing, "content").unwrap();
++
++        assert!(are_files_equal(&existing, &missing).is_err());
++        assert!(are_files_equal(&missing, &existing).is_err());
++    }
++
+     #[test]
+     fn unpacked_package_is_listed_without_running_cargo() {
+         let package = Utf8TempDir::new().unwrap();
+diff --git a/crates/release_plz_core/src/project.rs b/crates/release_plz_core/src/project.rs
+index 0edeb441..9c676935 100644
+--- a/crates/release_plz_core/src/project.rs
++++ b/crates/release_plz_core/src/project.rs
+@@ -8,10 +8,7 @@ use cargo_metadata::{
+ use cargo_utils::CARGO_TOML;
+ use tracing::debug;
+ 
+-use crate::{
+-    PackagePath as _,
+-    tera::{default_tag_name_template, tera_context},
+-};
++use crate::{PackagePath as _, tera::tera_context};
+ use crate::{
+     Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
+     fs_utils::{self, strip_prefix},
+@@ -159,20 +156,24 @@ impl Project {
+         let (template_name, template) = match field {
+             TemplateField::GitTagName => (
+                 "tag_name",
+-                release_metadata.and_then(|m| m.tag_name_template.clone()),
++                release_metadata.and_then(|m| m.tag_name_template.as_deref()),
+             ),
+             TemplateField::ReleaseName => (
+                 "release_name",
+-                release_metadata.and_then(|m| m.release_name_template.clone()),
++                release_metadata.and_then(|m| m.release_name_template.as_deref()),
+             ),
+         };
+ 
+-        let template = template.unwrap_or_else(|| {
+-            default_tag_name_template(self.contains_multiple_releasable_packages)
+-        });
++        let Some(template) = template else {
++            return Ok(if self.contains_multiple_releasable_packages {
++                format!("{package_name}-v{version}")
++            } else {
++                format!("v{version}")
++            });
++        };
+ 
+         let context = tera_context(package_name, version);
+-        crate::tera::render_template(&template, &context, template_name)
++        crate::tera::render_template(template, &context, template_name)
+     }
+ 
+     pub fn cargo_lock_path(&self) -> Utf8PathBuf {
+@@ -465,6 +466,10 @@ mod tests {
+         assert_eq!(workspace.workspace_packages().len(), 2);
+         assert!(workspace.contains_multiple_releasable_packages());
+         assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
++        assert_eq!(
++            workspace.release_name("one", "0.1.0").unwrap(),
++            "one-v0.1.0"
++        );
+ 
+         // Narrowing the packages with `--package` must keep the tag names that the
+         // whole workspace creates, otherwise the release tags could not be found.
+@@ -480,6 +485,7 @@ mod tests {
+         assert_eq!(narrowed.workspace_packages().len(), 1);
+         assert!(narrowed.contains_multiple_releasable_packages());
+         assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
++        assert_eq!(narrowed.release_name("one", "0.1.0").unwrap(), "one-v0.1.0");
+     }
+ 
+     #[test]
+@@ -489,6 +495,10 @@ mod tests {
+             .expect("Should ok");
+         let git_tag = project.git_tag("typo_test", "0.1.0").unwrap();
+         assert_eq!(git_tag, "v0.1.0");
++        assert_eq!(
++            project.release_name("typo_test", "0.1.0").unwrap(),
++            "v0.1.0"
++        );
+     }
+ 
+     #[test]

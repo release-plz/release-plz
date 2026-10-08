@@ -1,0 +1,9 @@
+
+running 1 test
+test project::template_performance::benchmark_release_templates ... single_default: iterations=13776500, ns_per_pair=145.175
+workspace_default: iterations=13455600, ns_per_pair=148.638
+custom_control: iterations=126100, ns_per_pair=15871.648
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 180 filtered out; finished in 6.00s
+

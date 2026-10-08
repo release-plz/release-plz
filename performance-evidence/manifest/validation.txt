@@ -1,0 +1,10 @@
+Both production branches contain only their production source change; temporary benchmark includes were removed after building preserved test executables.
+
+Passed on both branches:
+rustfmt --check --edition 2024 crates/release_plz_core/src/command/update/package_dependencies.rs
+git diff --check
+git status --short (empty output)
+
+Passed on baseline, indexed, and pathless preserved optimized test binaries:
+<binary> package_dependencies::tests --nocapture --test-threads=1
+1 test passed per binary, 0 failures; details in tests-*.log.

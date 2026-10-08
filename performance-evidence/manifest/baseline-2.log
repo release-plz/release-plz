@@ -1,0 +1,10 @@
+
+running 1 test
+test command::update::package_dependencies::performance_benchmarks::benchmark_dependency_propagation ... inherited_lookup templates=50 consumer_dependencies=10 iterations=115500 elapsed_ns=3001968927 ns_per_iteration=25991.073
+inherited_lookup templates=500 consumer_dependencies=10 iterations=87700 elapsed_ns=3001562487 ns_per_iteration=34225.342
+independent_dependents consumers=10 iterations=64800 elapsed_ns=3004439575 ns_per_iteration=46364.808
+independent_dependents consumers=100 iterations=6300 elapsed_ns=3033757930 ns_per_iteration=481548.878
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 181 filtered out; finished in 12.21s
+

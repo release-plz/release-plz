@@ -1,0 +1,11 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling hyper v1.11.1
+   Compiling git_cmd v0.8.0 (/workspace/perf-files/crates/git_cmd)
+   Compiling hyper-util v0.1.21
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.13.5
+   Compiling reqwest-middleware v0.5.2
+   Compiling reqwest-retry v0.9.1
+   Compiling release_plz_core v0.38.7 (/workspace/perf-files/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 20.25s

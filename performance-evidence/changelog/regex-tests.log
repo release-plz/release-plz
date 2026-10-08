@@ -1,0 +1,36 @@
+warning: Cargo.toml: file `/workspace/changelog-regex-bench/src/main.rs` found to be present in multiple build targets:
+  * `bin` target `changelog-regex-bench`
+  * `bench` target `pr_regex`
+warning: `changelog-regex-bench` (manifest) generated 1 warning
+   Compiling changelog-regex-bench v0.0.0 (/workspace/changelog-regex-bench)
+    Finished `release` profile [optimized] target(s) in 2.40s
+     Running unittests src/main.rs (/workspace/changelog-bench-target/release/deps/changelog_regex_bench-f1974d235a767ff4)
+
+running 24 tests
+test after::tests::changelog_has_commit_id ... ok
+test after::tests::changelog_entry_with_link_is_generated ... ok
+test after::empty_changelog_is_updated ... ok
+test after::tests::changelog_entries_are_generated ... ok
+test after::tests::changelog_sort_newest ... ok
+test after::tests::changelog_is_updated ... ok
+test after::tests::changelog_without_header_is_updated ... ok
+test after::tests::generated_changelog_is_updated_correctly ... ok
+test before::empty_changelog_is_updated ... ok
+test before::tests::changelog_entries_are_generated ... ok
+test before::tests::changelog_has_commit_id ... ok
+test before::tests::changelog_entry_with_link_is_generated ... ok
+test before::tests::changelog_is_updated ... ok
+test changelog_parser::tests::changelog_header_is_parsed ... ok
+test before::tests::changelog_sort_newest ... ok
+test changelog_parser::tests::changelog_header_isnt_recognized ... ok
+test changelog_parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test before::tests::changelog_without_header_is_updated ... ok
+test changelog_parser::tests::changelog_header_with_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+test before::tests::generated_changelog_is_updated_correctly ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

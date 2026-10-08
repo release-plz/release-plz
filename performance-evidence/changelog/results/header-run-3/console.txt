@@ -1,0 +1,69 @@
+Gnuplot not found, using plotters backend
+Benchmarking changelog_header/before/10
+Benchmarking changelog_header/before/10: Warming up for 1.0000 s
+Benchmarking changelog_header/before/10: Collecting 50 samples in estimated 3.0007 s (931k iterations)
+Benchmarking changelog_header/before/10: Analyzing
+changelog_header/before/10
+                        time:   [3.0487 µs 3.0846 µs 3.1209 µs]
+Found 3 outliers among 50 measurements (6.00%)
+  2 (4.00%) high mild
+  1 (2.00%) high severe
+Benchmarking changelog_header/after/10
+Benchmarking changelog_header/after/10: Warming up for 1.0000 s
+Benchmarking changelog_header/after/10: Collecting 50 samples in estimated 3.0004 s (1.3M iterations)
+Benchmarking changelog_header/after/10: Analyzing
+changelog_header/after/10
+                        time:   [2.2796 µs 2.2906 µs 2.3056 µs]
+Found 3 outliers among 50 measurements (6.00%)
+  2 (4.00%) high mild
+  1 (2.00%) high severe
+Benchmarking changelog_header/before/100
+Benchmarking changelog_header/before/100: Warming up for 1.0000 s
+Benchmarking changelog_header/before/100: Collecting 50 samples in estimated 3.0063 s (135k iterations)
+Benchmarking changelog_header/before/100: Analyzing
+changelog_header/before/100
+                        time:   [22.016 µs 22.104 µs 22.227 µs]
+Found 6 outliers among 50 measurements (12.00%)
+  2 (4.00%) high mild
+  4 (8.00%) high severe
+Benchmarking changelog_header/after/100
+Benchmarking changelog_header/after/100: Warming up for 1.0000 s
+Benchmarking changelog_header/after/100: Collecting 50 samples in estimated 3.0222 s (136k iterations)
+Benchmarking changelog_header/after/100: Analyzing
+changelog_header/after/100
+                        time:   [21.758 µs 21.955 µs 22.171 µs]
+Benchmarking changelog_header/before/1000
+Benchmarking changelog_header/before/1000: Warming up for 1.0000 s
+Benchmarking changelog_header/before/1000: Collecting 50 samples in estimated 3.0988 s (14k iterations)
+Benchmarking changelog_header/before/1000: Analyzing
+changelog_header/before/1000
+                        time:   [218.93 µs 220.78 µs 222.94 µs]
+Found 3 outliers among 50 measurements (6.00%)
+  3 (6.00%) high severe
+Benchmarking changelog_header/after/1000
+Benchmarking changelog_header/after/1000: Warming up for 1.0000 s
+Benchmarking changelog_header/after/1000: Collecting 50 samples in estimated 3.0755 s (14k iterations)
+Benchmarking changelog_header/after/1000: Analyzing
+changelog_header/after/1000
+                        time:   [216.13 µs 217.67 µs 219.40 µs]
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+Benchmarking changelog_header/release_plz_core/before
+Benchmarking changelog_header/release_plz_core/before: Warming up for 1.0000 s
+Benchmarking changelog_header/release_plz_core/before: Collecting 50 samples in estimated 3.0234 s (23k iterations)
+Benchmarking changelog_header/release_plz_core/before: Analyzing
+changelog_header/release_plz_core/before
+                        time:   [123.55 µs 125.23 µs 127.54 µs]
+Found 7 outliers among 50 measurements (14.00%)
+  5 (10.00%) high mild
+  2 (4.00%) high severe
+Benchmarking changelog_header/release_plz_core/after
+Benchmarking changelog_header/release_plz_core/after: Warming up for 1.0000 s
+Benchmarking changelog_header/release_plz_core/after: Collecting 50 samples in estimated 3.0737 s (26k iterations)
+Benchmarking changelog_header/release_plz_core/after: Analyzing
+changelog_header/release_plz_core/after
+                        time:   [121.61 µs 123.86 µs 125.84 µs]
+Found 8 outliers among 50 measurements (16.00%)
+  7 (14.00%) high mild
+  1 (2.00%) high severe
+

@@ -1,0 +1,18 @@
+Gnuplot not found, using plotters backend
+Testing changelog_header/before/10
+Success
+Testing changelog_header/after/10
+Success
+Testing changelog_header/before/100
+Success
+Testing changelog_header/after/100
+Success
+Testing changelog_header/before/1000
+Success
+Testing changelog_header/after/1000
+Success
+Testing changelog_header/release_plz_core/before
+Success
+Testing changelog_header/release_plz_core/after
+Success
+

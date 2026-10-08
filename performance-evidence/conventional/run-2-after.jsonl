@@ -1,0 +1,3 @@
+{"revision":"after","case":"conventional","iterations":300000,"elapsed_ns":84326736,"ns_per_call":281.08912}
+{"revision":"after","case":"body_1k","iterations":300000,"elapsed_ns":318042480,"ns_per_call":1060.1416}
+{"revision":"after","case":"nonconventional","iterations":300000,"elapsed_ns":37656530,"ns_per_call":125.52176666666666}

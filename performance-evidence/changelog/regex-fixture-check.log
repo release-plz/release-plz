@@ -1,0 +1,10 @@
+Gnuplot not found, using plotters backend
+Testing changelog_pr_regex/default_git_config/before
+Success
+Testing changelog_pr_regex/default_git_config/after
+Success
+Testing changelog_pr_regex/build_and_generate/before
+Success
+Testing changelog_pr_regex/build_and_generate/after
+Success
+

@@ -1,0 +1,14 @@
+
+running 9 tests
+test project::tests::project_new_no_release_will_error ... ok
+test project::tests::project_release_and_tag_template_some ... ok
+test project::tests::project_tag_template_none ... ok
+test project::tests::single_package_does_not_change_default_tag_template ... ok
+test project::tests::test_empty_override ... ok
+test project::tests::test_for_typos ... ok
+test project::tests::test_license_file ... ok
+test project::tests::test_successful_override ... ok
+test project::tests::test_typo_in_crate_names ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 172 filtered out; finished in 0.17s
+

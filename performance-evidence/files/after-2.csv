@@ -1,0 +1,12 @@
+scenario,iterations,ns_per_comparison
+equal_1k,32268,15510.91
+equal_100x1k,946,528725.83
+equal_64k,22083,22641.99
+equal_1m,3036,164730.19
+first_byte_1m,33830,14780.04
+last_byte_1m,2980,167792.81
+truncated_1m,2483,201384.23
+equal_8m,213,2349601.53
+first_byte_8m,34650,14430.12
+last_byte_8m,239,2094246.32
+truncated_8m,274,1827571.26

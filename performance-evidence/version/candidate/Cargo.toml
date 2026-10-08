@@ -1,0 +1,9 @@
+[package]
+name = "next_version"
+version = "0.3.2"
+edition = "2024"
+
+[dependencies]
+regex = "1.11.2"
+semver = "1.0.26"
+git-conventional = "1.0.0"
