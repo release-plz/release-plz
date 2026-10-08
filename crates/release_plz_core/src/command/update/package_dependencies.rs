@@ -45,9 +45,8 @@ impl PackageDependencies for Package {
                                     // The dependency of the package Cargo.toml is inherited from the workspace,
                                     // so we find the dependency of the workspace and use it instead.
                                     let dep = workspace_dependencies
-                                        .iter()
-                                        .find(|(n, _)| n == &name)
-                                        .and_then(|(_, d)| d.as_table_like())
+                                        .get(name)
+                                        .and_then(|d| d.as_table_like())
                                         .unwrap_or(d);
                                     // Return also the path of the Cargo.toml so that we can resolve the
                                     // relative path of the dependency later.
