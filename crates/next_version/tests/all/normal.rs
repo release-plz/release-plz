@@ -70,6 +70,18 @@ fn commit_with_breaking_change_increments_major_version_when_major_is_zero() {
 }
 
 #[test]
+fn commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero() {
+    let commits = ["feat!: break user"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_breaking_always_increment_major(true)
+            .increment(&version, commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
 fn breaking_change_followed_by_other_commits() {
     for breaking in [
         "feat!: break user",
