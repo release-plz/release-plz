@@ -250,8 +250,10 @@ impl<'a> RetainedChanges<'a> {
         // Generated files at the package root do not affect package equality.
         // Nested copies are packaged; the replay skips the edits that package
         // equality ignores.
-        let package_relative_path = path.strip_prefix(package).ok();
-        if package_relative_path.is_some_and(|path| is_generated_package_file(path.as_str())) {
+        if path
+            .strip_prefix(package)
+            .is_ok_and(is_generated_package_file)
+        {
             return false;
         }
         if readme.as_deref() == Some(path) {

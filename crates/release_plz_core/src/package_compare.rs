@@ -36,8 +36,11 @@ pub(crate) const CARGO_VCS_INFO: &str = ".cargo_vcs_info.json";
 /// includes it even when absent, and its contents can differ in workspaces. The
 /// updater separately checks dependency versions for executables when both
 /// lockfiles exist, so package comparisons ignore all three files.
-pub(crate) fn is_generated_package_file(path: &str) -> bool {
-    matches!(path, CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock")
+pub(crate) fn is_generated_package_file(path: &Utf8Path) -> bool {
+    matches!(
+        path.as_str(),
+        CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock"
+    )
 }
 
 /// Whether package comparisons ignore the contents of `file`, at any depth:
@@ -115,7 +118,7 @@ pub(crate) fn are_packages_equal_cached(
 
     // Ignoring Cargo.lock's presence preserves the comparison behavior from when
     // both sides used Cargo's file list.
-    let is_comparable_file = |file: &&Utf8PathBuf| !is_generated_package_file(file.as_str());
+    let is_comparable_file = |file: &&Utf8PathBuf| !is_generated_package_file(file);
     let local_files = local_package_files.iter().filter(is_comparable_file);
 
     let registry_files = released_package_files
