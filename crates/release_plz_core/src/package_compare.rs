@@ -48,24 +48,19 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
     package.join(CARGO_TOML_ORIG).is_file()
 }
 
-/// The packaged files of the released package, computed at most once.
-///
-/// While walking the git history, the local package is checked out at a different
-/// commit on every iteration, but the released package never changes. Listing its
-/// files can mean running `cargo package --list`, which resolves dependencies and
-/// can reach the registry index, so it must not run once per analyzed commit.
+/// The packaged files of one package snapshot, computed at most once.
+/// Recreate this cache whenever the package is checked out at another commit.
 #[derive(Default)]
-pub(crate) struct ReleasedPackageFiles(OnceCell<Vec<Utf8PathBuf>>);
+pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 
-impl ReleasedPackageFiles {
-    /// The files of the released `package`, relative to its directory.
+impl PackageFiles {
+    /// The files of `package`, relative to its directory.
     pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
         if let Some(files) = self.0.get() {
             return Ok(files);
         }
-        let files = get_cargo_package_files(package).with_context(|| {
-            format!("cannot determine packaged files of registry package {package:?}")
-        })?;
+        let files = get_cargo_package_files(package)
+            .with_context(|| format!("cannot determine packaged files of package {package:?}"))?;
         Ok(self.0.get_or_init(|| files))
     }
 }
@@ -78,16 +73,18 @@ pub fn are_packages_equal(
     are_packages_equal_cached(
         local_package,
         registry_package,
-        &ReleasedPackageFiles::default(),
+        &PackageFiles::default(),
+        &PackageFiles::default(),
     )
 }
 
-/// Same as [`are_packages_equal`], reusing the released package's file list
-/// across the commits of a single history walk.
+/// Same as [`are_packages_equal`], reusing file lists for the current snapshot
+/// and the released package across the commits of a single history walk.
 pub(crate) fn are_packages_equal_cached(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
-    released_package_files: &ReleasedPackageFiles,
+    local_package_files: &PackageFiles,
+    released_package_files: &PackageFiles,
 ) -> anyhow::Result<bool> {
     debug!(
         "compare local package {:?} with registry package {:?}",
@@ -98,7 +95,7 @@ pub(crate) fn are_packages_equal_cached(
         return Ok(false);
     }
 
-    let local_package_files = get_cargo_package_files(local_package).with_context(|| {
+    let local_package_files = local_package_files.get(local_package).with_context(|| {
         format!("cannot determine packaged files of local package {local_package:?}")
     })?;
     let released_package_files = released_package_files.get(registry_package)?;
