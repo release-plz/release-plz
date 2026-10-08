@@ -91,6 +91,31 @@ fn breaking_change_followed_by_other_commits() {
 }
 
 #[test]
+fn breaking_feature_increments_minor_version_from_0_0_x_when_features_always_increment_minor() {
+    let commits = ["feat!: break user"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_features_always_increment_minor(true)
+            .increment(&version, commits),
+        Version::new(0, 1, 0)
+    );
+}
+
+#[test]
+fn custom_minor_increment_regex_applies_after_breaking_change_from_0_0_x() {
+    let commits = ["feat!: break user", "fix: correct behavior"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_minor_increment_regex("^fix$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(0, 1, 0)
+    );
+}
+
+#[test]
 fn commit_with_custom_major_increment_regex_increments_major_version() {
     let commits = ["major: some changes"];
     let version = Version::new(1, 2, 3);
