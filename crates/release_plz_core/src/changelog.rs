@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use anyhow::Context;
 use chrono::{NaiveDate, TimeZone, Utc};
 use git_cliff_core::{
@@ -471,15 +473,18 @@ fn commit_parser(regex: &str, group: &str) -> CommitParser {
 
 /// Commit parsers based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 fn kac_commit_parsers() -> Vec<CommitParser> {
-    vec![
-        commit_parser("^feat", "added"),
-        commit_parser("^changed", "changed"),
-        commit_parser("^deprecated", "deprecated"),
-        commit_parser("^removed", "removed"),
-        commit_parser("^fix", "fixed"),
-        commit_parser("^security", "security"),
-        commit_parser(".*", "other"),
-    ]
+    static PARSERS: LazyLock<Vec<CommitParser>> = LazyLock::new(|| {
+        vec![
+            commit_parser("^feat", "added"),
+            commit_parser("^changed", "changed"),
+            commit_parser("^deprecated", "deprecated"),
+            commit_parser("^removed", "removed"),
+            commit_parser("^fix", "fixed"),
+            commit_parser("^security", "security"),
+            commit_parser(".*", "other"),
+        ]
+    });
+    PARSERS.clone()
 }
 
 pub fn default_changelog_config(header: Option<String>) -> ChangelogConfig {
