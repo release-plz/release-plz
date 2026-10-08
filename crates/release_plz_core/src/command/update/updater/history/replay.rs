@@ -388,8 +388,14 @@ impl<'a> ChangeReplay<'a> {
         conflicts: TokenConflicts,
     ) -> anyhow::Result<bool> {
         // Package equality ignores the contents of some files, but not whether
-        // they exist, which only a conflict with a missing side can change.
-        if conflict.our.is_some() == conflict.their.is_some()
+        // they exist. The merge keeps the file when both sides have it, and
+        // keeps it deleted when theirs only edits a file ours deleted. Other
+        // patterns, such as the partial entries of rename conflicts, count.
+        let keeps_presence = matches!(
+            (&conflict.ancestor, &conflict.our, &conflict.their),
+            (_, Some(_), Some(_)) | (Some(_), None, Some(_))
+        );
+        if keeps_presence
             && [&conflict.ancestor, &conflict.our, &conflict.their]
                 .into_iter()
                 .flatten()

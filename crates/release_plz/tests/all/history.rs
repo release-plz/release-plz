@@ -458,6 +458,41 @@ async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change()
     }
 }
 
+#[tokio::test]
+async fn nested_metadata_deletions_in_the_release_do_not_hide_a_retained_package_change() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = api_history(BASE_API).await;
+        let fixture = history.write_commit(path, "original\n", "chore: add fixture");
+        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        // Undoing the fixture edit cannot restore the fixture the release deleted.
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            fs_err::remove_file(root.join(path)).unwrap();
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+        });
+        history.assert_release(&[&fixture, &breaking, &sibling], "0.2.0");
+    }
+}
+
+#[tokio::test]
+async fn nested_metadata_edits_deleted_at_head_are_not_retained() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = unpublished_history(BASE_API).await;
+        history.write_commit(path, "original\n", "chore: add fixture");
+        history.publish_snapshot(&[]);
+        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
+        history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            fs_err::write(root.join(path), "reverted\n").unwrap();
+            fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
+        });
+        // Deleting the fixture discards the breaking commit's edit to it.
+        history.repo.git(&["rm", path]).unwrap();
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        history.assert_release(&[&restore, &sibling], "0.1.1");
+    }
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {
