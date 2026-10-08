@@ -1,0 +1,170 @@
+{
+  "config_lookup/overridden-package": {
+    "unit": "ns",
+    "before": [
+      134.518,
+      162.549,
+      154.687
+    ],
+    "after": [
+      61.623,
+      61.385,
+      70.799
+    ],
+    "before_median": 154.687,
+    "after_median": 61.623,
+    "median_reduction_percent": 60.162780324138424,
+    "paired_reductions_percent": [
+      54.18977385926047,
+      62.23600268226812,
+      54.23080155410604
+    ]
+  },
+  "config_lookup/default-package": {
+    "unit": "ns",
+    "before": [
+      86.249,
+      104.201,
+      101.107
+    ],
+    "after": [
+      62.231,
+      60.696,
+      70.705
+    ],
+    "before_median": 101.107,
+    "after_median": 62.231,
+    "median_reduction_percent": 38.45035457485634,
+    "paired_reductions_percent": [
+      27.847279388746525,
+      41.75103885759254,
+      30.069134679102337
+    ]
+  },
+  "workspace_version/packages_100_inherited_100": {
+    "unit": "us",
+    "before": [
+      30.566,
+      30.411,
+      30.362
+    ],
+    "after": [
+      12.241,
+      12.233,
+      10.607
+    ],
+    "before_median": 30.411,
+    "after_median": 12.233,
+    "median_reduction_percent": 59.774423728256224,
+    "paired_reductions_percent": [
+      59.95223450893149,
+      59.774423728256224,
+      65.06488373624926
+    ]
+  },
+  "workspace_version/packages_100_inherited_25": {
+    "unit": "us",
+    "before": [
+      10.855,
+      10.316,
+      10.365
+    ],
+    "after": [
+      8.146,
+      6.803,
+      6.789
+    ],
+    "before_median": 10.365,
+    "after_median": 6.803,
+    "median_reduction_percent": 34.36565364206464,
+    "paired_reductions_percent": [
+      24.95624136342699,
+      34.05389685924778,
+      34.500723589001446
+    ]
+  },
+  "workspace_version/packages_100_inherited_0": {
+    "unit": "us",
+    "before": [
+      3.57,
+      3.324,
+      3.271
+    ],
+    "after": [
+      4.795,
+      3.307,
+      3.28
+    ],
+    "before_median": 3.324,
+    "after_median": 3.307,
+    "median_reduction_percent": 0.5114320096269553,
+    "paired_reductions_percent": [
+      -34.31372549019609,
+      0.5114320096269553,
+      -0.2751452155304257
+    ]
+  },
+  "workspace_version/packages_1000_inherited_1000": {
+    "unit": "us",
+    "before": [
+      2401.717,
+      2426.256,
+      2423.866
+    ],
+    "after": [
+      108.867,
+      107.469,
+      71.91
+    ],
+    "before_median": 2423.866,
+    "after_median": 107.469,
+    "median_reduction_percent": 95.5662152940798,
+    "paired_reductions_percent": [
+      95.4671178994028,
+      95.57058282390646,
+      97.03325183817917
+    ]
+  },
+  "workspace_version/packages_1000_inherited_250": {
+    "unit": "us",
+    "before": [
+      644.051,
+      601.425,
+      590.969
+    ],
+    "after": [
+      52.193,
+      63.88,
+      35.827
+    ],
+    "before_median": 601.425,
+    "after_median": 52.193,
+    "median_reduction_percent": 91.32177744523423,
+    "paired_reductions_percent": [
+      91.89613865982663,
+      89.37855925510246,
+      93.93758386649723
+    ]
+  },
+  "workspace_version/packages_1000_inherited_0": {
+    "unit": "us",
+    "before": [
+      4.126,
+      3.411,
+      3.274
+    ],
+    "after": [
+      4.844,
+      4.91,
+      3.53
+    ],
+    "before_median": 3.411,
+    "after_median": 4.844,
+    "median_reduction_percent": -42.011140428026984,
+    "paired_reductions_percent": [
+      -17.401841977702382,
+      -43.94605687481676,
+      -7.819181429444089
+    ]
+  }
+}

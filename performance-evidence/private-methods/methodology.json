@@ -1,0 +1,24 @@
+{
+  "base_revision": "9b9d95ab",
+  "production_commits": {
+    "checkout": "c2c5dd4c31df260c0e8b0bc29d29b10e6e188f91",
+    "config": "08dcf55176d16fdfa0e9db6d8b6460a20c1ef799",
+    "workspace": "5333913a3e3cf9055973bf3140ecabc13b862128"
+  },
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "cli_build": "cargo bench -p release-plz --bench update --no-run (default all-static and docker-tests features)",
+  "unit_build": "cargo test --release -p release_plz_core --lib --no-run (default all-static feature)",
+  "serialization": "All builds and timed runs held flock /workspace/perf-cpu.lock; fresh candidate builds touched all workspace Rust sources before Cargo to avoid shared-target stale artifacts.",
+  "cli_harness": "PR3143 crates/release_plz/benches/update.rs plus cli-binary-override.patch; each timed sample validates output versions, changelogs, and clean no-op status.",
+  "cli_timing": "Three interleaved before/after runs per scenario, with pair 2 running the candidate before baseline; 10 Criterion samples each. summary percentages use median of three central estimates.",
+  "config_harness": "Configured workspace default has changelog path, tag name, custom minor regex, custom major regex; one overridden package and one missing-override fallback. Exact outputs asserted, then 10000 warmup lookups and 8000000 timed lookups per case.",
+  "workspace_harness": "Actual private new_workspace_version method, unchanged 1.0.0 packages, 100 or 1000 packages, all/quarter/zero inheritors. Setup is outside timing; manifest read/parse is included; results asserted. 10000 iterations for 100 members, 1000 for 1000 members, 100000 for empty inheritor controls.",
+  "interpretation": "Focused config/workspace metrics are method costs, not end-to-end update improvements. Empty-inheritor timings are controls with no consistent gain. Strace command counts are separate from untraced wall-clock results.",
+  "unit_timing": "Initial three independent runs per revision were followed by three interleaved before/after pairs, reversing pair 2. Use interleaved-unit-summary.json and unit-paired-*.log for final unit figures; summary.json preserves earlier independent runs.",
+  "zero_inheritor_controls": "Final 100-member control median 3.324 -> 3.307 us; 1000-member control median 3.411 -> 4.844 us, with all three 1000-member pairs slower. Initial independent 1000-member control showed 3.442 -> 3.580 us. No zero-inheritor or universal speedup is claimed.",
+  "focused_checks": {
+    "config_project_tests": 9,
+    "workspace_version_tests": 4,
+    "status": "passed; parent handles aggregate workspace checks"
+  }
+}

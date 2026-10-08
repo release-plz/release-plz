@@ -23,3 +23,22 @@ cargo bench --locked -p release-plz --bench update -- 'update/workspace_10_(noop
 ```
 
 Uses the original PR #3143 CLI fixtures. Versions, changelogs and clean no-op output are validated after every timed command. Three comparisons alternate before/after order, with the second pair reversed. The supplemental environment variable `RELEASE_PLZ_BENCH_BINARY` allows selecting an immutable CLI executable; absent it, the benchmark uses Cargo's current release-plz executable. Raw untraced timing runs and separately collected strace command counts are in `checkout/`. The standalone `profile_update.py` reproduces the CLI fixtures for profiling.
+
+## Cached history file lists
+
+```sh
+cargo bench --locked -p release-plz --bench update -- history_100
+```
+
+The original PR #3143 fixture runs the real CLI against 100 fix commits, checks the new version and every changelog entry, and resets the disposable repository outside timing. Three before/after pairs use immutable executables, with the second pair reversed. `history/` retains raw means and separate untimed tracing results: successful Cargo.lock checkout commands fall from 201 to 101.
+
+## Private configuration and workspace-version methods
+
+Two ignored tests are present only on this evidence branch to call the actual private methods without exposing new production APIs:
+
+```sh
+cargo test --locked --release -p release_plz_core --lib performance_experiment::bench_config_lookup -- --ignored --nocapture --test-threads=1
+cargo test --locked --release -p release_plz_core --lib performance_experiment::bench_workspace_version -- --ignored --nocapture --test-threads=1
+```
+
+Configuration lookup uses workspace defaults with four configured strings, an explicit package override, and the default fallback. Each reported sample averages 8,000,000 calls after warm-up. Workspace-version selection uses 100/1000 packages with all, one quarter, or none inheriting the shared version. It measures the actual method, including its manifest read, and validates the selected version. Fixture creation is excluded; inputs/results are black-boxed. Three interleaved before/after pairs reverse order in pair 2. Raw runs and exact methodology are in `private-methods/`. Zero-inheritor controls are retained, including the observed slower control; these focused results do not establish whole-command speedups.

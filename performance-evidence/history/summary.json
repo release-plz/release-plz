@@ -1,0 +1,31 @@
+{
+  "baseline": "9b9d95ab",
+  "candidate": "0da86add88e3b2e603e3ecd7e4556282bce62ada",
+  "benchmark": "update/history_100",
+  "runs": [
+    {
+      "run": 1,
+      "before_seconds": 4.4424251018000005,
+      "estimator": "mean",
+      "after_seconds": 4.2420741735,
+      "reduction_percent": 4.509944989704417
+    },
+    {
+      "run": 2,
+      "before_seconds": 4.5573662501,
+      "estimator": "mean",
+      "after_seconds": 4.2854669851,
+      "reduction_percent": 5.966149088720574
+    },
+    {
+      "run": 3,
+      "before_seconds": 4.5823481088,
+      "estimator": "mean",
+      "after_seconds": 4.4032538668,
+      "reduction_percent": 3.908350866143595
+    }
+  ],
+  "median_before_seconds": 4.5573662501,
+  "median_after_seconds": 4.2854669851,
+  "median_reduction_percent": 5.966149088720574
+}

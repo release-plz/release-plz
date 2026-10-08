@@ -1,0 +1,11 @@
+Gnuplot not found, using plotters backend
+Benchmarking update/history_100
+Benchmarking update/history_100: Warming up for 1.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 44.4s.
+Benchmarking update/history_100: Collecting 10 samples in estimated 44.420 s (10 iterations)
+Benchmarking update/history_100: Analyzing
+update/history_100      time:   [4.1182 s 4.2855 s 4.4984 s]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+

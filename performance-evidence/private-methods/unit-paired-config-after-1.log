@@ -1,0 +1,8 @@
+
+running 1 test
+test command::update::update_request::performance_experiment::bench_config_lookup ... config_lookup/overridden-package: 61.623 ns/iteration (8000000 iterations)
+config_lookup/default-package: 62.231 ns/iteration (8000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 184 filtered out; finished in 0.99s
+
