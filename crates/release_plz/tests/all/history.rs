@@ -703,11 +703,12 @@ async fn sequential_readme_edits_keep_their_breaking_change_marker() {
 
 #[tokio::test]
 async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
+    // Cargo generates this file at the package root, but under src/ it is
+    // an ordinary packaged file whose contents affect the release.
     let path = "src/.cargo_vcs_info.json";
-    let history = write_files_and_publish(|root| {
-        fs_err::write(root.join(path), "{}\n").unwrap();
-    })
-    .await;
+    let history = unpublished_history("").await;
+    history.write_commit(path, "{}\n", "chore: add fixture");
+    history.publish_snapshot(&[]);
     let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
     let sibling = history.merge_ignored_revert(path, "{}\n");
     history.assert_release(&[&breaking, &sibling], "0.2.0");
