@@ -16,6 +16,7 @@ cargo = { version = "0.100.0" }
 chrono = { version = "0.4.42", default-features = false }
 clap = "4.5.47"
 clap_complete = "4.5.57"
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support", "html_reports", "plotters"] }
 dunce = "1.0.5"
 expect-test = "1.5.1"
 flate2 = "1.1.10"

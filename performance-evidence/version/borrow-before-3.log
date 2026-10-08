@@ -1,0 +1,125 @@
+    Finished `bench` profile [optimized] target(s) in 0.11s
+     Running benches/next_version.rs (/workspace/perf-target/release/deps/next_version-8917b6c9247993ca)
+Gnuplot not found, using plotters backend
+Benchmarking next_version/fixes/10
+Benchmarking next_version/fixes/10: Warming up for 1.0000 s
+Benchmarking next_version/fixes/10: Collecting 30 samples in estimated 2.0007 s (500k iterations)
+Benchmarking next_version/fixes/10: Analyzing
+next_version/fixes/10   time:   [3.9267 µs 3.9390 µs 3.9510 µs]
+                        thrpt:  [2.5310 Melem/s 2.5387 Melem/s 2.5467 Melem/s]
+                 change:
+                        time:   [−4.7369% −3.3980% −2.1300%] (p = 0.00 < 0.05)
+                        thrpt:  [+2.1764% +3.5175% +4.9725%]
+                        Performance has improved.
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+Benchmarking next_version/features/10
+Benchmarking next_version/features/10: Warming up for 1.0000 s
+Benchmarking next_version/features/10: Collecting 30 samples in estimated 2.0007 s (551k iterations)
+Benchmarking next_version/features/10: Analyzing
+next_version/features/10
+                        time:   [3.6442 µs 3.6815 µs 3.7483 µs]
+                        thrpt:  [2.6679 Melem/s 2.7163 Melem/s 2.7441 Melem/s]
+                 change:
+                        time:   [−0.6809% +0.9429% +3.0487%] (p = 0.36 > 0.05)
+                        thrpt:  [−2.9585% −0.9340% +0.6855%]
+                        No change in performance detected.
+Found 5 outliers among 30 measurements (16.67%)
+  1 (3.33%) low mild
+  1 (3.33%) high mild
+  3 (10.00%) high severe
+Benchmarking next_version/breaking/10
+Benchmarking next_version/breaking/10: Warming up for 1.0000 s
+Benchmarking next_version/breaking/10: Collecting 30 samples in estimated 2.0008 s (629k iterations)
+Benchmarking next_version/breaking/10: Analyzing
+next_version/breaking/10
+                        time:   [3.1781 µs 3.2149 µs 3.2536 µs]
+                        thrpt:  [3.0735 Melem/s 3.1105 Melem/s 3.1466 Melem/s]
+                 change:
+                        time:   [+0.4909% +1.3146% +2.2631%] (p = 0.00 < 0.05)
+                        thrpt:  [−2.2130% −1.2975% −0.4885%]
+                        Change within noise threshold.
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+Benchmarking next_version/fixes/100
+Benchmarking next_version/fixes/100: Warming up for 1.0000 s
+Benchmarking next_version/fixes/100: Collecting 30 samples in estimated 2.0128 s (54k iterations)
+Benchmarking next_version/fixes/100: Analyzing
+next_version/fixes/100  time:   [37.440 µs 37.618 µs 37.841 µs]
+                        thrpt:  [2.6426 Melem/s 2.6583 Melem/s 2.6709 Melem/s]
+                 change:
+                        time:   [+0.2965% +1.8370% +3.7008%] (p = 0.04 < 0.05)
+                        thrpt:  [−3.5688% −1.8039% −0.2957%]
+                        Change within noise threshold.
+Found 3 outliers among 30 measurements (10.00%)
+  3 (10.00%) high severe
+Benchmarking next_version/features/100
+Benchmarking next_version/features/100: Warming up for 1.0000 s
+Benchmarking next_version/features/100: Collecting 30 samples in estimated 2.0046 s (56k iterations)
+Benchmarking next_version/features/100: Analyzing
+next_version/features/100
+                        time:   [33.929 µs 34.132 µs 34.437 µs]
+                        thrpt:  [2.9039 Melem/s 2.9298 Melem/s 2.9474 Melem/s]
+                 change:
+                        time:   [+2.7696% +8.0233% +14.347%] (p = 0.00 < 0.05)
+                        thrpt:  [−12.547% −7.4274% −2.6949%]
+                        Performance has regressed.
+Found 5 outliers among 30 measurements (16.67%)
+  1 (3.33%) high mild
+  4 (13.33%) high severe
+Benchmarking next_version/breaking/100
+Benchmarking next_version/breaking/100: Warming up for 1.0000 s
+Benchmarking next_version/breaking/100: Collecting 30 samples in estimated 2.0042 s (66k iterations)
+Benchmarking next_version/breaking/100: Analyzing
+next_version/breaking/100
+                        time:   [29.795 µs 30.187 µs 30.664 µs]
+                        thrpt:  [3.2611 Melem/s 3.3127 Melem/s 3.3563 Melem/s]
+                 change:
+                        time:   [+0.5104% +1.3248% +2.3426%] (p = 0.00 < 0.05)
+                        thrpt:  [−2.2890% −1.3075% −0.5078%]
+                        Change within noise threshold.
+Found 4 outliers among 30 measurements (13.33%)
+  1 (3.33%) low mild
+  1 (3.33%) high mild
+  2 (6.67%) high severe
+Benchmarking next_version/fixes/1000
+Benchmarking next_version/fixes/1000: Warming up for 1.0000 s
+Benchmarking next_version/fixes/1000: Collecting 30 samples in estimated 2.1469 s (5580 iterations)
+Benchmarking next_version/fixes/1000: Analyzing
+next_version/fixes/1000 time:   [391.38 µs 393.38 µs 395.41 µs]
+                        thrpt:  [2.5290 Melem/s 2.5421 Melem/s 2.5551 Melem/s]
+                 change:
+                        time:   [−3.5346% +1.2664% +6.2468%] (p = 0.62 > 0.05)
+                        thrpt:  [−5.8795% −1.2505% +3.6641%]
+                        No change in performance detected.
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high severe
+Benchmarking next_version/features/1000
+Benchmarking next_version/features/1000: Warming up for 1.0000 s
+Benchmarking next_version/features/1000: Collecting 30 samples in estimated 2.0693 s (5580 iterations)
+Benchmarking next_version/features/1000: Analyzing
+next_version/features/1000
+                        time:   [364.64 µs 367.82 µs 371.32 µs]
+                        thrpt:  [2.6931 Melem/s 2.7187 Melem/s 2.7424 Melem/s]
+                 change:
+                        time:   [+0.8381% +3.3546% +5.7864%] (p = 0.01 < 0.05)
+                        thrpt:  [−5.4699% −3.2457% −0.8311%]
+                        Change within noise threshold.
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+Benchmarking next_version/breaking/1000
+Benchmarking next_version/breaking/1000: Warming up for 1.0000 s
+Benchmarking next_version/breaking/1000: Collecting 30 samples in estimated 2.0376 s (6510 iterations)
+Benchmarking next_version/breaking/1000: Analyzing
+next_version/breaking/1000
+                        time:   [316.66 µs 322.91 µs 330.32 µs]
+                        thrpt:  [3.0274 Melem/s 3.0968 Melem/s 3.1579 Melem/s]
+                 change:
+                        time:   [+4.6107% +6.6536% +8.3990%] (p = 0.00 < 0.05)
+                        thrpt:  [−7.7482% −6.2385% −4.4075%]
+                        Performance has regressed.
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+

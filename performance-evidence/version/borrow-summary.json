@@ -1,0 +1,137 @@
+{
+  "next_version/fixes/10": {
+    "before": [
+      4.5835,
+      4.031,
+      3.939
+    ],
+    "after": [
+      3.8302,
+      3.6446,
+      3.894
+    ],
+    "reduction_percent": 4.981394194988828,
+    "median_before_us": 4.031,
+    "median_after_us": 3.8302
+  },
+  "next_version/features/10": {
+    "before": [
+      3.7548,
+      3.6425,
+      3.6815
+    ],
+    "after": [
+      3.5783,
+      3.4368,
+      3.6573
+    ],
+    "reduction_percent": 2.8032052152655216,
+    "median_before_us": 3.6815,
+    "median_after_us": 3.5783
+  },
+  "next_version/breaking/10": {
+    "before": [
+      3.1943,
+      3.1392,
+      3.2149
+    ],
+    "after": [
+      3.0664,
+      2.9518,
+      3.1354
+    ],
+    "reduction_percent": 4.004007137714064,
+    "median_before_us": 3.1943,
+    "median_after_us": 3.0664
+  },
+  "next_version/fixes/100": {
+    "before": [
+      37.082,
+      37.018,
+      37.618
+    ],
+    "after": [
+      36.068,
+      34.534,
+      38.547
+    ],
+    "reduction_percent": 2.734480340866196,
+    "median_before_us": 37.082,
+    "median_after_us": 36.068
+  },
+  "next_version/features/100": {
+    "before": [
+      33.511,
+      33.392,
+      34.132
+    ],
+    "after": [
+      32.809,
+      31.501,
+      32.916
+    ],
+    "reduction_percent": 2.09483453194475,
+    "median_before_us": 33.511,
+    "median_after_us": 32.809
+  },
+  "next_version/breaking/100": {
+    "before": [
+      29.325,
+      29.456,
+      30.187
+    ],
+    "after": [
+      28.464,
+      27.403,
+      28.378
+    ],
+    "reduction_percent": 3.6596958174904923,
+    "median_before_us": 29.456,
+    "median_after_us": 28.378
+  },
+  "next_version/fixes/1000": {
+    "before": [
+      374.8,
+      382.44,
+      393.38
+    ],
+    "after": [
+      402.98,
+      344.55,
+      358.72
+    ],
+    "reduction_percent": 6.2022800962242375,
+    "median_before_us": 382.44,
+    "median_after_us": 358.72
+  },
+  "next_version/features/1000": {
+    "before": [
+      337.74,
+      348.55,
+      367.82
+    ],
+    "after": [
+      326.32,
+      314.14,
+      319.14
+    ],
+    "reduction_percent": 8.437813800028698,
+    "median_before_us": 348.55,
+    "median_after_us": 319.14
+  },
+  "next_version/breaking/1000": {
+    "before": [
+      290.51,
+      298.28,
+      322.91
+    ],
+    "after": [
+      283.02,
+      278.8,
+      281.25
+    ],
+    "reduction_percent": 5.709400563229172,
+    "median_before_us": 298.28,
+    "median_after_us": 281.25
+  }
+}

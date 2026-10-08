@@ -1,0 +1,8 @@
+{
+  "base_commit": "72465264edf1d99b35e5b02bb01dd71b525b88f8",
+  "benchmark_commit": "517963a958d3cf693ac83f270e3e648a4b4949d2",
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+  "cpu_affinity": 5,
+  "isolation": "All builds/tests/benchmarks serialized with flock /workspace/perf-bench.lock"
+}
