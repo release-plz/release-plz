@@ -5,17 +5,13 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 use tracing::warn;
 
-use crate::{
-    diff::Commit,
-    fs_utils,
-    package_compare::{has_ignored_contents, is_generated_package_file},
-};
+use crate::{diff::Commit, fs_utils, package_compare::is_generated_package_file};
 
 use super::PackagePaths;
 
 mod replay;
 
-use replay::{ChangeReplay, FileChange, TokenConflicts};
+use replay::{ChangeReplay, TokenConflicts};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
 ///
@@ -212,7 +208,7 @@ impl<'a> RetainedChanges<'a> {
             .released
             .as_deref()
             .context("no equal snapshot was recorded")?;
-        let includes = |change: FileChange<'_>| self.includes(change);
+        let includes = |path: &[u8]| self.includes(path);
         // The release contains the change, in part at least, when undoing it
         // changes the release. Conflicting tokens keep the release's: a change
         // can be absent even when its inverse conflicts with edits next to it.
@@ -237,8 +233,7 @@ impl<'a> RetainedChanges<'a> {
         )
     }
 
-    fn includes(&self, change: FileChange<'_>) -> bool {
-        let path = change.path;
+    fn includes(&self, path: &[u8]) -> bool {
         let Ok(path) = std::str::from_utf8(path) else {
             // Cargo's UTF-8 file list cannot represent this path. Conservatively
             // include it only beneath the package directory; it cannot equal
@@ -253,13 +248,10 @@ impl<'a> RetainedChanges<'a> {
         let path = Utf8Path::new(path);
         let PackagePaths { package, readme } = &self.relative_paths;
         // Generated files at the package root do not affect package equality.
+        // Nested copies are packaged; the replay skips the edits that package
+        // equality ignores.
         let package_relative_path = path.strip_prefix(package).ok();
         if package_relative_path.is_some_and(|path| is_generated_package_file(path.as_str())) {
-            return false;
-        }
-        // Nested metadata contributes to the file list, even when equality
-        // ignores its contents. Nested VCS metadata is compared normally.
-        if !change.changes_presence && has_ignored_contents(path) {
             return false;
         }
         if readme.as_deref() == Some(path) {
@@ -298,26 +290,19 @@ mod tests {
             (b"outside/\xff", false),
             (b"crates/\xff/pkg/file", false),
         ] {
-            assert_eq!(includes(&changes, path), included, "{path:?}");
+            assert_eq!(changes.includes(path), included, "{path:?}");
         }
         changes.package_files = None;
-        assert!(includes(&changes, b"crates/pkg/ignored.txt"));
-        assert!(includes(&changes, b"crates/pkg/\xff"));
-        assert!(!includes(&changes, b"crates/pkg-extra/\xff"));
+        assert!(changes.includes(b"crates/pkg/ignored.txt"));
+        assert!(changes.includes(b"crates/pkg/\xff"));
+        assert!(!changes.includes(b"crates/pkg-extra/\xff"));
 
         // A package at the repository root conservatively includes every path
         // whose bytes cannot be checked against its Cargo file list.
         changes.relative_paths.package = Utf8PathBuf::new();
         changes.package_files = Some(HashSet::new());
-        assert!(includes(&changes, b"\xff"));
-        assert!(includes(&changes, b"src/\xff"));
-    }
-
-    fn includes(changes: &RetainedChanges<'_>, path: &[u8]) -> bool {
-        changes.includes(FileChange {
-            path,
-            changes_presence: false,
-        })
+        assert!(changes.includes(b"\xff"));
+        assert!(changes.includes(b"src/\xff"));
     }
 
     /// Commit `contents` to `file` at the repository root and return the commit hash.
