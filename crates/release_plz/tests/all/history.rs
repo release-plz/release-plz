@@ -1,7 +1,7 @@
 //! Exercise history selection through the CLI and packages published to Gitea.
 
 use cargo_metadata::camino::Utf8Path;
-use cargo_utils::CARGO_TOML;
+use cargo_utils::{CARGO_TOML, LocalManifest};
 use git_cmd::Repo;
 
 use crate::helpers::{
@@ -39,6 +39,23 @@ async fn api_history(released: &str) -> TestContext {
     let context = unpublished_history(if released.is_empty() { "" } else { BASE_API }).await;
     context.publish_snapshot(&[("src/lib.rs", released)]);
     context
+}
+
+async fn write_files_and_publish(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
+    let context = unpublished_history(BASE_API).await;
+    write_extra(context.repo.directory());
+    context
+        .repo
+        .add_all_and_commit("chore: file fixtures")
+        .unwrap();
+    context.publish_snapshot(&[]);
+    context
+}
+
+fn configure_readme(root: &Utf8Path, readme: &str) {
+    let mut manifest = LocalManifest::try_new(&root.join(CARGO_TOML)).unwrap();
+    manifest.data["package"]["readme"] = readme.into();
+    manifest.write().unwrap();
 }
 
 async fn member_history(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
@@ -401,6 +418,283 @@ fn assert_retained_changes_with_executable_bit(
 }
 
 #[tokio::test]
+async fn ignored_file_changes_do_not_hide_a_retained_package_change() {
+    for ignored in ["ignored.txt", "Cargo.lock"] {
+        let history = write_files_and_publish(|root| {
+            let mut manifest = LocalManifest::try_new(&root.join(CARGO_TOML)).unwrap();
+            manifest.data["package"]["exclude"] =
+                toml_edit::value(["ignored.txt"].into_iter().collect::<toml_edit::Array>());
+            manifest.write().unwrap();
+            fs_err::write(root.join("ignored.txt"), "original\n").unwrap();
+        })
+        .await;
+        let path = history.repo.directory().join(ignored);
+        let old = fs_err::read_to_string(&path).unwrap();
+        fs_err::write(path, format!("{old}# changed\n")).unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
+#[tokio::test]
+async fn materialized_symlink_files_keep_their_breaking_change_marker() {
+    for (path, sequential) in [
+        ("src/link.txt", false),
+        ("src/link.txt", true),
+        ("README.md", false),
+        ("README.md", true),
+    ] {
+        let history = unpublished_history(BASE_API).await;
+        let repo = &history.repo;
+        let root = repo.directory();
+        if path == "README.md" {
+            configure_readme(root, path);
+        }
+        fs_err::write(root.join(path), "old-target.txt").unwrap();
+        for target in [
+            "old-target.txt",
+            "new-target.txt",
+            "old-target.txt-extra",
+            "new-target.txt-extra",
+        ] {
+            fs_err::write(
+                root.join(path).parent().unwrap().join(target),
+                "# same contents\n",
+            )
+            .unwrap();
+        }
+        repo.git(&["config", "core.symlinks", "false"]).unwrap();
+        repo.git(&["add", "."]).unwrap();
+        let blob = repo.git(&["hash-object", "-w", "--", path]).unwrap();
+        repo.git(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("120000,{blob},{path}"),
+        ])
+        .unwrap();
+        repo.git(&["commit", "-m", "chore: materialized link baseline"])
+            .unwrap();
+        assert!(!root.join(path).is_symlink());
+        assert!(
+            repo.git(&["ls-files", "--stage", "--", path])
+                .unwrap()
+                .starts_with("120000 ")
+        );
+        history.publish_snapshot(&[]);
+
+        let suffix = sequential
+            .then(|| history.write_commit(path, "old-target.txt-extra", "chore: pointer suffix"));
+        let contents = if sequential {
+            "new-target.txt-extra"
+        } else {
+            "new-target.txt"
+        };
+        let breaking = history.write_commit(path, contents, "feat!: pointer format");
+        let sibling = history.merge_ignored_revert(path, "old-target.txt");
+        let mut expected = vec![breaking.as_str(), sibling.as_str()];
+        expected.extend(suffix.as_deref());
+        history.assert_release(&expected, "0.2.0");
+
+        let restore = history.write_commit(path, "old-target.txt", "fix: restore pointer");
+        history.assert_release(&[&restore, &sibling], "0.1.1");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn symlink_target_changes_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::symlink;
+
+    for (was_symlink, conflicting) in [(false, false), (true, false), (true, true)] {
+        let history = write_files_and_publish(|root| {
+            for target in ["a.txt", "b.txt", "c.txt"] {
+                fs_err::write(root.join("src").join(target), target).unwrap();
+            }
+            let link = root.join("src/link.txt");
+            if was_symlink {
+                symlink("a.txt", link).unwrap();
+            } else {
+                fs_err::write(link, "original\n").unwrap();
+            }
+        })
+        .await;
+        let link = history.repo.directory().join("src/link.txt");
+        fs_err::remove_file(&link).unwrap();
+        symlink("b.txt", &link).unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        if conflicting {
+            // Undoing a -> b at c conflicts even though equality ignores the link.
+            fs_err::remove_file(&link).unwrap();
+            symlink("c.txt", &link).unwrap();
+            history
+                .repo
+                .add_all_and_commit("chore: retarget link")
+                .unwrap();
+        }
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+
+        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
+        history.assert_release(&[&restore, &sibling], "0.1.1");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn symlink_presence_changes_keep_their_breaking_change_marker() {
+    use std::os::unix::fs::symlink;
+
+    for added in [false, true] {
+        let history = write_files_and_publish(|root| {
+            fs_err::write(root.join("src/target.txt"), "fixture\n").unwrap();
+            if !added {
+                symlink("target.txt", root.join("src/link.txt")).unwrap();
+            }
+        })
+        .await;
+        let link = history.repo.directory().join("src/link.txt");
+        if added {
+            symlink("target.txt", &link).unwrap();
+        } else {
+            fs_err::remove_file(&link).unwrap();
+        }
+        // Include a regular packaged path; its contents are ignored by equality.
+        let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
+        let breaking = history.write_commit(
+            "Cargo.lock",
+            &format!("{lock}# changed\n"),
+            "feat!: fixture paths",
+        );
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            let link = root.join("src/link.txt");
+            if added {
+                fs_err::remove_file(link).unwrap();
+            } else {
+                symlink("target.txt", link).unwrap();
+            }
+        });
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn equivalent_external_readme_symlink_targets_do_not_hide_a_retained_package_change() {
+    use std::os::unix::fs::symlink;
+
+    for (target, partial) in [("new.md", false), ("docs/alias.md", true)] {
+        let history = member_history(|root| {
+            configure_readme(&root.join("crates/pkg"), "../../README.md");
+            for target in ["old.md", "new.md"] {
+                fs_err::write(root.join(target), "# same documentation\n").unwrap();
+            }
+            fs_err::create_dir(root.join("docs")).unwrap();
+            symlink("../new.md", root.join("docs/alias.md")).unwrap();
+            fs_err::remove_file(root.join("README.md")).unwrap();
+            symlink("old.md", root.join("README.md")).unwrap();
+        })
+        .await;
+        history.publish_snapshot(&[]);
+        let old_link = history.repo.git(&["rev-parse", "HEAD:README.md"]).unwrap();
+        let readme = history.repo.directory().join("README.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink(target, readme).unwrap();
+        // The replay must resolve the old target from the historical snapshot.
+        fs_err::remove_file(history.repo.directory().join("old.md")).unwrap();
+        let breaking =
+            history.write_commit("crates/pkg/src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_change("crates/pkg/src/fix.rs", |root| {
+            fs_err::write(root.join("crates/pkg/src/lib.rs"), BASE_API).unwrap();
+        });
+        let history = if partial {
+            let history = history.partial_clone();
+            assert!(history.missing_objects().contains(&old_link));
+            history
+        } else {
+            history
+        };
+        let changelog = history.update_history();
+        let commits = commit_ids(&changelog);
+        assert!(commits.contains(&breaking.as_str()), "{changelog}");
+        assert!(commits.contains(&sibling.as_str()), "{changelog}");
+        assert!(changelog.starts_with("## 0.2.0\n"), "{changelog}");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn readme_symlink_changes_keep_their_breaking_change_marker() {
+    use std::os::unix::fs::symlink;
+
+    for package_dir in ["", "crates/pkg"] {
+        let write_extra = |root: &Utf8Path| {
+            configure_readme(
+                &root.join(package_dir),
+                if package_dir.is_empty() {
+                    "README.md"
+                } else {
+                    "../../README.md"
+                },
+            );
+            fs_err::write(root.join(package_dir).join("src/Cargo.lock"), "original\n").unwrap();
+            for target in ["old.md", "new.md"] {
+                fs_err::write(root.join(target), target).unwrap();
+            }
+            fs_err::remove_file(root.join("README.md")).unwrap();
+            symlink("old.md", root.join("README.md")).unwrap();
+        };
+        let history = if package_dir.is_empty() {
+            write_files_and_publish(write_extra).await
+        } else {
+            let history = member_history(write_extra).await;
+            history.publish_snapshot(&[]);
+            history
+        };
+        let readme = history.repo.directory().join("README.md");
+        fs_err::remove_file(&readme).unwrap();
+        symlink("new.md", &readme).unwrap();
+        let ignored = Utf8Path::new(package_dir).join("src/Cargo.lock");
+        let breaking = history.write_commit(ignored.as_str(), "changed\n", "feat!: documented API");
+        let sibling = history.merge_ignored_change(
+            Utf8Path::new(package_dir).join("src/fix.rs").as_str(),
+            |root| {
+                let readme = root.join("README.md");
+                fs_err::remove_file(&readme).unwrap();
+                symlink("old.md", readme).unwrap();
+                fs_err::write(root.join(&ignored), "reverted\n").unwrap();
+            },
+        );
+        let changelog = history.update_history();
+        // An external README can make file listing fail, conservatively
+        // including merge commits too. Both contributions must still survive.
+        let commits = commit_ids(&changelog);
+        assert!(commits.contains(&breaking.as_str()), "{changelog}");
+        assert!(commits.contains(&sibling.as_str()), "{changelog}");
+        assert!(changelog.starts_with("## 0.2.0\n"), "{changelog}");
+    }
+}
+
+#[tokio::test]
+async fn sequential_readme_edits_keep_their_breaking_change_marker() {
+    let history = write_files_and_publish(|root| {
+        configure_readme(root, "README.md");
+        fs_err::write(root.join("README.md"), BASE_API).unwrap();
+    })
+    .await;
+    let clarified =
+        history.write_commit("README.md", IMPLEMENTED_API, "chore: clarify documentation");
+    let breaking = history.write_commit(
+        "README.md",
+        IMPLEMENTED_BREAKING_API,
+        "feat!: documented API",
+    );
+    let sibling = history.merge_ignored_revert("README.md", BASE_API);
+    history.assert_release(&[&clarified, &breaking, &sibling], "0.2.0");
+}
+
+#[tokio::test]
 async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     // Cargo generates this file at the package root, but under src/ it is
     // an ordinary packaged file whose contents affect the release.
@@ -456,6 +750,27 @@ async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change()
         let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         history.assert_release(&[&breaking, &sibling], "0.2.0");
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn retained_changes_are_checked_when_the_repository_path_is_not_canonical() {
+    let history = write_files_and_publish(|root| {
+        configure_readme(root, "README.md");
+        fs_err::write(root.join("README.md"), "# API\n").unwrap();
+    })
+    .await;
+    let link_dir = tempfile::tempdir().unwrap();
+    let real = link_dir.path().join("real");
+    fs_err::create_dir(&real).unwrap();
+    let link = link_dir.path().join("link");
+    std::os::unix::fs::symlink(real, &link).unwrap();
+    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+    let mut command = history.update_command();
+    // The CLI walks a temporary copy. Make its raw repository path differ
+    // from the canonical README paths, as macOS's /var and /private/var do.
+    command.env("TMPDIR", &link);
+    assert_release(&history.check_update(command), &[&breaking], "0.2.0", "");
 }
 
 /// In a `history` equal to the release, add a breaking change and revert it on

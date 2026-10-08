@@ -1068,13 +1068,31 @@ struct PackagePaths {
     /// The canonical target of the README configured in `Cargo.toml`, when it
     /// exists: it can live outside the package directory.
     readme: Option<Utf8PathBuf>,
+    /// The configured README path with only its final component unresolved,
+    /// so retargeting a README symlink also counts as a change.
+    configured_readme: Option<Utf8PathBuf>,
 }
 
 impl PackagePaths {
     fn new(package_path: &Utf8Path, package: &Package) -> anyhow::Result<Self> {
+        let configured_readme = crate::package_compare::existing_readme_path(package, package_path);
+        let readme = configured_readme
+            .as_deref()
+            .map(fs_utils::canonicalize_utf8)
+            .transpose()?;
+        let configured_readme = configured_readme
+            .map(|readme| -> anyhow::Result<_> {
+                // Normalize `..` and symlinked directories without following
+                // the README link itself.
+                let parent = readme.parent().context("README has no parent")?;
+                let name = readme.file_name().context("README has no file name")?;
+                Ok(fs_utils::canonicalize_utf8(parent)?.join(name))
+            })
+            .transpose()?;
         Ok(Self {
             package: package_path.to_path_buf(),
-            readme: crate::local_readme_override(package, package_path)?,
+            readme,
+            configured_readme,
         })
     }
 
@@ -1082,6 +1100,11 @@ impl PackagePaths {
     fn all(&self) -> Vec<&Utf8Path> {
         std::iter::once(self.package.as_path())
             .chain(self.readme.as_deref())
+            .chain(
+                self.configured_readme
+                    .as_deref()
+                    .filter(|path| Some(*path) != self.readme.as_deref()),
+            )
             .collect()
     }
 }

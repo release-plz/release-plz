@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
+use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 use tracing::warn;
 
@@ -77,6 +78,11 @@ impl<'a> RetainedChanges<'a> {
             relative_paths: PackagePaths {
                 package: relativize(&paths.package)?,
                 readme: paths.readme.as_deref().map(relativize).transpose()?,
+                configured_readme: paths
+                    .configured_readme
+                    .as_deref()
+                    .map(relativize)
+                    .transpose()?,
             },
             released: None,
             package_files: None,
@@ -168,9 +174,14 @@ impl<'a> RetainedChanges<'a> {
         // A replay that cannot be built, for example on a SHA-256 repository,
         // is reported once: without evidence, ancestry pruning then applies to
         // every candidate.
-        let replay = ChangeReplay::new(self.repository, &self.head, &self.relative_paths.all())
-            .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
-            .ok();
+        let replay = ChangeReplay::new(
+            self.repository,
+            &self.head,
+            &self.relative_paths.all(),
+            self.relative_paths.configured_readme.as_deref(),
+        )
+        .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
+        .ok();
         commits.retain(|commit| self.retains(replay.as_ref(), &commit.id));
         Ok(())
     }
@@ -251,8 +262,16 @@ impl<'a> RetainedChanges<'a> {
                 .all(|component| components.next() == Some(component.as_bytes()));
         };
         let path = Utf8Path::new(path);
-        let PackagePaths { package, readme } = &self.relative_paths;
-        // Generated files at the package root do not affect package equality.
+        let PackagePaths {
+            package,
+            readme,
+            configured_readme,
+        } = &self.relative_paths;
+        // README equality follows links, including a configured link outside
+        // the package directory and a link whose target has changed.
+        if readme.as_deref() == Some(path) || configured_readme.as_deref() == Some(path) {
+            return true;
+        }
         let package_relative_path = path.strip_prefix(package).ok();
         if package_relative_path.is_some_and(|path| is_generated_package_file(path.as_str())) {
             return false;
@@ -264,8 +283,13 @@ impl<'a> RetainedChanges<'a> {
         {
             return false;
         }
-        if readme.as_deref() == Some(path) {
-            return true;
+        // Ordinary symlinks contribute only their presence to package equality.
+        // The manifest and configured README are compared separately.
+        if !change.changes_presence
+            && change.target_is_symlink
+            && package_relative_path.map(Utf8Path::as_str) != Some(CARGO_TOML)
+        {
+            return false;
         }
         match &self.package_files {
             Some(files) => files.contains(path),
@@ -286,6 +310,7 @@ mod tests {
         let paths = PackagePaths {
             package: repo.directory().join(&package),
             readme: Some(repo.directory().join("README.md")),
+            configured_readme: None,
         };
         let head = repo.current_commit_hash().unwrap();
         let mut changes = RetainedChanges::new(&repo, &head, &[], &paths).unwrap();
@@ -319,6 +344,7 @@ mod tests {
         changes.includes(FileChange {
             path,
             changes_presence: false,
+            target_is_symlink: false,
         })
     }
 
@@ -342,6 +368,7 @@ mod tests {
         let paths = PackagePaths {
             package: repo.directory().to_path_buf(),
             readme: None,
+            configured_readme: None,
         };
         let graph = repo
             .parents_at_paths(changed, &[], &paths.all(), None)
@@ -353,7 +380,7 @@ mod tests {
             package_files.as_deref().unwrap_or_default(),
         );
         changes.add_package_files(package_files);
-        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all()).unwrap();
+        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all(), None).unwrap();
         (changes, replay)
     }
 
