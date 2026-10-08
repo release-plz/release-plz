@@ -115,7 +115,7 @@ fn breaking_feature_increments_minor_version_from_0_0_x_when_features_always_inc
 }
 
 #[test]
-fn custom_minor_increment_regex_applies_after_breaking_change_from_0_0_x() {
+fn custom_minor_increment_regex_increments_minor_version_after_breaking_change_from_0_0_x() {
     let commits = ["feat!: break user", "fix: correct behavior"];
     let version = Version::new(0, 0, 3);
     assert_eq!(
