@@ -1,0 +1,30 @@
+{
+  "before": {
+    "cargo metadata": 12,
+    "git rev-parse": 6,
+    "git check-ignore": 1,
+    "git ls-files": 1,
+    "git config": 1,
+    "git --git-dir=.git": 1,
+    "git status": 1,
+    "git checkout original_branch": 20,
+    "git rev-list": 30,
+    "git log": 10,
+    "git checkout": 20,
+    "cargo package": 20
+  },
+  "after": {
+    "cargo metadata": 12,
+    "git rev-parse": 6,
+    "git check-ignore": 1,
+    "git ls-files": 1,
+    "git config": 1,
+    "git --git-dir=.git": 1,
+    "git status": 1,
+    "git checkout original_branch": 11,
+    "git rev-list": 30,
+    "git log": 10,
+    "git checkout": 20,
+    "cargo package": 20
+  }
+}

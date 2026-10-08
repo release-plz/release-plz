@@ -121,7 +121,9 @@ filter_unconventional = false
         self.repo.git(&["reset", "--hard", "HEAD"]).unwrap();
         self.repo.git(&["clean", "-fd"]).unwrap();
 
-        let mut command = Command::new(env!("CARGO_BIN_EXE_release-plz"));
+        let binary = std::env::var_os("RELEASE_PLZ_BENCH_BINARY")
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_release-plz").into());
+        let mut command = Command::new(binary);
         command
             .current_dir(self.repo.directory())
             .env("CARGO_NET_OFFLINE", "true")

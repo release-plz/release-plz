@@ -15,3 +15,11 @@ cargo bench --locked -p release-plz --bench builder
 ```
 
 Measures `ChangelogBuilder::build()` for a configured changelog containing 1, 10, or 1,000 conventional commits. Each iteration receives a fresh builder clone outside timing, avoiding reuse of warmed regex caches. Generation and output assertions run outside timing. This is a focused construction benchmark, not an end-to-end CLI result. Raw runs are in `changelog-builder/`.
+
+## Workspace HEAD restoration
+
+```sh
+cargo bench --locked -p release-plz --bench update -- 'update/workspace_10_(noop|one_change)'
+```
+
+Uses the original PR #3143 CLI fixtures. Versions, changelogs and clean no-op output are validated after every timed command. Three comparisons alternate before/after order, with the second pair reversed. The supplemental environment variable `RELEASE_PLZ_BENCH_BINARY` allows selecting an immutable CLI executable; absent it, the benchmark uses Cargo's current release-plz executable. Raw untraced timing runs and separately collected strace command counts are in `checkout/`. The standalone `profile_update.py` reproduces the CLI fixtures for profiling.

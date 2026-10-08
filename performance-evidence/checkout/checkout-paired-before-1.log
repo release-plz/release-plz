@@ -1,0 +1,22 @@
+Gnuplot not found, using plotters backend
+Benchmarking update/workspace_10_noop
+Benchmarking update/workspace_10_noop: Warming up for 1.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 10.1s.
+Benchmarking update/workspace_10_noop: Collecting 10 samples in estimated 10.072 s (10 iterations)
+Benchmarking update/workspace_10_noop: Analyzing
+update/workspace_10_noop
+                        time:   [983.95 ms 996.43 ms 1.0104 s]
+                        change: [−2.6265% −0.1388% +2.4469%] (p = 0.92 > 0.05)
+                        No change in performance detected.
+Benchmarking update/workspace_10_one_change
+Benchmarking update/workspace_10_one_change: Warming up for 1.0000 s
+
+Warning: Unable to complete 10 samples in 5.0s. You may wish to increase target time to 12.6s.
+Benchmarking update/workspace_10_one_change: Collecting 10 samples in estimated 12.586 s (10 iterations)
+Benchmarking update/workspace_10_one_change: Analyzing
+update/workspace_10_one_change
+                        time:   [1.1100 s 1.1417 s 1.1750 s]
+                        change: [+1.7683% +6.1391% +10.105%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+

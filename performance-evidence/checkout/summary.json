@@ -1,0 +1,42 @@
+{
+  "checkout/workspace_10_noop": {
+    "before": [
+      996.43,
+      1014.5,
+      1017.5000000000001
+    ],
+    "after": [
+      978.05,
+      991.16,
+      969.8
+    ],
+    "before_median": 1014.5,
+    "after_median": 978.05,
+    "median_reduction_percent": 3.5929029078363817,
+    "paired_reductions_percent": [
+      1.8445851690535253,
+      2.300640709709223,
+      4.687960687960702
+    ]
+  },
+  "checkout/workspace_10_one_change": {
+    "before": [
+      1141.7,
+      1129.6999999999998,
+      1111.5
+    ],
+    "after": [
+      1130.1000000000001,
+      1075.6,
+      1077.3
+    ],
+    "before_median": 1129.6999999999998,
+    "after_median": 1077.3,
+    "median_reduction_percent": 4.638399575108421,
+    "paired_reductions_percent": [
+      1.016028729088192,
+      4.788882004071871,
+      3.076923076923077
+    ]
+  }
+}
