@@ -141,7 +141,7 @@ impl VersionIncrement {
             match Commit::parse(msg) {
                 Ok(commit) => {
                     if commit.breaking() {
-                        // No later commit can request a larger increment.
+                        // No other commit can request a larger increment.
                         if can_increment_major {
                             return Self::Major;
                         }
@@ -149,7 +149,7 @@ impl VersionIncrement {
                             return Self::Minor;
                         }
                         // In 0.0.x, breaking changes only increment the patch,
-                        // so later commits can still request a minor increment.
+                        // but this or other commits can still request a minor increment.
                     }
                     conventional_commits.push(commit);
                 }
