@@ -54,6 +54,10 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
 pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 
 impl PackageFiles {
+    pub(crate) fn is_cached(&self) -> bool {
+        self.0.get().is_some()
+    }
+
     /// The files of `package`, relative to its directory.
     pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
         if let Some(files) = self.0.get() {

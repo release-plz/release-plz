@@ -961,9 +961,14 @@ impl Updater<'_> {
         hash: &str,
         package_files: &PackageFiles,
     ) -> anyhow::Result<bool> {
-        let package_files_res = self.with_cargo_lock_restored(repository, || {
-            get_package_files(package_path, repository, package_files)
-        })?;
+        let get_files = || get_package_files(package_path, repository, package_files);
+        let package_files_res = if package_files.is_cached() {
+            // Equality already listed this snapshot's files and restored Cargo.lock.
+            // Reusing that list cannot introduce another lockfile change.
+            get_files()
+        } else {
+            self.with_cargo_lock_restored(repository, get_files)?
+        };
         let Ok(package_files) = package_files_res.inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
