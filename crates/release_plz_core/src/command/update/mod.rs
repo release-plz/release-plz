@@ -43,10 +43,10 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
         .await
         .context("failed to determine next versions")?;
     let local_manifest_path = input.local_manifest();
-    let local_metadata = cargo_utils::get_manifest_metadata(local_manifest_path)?;
-    // Read packages from `local_metadata` to update the manifest of local
-    // workspace dependencies.
-    let all_packages: Vec<Package> = cargo_utils::workspace_members(&local_metadata)?.collect();
+    // Version analysis runs in an isolated copy, so the request's metadata is
+    // still current. Relocate manifest paths when release-pr updates a copy.
+    let all_packages =
+        crate::project::workspace_packages_at(input.cargo_metadata(), input.local_manifest_dir()?)?;
     let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
     update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
     update_changelogs(input, &packages_to_update)?;
@@ -232,6 +232,7 @@ pub(super) fn update_dependencies(
             .filter(|d| d.contains_key("version"))
             .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
 
+        let mut changed = false;
         for dep in deps_to_update {
             let old_req = dep
                 .get("version")
@@ -240,9 +241,12 @@ pub(super) fn update_dependencies(
                 .unwrap_or("*");
             if let Some(new_req) = upgrade_requirement(old_req, version)? {
                 dep.insert("version", toml_edit::value(new_req));
+                changed = true;
             }
         }
-        local_manifest.write()?;
+        if changed {
+            local_manifest.write()?;
+        }
     }
     Ok(())
 }

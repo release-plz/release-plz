@@ -4,6 +4,47 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
 
+#[tokio::test]
+async fn update_relocated_workspace_preserves_original_manifests() {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "support", "feat: update support");
+    let metadata = locked_metadata(repo.directory());
+    let copied = release_plz_core::copy_to_temp_dir(repo.directory()).unwrap();
+    let copied_project = copied.path().join("project");
+    let request = release_plz_core::update_request::UpdateRequest::new(metadata)
+        .unwrap()
+        .set_local_manifest(copied_project.join("Cargo.toml"))
+        .unwrap()
+        .with_registry_manifest_path(&temp_dir.path().join("registry/Cargo.toml"))
+        .unwrap()
+        .with_default_package_config(
+            release_plz_core::UpdateConfig::default().with_semver_check(false),
+        );
+
+    release_plz_core::update(&request).await.unwrap();
+
+    // release-pr retains the original metadata while updating the copied checkout.
+    assert_locked_versions(
+        &copied_project,
+        &[("support", "1.1.0"), ("consumer", "1.0.1")],
+    );
+    repo.is_clean().unwrap();
+    assert_locked_versions(
+        repo.directory(),
+        &[("support", "1.0.0"), ("consumer", "1.0.0")],
+    );
+}
+
 #[test]
 fn update_refreshes_package_files_for_each_historical_snapshot() {
     let (temp_dir, repo) = init_workspace(
