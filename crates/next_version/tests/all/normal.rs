@@ -70,6 +70,68 @@ fn commit_with_breaking_change_increments_major_version_when_major_is_zero() {
 }
 
 #[test]
+fn commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero() {
+    let commits = ["feat!: break user"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_breaking_always_increment_major(true)
+            .increment(&version, commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
+fn breaking_change_among_other_commits() {
+    for breaking in [
+        "feat!: break user",
+        "feat: change behavior\n\nBREAKING CHANGE: break user",
+    ] {
+        for commits in [
+            [breaking, "feat: add feature", "fix: correct behavior"],
+            ["fix: correct behavior", "feat: add feature", breaking],
+        ] {
+            for (version, expected) in [
+                (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+                (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+                (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+            ] {
+                assert_eq!(
+                    version.next(commits),
+                    expected,
+                    "{commits:?} from {version}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn breaking_feature_increments_minor_version_from_0_0_x_when_features_always_increment_minor() {
+    let commits = ["feat!: break user"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_features_always_increment_minor(true)
+            .increment(&version, commits),
+        Version::new(0, 1, 0)
+    );
+}
+
+#[test]
+fn custom_minor_increment_regex_increments_minor_version_after_breaking_change_from_0_0_x() {
+    let commits = ["feat!: break user", "fix: correct behavior"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_minor_increment_regex("^fix$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(0, 1, 0)
+    );
+}
+
+#[test]
 fn commit_with_custom_major_increment_regex_increments_major_version() {
     let commits = ["major: some changes"];
     let version = Version::new(1, 2, 3);
@@ -122,6 +184,33 @@ fn non_conventional_commit_with_custom_major_increment_regex_increments_major_ve
 }
 
 #[test]
+fn commit_with_custom_major_increment_regex_does_not_increment_major_version_when_major_is_zero() {
+    let commits = ["major: some changes"];
+    let version = Version::new(0, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_major_increment_regex("major")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(0, 2, 4)
+    );
+}
+
+#[test]
+fn commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero() {
+    let commits = ["major: some changes"];
+    let version = Version::new(0, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_breaking_always_increment_major(true)
+            .with_custom_major_increment_regex("major")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
 fn conventional_commit_with_matching_description_does_not_trigger_custom_regex() {
     // The word "minor" appears in the description, but not in the type
     // For conventional commits, only the type should be checked
@@ -146,6 +235,19 @@ fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
             .unwrap()
             .increment(&version, commits),
         Version::new(1, 3, 0)
+    );
+}
+
+#[test]
+fn no_increment_regex_filters_breaking_commits() {
+    let commits = ["docs!: change documentation", "fix: correct behavior"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("^docs$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4)
     );
 }
 
