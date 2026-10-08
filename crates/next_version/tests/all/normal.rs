@@ -50,23 +50,6 @@ fn commit_with_breaking_change_increments_major_version() {
 }
 
 #[test]
-fn breaking_changes_keep_version_zero_rules_when_followed_by_other_commits() {
-    for breaking in [
-        "feat!: break user",
-        "feat: change behavior\n\nBREAKING CHANGE: break user",
-    ] {
-        let commits = [breaking, "feat: add feature", "fix: correct behavior"];
-        for (version, expected) in [
-            (Version::new(0, 0, 3), Version::new(0, 0, 4)),
-            (Version::new(0, 2, 3), Version::new(0, 3, 0)),
-            (Version::new(1, 2, 3), Version::new(2, 0, 0)),
-        ] {
-            assert_eq!(version.next(commits), expected);
-        }
-    }
-}
-
-#[test]
 fn ignored_breaking_change_does_not_trigger_a_bump() {
     let version = Version::new(1, 2, 3);
     assert_eq!(
@@ -99,6 +82,27 @@ fn commit_with_breaking_change_increments_major_version_when_major_is_zero() {
             .increment(&version, commits),
         Version::new(1, 0, 0)
     );
+}
+
+#[test]
+fn breaking_change_followed_by_other_commits() {
+    for breaking in [
+        "feat!: break user",
+        "feat: change behavior\n\nBREAKING CHANGE: break user",
+    ] {
+        let commits = [breaking, "feat: add feature", "fix: correct behavior"];
+        for (version, expected) in [
+            (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+            (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+            (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+        ] {
+            assert_eq!(
+                version.next(commits),
+                expected,
+                "{breaking:?} from {version}"
+            );
+        }
+    }
 }
 
 #[test]
