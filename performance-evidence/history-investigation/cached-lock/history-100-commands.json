@@ -1,0 +1,23 @@
+{
+  "cargo package --list --quiet --allow-dirty": 102,
+  "git checkout COMMIT": 101,
+  "git checkout CARGO_LOCK": 101,
+  "git log -1 --pretty=format:%B": 100,
+  "git rev-parse --show-toplevel": 3,
+  "git rev-parse --abbrev-ref --symbolic-full-name @{upstream}": 3,
+  "git rev-parse --abbrev-ref HEAD": 3,
+  "git status --porcelain": 2,
+  "git checkout master": 2,
+  "cargo metadata --format-version 1 --no-deps --manifest-path /tmp/.tmpgWBxKF/current/Cargo.toml": 1,
+  "git check-ignore --no-index /tmp/.tmpgWBxKF/current/Cargo.lock": 1,
+  "git ls-files --error-unmatch /tmp/.tmpgWBxKF/current/Cargo.lock": 1,
+  "git config --get remote.origin.url": 1,
+  "cargo metadata --format-version 1 --no-deps --manifest-path /tmp/.tmpgWBxKF/released/Cargo.toml": 1,
+  "git --git-dir=.git ls-files --stage -z": 1,
+  "git rev-list -n 1 v1.0.0": 1,
+  "git log -1 --pretty=format:%H": 1,
+  "git rev-list --parents --date-order a0b3ca23f35fa50b26d5cc6dcdba022101780863 -- /tmp/.tmp9LPCIm/current/packages/package-0": 1,
+  "cargo metadata --format-version 1 --no-deps --manifest-path /tmp/.tmp9LPCIm/current/packages/package-0/Cargo.toml": 1,
+  "git rev-list --full-history a3768357f1f910d55c9a09a7f6e6592efaa49ff1 -- /tmp/.tmp9LPCIm/current/packages/package-0": 1,
+  "cargo update --workspace": 1
+}

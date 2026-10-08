@@ -1,0 +1,688 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index d6cbc19e..cc7dcbf7 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -23,6 +23,15 @@ dependencies = [
+  "memchr",
+ ]
+ 
++[[package]]
++name = "alloca"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e5a7d05ea6aea7e9e64d25b9156ba2fee3fdd659e34e41063cd2fc7cd020d7f4"
++dependencies = [
++ "cc",
++]
++
+ [[package]]
+ name = "allocator-api2"
+ version = "0.2.21"
+@@ -38,6 +47,12 @@ dependencies = [
+  "libc",
+ ]
+ 
++[[package]]
++name = "anes"
++version = "0.1.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
++
+ [[package]]
+ name = "annotate-snippets"
+ version = "0.12.16"
+@@ -445,7 +460,7 @@ dependencies = [
+  "ignore",
+  "im-rc",
+  "indexmap",
+- "itertools",
++ "itertools 0.15.0",
+  "jiff",
+  "jobserver",
+  "libc",
+@@ -640,6 +655,12 @@ dependencies = [
+  "url",
+ ]
+ 
++[[package]]
++name = "cast"
++version = "0.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
++
+ [[package]]
+ name = "cc"
+ version = "1.6.0"
+@@ -711,6 +732,33 @@ dependencies = [
+  "phf_codegen",
+ ]
+ 
++[[package]]
++name = "ciborium"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
++dependencies = [
++ "ciborium-io",
++ "ciborium-ll",
++ "serde",
++]
++
++[[package]]
++name = "ciborium-io"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
++
++[[package]]
++name = "ciborium-ll"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
++dependencies = [
++ "ciborium-io",
++ "half",
++]
++
+ [[package]]
+ name = "clap"
+ version = "4.6.7"
+@@ -946,6 +994,40 @@ dependencies = [
+  "cfg-if",
+ ]
+ 
++[[package]]
++name = "criterion"
++version = "0.8.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "950046b2aa2492f9a536f5f4f9a3de7b9e2476e575e05bd6c333371add4d98f3"
++dependencies = [
++ "alloca",
++ "anes",
++ "cast",
++ "ciborium",
++ "clap",
++ "criterion-plot",
++ "itertools 0.13.0",
++ "num-traits",
++ "oorandom",
++ "page_size",
++ "plotters",
++ "regex",
++ "serde",
++ "serde_json",
++ "tinytemplate",
++ "walkdir",
++]
++
++[[package]]
++name = "criterion-plot"
++version = "0.8.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d8d80a2f4f5b554395e47b5d8305bc3d27813bacb73493eb1001e8f76dae29ea"
++dependencies = [
++ "cast",
++ "itertools 0.13.0",
++]
++
+ [[package]]
+ name = "crossbeam-channel"
+ version = "0.5.17"
+@@ -980,6 +1062,12 @@ version = "0.8.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+ 
++[[package]]
++name = "crunchy"
++version = "0.2.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
++
+ [[package]]
+ name = "crypto-bigint"
+ version = "0.5.5"
+@@ -2594,6 +2682,17 @@ dependencies = [
+  "tracing",
+ ]
+ 
++[[package]]
++name = "half"
++version = "2.7.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
++dependencies = [
++ "cfg-if",
++ "crunchy",
++ "zerocopy",
++]
++
+ [[package]]
+ name = "hash32"
+ version = "0.3.1"
+@@ -3088,6 +3187,15 @@ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+ 
++[[package]]
++name = "itertools"
++version = "0.13.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
++dependencies = [
++ "either",
++]
++
+ [[package]]
+ name = "itertools"
+ version = "0.15.0"
+@@ -3511,6 +3619,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
+ name = "next_version"
+ version = "0.3.2"
+ dependencies = [
++ "criterion",
+  "git-conventional 1.1.0",
+  "regex",
+  "semver",
+@@ -3778,6 +3887,12 @@ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+ 
++[[package]]
++name = "oorandom"
++version = "11.1.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
++
+ [[package]]
+ name = "opener"
+ version = "0.8.5"
+@@ -3894,6 +4009,16 @@ dependencies = [
+  "sha2 0.10.9",
+ ]
+ 
++[[package]]
++name = "page_size"
++version = "0.6.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "30d5b2194ed13191c1999ae0704b7839fb18384fa22e49b57eeaa97d79ce40da"
++dependencies = [
++ "libc",
++ "winapi",
++]
++
+ [[package]]
+ name = "parking_lot"
+ version = "0.12.5"
+@@ -4088,6 +4213,34 @@ version = "0.3.34"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+ 
++[[package]]
++name = "plotters"
++version = "0.3.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747"
++dependencies = [
++ "num-traits",
++ "plotters-backend",
++ "plotters-svg",
++ "wasm-bindgen",
++ "web-sys",
++]
++
++[[package]]
++name = "plotters-backend"
++version = "0.3.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a"
++
++[[package]]
++name = "plotters-svg"
++version = "0.3.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
++dependencies = [
++ "plotters-backend",
++]
++
+ [[package]]
+ name = "portable-atomic"
+ version = "1.15.0"
+@@ -4442,6 +4595,7 @@ dependencies = [
+  "chrono",
+  "clap",
+  "clap_complete",
++ "criterion",
+  "expect-test",
+  "fake_package",
+  "fs-err",
+@@ -5505,6 +5659,16 @@ dependencies = [
+  "zerovec",
+ ]
+ 
++[[package]]
++name = "tinytemplate"
++version = "1.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
++dependencies = [
++ "serde",
++ "serde_json",
++]
++
+ [[package]]
+ name = "tinyvec"
+ version = "1.13.3"
+@@ -6041,6 +6205,22 @@ dependencies = [
+  "rustls-pki-types",
+ ]
+ 
++[[package]]
++name = "winapi"
++version = "0.3.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
++dependencies = [
++ "winapi-i686-pc-windows-gnu",
++ "winapi-x86_64-pc-windows-gnu",
++]
++
++[[package]]
++name = "winapi-i686-pc-windows-gnu"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
++
+ [[package]]
+ name = "winapi-util"
+ version = "0.1.11"
+@@ -6050,6 +6230,12 @@ dependencies = [
+  "windows-sys 0.61.2",
+ ]
+ 
++[[package]]
++name = "winapi-x86_64-pc-windows-gnu"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
++
+ [[package]]
+ name = "windows"
+ version = "0.62.2"
+diff --git a/Cargo.toml b/Cargo.toml
+index 10572f00..244479d5 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -16,6 +16,7 @@ cargo = { version = "0.100.0" }
+ chrono = { version = "0.4.42", default-features = false }
+ clap = "4.5.47"
+ clap_complete = "4.5.57"
++criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support", "html_reports", "plotters"] }
+ dunce = "1.0.5"
+ expect-test = "1.5.1"
+ flate2 = "1.1.10"
+diff --git a/crates/next_version/Cargo.toml b/crates/next_version/Cargo.toml
+index 07243954..0477fbff 100644
+--- a/crates/next_version/Cargo.toml
++++ b/crates/next_version/Cargo.toml
+@@ -15,3 +15,10 @@ workspace = true
+ regex.workspace = true
+ semver.workspace = true
+ git-conventional.workspace = true
++
++[dev-dependencies]
++criterion.workspace = true
++
++[[bench]]
++name = "next_version"
++harness = false
+diff --git a/crates/next_version/benches/next_version.rs b/crates/next_version/benches/next_version.rs
+new file mode 100644
+index 00000000..281e29cf
+--- /dev/null
++++ b/crates/next_version/benches/next_version.rs
+@@ -0,0 +1,28 @@
++use std::hint::black_box;
++
++use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
++use next_version::NextVersion as _;
++use semver::Version;
++
++fn next_version(c: &mut Criterion) {
++    let current = Version::new(1, 0, 0);
++    let mut group = c.benchmark_group("next_version");
++    for count in [10, 100, 1_000] {
++        for (name, message, expected) in [
++            ("fixes", "fix: correct behavior", Version::new(1, 0, 1)),
++            ("features", "feat: add behavior", Version::new(1, 1, 0)),
++            ("breaking", "feat!: change behavior", Version::new(2, 0, 0)),
++        ] {
++            let commits = vec![message; count];
++            assert_eq!(current.next(&commits), expected);
++            group.throughput(Throughput::Elements(count.try_into().unwrap()));
++            group.bench_with_input(BenchmarkId::new(name, count), &commits, |b, commits| {
++                b.iter(|| black_box(&current).next(black_box(commits)));
++            });
++        }
++    }
++    group.finish();
++}
++
++criterion_group!(benches, next_version);
++criterion_main!(benches);
+diff --git a/crates/release_plz/Cargo.toml b/crates/release_plz/Cargo.toml
+index 624acdc5..153fae09 100644
+--- a/crates/release_plz/Cargo.toml
++++ b/crates/release_plz/Cargo.toml
+@@ -51,11 +51,20 @@ test_logs = { path = "../test_logs" }
+ fake_package = { path = "../fake_package" }
+ 
+ assert_cmd.workspace = true
++criterion.workspace = true
+ expect-test.workspace = true
+ serde_json.workspace = true
+ tempfile.workspace = true
+ toml_edit.workspace = true
+ 
++[[bench]]
++name = "update"
++harness = false
++
++[[bench]]
++name = "manifest_updates"
++harness = false
++
+ [package.metadata.binstall]
+ pkg-url = "{ repo }/releases/download/release-plz-v{ version }/{ name }-{ target }{ archive-suffix }"
+ pkg-fmt = "tgz"
+diff --git a/crates/release_plz/benches/manifest_updates.rs b/crates/release_plz/benches/manifest_updates.rs
+new file mode 100644
+index 00000000..35926404
+--- /dev/null
++++ b/crates/release_plz/benches/manifest_updates.rs
+@@ -0,0 +1,86 @@
++use std::time::Duration;
++
++use cargo_metadata::{Package, semver::Version};
++use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
++use release_plz_core::fs_utils::Utf8TempDir;
++
++/// Isolate manifest processing from Git history and Cargo subprocesses. Updating
++/// one independent package still scans every workspace manifest for dependents.
++fn manifest_updates(c: &mut Criterion) {
++    let mut group = c.benchmark_group("manifest_updates");
++    group
++        .warm_up_time(Duration::from_secs(1))
++        .measurement_time(Duration::from_secs(3));
++    for count in [10, 100] {
++        let mut fixture = None;
++        let mut iteration = 0;
++        group.bench_with_input(
++            BenchmarkId::new("independent", count),
++            &count,
++            |b, &count| {
++                let fixture = fixture.get_or_insert_with(|| Fixture::new(count));
++                let packages: Vec<_> = fixture.packages.iter().collect();
++                let manifest = fixture.directory.path().join("Cargo.toml");
++                let package = fixture.directory.path().join("packages/package-0");
++                let versions = [Version::new(1, 0, 1), Version::new(1, 0, 2)];
++                b.iter(|| {
++                    // Alternate versions so every iteration changes the target;
++                    // unrelated manifests have no dependency requirements to update.
++                    release_plz_core::set_version(
++                        &packages,
++                        &package,
++                        &versions[iteration % versions.len()],
++                        &manifest,
++                    )
++                    .unwrap();
++                    iteration += 1;
++                });
++                let updated =
++                    cargo_utils::LocalManifest::try_new(&package.join("Cargo.toml")).unwrap();
++                assert_eq!(
++                    updated.data["package"]["version"].as_str().unwrap(),
++                    versions[(iteration - 1) % versions.len()].to_string(),
++                );
++            },
++        );
++    }
++    group.finish();
++}
++
++struct Fixture {
++    directory: Utf8TempDir,
++    packages: Vec<Package>,
++}
++
++impl Fixture {
++    fn new(count: usize) -> Self {
++        let directory = Utf8TempDir::new().unwrap();
++        let manifest = directory.path().join("Cargo.toml");
++        fs_err::write(
++            &manifest,
++            "[workspace]\nmembers = [\"packages/*\"]\nresolver = \"3\"\n",
++        )
++        .unwrap();
++        for index in 0..count {
++            let package = directory.path().join(format!("packages/package-{index}"));
++            fs_err::create_dir_all(package.join("src")).unwrap();
++            fs_err::write(
++                package.join("Cargo.toml"),
++                format!(
++                    "[package]\nname = \"package-{index}\"\nversion = \"1.0.0\"\nedition = \"2024\"\n",
++                ),
++            )
++            .unwrap();
++            fs_err::write(package.join("src/lib.rs"), "").unwrap();
++        }
++        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
++        let packages = cargo_utils::workspace_members(&metadata).unwrap().collect();
++        Self {
++            directory,
++            packages,
++        }
++    }
++}
++
++criterion_group!(benches, manifest_updates);
++criterion_main!(benches);
+diff --git a/crates/release_plz/benches/update.rs b/crates/release_plz/benches/update.rs
+new file mode 100644
+index 00000000..efdeb240
+--- /dev/null
++++ b/crates/release_plz/benches/update.rs
+@@ -0,0 +1,193 @@
++use std::{
++    process::{Command, Output},
++    time::{Duration, Instant},
++};
++
++use cargo_metadata::camino::Utf8Path;
++use criterion::{Criterion, SamplingMode, criterion_group, criterion_main};
++use git_cmd::Repo;
++use release_plz_core::fs_utils::Utf8TempDir;
++
++fn update(c: &mut Criterion) {
++    let mut group = c.benchmark_group("update");
++    group
++        .sample_size(10)
++        .sampling_mode(SamplingMode::Flat)
++        .warm_up_time(Duration::from_secs(1))
++        .measurement_time(Duration::from_secs(5));
++
++    for (name, packages, commits, dependency_chain) in [
++        ("single_noop", 1, 0, false),
++        ("single_change", 1, 1, false),
++        ("history_100", 1, 100, false),
++        ("workspace_10_noop", 10, 0, false),
++        ("workspace_10_one_change", 10, 1, false),
++        ("workspace_10_dependency_chain", 10, 1, true),
++    ] {
++        let mut fixture = None;
++        group.bench_function(name, |b| {
++            // Construct only selected fixtures and retain them across warmup and samples.
++            let fixture =
++                fixture.get_or_insert_with(|| Fixture::new(packages, commits, dependency_chain));
++            b.iter_custom(|iterations| {
++                let mut elapsed = Duration::ZERO;
++                for _ in 0..iterations {
++                    elapsed += fixture.measure_update(packages, commits, dependency_chain);
++                }
++                elapsed
++            });
++        });
++    }
++    group.finish();
++}
++
++struct Fixture {
++    directory: Utf8TempDir,
++    repo: Repo,
++}
++
++impl Fixture {
++    fn new(packages: usize, commits: usize, dependency_chain: bool) -> Self {
++        let directory = Utf8TempDir::new().unwrap();
++        for name in ["current", "released"] {
++            let root = directory.path().join(name);
++            fs_err::create_dir(&root).unwrap();
++            fs_err::write(
++                root.join("Cargo.toml"),
++                "[workspace]\nmembers = [\"packages/*\"]\nresolver = \"3\"\n",
++            )
++            .unwrap();
++            for index in 0..packages {
++                let package = root.join(format!("packages/package-{index}"));
++                fs_err::create_dir_all(package.join("src")).unwrap();
++                let mut manifest = format!(
++                    "[package]\nname = \"package-{index}\"\nversion = \"1.0.0\"\nedition = \"2024\"\n"
++                );
++                if dependency_chain && index > 0 {
++                    let previous = index - 1;
++                    manifest.push_str(&format!(
++                        "[dependencies]\npackage-{previous} = {{ path = \"../package-{previous}\", version = \"=1.0.0\" }}\n"
++                    ));
++                }
++                fs_err::write(package.join("Cargo.toml"), manifest).unwrap();
++                fs_err::write(package.join("src/lib.rs"), "// Initial release\n").unwrap();
++            }
++            let output = Command::new("cargo")
++                .current_dir(&root)
++                .args(["generate-lockfile", "--offline"])
++                .output()
++                .unwrap();
++            assert_success(&output);
++        }
++
++        let current = directory.path().join("current");
++        // Keep Git checkout from changing source bytes on machines using core.autocrlf.
++        fs_err::write(current.join(".gitattributes"), "* -text\n").unwrap();
++        fs_err::write(
++            current.join("release-plz.toml"),
++            "[workspace]\nsemver_check = false\n",
++        )
++        .unwrap();
++        // An explicit template prevents a user's global git-cliff config changing the workload.
++        fs_err::write(
++            current.join("cliff.toml"),
++            r##"[changelog]
++header = "# Changelog\n"
++body = """
++## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
++{% for commit in commits %}- {{ commit.message }}
++{% endfor %}
++"""
++[git]
++conventional_commits = true
++filter_unconventional = false
++"##,
++        )
++        .unwrap();
++        let repo = Repo::init(&current);
++        let mut source = String::from("// Initial release\n");
++        for index in 0..commits {
++            source.push_str(&format!("// Fix {index}\n"));
++            fs_err::write(current.join("packages/package-0/src/lib.rs"), &source).unwrap();
++            repo.add_all_and_commit(&format!("fix: change {index}"))
++                .unwrap();
++        }
++        Self { directory, repo }
++    }
++
++    fn measure_update(&self, packages: usize, commits: usize, dependency_chain: bool) -> Duration {
++        // Reset only our disposable repository. Both tracked updates and newly created
++        // changelogs must be removed, or subsequent iterations measure different work.
++        self.repo.git(&["reset", "--hard", "HEAD"]).unwrap();
++        self.repo.git(&["clean", "-fd"]).unwrap();
++
++        let mut command = Command::new(env!("CARGO_BIN_EXE_release-plz"));
++        command
++            .current_dir(self.repo.directory())
++            .env("CARGO_NET_OFFLINE", "true")
++            .env("CARGO_TARGET_DIR", self.directory.path().join("target"))
++            .env("RELEASE_PLZ_NO_ANSI", "1")
++            .env("RELEASE_PLZ_LOG", "error")
++            .env_remove("GIT_TOKEN")
++            .args([
++                "update",
++                "--release-date",
++                "2025-01-01",
++                "--changelog-config",
++                "cliff.toml",
++                "--registry-manifest-path",
++            ])
++            .arg(self.directory.path().join("released/Cargo.toml"));
++
++        let start = Instant::now();
++        let output = command.output().unwrap();
++        let elapsed = start.elapsed();
++
++        // Validate every run after stopping the clock: failures and skipped work
++        // must never be reported as performance improvements.
++        assert_success(&output);
++        for index in 0..packages {
++            let package = self
++                .repo
++                .directory()
++                .join(format!("packages/package-{index}"));
++            let changed = commits > 0 && (index == 0 || dependency_chain);
++            let expected = if changed { "1.0.1" } else { "1.0.0" };
++            assert_eq!(package_version(&package), expected);
++            let changelog = package.join("CHANGELOG.md");
++            assert_eq!(changelog.exists(), changed);
++            if changed {
++                let contents = fs_err::read_to_string(changelog).unwrap();
++                assert!(contents.contains("1.0.1"));
++                if index == 0 {
++                    for commit in 0..commits {
++                        assert!(contents.contains(&format!("change {commit}\n")));
++                    }
++                }
++            }
++        }
++        if commits == 0 {
++            self.repo.is_clean().unwrap();
++        }
++        elapsed
++    }
++}
++
++fn package_version(package: &Utf8Path) -> String {
++    let manifest = fs_err::read_to_string(package.join("Cargo.toml")).unwrap();
++    let manifest: toml::Value = toml::from_str(&manifest).unwrap();
++    manifest["package"]["version"].as_str().unwrap().to_owned()
++}
++
++fn assert_success(output: &Output) {
++    assert!(
++        output.status.success(),
++        "command failed: {}\nstdout: {}\nstderr: {}",
++        output.status,
++        String::from_utf8_lossy(&output.stdout),
++        String::from_utf8_lossy(&output.stderr),
++    );
++}
++
++criterion_group!(benches, update);
++criterion_main!(benches);

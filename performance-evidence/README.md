@@ -10,6 +10,7 @@ This branch holds benchmark sources, locked harness dependencies, reproduction s
 - `files`: real public package comparison with bounded file reads.
 - `manifest`: inherited dependency lookup and independent-package dependency propagation.
 - `templates`: direct formatting of default Git tags and release names.
+- `history-investigation`: two subprocess-reduction candidates left unpublished after inconsistent end-to-end timings; includes profiles, source patches and all three before/after runs.
 
 Some harnesses include exact production modules to reach private functions. Their READMEs describe source refresh and any stubs for unrelated types. Full-command and public-method harnesses invoke the actual library or CLI. No SaaS or external registry is used by the timed fixtures.
 

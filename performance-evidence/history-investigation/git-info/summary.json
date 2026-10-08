@@ -1,0 +1,56 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "before_seconds": 4.2666643505,
+      "after_seconds": 4.1480345349,
+      "reduction_percent": 2.78038781246287,
+      "mean_confidence_intervals_95": {
+        "before": [
+          4.2262810742550005,
+          4.308544123445
+        ],
+        "after": [
+          4.0443098251975,
+          4.2587950558175
+        ]
+      }
+    },
+    {
+      "round": 2,
+      "before_seconds": 3.8999064968000003,
+      "after_seconds": 3.7893841546,
+      "reduction_percent": 2.833974155295449,
+      "mean_confidence_intervals_95": {
+        "before": [
+          3.8545892835,
+          3.94640146851
+        ],
+        "after": [
+          3.7100351807425,
+          3.8776324742
+        ]
+      }
+    },
+    {
+      "round": 3,
+      "before_seconds": 3.9338345745,
+      "after_seconds": 3.9759883646,
+      "reduction_percent": -1.071569973309261,
+      "mean_confidence_intervals_95": {
+        "before": [
+          3.8520600879449995,
+          4.0381222825925
+        ],
+        "after": [
+          3.8875754045,
+          4.0485741064875
+        ]
+      }
+    }
+  ],
+  "before_mean_seconds": 4.0334684739333335,
+  "after_mean_seconds": 3.9711356847,
+  "observed_reduction_percent": 1.5453892756610021,
+  "recommendation": "Do not open this PR: two rounds were faster by about 2.8%, but the third regressed by 1.07%. The mean reduction is not a confirmed repeatable end-to-end win. Preserve the raw evidence and deterministic reduction of 100 Git subprocesses."
+}

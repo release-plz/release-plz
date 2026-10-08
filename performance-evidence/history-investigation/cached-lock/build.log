@@ -1,0 +1,4 @@
+   Compiling release_plz_core v0.38.7 (/workspace/perf-history/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-history/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 28.43s
+  Executable benches/update.rs (/workspace/release-plz/target/release/deps/update-d65805f1c566c0bc)

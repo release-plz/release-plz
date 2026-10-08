@@ -1,0 +1,20 @@
+Both production patches are independent children of origin/main 6e42d3c20d11a5aee4b046c0a7e4f35f7e15d506.
+Cached lock branch: codex/perf-history, commit3252cbc2a0481faa61f938c252a4da0725e51aa9.
+Batched Git branch: codex/perf-git-info, commit4c24388f246e5ae5bc1c6124cbbe280611ffbaba.
+
+Saved baseline CLI: /workspace/perf-results/baseline/release-plz.
+Original saved harness and cached-lock optimized CLI: /workspace/perf-results/cached-lock/{update-bench,release-plz}.
+Root custom saved harness and git-info optimized CLI: /workspace/perf-results/git-info/{update-root-bench,release-plz}.
+All harnesses embed /workspace/release-plz/target/release/release-plz as the CLI path.
+
+The run-history-benchmarks.py runner copies each saved CLI into that embedded path. It runs three Criterion rounds per version, reversing before/after order in round2. It uses a separate CRITERION_HOME per variant/round, saves complete stdout and Criterion data, and extracts the mean and median point estimates to results.json. Report mean point estimates consistently and compute reduction as 100*(1-after/before). Compute the overall observed reduction from the arithmetic means of the three before and three after point estimates. No timing data comes from strace.
+
+Saved binary SHA-256 values are in each candidate directory. Each candidate's modified source files were touched before building to force recompilation in the shared target directory; otherwise Cargo treated worktree edits predating the baseline build as fresh. Build logs explicitly show the correct worktree for recompilation, and three saved CLI hashes differ. Strace confirms the exact independent change in each binary.
+
+Counts from untimed, successful history_100 test-mode runs:
+- Original baseline:201 lockfile checkouts,101 historical checkouts,102 package-list calls,100 message log calls.
+- Cached-lock after:101 lockfile checkouts,101 historical checkouts,102 package-list calls,100 message log calls.
+- Root before:201 lockfile checkouts,102 package-list calls,100 file-list git show calls,100 message git log calls.
+- Root after:201 lockfile checkouts,102 package-list calls,100 combined git show calls,0 message git log calls.
+
+Raw execve traces, parsed command-count JSON, assertions' Success logs, harness sources, source patches, and build logs are preserved in their respective directories. The root-fixture rationale and setup are described in git-info/NOTES.txt.

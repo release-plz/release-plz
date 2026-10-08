@@ -1,0 +1,6 @@
+{"round": 1, "variant": "before", "mean_ns": 4266664350.5, "median_ns": 4273503010.5}
+{"round": 1, "variant": "after", "mean_ns": 4148034534.9, "median_ns": 4077907302.5}
+{"round": 2, "variant": "after", "mean_ns": 3789384154.6, "median_ns": 3783812721.5}
+{"round": 2, "variant": "before", "mean_ns": 3899906496.8, "median_ns": 3892278219.0}
+{"round": 3, "variant": "before", "mean_ns": 3933834574.5, "median_ns": 3889079652.5}
+{"round": 3, "variant": "after", "mean_ns": 3975988364.6, "median_ns": 4027299267.5}

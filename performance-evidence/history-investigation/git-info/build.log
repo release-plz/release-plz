@@ -1,0 +1,5 @@
+   Compiling git_cmd v0.8.0 (/workspace/perf-git-info/crates/git_cmd)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-git-info/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-git-info/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 26.13s
+  Executable benches/update_root.rs (/workspace/release-plz/target/release/deps/update_root-575a854c17a0269f)

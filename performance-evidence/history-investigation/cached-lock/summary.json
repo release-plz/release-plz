@@ -1,0 +1,56 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "before_seconds": 3.7215647055,
+      "after_seconds": 3.7183916715,
+      "reduction_percent": 0.08526075054695603,
+      "mean_confidence_intervals_95": {
+        "before": [
+          3.6423203375999997,
+          3.811628800815
+        ],
+        "after": [
+          3.6259264202,
+          3.827616172
+        ]
+      }
+    },
+    {
+      "round": 2,
+      "before_seconds": 4.1354854049,
+      "after_seconds": 3.8117893181999998,
+      "reduction_percent": 7.827281564492116,
+      "mean_confidence_intervals_95": {
+        "before": [
+          4.0788295124625,
+          4.2080074103375
+        ],
+        "after": [
+          3.7215903536975,
+          3.9095922342
+        ]
+      }
+    },
+    {
+      "round": 3,
+      "before_seconds": 4.0478187447,
+      "after_seconds": 3.9175905854,
+      "reduction_percent": 3.217242853833646,
+      "mean_confidence_intervals_95": {
+        "before": [
+          3.9229410542,
+          4.1783270204325
+        ],
+        "after": [
+          3.809489489,
+          4.0208713894275006
+        ]
+      }
+    }
+  ],
+  "before_mean_seconds": 3.9682896183666667,
+  "after_mean_seconds": 3.815923858366667,
+  "observed_reduction_percent": 3.839582657848273,
+  "recommendation": "Leave this PR unopened: the first pair is indistinguishable from noise, only round 2 has separated 95% mean intervals, and the observed reduction varies materially across rounds. Preserve the raw evidence and 100 fewer subprocesses finding without claiming a confirmed end-to-end speedup."
+}
