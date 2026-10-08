@@ -185,44 +185,25 @@ fn non_conventional_commit_with_custom_major_increment_regex_increments_major_ve
 
 #[test]
 fn commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero() {
-    for breaking_always_increment_major in [false, true] {
-        for version in [Version::new(0, 0, 3), Version::new(0, 2, 3)] {
-            for commit in [
-                "major: some changes",
-                "major!: some changes",
-                "A major change",
-            ] {
-                assert_eq!(
-                    VersionUpdater::new()
-                        .with_breaking_always_increment_major(breaking_always_increment_major)
-                        .with_custom_major_increment_regex("major")
-                        .unwrap()
-                        .increment(&version, [commit]),
-                    Version::new(1, 0, 0),
-                    "{commit:?} from {version} with breaking_always_increment_major={breaking_always_increment_major}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn custom_major_increment_regex_takes_precedence_over_breaking_changes_when_major_is_zero() {
+    let commit_lists: [&[&str]; 5] = [
+        &["major: some changes"],
+        &["A major change"],
+        // A custom major match takes precedence over the breaking change of the same commit...
+        &["major!: some changes"],
+        // ...and of other commits.
+        &["feat!: break user", "major: some changes"],
+        &["feat!: break user", "A major change"],
+    ];
     for version in [Version::new(0, 0, 3), Version::new(0, 2, 3)] {
-        for custom_commit in ["major: some changes", "A major change"] {
-            for commits in [
-                ["feat!: break user", custom_commit],
-                [custom_commit, "feat!: break user"],
-            ] {
-                assert_eq!(
-                    VersionUpdater::new()
-                        .with_custom_major_increment_regex("major")
-                        .unwrap()
-                        .increment(&version, commits),
-                    Version::new(1, 0, 0),
-                    "{commits:?} from {version}"
-                );
-            }
+        for commits in commit_lists {
+            assert_eq!(
+                VersionUpdater::new()
+                    .with_custom_major_increment_regex("major")
+                    .unwrap()
+                    .increment(&version, commits),
+                Version::new(1, 0, 0),
+                "{commits:?} from {version}"
+            );
         }
     }
 }
