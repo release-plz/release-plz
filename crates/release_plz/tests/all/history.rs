@@ -413,6 +413,51 @@ async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
     history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
+#[tokio::test]
+async fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = api_history(BASE_API).await;
+        let breaking = history.write_commit(path, "fixture\n", "feat!: fixture format");
+        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
+            fs_err::remove_file(root.join(path)).unwrap();
+        });
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
+#[tokio::test]
+async fn nested_metadata_file_deletions_keep_their_breaking_change_marker() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = unpublished_history(BASE_API).await;
+        history.write_commit(path, "fixture\n", "chore: add fixture");
+        history.publish_snapshot(&[]);
+        fs_err::remove_file(history.repo.directory().join(path)).unwrap();
+        // Keep the commit in the initial file selection so replay checks the
+        // deletion. Package equality ignores this lockfile's contents.
+        let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
+        let breaking = history.write_commit(
+            "Cargo.lock",
+            &format!("{lock}# changed\n"),
+            "feat!: remove fixture",
+        );
+        let sibling = history.merge_ignored_revert(path, "fixture\n");
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
+#[tokio::test]
+async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = unpublished_history(BASE_API).await;
+        history.write_commit(path, "original\n", "chore: add fixture");
+        history.publish_snapshot(&[]);
+        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {

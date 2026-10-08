@@ -8,14 +8,14 @@ use tracing::warn;
 use crate::{
     diff::Commit,
     fs_utils,
-    package_compare::{CARGO_VCS_INFO, is_generated_package_file},
+    package_compare::{CARGO_TOML_ORIG, is_generated_package_file},
 };
 
 use super::PackagePaths;
 
 mod replay;
 
-use replay::{ChangeReplay, TokenConflicts};
+use replay::{ChangeReplay, FileChange, TokenConflicts};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
 ///
@@ -212,7 +212,7 @@ impl<'a> RetainedChanges<'a> {
             .released
             .as_deref()
             .context("no equal snapshot was recorded")?;
-        let includes = |path: &[u8]| self.includes(path);
+        let includes = |change: FileChange<'_>| self.includes(change);
         // The release contains the change, in part at least, when undoing it
         // changes the release. Conflicting tokens keep the release's: a change
         // can be absent even when its inverse conflicts with edits next to it.
@@ -237,7 +237,8 @@ impl<'a> RetainedChanges<'a> {
         )
     }
 
-    fn includes(&self, path: &[u8]) -> bool {
+    fn includes(&self, change: FileChange<'_>) -> bool {
+        let path = change.path;
         let Ok(path) = std::str::from_utf8(path) else {
             // Cargo's UTF-8 file list cannot represent this path. Conservatively
             // include it only beneath the package directory; it cannot equal
@@ -251,14 +252,16 @@ impl<'a> RetainedChanges<'a> {
         };
         let path = Utf8Path::new(path);
         let PackagePaths { package, readme } = &self.relative_paths;
-        // Package equality ignores the contents of every `Cargo.lock` and
-        // `Cargo.toml.orig`. It also ignores `.cargo_vcs_info.json` at the package
-        // root; nested copies are ordinary packaged files.
-        let is_ignored = match path.file_name() {
-            Some(CARGO_VCS_INFO) => path.parent() == Some(package.as_path()),
-            name => name.is_some_and(is_generated_package_file),
-        };
-        if is_ignored {
+        // Generated files at the package root do not affect package equality.
+        let package_relative_path = path.strip_prefix(package).ok();
+        if package_relative_path.is_some_and(|path| is_generated_package_file(path.as_str())) {
+            return false;
+        }
+        // Nested metadata contributes to the file list, even when equality
+        // ignores its contents. Nested VCS metadata is compared normally.
+        if !change.changes_presence
+            && matches!(path.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
+        {
             return false;
         }
         if readme.as_deref() == Some(path) {
@@ -297,19 +300,26 @@ mod tests {
             (b"outside/\xff", false),
             (b"crates/\xff/pkg/file", false),
         ] {
-            assert_eq!(changes.includes(path), included, "{path:?}");
+            assert_eq!(includes(&changes, path), included, "{path:?}");
         }
         changes.package_files = None;
-        assert!(changes.includes(b"crates/pkg/ignored.txt"));
-        assert!(changes.includes(b"crates/pkg/\xff"));
-        assert!(!changes.includes(b"crates/pkg-extra/\xff"));
+        assert!(includes(&changes, b"crates/pkg/ignored.txt"));
+        assert!(includes(&changes, b"crates/pkg/\xff"));
+        assert!(!includes(&changes, b"crates/pkg-extra/\xff"));
 
         // A package at the repository root conservatively includes every path
         // whose bytes cannot be checked against its Cargo file list.
         changes.relative_paths.package = Utf8PathBuf::new();
         changes.package_files = Some(HashSet::new());
-        assert!(changes.includes(b"\xff"));
-        assert!(changes.includes(b"src/\xff"));
+        assert!(includes(&changes, b"\xff"));
+        assert!(includes(&changes, b"src/\xff"));
+    }
+
+    fn includes(changes: &RetainedChanges<'_>, path: &[u8]) -> bool {
+        changes.includes(FileChange {
+            path,
+            changes_presence: false,
+        })
     }
 
     /// Commit `contents` to `file` at the repository root and return the commit hash.

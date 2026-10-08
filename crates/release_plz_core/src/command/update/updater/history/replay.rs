@@ -22,6 +22,13 @@ pub(super) struct ChangeReplay<'a> {
     paths: Vec<Utf8PathBuf>,
 }
 
+/// A replayed change, classified the same way as package snapshot equality.
+#[derive(Clone, Copy)]
+pub(super) struct FileChange<'a> {
+    pub(super) path: &'a [u8],
+    pub(super) changes_presence: bool,
+}
+
 impl<'a> ChangeReplay<'a> {
     /// Read the objects of `repository`, whose `head` commit id shows its object
     /// format: only SHA-1 repositories are supported, since libgit2 cannot read
@@ -69,7 +76,7 @@ impl<'a> ChangeReplay<'a> {
         commit: &str,
         target: &str,
         conflicts: TokenConflicts,
-        includes: impl Fn(&[u8]) -> bool,
+        includes: impl Fn(FileChange<'_>) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let tree = self.tree(&commit)?;
@@ -91,7 +98,7 @@ impl<'a> ChangeReplay<'a> {
         edited: &str,
         target: &str,
         conflicts: TokenConflicts,
-        includes: impl Fn(&[u8]) -> bool,
+        includes: impl Fn(FileChange<'_>) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let tree = self.tree(&commit)?;
@@ -99,9 +106,17 @@ impl<'a> ChangeReplay<'a> {
         let edited = self.tree(&self.commit(edited)?)?;
         let parent = self.first_parent_tree(&commit)?;
         self.fetch_missing_blobs(&tree, &[&parent, &edited, &target])?;
+        // Select paths conservatively here: the final replay decides whether
+        // their presence or only their contents changed.
+        let includes_path = |path: &[u8]| {
+            includes(FileChange {
+                path,
+                changes_presence: true,
+            })
+        };
         let mut changed = HashSet::new();
         for (path, target_path) in self.changed_paths(&parent, &tree, &target)? {
-            if (includes(&path) || includes(&target_path))
+            if (includes_path(&path) || includes_path(&target_path))
                 && !self.edited_tokens_leave_file_unchanged(
                     [&parent, &tree, &edited, &target],
                     &path,
@@ -112,12 +127,12 @@ impl<'a> ChangeReplay<'a> {
                 changed.extend(
                     [path, target_path]
                         .into_iter()
-                        .filter(|path| includes(path)),
+                        .filter(|path| includes_path(path)),
                 );
             }
         }
-        self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
-            changed.contains(path)
+        self.merging_affects_files(&tree, &target, &edited, conflicts, |change| {
+            changed.contains(change.path) && includes(change)
         })
     }
 
@@ -352,11 +367,13 @@ impl<'a> ChangeReplay<'a> {
         ours: &git2::Tree<'_>,
         theirs: &git2::Tree<'_>,
         conflicts: TokenConflicts,
-        includes: impl Fn(&[u8]) -> bool,
+        includes: impl Fn(FileChange<'_>) -> bool,
     ) -> anyhow::Result<bool> {
         let index = self.repo.merge_trees(base, ours, theirs, None)?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
+            let changes_presence = conflict.our.as_ref().map(|entry| &entry.path)
+                != conflict.their.as_ref().map(|entry| &entry.path);
             let affects_package = [
                 conflict.ancestor.as_ref(),
                 conflict.our.as_ref(),
@@ -364,7 +381,12 @@ impl<'a> ChangeReplay<'a> {
             ]
             .into_iter()
             .flatten()
-            .any(|entry| includes(&entry.path));
+            .any(|entry| {
+                includes(FileChange {
+                    path: &entry.path,
+                    changes_presence,
+                })
+            });
             if affects_package && !self.conflict_leaves_file_unchanged(&conflict, conflicts)? {
                 return Ok(true);
             }
@@ -378,7 +400,10 @@ impl<'a> ChangeReplay<'a> {
             .filter(|delta| delta.status() != git2::Delta::Conflicted)
             // Package equality ignores executable bits when contents are unchanged.
             .filter(|delta| delta.old_file().id() != delta.new_file().id())
-            .any(|delta| delta_paths(&delta).any(&includes)))
+            .any(|delta| {
+                let changes_presence = matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted);
+                delta_paths(&delta).any(|path| includes(FileChange { path, changes_presence }))
+            }))
     }
 
     /// Binary, large, rename, deletion and type conflicts cannot establish absence.
