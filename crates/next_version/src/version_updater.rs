@@ -142,7 +142,7 @@ impl VersionUpdater {
     ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
     ///
     /// A match triggers a major increment even when the major version is 0.
-    /// Conventional breaking-change commits still trigger major increments too, subject to
+    /// Conventional breaking-change commits also trigger major increments, subject to
     /// [`Self::with_breaking_always_increment_major`].
     ///
     /// By default, no regex is configured.
