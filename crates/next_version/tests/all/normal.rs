@@ -143,6 +143,33 @@ fn non_conventional_commit_with_custom_major_increment_regex_increments_major_ve
 }
 
 #[test]
+fn commit_with_custom_major_increment_regex_does_not_increment_major_version_when_major_is_zero() {
+    let commits = ["major: some changes"];
+    let version = Version::new(0, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_major_increment_regex("major")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(0, 2, 4)
+    );
+}
+
+#[test]
+fn commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero() {
+    let commits = ["major: some changes"];
+    let version = Version::new(0, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_breaking_always_increment_major(true)
+            .with_custom_major_increment_regex("major")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
 fn conventional_commit_with_matching_description_does_not_trigger_custom_regex() {
     // The word "minor" appears in the description, but not in the type
     // For conventional commits, only the type should be checked
