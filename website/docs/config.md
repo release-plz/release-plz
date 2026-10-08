@@ -232,8 +232,7 @@ Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-f
 version increments.
 
 A matching commit triggers a major increment even for `0.x` versions (for example, `0.2.3` becomes
-`1.0.0`), independently of [`breaking_always_increment_major`](#the-breaking_always_increment_major-field).
-Pre-release versions still only increment the pre-release component.
+`1.0.0`).
 
 #### The `custom_minor_increment_regex` field
 
