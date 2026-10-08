@@ -469,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_packaged_files_ignores_lockfile_presence_and_contents() {
+    fn compare_packaged_files_ignores_root_lockfile_presence_and_contents() {
         let local = test_package();
         let registry = test_package();
         for package in [&local, &registry] {
