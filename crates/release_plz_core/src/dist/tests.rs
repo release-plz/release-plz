@@ -681,7 +681,6 @@ async fn published_release_stops_build_and_is_a_finalize_no_op() {
 }
 
 #[tokio::test]
-#[ignore = "requires cargo-dist 0.33.0 on PATH; builds a real binary"]
 async fn real_cargo_dist_build_retry_and_finalize() {
     // Exercise the actual cargo-dist protocol against an in-memory GitHub release.
     use std::sync::{Arc, Mutex};
@@ -826,7 +825,6 @@ async fn real_cargo_dist_build_retry_and_finalize() {
 }
 
 #[test]
-#[ignore = "requires cargo-dist 0.33.0 on PATH; builds a real workspace binary"]
 fn real_cargo_dist_selects_only_the_requested_workspace_package() {
     for profile_path in ["Cargo.toml", ".cargo/config.toml"] {
         check_workspace_dist_build(profile_path);
@@ -923,7 +921,6 @@ fn check_workspace_dist_build(profile_path: &str) {
 }
 
 #[test]
-#[ignore = "requires cargo-dist 0.33.0 on PATH; copies the workspace"]
 fn real_cargo_dist_prepare_rejects_existing_dist_configuration() {
     let (_temporary, repo, metadata, project) = workspace_fixture("Cargo.toml");
     // The working tree, including untracked files, is what gets copied and prepared.
