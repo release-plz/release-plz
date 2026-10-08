@@ -814,6 +814,22 @@ impl Updater<'_> {
         registry_package_path: &Utf8Path,
         (local_package_files, released_package_files): (&PackageFiles, &PackageFiles),
     ) -> anyhow::Result<bool> {
+        let packages_equal = self
+            .with_cargo_lock_restored(repository, || {
+                crate::package_compare::are_packages_equal_cached(
+                    package_path,
+                    registry_package_path,
+                    local_package_files,
+                    released_package_files,
+                )
+            })?
+            .context("cannot compare packages");
+        // Most historical snapshots already differ in their packaged files.
+        // Read README metadata only when that comparison cannot decide equality
+        // (because `cargo metadata` is slower).
+        if matches!(packages_equal, Ok(false)) {
+            return Ok(false);
+        }
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
             package_path,
@@ -822,15 +838,8 @@ impl Updater<'_> {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
-        self.with_cargo_lock_restored(repository, || {
-            crate::package_compare::are_packages_equal_cached(
-                package_path,
-                registry_package_path,
-                local_package_files,
-                released_package_files,
-            )
-        })?
-        .context("cannot compare packages")
+        // A README change establishes inequality even if package listing failed.
+        packages_equal
     }
 
     /// If the dependencies changed, add a commit to the diff.
