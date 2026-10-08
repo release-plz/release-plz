@@ -132,6 +132,7 @@ impl VersionIncrement {
         commit_messages: &[impl AsRef<str>],
         updater: &VersionUpdater,
     ) -> Self {
+        let can_increment_major = current.major != 0 || updater.breaking_always_increment_major;
         let mut conventional_commits = Vec::new();
         let mut non_conventional_messages = Vec::new();
 
@@ -141,7 +142,7 @@ impl VersionIncrement {
                 Ok(commit) => {
                     if commit.breaking() {
                         // No later commit can request a larger increment.
-                        if current.major != 0 || updater.breaking_always_increment_major {
+                        if can_increment_major {
                             return Self::Major;
                         }
                         if current.minor != 0 {
@@ -160,17 +161,13 @@ impl VersionIncrement {
                 .any(|commit| commit.type_() == git_conventional::Type::FEAT)
         };
 
-        let is_there_a_breaking_change =
-            conventional_commits.iter().any(|commit| commit.breaking());
-
         let is_major_bump = || {
-            (is_there_a_breaking_change
-                || is_there_a_custom_match(
+            can_increment_major
+                && is_there_a_custom_match(
                     updater.custom_major_increment_regex.as_ref(),
                     &conventional_commits,
                     &non_conventional_messages,
-                ))
-                && (current.major != 0 || updater.breaking_always_increment_major)
+                )
         };
 
         let is_minor_bump = || {
@@ -178,10 +175,7 @@ impl VersionIncrement {
                 is_there_a_feature()
                     && (current.major != 0 || updater.features_always_increment_minor)
             };
-            let is_breaking_bump =
-                || current.major == 0 && current.minor != 0 && is_there_a_breaking_change;
             is_feat_bump()
-                || is_breaking_bump()
                 || is_there_a_custom_match(
                     updater.custom_minor_increment_regex.as_ref(),
                     &conventional_commits,
