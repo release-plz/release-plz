@@ -348,8 +348,9 @@ impl<'a> ChangeReplay<'a> {
 
     /// Whether merging the edits made from `base` to `theirs` into `ours` changes
     /// the files `includes` selects, as package equality compares them.
-    /// Unresolved conflicts count as changes. Text conflicts are retried at
-    /// token granularity, resolved as `conflicts` says.
+    /// Unresolved conflicts count as changes, except those package equality
+    /// ignores. Text conflicts are retried at token granularity, resolved as
+    /// `conflicts` says.
     fn merging_affects_files(
         &self,
         base: &git2::Tree<'_>,
@@ -369,7 +370,10 @@ impl<'a> ChangeReplay<'a> {
             .into_iter()
             .flatten()
             .any(|entry| includes(&entry.path));
-            if affects_package && !self.conflict_leaves_file_unchanged(&conflict, conflicts)? {
+            if affects_package
+                && !package_equality_ignores_conflict(&conflict)
+                && !self.conflict_leaves_file_unchanged(&conflict, conflicts)?
+            {
                 return Ok(true);
             }
         }
@@ -390,22 +394,6 @@ impl<'a> ChangeReplay<'a> {
         conflict: &git2::IndexConflict,
         conflicts: TokenConflicts,
     ) -> anyhow::Result<bool> {
-        // Package equality ignores the contents of some files, but not whether
-        // they exist. The merge keeps the file when both sides have it, and
-        // keeps it deleted when theirs only edits a file ours deleted. Other
-        // patterns, such as the partial entries of rename conflicts, count.
-        let keeps_presence = matches!(
-            (&conflict.ancestor, &conflict.our, &conflict.their),
-            (_, Some(_), Some(_)) | (Some(_), None, Some(_))
-        );
-        if keeps_presence
-            && [&conflict.ancestor, &conflict.our, &conflict.their]
-                .into_iter()
-                .flatten()
-                .all(|entry| ignores_contents(&entry.path))
-        {
-            return Ok(true);
-        }
         let (Some(ancestor), Some(ours), Some(theirs)) =
             (&conflict.ancestor, &conflict.our, &conflict.their)
         else {
@@ -458,6 +446,20 @@ fn package_equality_ignores(delta: &git2::DiffDelta<'_>) -> bool {
     delta.old_file().id() == delta.new_file().id()
         || (!matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted)
             && delta_paths(delta).all(ignores_contents))
+}
+
+/// Whether package equality ignores `conflict`, as [`package_equality_ignores`]
+/// does a delta: theirs edits a file whose contents it ignores, and the merge
+/// keeps that file's presence in ours, which has it too or deleted it. Other
+/// patterns, such as the partial entries of rename conflicts, count. The
+/// entries of a conflict share its path.
+fn package_equality_ignores_conflict(conflict: &git2::IndexConflict) -> bool {
+    match (&conflict.ancestor, &conflict.our, &conflict.their) {
+        (_, Some(_), Some(theirs)) | (Some(_), None, Some(theirs)) => {
+            ignores_contents(&theirs.path)
+        }
+        _ => false,
+    }
 }
 
 /// Whether package equality ignores the contents of the file at `path`, as Git
