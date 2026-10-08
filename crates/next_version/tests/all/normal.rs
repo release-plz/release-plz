@@ -50,21 +50,6 @@ fn commit_with_breaking_change_increments_major_version() {
 }
 
 #[test]
-fn ignored_breaking_change_does_not_trigger_a_bump() {
-    let version = Version::new(1, 2, 3);
-    assert_eq!(
-        VersionUpdater::new()
-            .with_no_increment_regex("^docs$")
-            .unwrap()
-            .increment(
-                &version,
-                ["docs!: change documentation", "fix: correct behavior"]
-            ),
-        Version::new(1, 2, 4)
-    );
-}
-
-#[test]
 fn commit_with_breaking_change_increments_minor_version_when_major_is_zero() {
     let commits = ["feat!: break user"];
     let version = Version::new(0, 2, 3);
@@ -182,6 +167,19 @@ fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
             .unwrap()
             .increment(&version, commits),
         Version::new(1, 3, 0)
+    );
+}
+
+#[test]
+fn no_increment_regex_filters_breaking_commits() {
+    let commits = ["docs!: change documentation", "fix: correct behavior"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("^docs$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4)
     );
 }
 
