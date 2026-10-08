@@ -24,6 +24,12 @@ impl PackageDependencies for Package {
         workspace_dir: &Utf8Path,
         include_versionless: bool,
     ) -> anyhow::Result<Vec<&'a Package>> {
+        // Metadata resolves inherited, renamed and target-specific dependencies.
+        // Without a path dependency, none can refer to an updated workspace member.
+        if !self.dependencies.iter().any(|dep| dep.path.is_some()) {
+            return Ok(Vec::new());
+        }
+
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
