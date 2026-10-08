@@ -773,16 +773,13 @@ impl Updater<'_> {
             }
             // A package can contain another package in a subdirectory, so only count
             // commits that touch files Cargo would package for this package.
-            if self.are_changed_files_in_package(
+            if let Some(message) = self.package_commit_message(
                 package_path,
                 repository,
                 &current_commit_hash,
                 &local_package_files,
             )? {
-                diff.commits.push(Commit::new(
-                    current_commit_hash,
-                    repository.current_commit_message()?,
-                ));
+                diff.commits.push(Commit::new(current_commit_hash, message));
             }
         }
         repository
@@ -953,14 +950,15 @@ impl Updater<'_> {
         Ok(next_version)
     }
 
+    /// The current commit's message if it changes files in this package.
     /// `hash` is only used for logging purposes.
-    fn are_changed_files_in_package(
+    fn package_commit_message(
         &self,
         package_path: &Utf8Path,
         repository: &Repo,
         hash: &str,
         package_files: &PackageFiles,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<Option<String>> {
         let package_files_res = self.with_cargo_lock_restored(repository, || {
             get_package_files(package_path, repository, package_files)
         })?;
@@ -968,15 +966,18 @@ impl Updater<'_> {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
             // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
-            return Ok(true);
+            return repository.current_commit_message().map(Some);
         };
-        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
-            warn!("failed to get changed files of commit {hash}: {e:?}");
-        }) else {
+        let Ok((message, changed_files)) = repository
+            .current_commit_message_and_files()
+            .inspect_err(|e| {
+                warn!("failed to get changed files of commit {hash}: {e:?}");
+            })
+        else {
             // Assume that this commit contains changes to the package.
-            return Ok(true);
+            return repository.current_commit_message().map(Some);
         };
-        Ok(!package_files.is_disjoint(&changed_files))
+        Ok((!package_files.is_disjoint(&changed_files)).then_some(message))
     }
 
     /// List the files Cargo packages in the current checkout, relative to the

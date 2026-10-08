@@ -122,15 +122,21 @@ impl Repo {
         Ok(changed_files)
     }
 
-    /// Get files changed in the current commit
-    pub fn files_of_current_commit(&self) -> anyhow::Result<HashSet<Utf8PathBuf>> {
-        let output = self.git(&["show", "--oneline", "--name-only", "--pretty=format:"])?;
-        let changed_files = output
+    /// Get the current commit's message and changed files with one Git command.
+    pub fn current_commit_message_and_files(
+        &self,
+    ) -> anyhow::Result<(String, HashSet<Utf8PathBuf>)> {
+        let output = self.git(&["show", "--name-only", "--pretty=format:%B%x00"])?;
+        let (message, files) = output
+            .split_once('\0')
+            .context("missing separator between commit message and files")?;
+        let changed_files = files
             .lines()
             .map(|l| l.trim())
+            .filter(|line| !line.is_empty())
             .map(Utf8PathBuf::from)
             .collect();
-        Ok(changed_files)
+        Ok((message.trim().to_owned(), changed_files))
     }
 
     pub fn changes_except_typechanges(&self) -> anyhow::Result<Vec<String>> {
@@ -898,6 +904,13 @@ mod tests {
         test_logs::init();
         let repository_dir = tempdir().unwrap();
         let repo = Repo::init(&repository_dir);
+        assert_eq!(
+            repo.current_commit_message_and_files().unwrap(),
+            (
+                "add README".to_owned(),
+                HashSet::from([Utf8PathBuf::from("README.md")])
+            )
+        );
         let file1 = repository_dir.as_ref().join("file1.txt");
 
         let commit_message = r"feat: my feature
@@ -911,6 +924,20 @@ mod tests {
             repo.add_all_and_commit(commit_message).unwrap();
         }
         assert_eq!(repo.current_commit_message().unwrap(), commit_message);
+        assert_eq!(
+            repo.current_commit_message_and_files().unwrap(),
+            (
+                commit_message.to_owned(),
+                HashSet::from([Utf8PathBuf::from("file1.txt")])
+            )
+        );
+
+        repo.git(&["commit", "--allow-empty", "-m", commit_message])
+            .unwrap();
+        assert_eq!(
+            repo.current_commit_message_and_files().unwrap(),
+            (commit_message.to_owned(), HashSet::new())
+        );
     }
 
     #[test]
