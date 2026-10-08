@@ -42,3 +42,13 @@ cargo test --locked --release -p release_plz_core --lib performance_experiment::
 ```
 
 Configuration lookup uses workspace defaults with four configured strings, an explicit package override, and the default fallback. Each reported sample averages 8,000,000 calls after warm-up. Workspace-version selection uses 100/1000 packages with all, one quarter, or none inheriting the shared version. It measures the actual method, including its manifest read, and validates the selected version. Fixture creation is excluded; inputs/results are black-boxed. Three interleaved before/after pairs reverse order in pair 2. Raw runs and exact methodology are in `private-methods/`. Zero-inheritor controls are retained, including the observed slower control; these focused results do not establish whole-command speedups.
+
+## Dependent manifest filtering
+
+```sh
+cargo bench --locked -p release-plz --bench manifest_updates
+```
+
+Extends the manifest benchmark from PR #3146 with 10- and 100-package dependency chains, retaining the independent 100-package control. Each call updates package-0 with alternating versions; dependent and unrelated requirements are checked outside timing. Metadata and fixture creation are excluded. Three pairs reverse order in pair 2. Raw runs and complete slope-estimate tables are in `manifest/`. The chain cases improve in all three pairs; the independent control has a 13.61% slower median and mixed per-pair direction. These are manifest-editing measurements, not whole-command speedups.
+
+Two further candidates were rejected: broader changelog configuration ownership regressed measured workloads, and coalescing file metadata queries did not improve consistently across three controlled runs. No production PR was opened for either.

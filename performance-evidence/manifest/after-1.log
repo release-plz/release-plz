@@ -1,0 +1,26 @@
+Gnuplot not found, using plotters backend
+Benchmarking manifest_updates/independent/100
+Benchmarking manifest_updates/independent/100: Warming up for 1.0000 s
+Benchmarking manifest_updates/independent/100: Collecting 100 samples in estimated 3.0479 s (202k iterations)
+Benchmarking manifest_updates/independent/100: Analyzing
+manifest_updates/independent/100
+                        time:   [14.610 µs 15.290 µs 15.974 µs]
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+Benchmarking manifest_updates/chain/10
+Benchmarking manifest_updates/chain/10: Warming up for 1.0000 s
+Benchmarking manifest_updates/chain/10: Collecting 100 samples in estimated 3.1431 s (101k iterations)
+Benchmarking manifest_updates/chain/10: Analyzing
+manifest_updates/chain/10
+                        time:   [30.395 µs 31.909 µs 33.498 µs]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking manifest_updates/chain/100
+Benchmarking manifest_updates/chain/100: Warming up for 1.0000 s
+Benchmarking manifest_updates/chain/100: Collecting 100 samples in estimated 3.0405 s (91k iterations)
+Benchmarking manifest_updates/chain/100: Analyzing
+manifest_updates/chain/100
+                        time:   [30.832 µs 32.531 µs 34.376 µs]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
