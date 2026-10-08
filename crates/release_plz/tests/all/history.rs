@@ -520,14 +520,8 @@ async fn package_root_metadata_presence_changes_are_not_retained() {
     let history = api_history(BASE_API).await;
     // Package equality ignores the root lockfile entirely, even whether it
     // exists. Untrack it, so that the breaking commit adds it back.
-    history
-        .repo
-        .git(&["rm", "-q", "--cached", "Cargo.lock"])
-        .unwrap();
-    history
-        .repo
-        .git(&["commit", "-q", "-m", "chore: remove lockfile"])
-        .unwrap();
+    history.repo.git(&["rm", "--cached", "Cargo.lock"]).unwrap();
+    history.repo.commit("chore: remove lockfile").unwrap();
     history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     let sibling = history.merge_ignored_change("src/fix.rs", |root| {
         fs_err::remove_file(root.join("Cargo.lock")).unwrap();
