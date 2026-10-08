@@ -141,6 +141,10 @@ impl VersionUpdater {
     /// - For non-conventional commits, this will check the entire commit message against the given pattern.
     ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
     ///
+    /// A match triggers a major increment even when the major version is 0, independently of
+    /// [`Self::with_breaking_always_increment_major`]. Prerelease versions still only increment
+    /// the prerelease component.
+    ///
     /// Even if this field is set, major increments are still
     /// triggered by conventional breaking-change commits, subject to
     /// [`Self::with_breaking_always_increment_major`].

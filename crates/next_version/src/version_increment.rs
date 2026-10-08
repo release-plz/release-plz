@@ -135,6 +135,7 @@ impl VersionIncrement {
         let can_increment_major = current.major != 0 || updater.breaking_always_increment_major;
         let mut conventional_commits = Vec::new();
         let mut non_conventional_messages = Vec::new();
+        let mut is_breaking_minor_bump = false;
 
         for msg in commit_messages {
             let msg = msg.as_ref();
@@ -146,10 +147,12 @@ impl VersionIncrement {
                             return Self::Major;
                         }
                         if current.minor != 0 {
-                            return Self::Minor;
+                            if updater.custom_major_increment_regex.is_none() {
+                                return Self::Minor;
+                            }
+                            is_breaking_minor_bump = true;
                         }
-                        // In 0.0.x, breaking changes only increment the patch,
-                        // but this or other commits can still request a minor increment.
+                        // Custom regexes can request a larger increment, even on 0.x versions.
                     }
                     conventional_commits.push(commit);
                 }
@@ -164,12 +167,11 @@ impl VersionIncrement {
         };
 
         let is_major_bump = || {
-            can_increment_major
-                && is_there_a_custom_match(
-                    updater.custom_major_increment_regex.as_ref(),
-                    &conventional_commits,
-                    &non_conventional_messages,
-                )
+            is_there_a_custom_match(
+                updater.custom_major_increment_regex.as_ref(),
+                &conventional_commits,
+                &non_conventional_messages,
+            )
         };
 
         let is_minor_bump = || {
@@ -177,7 +179,8 @@ impl VersionIncrement {
                 is_there_a_feature()
                     && (current.major != 0 || updater.features_always_increment_minor)
             };
-            is_feat_bump()
+            is_breaking_minor_bump
+                || is_feat_bump()
                 || is_there_a_custom_match(
                     updater.custom_minor_increment_regex.as_ref(),
                     &conventional_commits,
