@@ -49,6 +49,7 @@ tera.workspace = true
 git2.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
 test_logs = { path = "../test_logs" }
 fake_package = { path = "../fake_package" }
@@ -58,3 +59,7 @@ flate2.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 wiremock.workspace = true
+
+[[bench]]
+name = "changelog"
+harness = false

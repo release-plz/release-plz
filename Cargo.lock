@@ -4628,6 +4628,7 @@ dependencies = [
  "cargo_metadata",
  "cargo_utils",
  "chrono",
+ "criterion",
  "dunce",
  "expect-test",
  "fake_package",
