@@ -1,0 +1,16 @@
+   Compiling release-plz v0.3.170 (/workspace/perf-manifest/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 11.97s
+     Running tests/all/main.rs (/workspace/perf-target/release/deps/all-1e04c02bc6f570c7)
+
+running 8 tests
+test set_version::set_version_preserves_inheritance_for_single_package ... ok
+test set_version::set_version_requires_package_names_without_workspace_version ... ok
+test set_version::set_version_updates_inherited_workspace_version ... ok
+test set_version::set_version_does_not_rewrite_manifests_without_dependency_changes ... ok
+test set_version::set_version_updates_shared_workspace_changelog_once ... ok
+test set_version::set_version_updates_target_dependencies_and_unused_workspace_templates ... ok
+test set_version::set_version_updates_version_in_package ... ok
+test set_version::set_version_updates_version_in_workspace ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 144 filtered out; finished in 0.25s
+

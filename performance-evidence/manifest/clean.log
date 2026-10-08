@@ -1,0 +1,15 @@
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/cargo_utils#0.1.85` is ignored, cleaning all versions of `cargo_utils` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/cargo_utils#0.1.85` ignored, cleaning all versions of `cargo_utils` found
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/fake_package#0.1.0` is ignored, cleaning all versions of `fake_package` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/fake_package#0.1.0` ignored, cleaning all versions of `fake_package` found
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/git_cmd#0.8.0` is ignored, cleaning all versions of `git_cmd` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/git_cmd#0.8.0` ignored, cleaning all versions of `git_cmd` found
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/test_logs#0.1.34` is ignored, cleaning all versions of `test_logs` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/test_logs#0.1.34` ignored, cleaning all versions of `test_logs` found
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/next_version#0.3.2` is ignored, cleaning all versions of `next_version` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/next_version#0.3.2` ignored, cleaning all versions of `next_version` found
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/release_plz#release-plz@0.3.170` is ignored, cleaning all versions of `release-plz` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/release_plz#release-plz@0.3.170` ignored, cleaning all versions of `release-plz` found
+warning: version qualifier in `-p path+file:///workspace/perf-manifest/crates/release_plz_core#0.38.7` is ignored, cleaning all versions of `release_plz_core` found
+warning: url qualifier in `-p path+file:///workspace/perf-manifest/crates/release_plz_core#0.38.7` ignored, cleaning all versions of `release_plz_core` found
+     Removed 143 files, 295.3MiB total

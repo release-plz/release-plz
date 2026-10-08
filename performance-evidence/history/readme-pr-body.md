@@ -13,4 +13,4 @@ Measured against main `72465264` on Linux x86_64 with Rust 1.99.0 and optimized 
 
 Validation: `cargo test --locked --release -p release-plz --test all update::` — 22 update integration tests passed, including a new regression covering unchanged and changed external READMEs.
 
-Raw logs, estimates, commands, and patches: [performance evidence](https://github.com/release-plz/release-plz/tree/codex/performance-evidence-20261008/history).
+Raw logs, estimates, commands, and patches: [performance evidence](https://github.com/release-plz/release-plz/tree/codex/performance-evidence-20261008/performance-evidence/history).

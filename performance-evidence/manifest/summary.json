@@ -1,0 +1,134 @@
+[
+  {
+    "packages": 10,
+    "variant": "before",
+    "run": 1,
+    "typical_us": 55.736768008382924,
+    "mean_us": 58.70597570464373,
+    "ci_us": {
+      "lower_bound": 55.4389410246535,
+      "upper_bound": 56.06982375226576
+    }
+  },
+  {
+    "packages": 10,
+    "variant": "before",
+    "run": 2,
+    "typical_us": 56.072922329217995,
+    "mean_us": 55.949324696999035,
+    "ci_us": {
+      "lower_bound": 55.59451295328595,
+      "upper_bound": 56.631264722162356
+    }
+  },
+  {
+    "packages": 10,
+    "variant": "before",
+    "run": 3,
+    "typical_us": 74.80298041229496,
+    "mean_us": 68.2372681592417,
+    "ci_us": {
+      "lower_bound": 70.24429652261122,
+      "upper_bound": 79.42606877464564
+    }
+  },
+  {
+    "packages": 10,
+    "variant": "after",
+    "run": 1,
+    "typical_us": 13.743274542324068,
+    "mean_us": 13.880379352038796,
+    "ci_us": {
+      "lower_bound": 13.67799208243242,
+      "upper_bound": 13.811077151703198
+    }
+  },
+  {
+    "packages": 10,
+    "variant": "after",
+    "run": 2,
+    "typical_us": 13.887362592259226,
+    "mean_us": 13.835466048359766,
+    "ci_us": {
+      "lower_bound": 13.757918823191458,
+      "upper_bound": 14.02923991617588
+    }
+  },
+  {
+    "packages": 10,
+    "variant": "after",
+    "run": 3,
+    "typical_us": 16.25773472735333,
+    "mean_us": 16.380297273151193,
+    "ci_us": {
+      "lower_bound": 15.98075066030077,
+      "upper_bound": 16.558784213838756
+    }
+  },
+  {
+    "packages": 100,
+    "variant": "before",
+    "run": 1,
+    "typical_us": 439.2604414969706,
+    "mean_us": 440.1823923077447,
+    "ci_us": {
+      "lower_bound": 435.96124465302046,
+      "upper_bound": 443.5489487716282
+    }
+  },
+  {
+    "packages": 100,
+    "variant": "before",
+    "run": 2,
+    "typical_us": 441.8367810935422,
+    "mean_us": 441.52661016186914,
+    "ci_us": {
+      "lower_bound": 438.0155113149921,
+      "upper_bound": 446.31384375731903
+    }
+  },
+  {
+    "packages": 100,
+    "variant": "before",
+    "run": 3,
+    "typical_us": 464.5999927944436,
+    "mean_us": 495.5864866940594,
+    "ci_us": {
+      "lower_bound": 459.44198120819476,
+      "upper_bound": 471.17602147169407
+    }
+  },
+  {
+    "packages": 100,
+    "variant": "after",
+    "run": 1,
+    "typical_us": 14.659562619698537,
+    "mean_us": 14.661154561681549,
+    "ci_us": {
+      "lower_bound": 14.586475363108763,
+      "upper_bound": 14.733063973555542
+    }
+  },
+  {
+    "packages": 100,
+    "variant": "after",
+    "run": 2,
+    "typical_us": 13.99988034277152,
+    "mean_us": 13.911294808251393,
+    "ci_us": {
+      "lower_bound": 13.876062247114424,
+      "upper_bound": 14.13876832772903
+    }
+  },
+  {
+    "packages": 100,
+    "variant": "after",
+    "run": 3,
+    "typical_us": 16.038527911147753,
+    "mean_us": 16.25604793553633,
+    "ci_us": {
+      "lower_bound": 15.523785078681573,
+      "upper_bound": 16.61439068035203
+    }
+  }
+]

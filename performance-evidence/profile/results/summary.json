@@ -1,0 +1,116 @@
+[
+  {
+    "benchmark": "copy",
+    "size": 100,
+    "unit": "us",
+    "before": [
+      4656.054,
+      4727.268,
+      4916.632
+    ],
+    "after": [
+      4163.199,
+      4025.801,
+      3926.072
+    ],
+    "median_before": 4727.268,
+    "median_after": 4025.801,
+    "reduction_percent": 14.83873983873984,
+    "speedup": 1.1742428401205127
+  },
+  {
+    "benchmark": "copy",
+    "size": 1000,
+    "unit": "us",
+    "before": [
+      26023.258,
+      21555.907,
+      26035.727
+    ],
+    "after": [
+      14471.925,
+      14696.177,
+      17259.42
+    ],
+    "median_before": 26023.258,
+    "median_after": 14696.177,
+    "reduction_percent": 43.52675979310508,
+    "speedup": 1.7707501753687371
+  },
+  {
+    "benchmark": "order",
+    "size": 1,
+    "unit": "ns",
+    "before": [
+      106.363,
+      108.515,
+      108.62
+    ],
+    "after": [
+      52.345,
+      63.022,
+      51.669
+    ],
+    "median_before": 108.515,
+    "median_after": 52.345,
+    "reduction_percent": 51.76242915725936,
+    "speedup": 2.0730728818416275
+  },
+  {
+    "benchmark": "order",
+    "size": 10,
+    "unit": "ns",
+    "before": [
+      2947.666,
+      3513.026,
+      3415.43
+    ],
+    "after": [
+      4557.081,
+      4607.007,
+      5545.984
+    ],
+    "median_before": 3415.43,
+    "median_after": 4607.007,
+    "reduction_percent": -34.8880521632708,
+    "speedup": 0.7413555047778309
+  },
+  {
+    "benchmark": "order",
+    "size": 100,
+    "unit": "ns",
+    "before": [
+      192154.338,
+      196047.289,
+      192393.547
+    ],
+    "after": [
+      83269.573,
+      68939.052,
+      67121.258
+    ],
+    "median_before": 192393.547,
+    "median_after": 68939.052,
+    "reduction_percent": 64.16769009409656,
+    "speedup": 2.7907773811569094
+  },
+  {
+    "benchmark": "order",
+    "size": 500,
+    "unit": "ns",
+    "before": [
+      11237504.517,
+      11135461.372,
+      11526377.609
+    ],
+    "after": [
+      898416.133,
+      1065606.34,
+      1080787.132
+    ],
+    "median_before": 11237504.517,
+    "median_after": 1065606.34,
+    "reduction_percent": 90.51741124207817,
+    "speedup": 10.545643447466725
+  }
+]

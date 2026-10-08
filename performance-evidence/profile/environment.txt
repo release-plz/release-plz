@@ -1,0 +1,5 @@
+platform: Linux-6.18.44-x86_64-with-glibc2.41
+rustc 1.99.0 (b940084d7 2026-09-28)
+cargo 1.99.0 (5f94df478 2026-08-27)
+git version 2.52.0
+model name	: INTEL(R) XEON(R) PLATINUM 8573C
