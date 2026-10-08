@@ -400,6 +400,19 @@ fn assert_retained_changes_with_executable_bit(
     history.assert_release(&[&restore, &sibling], "0.1.1");
 }
 
+#[tokio::test]
+async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
+    // Cargo generates this file at the package root, but under src/ it is
+    // an ordinary packaged file whose contents affect the release.
+    let path = "src/.cargo_vcs_info.json";
+    let history = unpublished_history("").await;
+    history.write_commit(path, "{}\n", "chore: add fixture");
+    history.publish_snapshot(&[]);
+    let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
+    let sibling = history.merge_ignored_revert(path, "{}\n");
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
+}
+
 /// In a `history` equal to the release, add a breaking change and revert it on
 /// a merged branch. Return the breaking commit and its sibling.
 fn revert_breaking_change(history: &TestContext) -> (String, String) {

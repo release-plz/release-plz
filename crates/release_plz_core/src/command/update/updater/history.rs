@@ -5,7 +5,11 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 use tracing::warn;
 
-use crate::{diff::Commit, fs_utils, package_compare::is_generated_package_file};
+use crate::{
+    diff::Commit,
+    fs_utils,
+    package_compare::{CARGO_VCS_INFO, is_generated_package_file},
+};
 
 use super::PackagePaths;
 
@@ -246,10 +250,17 @@ impl<'a> RetainedChanges<'a> {
                 .all(|component| components.next() == Some(component.as_bytes()));
         };
         let path = Utf8Path::new(path);
-        if path.file_name().is_some_and(is_generated_package_file) {
+        let PackagePaths { package, readme } = &self.relative_paths;
+        // Package equality ignores the contents of every `Cargo.lock` and
+        // `Cargo.toml.orig`. It also ignores `.cargo_vcs_info.json` at the package
+        // root; nested copies are ordinary packaged files.
+        let is_ignored = match path.file_name() {
+            Some(CARGO_VCS_INFO) => path.parent() == Some(package.as_path()),
+            name => name.is_some_and(is_generated_package_file),
+        };
+        if is_ignored {
             return false;
         }
-        let PackagePaths { package, readme } = &self.relative_paths;
         if readme.as_deref() == Some(path) {
             return true;
         }
