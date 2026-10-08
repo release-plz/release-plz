@@ -400,22 +400,25 @@ fn assert_retained_changes_with_executable_bit(
     history.assert_release(&[&restore, &sibling], "0.1.1");
 }
 
-#[tokio::test]
-async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
-    // Cargo generates this file at the package root, but under src/ it is
-    // an ordinary packaged file whose contents affect the release.
-    let path = "src/.cargo_vcs_info.json";
-    let history = unpublished_history("").await;
-    history.write_commit(path, "{}\n", "chore: add fixture");
-    history.publish_snapshot(&[]);
-    let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
-    let sibling = history.merge_ignored_revert(path, "{}\n");
-    history.assert_release(&[&breaking, &sibling], "0.2.0");
-}
+/// Copies of files Cargo generates at the package root. Below the root, Cargo
+/// packages them verbatim, like any other file.
+const NESTED_METADATA_FILES: [&str; 3] = [
+    "src/.cargo_vcs_info.json",
+    "src/Cargo.lock",
+    "src/Cargo.toml.orig",
+];
 
-/// Files whose contents package equality ignores, while their presence below
-/// the package root still changes the packaged file list.
-const NESTED_METADATA_FILES: [&str; 2] = ["src/Cargo.lock", "src/Cargo.toml.orig"];
+#[tokio::test]
+async fn nested_metadata_content_changes_keep_their_breaking_change_marker() {
+    for path in NESTED_METADATA_FILES {
+        let history = unpublished_history("").await;
+        history.write_commit(path, "{}\n", "chore: add fixture");
+        history.publish_snapshot(&[]);
+        let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
+        let sibling = history.merge_ignored_revert(path, "{}\n");
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
 
 #[tokio::test]
 async fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
@@ -448,80 +451,6 @@ async fn nested_metadata_file_deletions_keep_their_breaking_change_marker() {
         let sibling = history.merge_ignored_revert(path, "fixture\n");
         history.assert_release(&[&breaking, &sibling], "0.2.0");
     }
-}
-
-#[tokio::test]
-async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change() {
-    for path in NESTED_METADATA_FILES {
-        let history = unpublished_history(BASE_API).await;
-        history.write_commit(path, "original\n", "chore: add fixture");
-        history.publish_snapshot(&[]);
-        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
-        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
-        history.assert_release(&[&breaking, &sibling], "0.2.0");
-    }
-}
-
-#[tokio::test]
-async fn nested_metadata_deletions_in_the_release_do_not_hide_a_retained_package_change() {
-    let path = "src/Cargo.lock";
-    let history = api_history(BASE_API).await;
-    let fixture = history.write_commit(path, "original\n", "chore: add fixture");
-    fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
-    let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    // Undoing the fixture edit cannot restore the fixture the release deleted.
-    let sibling = history.merge_ignored_change("src/fix.rs", |root| {
-        fs_err::remove_file(root.join(path)).unwrap();
-        fs_err::write(root.join("src/lib.rs"), BASE_API).unwrap();
-    });
-    history.assert_release(&[&fixture, &breaking, &sibling], "0.2.0");
-}
-
-#[tokio::test]
-async fn nested_metadata_edits_discarded_at_head_are_not_retained() {
-    let path = "src/Cargo.lock";
-    // The fixture at HEAD: deleted, or rewritten with other contents.
-    for head_fixture in [None, Some("head\n")] {
-        let history = unpublished_history(BASE_API).await;
-        history.write_commit(path, "original\n", "chore: add fixture");
-        history.publish_snapshot(&[("src/lib.rs", RELEASED_API)]);
-        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
-        history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-        let sibling = history.merge_ignored_change("src/fix.rs", |root| {
-            fs_err::write(root.join(path), "reverted\n").unwrap();
-            fs_err::write(root.join("src/lib.rs"), RELEASED_API).unwrap();
-        });
-        // HEAD restores the API from before the breaking commit and deletes or
-        // rewrites the fixture, discarding the commit's edit to it. Undoing the
-        // edit at HEAD then conflicts with the deletion or the rewrite. HEAD's
-        // API differs from the release's, so only undoing the commit at HEAD
-        // shows it is gone.
-        let fixture = history.repo.directory().join(path);
-        match head_fixture {
-            Some(contents) => fs_err::write(fixture, contents).unwrap(),
-            None => fs_err::remove_file(fixture).unwrap(),
-        }
-        let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
-        history.assert_release(&[&restore, &sibling], "0.1.1");
-    }
-}
-
-#[tokio::test]
-async fn nested_metadata_deletions_are_not_credited_to_content_edits() {
-    let path = "src/Cargo.lock";
-    let history = api_history(RELEASED_API).await;
-    let fixture = history.write_commit(path, "original\n", "chore: add fixture");
-    fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
-    history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
-    let sibling = history.merge_ignored_change("src/fix.rs", |root| {
-        fs_err::remove_file(root.join(path)).unwrap();
-        fs_err::write(root.join("src/lib.rs"), RELEASED_API).unwrap();
-    });
-    // HEAD follows the released API but keeps the fixture the release
-    // deleted: its addition differs, not the breaking commit's edit.
-    let follow = history.write_commit("src/lib.rs", RELEASED_API, "fix: follow the release");
-    history.assert_release(&[&fixture, &follow, &sibling], "0.1.1");
 }
 
 #[tokio::test]

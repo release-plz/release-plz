@@ -247,9 +247,8 @@ impl<'a> RetainedChanges<'a> {
         };
         let path = Utf8Path::new(path);
         let PackagePaths { package, readme } = &self.relative_paths;
-        // Generated files at the package root do not affect package equality.
-        // Nested copies are packaged; the replay skips the edits that package
-        // equality ignores.
+        // Package equality ignores the files Cargo generates at the package root;
+        // nested copies are ordinary packaged files.
         if path
             .strip_prefix(package)
             .is_ok_and(is_generated_package_file)
