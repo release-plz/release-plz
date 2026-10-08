@@ -33,15 +33,11 @@ jobs:
         uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
         with:
           tool: cargo-semver-checks@0.50
-      # install-action has no cargo-dist manifest and crates.io lacks 0.33.0; download the pinned release archive instead
       - name: Install cargo-dist
-        working-directory: ${{ runner.temp }}
+        shell: bash
         run: |
-          curl --fail --location --retry 3 --output cargo-dist.tar.xz \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-x86_64-unknown-linux-gnu.tar.xz
-          echo "4b3f0a5f0ebbdb798f6db649d01b32ba1518376b6f7a0502b7d92b75cc2c8293  cargo-dist.tar.xz" | sha256sum --check
-          tar -xJf cargo-dist.tar.xz
-          echo "$RUNNER_TEMP/cargo-dist-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh | sh
       - name: Start containers
         run: docker compose up -d --wait
         working-directory: ./tests
