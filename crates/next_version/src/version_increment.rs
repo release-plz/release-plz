@@ -138,7 +138,18 @@ impl VersionIncrement {
         for msg in commit_messages {
             let msg = msg.as_ref();
             match Commit::parse(msg) {
-                Ok(commit) => conventional_commits.push(commit),
+                Ok(commit) => {
+                    if commit.breaking() {
+                        // No later commit can request a larger increment.
+                        if current.major != 0 || updater.breaking_always_increment_major {
+                            return Self::Major;
+                        }
+                        if current.minor != 0 {
+                            return Self::Minor;
+                        }
+                    }
+                    conventional_commits.push(commit);
+                }
                 Err(_) => non_conventional_messages.push(msg),
             }
         }

@@ -50,6 +50,38 @@ fn commit_with_breaking_change_increments_major_version() {
 }
 
 #[test]
+fn breaking_changes_keep_version_zero_rules_when_followed_by_other_commits() {
+    for breaking in [
+        "feat!: break user",
+        "feat: change behavior\n\nBREAKING CHANGE: break user",
+    ] {
+        let commits = [breaking, "feat: add feature", "fix: correct behavior"];
+        for (version, expected) in [
+            (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+            (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+            (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+        ] {
+            assert_eq!(version.next(commits), expected);
+        }
+    }
+}
+
+#[test]
+fn ignored_breaking_change_does_not_trigger_a_bump() {
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("^docs$")
+            .unwrap()
+            .increment(
+                &version,
+                ["docs!: change documentation", "fix: correct behavior"]
+            ),
+        Version::new(1, 2, 4)
+    );
+}
+
+#[test]
 fn commit_with_breaking_change_increments_minor_version_when_major_is_zero() {
     let commits = ["feat!: break user"];
     let version = Version::new(0, 2, 3);
