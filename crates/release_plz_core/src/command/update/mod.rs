@@ -232,6 +232,7 @@ pub(super) fn update_dependencies(
             .filter(|d| d.contains_key("version"))
             .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
 
+        let mut changed = false;
         for dep in deps_to_update {
             let old_req = dep
                 .get("version")
@@ -240,9 +241,12 @@ pub(super) fn update_dependencies(
                 .unwrap_or("*");
             if let Some(new_req) = upgrade_requirement(old_req, version)? {
                 dep.insert("version", toml_edit::value(new_req));
+                changed = true;
             }
         }
-        local_manifest.write()?;
+        if changed {
+            local_manifest.write()?;
+        }
     }
     Ok(())
 }

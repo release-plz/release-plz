@@ -5,6 +5,37 @@ use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir, fs_utils::Utf8TempD
 use crate::helpers::test_context::run_set_version;
 
 #[test]
+fn set_version_does_not_rewrite_manifests_without_dependency_changes() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    let unchanged = [
+        project_dir.join(CARGO_TOML),
+        project_dir.join("crates/two/Cargo.toml"),
+    ];
+    let timestamp = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+    for manifest in &unchanged {
+        std::fs::File::options()
+            .write(true)
+            .open(manifest)
+            .unwrap()
+            .set_modified(timestamp)
+            .unwrap();
+    }
+
+    run_set_version(&project_dir, "one@0.1.1");
+
+    for manifest in unchanged {
+        assert_eq!(
+            fs_err::metadata(manifest).unwrap().modified().unwrap(),
+            timestamp
+        );
+    }
+    assert_eq!(
+        read_manifest(&project_dir.join("crates/one"))["package"]["version"].as_str(),
+        Some("0.1.1")
+    );
+}
+
+#[test]
 fn set_version_updates_version_in_workspace() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     run_set_version(&project_dir, "one@0.1.1 two@0.3.0");
