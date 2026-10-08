@@ -441,10 +441,12 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
         sort_commits: "newest".to_string(),
         commit_preprocessors: pr_link
             .map(|pr_link| {
+                static PR_NUMBER: LazyLock<Regex> =
+                    LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
                 // Replace #123 with [#123](https://link_to_pr).
                 // If the number refers to an issue, GitHub redirects the PR link to the issue link.
                 vec![TextProcessor {
-                    pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
+                    pattern: PR_NUMBER.clone(),
                     replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
                     replace_command: None,
                 }]
