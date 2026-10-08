@@ -419,20 +419,13 @@ fn assert_retained_changes_with_executable_bit(
 
 #[tokio::test]
 async fn ignored_file_changes_do_not_hide_a_retained_package_change() {
-    for ignored in [
-        "ignored.txt",
-        "Cargo.lock",
-        "src/Cargo.lock",
-        "src/Cargo.toml.orig",
-    ] {
+    for ignored in ["ignored.txt", "Cargo.lock"] {
         let history = write_files_and_publish(|root| {
             let mut manifest = LocalManifest::try_new(&root.join(CARGO_TOML)).unwrap();
             manifest.data["package"]["exclude"] =
                 toml_edit::value(["ignored.txt"].into_iter().collect::<toml_edit::Array>());
             manifest.write().unwrap();
-            for path in ["ignored.txt", "src/Cargo.lock", "src/Cargo.toml.orig"] {
-                fs_err::write(root.join(path), "original\n").unwrap();
-            }
+            fs_err::write(root.join("ignored.txt"), "original\n").unwrap();
         })
         .await;
         let path = history.repo.directory().join(ignored);
@@ -722,6 +715,39 @@ async fn nested_metadata_file_additions_keep_their_breaking_change_marker() {
         let sibling = history.merge_ignored_change("src/fix.rs", |root| {
             fs_err::remove_file(root.join(path)).unwrap();
         });
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
+#[tokio::test]
+async fn nested_metadata_file_deletions_keep_their_breaking_change_marker() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = unpublished_history(BASE_API).await;
+        history.write_commit(path, "fixture\n", "chore: add fixture");
+        history.publish_snapshot(&[]);
+        fs_err::remove_file(history.repo.directory().join(path)).unwrap();
+        // Keep the commit in the initial file selection so replay checks the
+        // deletion. Package equality ignores this lockfile's contents.
+        let lock = fs_err::read_to_string(history.repo.directory().join("Cargo.lock")).unwrap();
+        let breaking = history.write_commit(
+            "Cargo.lock",
+            &format!("{lock}# changed\n"),
+            "feat!: remove fixture",
+        );
+        let sibling = history.merge_ignored_revert(path, "fixture\n");
+        history.assert_release(&[&breaking, &sibling], "0.2.0");
+    }
+}
+
+#[tokio::test]
+async fn nested_metadata_content_changes_do_not_hide_a_retained_package_change() {
+    for path in ["src/Cargo.lock", "src/Cargo.toml.orig"] {
+        let history = unpublished_history(BASE_API).await;
+        history.write_commit(path, "original\n", "chore: add fixture");
+        history.publish_snapshot(&[]);
+        fs_err::write(history.repo.directory().join(path), "changed\n").unwrap();
+        let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
+        let sibling = history.merge_ignored_revert("src/lib.rs", BASE_API);
         history.assert_release(&[&breaking, &sibling], "0.2.0");
     }
 }
