@@ -450,10 +450,10 @@ fn package_equality_ignores(delta: &git2::DiffDelta<'_>) -> bool {
 }
 
 /// Whether package equality ignores `conflict`, as [`package_equality_ignores`]
-/// does a delta: theirs edits a file whose contents it ignores, and the merge
-/// keeps that file's presence in ours, which has it too or deleted it. Other
-/// patterns, such as the partial entries of rename conflicts, count. The
-/// entries of a conflict share its path.
+/// does a delta: theirs has a file whose contents it ignores, and ours has it
+/// too or deleted it, so the merge keeps the file's presence in ours. The
+/// entries of a conflict share its path, so a rename conflict still counts
+/// through its entry at the new path, which only one side has.
 fn package_equality_ignores_conflict(conflict: &git2::IndexConflict) -> bool {
     match (&conflict.ancestor, &conflict.our, &conflict.their) {
         (_, Some(_), Some(theirs)) | (Some(_), None, Some(theirs)) => {
