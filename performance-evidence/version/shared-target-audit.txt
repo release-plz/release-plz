@@ -1,0 +1,30 @@
+# Shared target artifact audit
+
+Audit result: the measurements for PRs #3154 and #3155 remain valid. No rerun was needed.
+
+Cargo can reuse a local workspace artifact built from another worktree when sources in the new worktree have older mtimes. The experiments below were audited against the saved compile logs, complete lock-held experiment scripts, benchmark log chronology, and the distinct Cargo artifact identities. Each script held `/workspace/perf-bench.lock` continuously across baseline build, three baseline runs, patch application, candidate build, three candidate runs, and regression tests.
+
+## Chronology (UTC, 2026-10-08)
+
+- Initial shared build on unmodified main finished at 18:48:58. `initial-build.log` explicitly records compiling local `next_version`, `release_plz_core`, and `release-plz` from `/workspace/perf-baseline`.
+- Borrowed-message baseline build finished at 18:49:22. `borrow-build-before.log` explicitly records compiling `next_version` from `/workspace/perf-version`.
+- After three baseline runs, `run-borrow.sh` applied `borrow-commits.patch` to the source, making the candidate source newer than the baseline artifact. `borrow-build-after.log` explicitly records compiling `next_version` again, finishing at 18:51:00.
+- Borrowed-message regression tests finished at 18:52:37, before releasing the benchmark lock.
+- Parser-cache baseline build finished at 18:52:40. `parsers-build-before.log` records compiling the new benchmark target (`release-plz`) and reusing the existing core artifact. The only core artifact built before this point was the initial unmodified-main build; the standalone borrowed-message experiment did not compile core.
+- After three parser baseline runs, `run-parsers.sh` applied `cache-parsers.patch` to the source. `parsers-build-after.log` explicitly records compiling `release_plz_core` from `/workspace/perf-changelog` and relinking `release-plz`, finishing at 18:53:47.
+- Parser-cache regression tests explicitly compiled candidate core again for the core test feature graph and passed at 18:57:26, before releasing the lock.
+- The next candidate build in the saved results was the manifest experiment, finishing at 18:57:29. It therefore could not affect either earlier experiment.
+
+## next_version artifact separation
+
+The standalone `next_version` benchmark and full release-plz build have different dependency feature graphs and separate library artifacts:
+
+- Standalone local artifact: `next_version-1d34f71b9ce06291`; its compiled candidate is used by benchmark `next_version-8917b6c9247993ca`. Dependencies include regex fingerprint `10986708655257447854` and semver fingerprint `13691753067575080952`.
+- Full release-plz local artifact: `next_version-f2d62a28a933293f`. Dependencies include regex fingerprint `14339801873936926213` and semver fingerprint `753539958962873126`.
+- Registry dependency artifact: `next_version-e412f5323f0e120d`, whose `.d` file resolves to the Cargo registry source rather than a workspace source.
+
+The borrowed-message candidate was compiled only in the standalone feature graph. It therefore did not replace the local full release-plz artifact reused by the parser benchmark. The registry package is separately identified and was unchanged.
+
+The currently retained fingerprint files establish these artifact and dependency-graph identities; files subsequently rebuilt by other experiments are not presented as immutable snapshots of the earlier binaries. The saved compile logs and continuous lock scope establish which production source was compiled for each measured side.
+
+Future shared-target builds should refresh every local workspace `.rs` and `Cargo.toml` mtime after acquiring the benchmark lock when switching worktrees, or use otherwise isolated local artifacts. This audit did not modify or rerun either published measurement.

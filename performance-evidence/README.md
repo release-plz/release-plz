@@ -22,6 +22,14 @@ benchmark command three times. Then apply the production commit under review
 and repeat three times with the same toolchain, flags and machine. Avoid other
 CPU-intensive work during the comparison.
 
+Use one worktree for the sequential before/after builds, or a separate Cargo
+target directory for each worktree. Cargo can reuse stale local-crate artifacts
+when several worktrees share a target directory. For our shared-target runs,
+local crates were explicitly invalidated when switching worktrees and build logs
+were checked for recompilation. The first saved baseline binaries were built
+before any production change. An invalid manifest experiment caught during this
+check was discarded and is not included in the results.
+
 ```sh
 cargo bench --locked -p next_version --bench next_version -- \
   --warm-up-time 1 --measurement-time 2 --sample-size 30 --noplot

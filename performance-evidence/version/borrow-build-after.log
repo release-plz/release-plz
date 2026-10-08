@@ -1,0 +1,3 @@
+   Compiling next_version v0.3.2 (/workspace/perf-version/crates/next_version)
+    Finished `bench` profile [optimized] target(s) in 1.89s
+  Executable benches/next_version.rs (/workspace/perf-target/release/deps/next_version-8917b6c9247993ca)

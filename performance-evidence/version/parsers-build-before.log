@@ -1,0 +1,3 @@
+   Compiling release-plz v0.3.170 (/workspace/perf-changelog/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 2.44s
+  Executable benches/changelog_render.rs (/workspace/perf-target/release/deps/changelog_render-48f3861422a3f7f1)
