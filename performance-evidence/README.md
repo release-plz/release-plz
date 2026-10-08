@@ -14,6 +14,21 @@ Headline reductions use the median of the three per-run estimates:
 `100 * (1 - after / before)`. These are observed workload timings, not a claim
 that every invocation of release-plz improves by the same amount.
 
+| Production PR | Commit | Measurement directory |
+| --- | --- | --- |
+| [#3154: borrow commit messages](https://github.com/release-plz/release-plz/pull/3154) | `284fbfa6` | `version/borrow-*` |
+| [#3155: reuse changelog parsers](https://github.com/release-plz/release-plz/pull/3155) | `c6d7f248` | `version/parsers-*` |
+| [#3156: defer README metadata](https://github.com/release-plz/release-plz/pull/3156) | `87b95ce3` | `history/readme-*` |
+| [#3157: skip unrelated manifests](https://github.com/release-plz/release-plz/pull/3157) | `d5a973ee` | `manifest/` |
+| [#3158: skip copied-file metadata](https://github.com/release-plz/release-plz/pull/3158) | `c47195ac` | `profile/results/copy-*` |
+| [#3159: index release ordering](https://github.com/release-plz/release-plz/pull/3159) | `93a80b4e` | `profile/results/order-*` |
+
+All six production branches start from the same baseline and contain no benchmark
+infrastructure. The release-order PR discloses the 10-package case's 1.192 µs
+regression as well as its larger-workspace gains. A separate checkout-only
+candidate was left unpublished because its 1.8% timing difference overlapped
+measurement noise; its investigation is retained under `history/`.
+
 ## Criterion workloads
 
 This branch has the benchmark targets installed on the baseline production code.
