@@ -24,5 +24,20 @@ fn next_version(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, next_version);
+fn prerelease(c: &mut Criterion) {
+    let current = Version::parse("1.0.0-alpha.1").unwrap();
+    let expected = Version::parse("1.0.0-alpha.2").unwrap();
+    let mut group = c.benchmark_group("prerelease");
+    for count in [10, 100, 1_000] {
+        let commits = vec!["fix: correct behavior"; count];
+        assert_eq!(current.next(&commits), expected);
+        group.throughput(Throughput::Elements(count.try_into().unwrap()));
+        group.bench_with_input(BenchmarkId::new("fixes", count), &commits, |b, commits| {
+            b.iter(|| black_box(&current).next(black_box(commits)));
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, next_version, prerelease);
 criterion_main!(benches);
