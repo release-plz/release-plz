@@ -12,19 +12,28 @@ pub fn tera_var(var_name: &str) -> String {
     format!("{{{{ {var_name} }}}}")
 }
 
-/// Returns the default Tera template for git tag names based on project structure.
+/// Returns the default git tag name based on project structure.
 ///
-/// - Multi-package workspace: `{{ package }}-v{{ version }}` (e.g., `mylib-v1.2.3`)
-/// - Single package: `v{{ version }}` (e.g., `v1.2.3`)
+/// - Multi-package workspace: `{package}-v{version}` (e.g., `mylib-v1.2.3`)
+/// - Single package: `v{version}` (e.g., `v1.2.3`)
 ///
-/// This is used as the default for `git_tag_name`
+/// This is used as the default for `git_tag_name` and `release_name`
 /// when no custom template is specified.
-pub fn default_tag_name_template(is_multi_package: bool) -> String {
+pub fn default_tag_name(is_multi_package: bool, package_name: &str, version: &str) -> String {
     if is_multi_package {
-        format!("{}-v{}", tera_var(PACKAGE_VAR), tera_var(VERSION_VAR))
+        format!("{package_name}-v{version}")
     } else {
-        format!("v{}", tera_var(VERSION_VAR))
+        format!("v{version}")
     }
+}
+
+/// Returns the Tera template equivalent of [`default_tag_name`].
+pub fn default_tag_name_template(is_multi_package: bool) -> String {
+    default_tag_name(
+        is_multi_package,
+        &tera_var(PACKAGE_VAR),
+        &tera_var(VERSION_VAR),
+    )
 }
 
 pub fn release_body_from_template(

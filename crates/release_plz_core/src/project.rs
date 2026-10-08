@@ -8,7 +8,10 @@ use cargo_metadata::{
 use cargo_utils::CARGO_TOML;
 use tracing::debug;
 
-use crate::{PackagePath as _, tera::tera_context};
+use crate::{
+    PackagePath as _,
+    tera::{default_tag_name, tera_context},
+};
 use crate::{
     Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
     fs_utils::{self, strip_prefix},
@@ -165,11 +168,11 @@ impl Project {
         };
 
         let Some(template) = template else {
-            return Ok(if self.contains_multiple_releasable_packages {
-                format!("{package_name}-v{version}")
-            } else {
-                format!("v{version}")
-            });
+            return Ok(default_tag_name(
+                self.contains_multiple_releasable_packages,
+                package_name,
+                version,
+            ));
         };
 
         let context = tera_context(package_name, version);
