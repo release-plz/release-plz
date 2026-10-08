@@ -5,6 +5,42 @@ use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir, fs_utils::Utf8TempD
 use crate::helpers::test_context::run_set_version;
 
 #[test]
+fn set_version_updates_target_dependencies_and_unused_workspace_templates() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    let workspace_path = project_dir.join(CARGO_TOML);
+    let workspace = fs_err::read_to_string(&workspace_path).unwrap();
+    fs_err::write(
+        &workspace_path,
+        format!(
+            "{workspace}\n[workspace.dependencies]\nunused = {{ package = \"one\", path = \"crates/one\", version = \"0.1.0\" }}\n"
+        ),
+    )
+    .unwrap();
+    let two_dir = project_dir.join("crates/two");
+    let two_path = two_dir.join(CARGO_TOML);
+    let two = fs_err::read_to_string(&two_path).unwrap();
+    fs_err::write(
+        &two_path,
+        format!(
+            "{two}\n[target.'cfg(windows)'.build-dependencies]\nrenamed = {{ package = \"one\", path = \"../one\", version = \"0.1.0\" }}\n"
+        ),
+    )
+    .unwrap();
+
+    run_set_version(&project_dir, "one@0.1.1");
+
+    assert_eq!(
+        read_manifest(&project_dir)["workspace"]["dependencies"]["unused"]["version"].as_str(),
+        Some("0.1.1")
+    );
+    assert_eq!(
+        read_manifest(&two_dir)["target"]["cfg(windows)"]["build-dependencies"]["renamed"]["version"]
+            .as_str(),
+        Some("0.1.1")
+    );
+}
+
+#[test]
 fn set_version_does_not_rewrite_manifests_without_dependency_changes() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     let unchanged = [
