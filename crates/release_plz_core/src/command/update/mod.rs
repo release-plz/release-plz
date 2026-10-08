@@ -221,8 +221,16 @@ pub(super) fn update_dependencies(
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    let all_manifests = iter::once(workspace_manifest)
-        .chain(all_packages.iter().map(|pkg| pkg.manifest_path.as_path()));
+    // Only path dependencies can refer to a workspace package. Metadata includes
+    // target-specific, build and dev dependencies, so other member manifests
+    // cannot contain a requirement to update. Always inspect the workspace
+    // manifest, which can contain unused dependency templates.
+    let all_manifests = iter::once(workspace_manifest).chain(
+        all_packages
+            .iter()
+            .filter(|pkg| pkg.dependencies.iter().any(|dep| dep.path.is_some()))
+            .map(|pkg| pkg.manifest_path.as_path()),
+    );
     for manifest in all_manifests {
         let mut local_manifest = LocalManifest::try_new(manifest)?;
         let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
