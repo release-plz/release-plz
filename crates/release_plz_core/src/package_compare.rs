@@ -27,6 +27,17 @@ pub(crate) const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
 /// from a Git checkout.
 pub(crate) const CARGO_VCS_INFO: &str = ".cargo_vcs_info.json";
 
+/// Whether a file name is one Cargo generates while packaging rather than a
+/// source file: the packaging markers and Cargo.lock.
+///
+/// Older published libraries may lack Cargo.lock, but modern `cargo package --list`
+/// includes it even when absent, and its contents can differ in workspaces. The
+/// updater separately checks dependency versions for executables when both
+/// lockfiles exist, so content comparisons ignore all three names.
+pub(crate) fn is_generated_package_file(name: &str) -> bool {
+    matches!(name, CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock")
+}
+
 /// Return true if `package` is an extracted registry package rather than a source tree.
 ///
 /// The two are compared differently: an extracted package already contains exactly
@@ -47,7 +58,8 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
 pub(crate) struct ReleasedPackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 
 impl ReleasedPackageFiles {
-    fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
+    /// The files of the released `package`, relative to its directory.
+    pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
         if let Some(files) = self.0.get() {
             return Ok(files);
         }
@@ -91,17 +103,9 @@ pub(crate) fn are_packages_equal_cached(
     })?;
     let released_package_files = released_package_files.get(registry_package)?;
 
-    // Older published libraries may lack Cargo.lock, but modern `cargo package --list`
-    // includes it even when absent. Ignore its presence to preserve the comparison
-    // behavior from when both sides used Cargo's file list. Its contents can also
-    // differ in workspaces; the updater separately checks dependency versions for
-    // executables when both lockfiles exist.
-    let is_comparable_file = |file: &&Utf8PathBuf| {
-        !matches!(
-            file.as_str(),
-            CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock"
-        )
-    };
+    // Ignoring Cargo.lock's presence preserves the comparison behavior from when
+    // both sides used Cargo's file list.
+    let is_comparable_file = |file: &&Utf8PathBuf| !is_generated_package_file(file.as_str());
     let local_files = local_package_files.iter().filter(is_comparable_file);
 
     let registry_files = released_package_files
@@ -306,22 +310,27 @@ pub fn local_readme_override(
     package: &Package,
     local_package_path: &Utf8Path,
 ) -> anyhow::Result<Option<Utf8PathBuf>> {
-    package
-        .readme
-        .as_ref()
-        .and_then(|readme| {
-            let readme_path = local_package_path.join(readme);
-            if !readme_path.exists() {
-                tracing::warn!(
-                    "README path '{}' doesn't exist for package '{}'. Hint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
-                    readme_path,
-                    package.name
-                );
-                return None;
-            }
-            Some(fs_utils::canonicalize_utf8(&readme_path))
-        })
+    existing_readme_path(package, local_package_path)
+        .map(|readme_path| fs_utils::canonicalize_utf8(&readme_path))
         .transpose()
+}
+
+/// The README path configured in `Cargo.toml`, joined to `local_package_path`
+/// but not canonicalized, when it exists.
+pub(crate) fn existing_readme_path(
+    package: &Package,
+    local_package_path: &Utf8Path,
+) -> Option<Utf8PathBuf> {
+    let readme_path = local_package_path.join(package.readme.as_ref()?);
+    if !readme_path.exists() {
+        tracing::warn!(
+            "README path '{}' doesn't exist for package '{}'. Hint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
+            readme_path,
+            package.name
+        );
+        return None;
+    }
+    Some(readme_path)
 }
 
 fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {

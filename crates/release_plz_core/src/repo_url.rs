@@ -65,7 +65,8 @@ impl RepoUrl {
         let host = self.full_host();
         let pull_path = match forge {
             ForgeType::Github => "pull",
-            ForgeType::Gitea | ForgeType::Gitlab => "pulls",
+            ForgeType::Gitea => "pulls",
+            ForgeType::Gitlab => "-/merge_requests",
         };
         format!("{host}/{pull_path}")
     }
@@ -494,5 +495,22 @@ mod tests {
             r.git_pr_link_for(ForgeType::Gitea),
             "https://gitea.example.com/owner/repo/pulls"
         );
+    }
+
+    #[test]
+    fn git_pr_link_uses_merge_requests_for_gitlab() {
+        for (url, expected) in [
+            (
+                "https://gitlab.com/owner/repo",
+                "https://gitlab.com/owner/repo/-/merge_requests",
+            ),
+            (
+                "git@git.company.com:group/subgroup/repo.git",
+                "https://git.company.com/group/subgroup/repo/-/merge_requests",
+            ),
+        ] {
+            let repo = RepoUrl::new(url).unwrap();
+            assert_eq!(repo.git_pr_link_for(ForgeType::Gitlab), expected);
+        }
     }
 }

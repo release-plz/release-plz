@@ -236,7 +236,7 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
           - target: aarch64-pc-windows-msvc
             os: windows-2022
           - target: x86_64-unknown-linux-gnu

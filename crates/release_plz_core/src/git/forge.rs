@@ -1,4 +1,4 @@
-use crate::git::{gitea_client::Gitea, gitlab_client::GitLab};
+use crate::git::{gitea_client::Gitea, gitlab_client::GitLab, gitlab_graphql};
 use crate::{GitHub, GitReleaseInfo};
 use std::collections::{HashMap, HashSet};
 
@@ -887,15 +887,28 @@ impl GitClient {
         Ok(prs)
     }
 
+    /// Get information about the given commit from the forge.
+    ///
+    /// `username` is `None` if the commit isn't in the remote repository
+    /// (e.g. the user edited files before running release-plz, like with cargo hakari)
+    /// or if the forge can't match the commit author to a user.
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
-        let api_path = self.commits_api_path(commit);
+        let api_path = match self.forge {
+            ForgeType::Github => format!("{}/commits/{commit}", self.repo_url()),
+            ForgeType::Gitea => format!("{}/git/commits/{commit}", self.repo_url()),
+            ForgeType::Gitlab => {
+                // The GitLab REST API only exposes the git author name and email of a commit.
+                // The GraphQL API resolves the author to a GitLab user instead.
+                let username = gitlab_graphql::commit_author_username(self, commit).await?;
+                return Ok(RemoteCommit { username });
+            }
+        };
         let response = self.client.get(api_path).send().await?;
 
         if let Err(err) = response.error_for_status_ref()
             && let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status()
         {
-            // The user didn't push the commit to the remote repository.
-            // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
+            // The commit isn't in the remote repository.
             // I'm not sure why GitHub returns 422 if the commit doesn't exist.
             return Ok(RemoteCommit { username: None });
         }
@@ -909,20 +922,6 @@ impl GitClient {
 
         let username = remote_commit.author.and_then(|author| author.login);
         Ok(RemoteCommit { username })
-    }
-
-    fn commits_api_path(&self, commit: &str) -> String {
-        let commits_path = "commits/";
-        let commits_api_path = match self.forge {
-            ForgeType::Gitea => {
-                format!("git/{commits_path}")
-            }
-            ForgeType::Github => commits_path.to_string(),
-            ForgeType::Gitlab => {
-                unimplemented!("Gitlab support for `release-plz release-pr is not implemented yet")
-            }
-        };
-        format!("{}/{commits_api_path}{commit}", self.repo_url())
     }
 
     /// Create a new branch from the given SHA.
@@ -1262,6 +1261,35 @@ mod tests {
                 .await
                 .unwrap_err();
             assert!(error.to_string().contains("git_release_generate_notes"));
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_commit_username_is_read_from_rest_commit() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        for (forge, commit_path) in [
+            (ForgeType::Github, "/repos/owner/repo/commits/abc"),
+            (ForgeType::Gitea, "/repos/owner/repo/git/commits/abc"),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path(commit_path))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "sha": "abc",
+                    "author": { "login": "bob" }
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+                .with_base_url(server.uri().parse().unwrap());
+            let mut client = GitClient::new(GitForge::Github(github)).unwrap();
+            client.forge = forge;
+            let remote_commit = client.get_remote_commit("abc").await.unwrap();
+            assert_eq!(remote_commit.username.as_deref(), Some("bob"), "{forge:?}");
         }
     }
 
