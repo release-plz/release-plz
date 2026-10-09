@@ -310,3 +310,46 @@ fn commit_with_scope_minor() {
     let version = Version::new(1, 0, 0);
     assert_eq!(version.next(commits), Version::new(1, 1, 0));
 }
+
+#[test]
+fn major_increment_takes_precedence_over_minor_regardless_of_commit_order() {
+    for major in [
+        "major: incompatible change",
+        "An incompatible change",
+        "fix!: breaking fix",
+    ] {
+        for minor in [
+            "feat: new feature",
+            "minor: new behavior",
+            "New minor behavior",
+        ] {
+            for commits in [[minor, major], [major, minor]] {
+                let next = VersionUpdater::new()
+                    .with_custom_major_increment_regex("major|incompatible")
+                    .unwrap()
+                    .with_custom_minor_increment_regex("minor")
+                    .unwrap()
+                    .increment(&Version::new(1, 2, 3), commits);
+                assert_eq!(next, Version::new(2, 0, 0), "{commits:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn no_increment_regex_takes_precedence_over_custom_increment_regexes() {
+    for commits in [
+        vec![],
+        vec!["skip!: breaking change", "Please skip this change"],
+    ] {
+        let next = VersionUpdater::new()
+            .with_no_increment_regex("skip")
+            .unwrap()
+            .with_custom_major_increment_regex("skip")
+            .unwrap()
+            .with_custom_minor_increment_regex("skip")
+            .unwrap()
+            .increment(&Version::new(1, 2, 3), commits);
+        assert_eq!(next, Version::new(1, 2, 3));
+    }
+}
