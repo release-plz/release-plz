@@ -240,11 +240,12 @@ pub(super) fn update_dependencies(
     // checkout while editing a temporary copy: dep.path points to the original
     // checkout, but package_path points to the copy, so the paths would not match.
     //
-    // Always scan the workspace manifest because cargo metadata omits
+    // Always scan the workspace manifest once because cargo metadata omits
     // [workspace.dependencies] entries that no member inherits.
     let all_manifests = iter::once(workspace_manifest).chain(
         all_packages
             .iter()
+            .filter(|pkg| pkg.manifest_path != workspace_manifest)
             .filter(|pkg| {
                 pkg.dependencies
                     .iter()
