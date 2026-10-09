@@ -100,7 +100,9 @@ impl Changelog<'_> {
     }
 
     fn changelog_config(&mut self, header: Option<String>) -> Config {
-        let user_config = self.config.take().unwrap_or_else(default_git_cliff_config);
+        let Some(user_config) = self.config.take() else {
+            return default_git_cliff_config(self.pr_link.as_deref());
+        };
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
             git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
@@ -265,10 +267,10 @@ fn is_version_unchanged(release: &Release) -> bool {
     previous_version == new_version
 }
 
-fn default_git_cliff_config() -> Config {
+fn default_git_cliff_config(pr_link: Option<&str>) -> Config {
     Config {
         changelog: default_changelog_config(None),
-        git: default_git_config(None),
+        git: default_git_config(pr_link),
         remote: RemoteConfig::default(),
         bump: Bump::default(),
     }
