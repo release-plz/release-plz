@@ -30,6 +30,19 @@ impl PackageDependencies for Package {
             return Ok(Vec::new());
         }
 
+        // Only path dependencies with the updated package's actual name can match.
+        let mut updated_packages = updated_packages
+            .iter()
+            .filter(|(package, _)| {
+                self.dependencies
+                    .iter()
+                    .any(|dep| dep.path.is_some() && dep.name == package.name.as_str())
+            })
+            .peekable();
+        if updated_packages.peek().is_none() {
+            return Ok(Vec::new());
+        }
+
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
