@@ -4,6 +4,49 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
 
+#[test]
+fn update_changelog_includes_distinct_author_and_committer() {
+    for (body, expected) in [
+        (
+            "{{ commit.author.name }} <{{ commit.author.email }}> committed by {{ commit.committer.name }} <{{ commit.committer.email }}>",
+            "Author Person <author@example.com> committed by Committer Person <committer@example.com>",
+        ),
+        ("{{ commit.author.email }}", "author@example.com"),
+    ] {
+        let config = format!(
+            r#"
+[workspace]
+semver_check = false
+[changelog]
+body = """
+{{% for commit in commits %}}
+{body}
+{{% endfor %}}
+"""
+"#
+        );
+        let (temp_dir, repo) = released_workspace(&[("one", "version = \"1.0.0\"\n")], "", &config);
+        fs_err::write(repo.directory().join("one/src/lib.rs"), "// Updated\n").unwrap();
+        repo.git(&["add", "."]).unwrap();
+        repo.git(&[
+            "-c",
+            "user.name=Committer Person",
+            "-c",
+            "user.email=committer@example.com",
+            "commit",
+            "--author=Author Person <author@example.com>",
+            "-m",
+            "fix: update package",
+        ])
+        .unwrap();
+
+        run_workspace_update(&temp_dir, &repo, None);
+
+        let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+        assert!(changelog.contains(expected), "{changelog}");
+    }
+}
+
 #[tokio::test]
 async fn update_relocated_workspace_preserves_original_manifests() {
     let (temp_dir, repo) = released_workspace(
