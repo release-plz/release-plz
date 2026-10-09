@@ -105,6 +105,7 @@ fn update_manifests(
             update_dependencies(
                 all_packages,
                 new_workspace_version,
+                pkg.name.as_str(),
                 package_path,
                 local_manifest_path,
             )?;
@@ -184,12 +185,21 @@ pub fn set_version(
     let mut local_manifest =
         LocalManifest::try_new(&package_path.join("Cargo.toml")).context("cannot read manifest")?;
     local_manifest.set_package_version(version);
+    let package_name = local_manifest.data["package"]["name"]
+        .as_str()
+        .context("missing package name")?;
     local_manifest
         .write()
         .with_context(|| format!("cannot update manifest {:?}", local_manifest.path))?;
 
     let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
-    update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
+    update_dependencies(
+        all_packages,
+        version,
+        package_name,
+        &package_path,
+        workspace_manifest,
+    )?;
     Ok(())
 }
 
@@ -218,25 +228,22 @@ pub fn set_version(
 pub(super) fn update_dependencies(
     all_packages: &[&Package],
     version: &Version,
+    package_name: &str,
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
     // Metadata resolves renamed, target-specific, build and dev dependencies.
     // Use the package name because dependency paths still point to the original
     // checkout when release-pr updates a temporary copy of the workspace.
-    let updated_package = all_packages
-        .iter()
-        .find(|pkg| pkg.manifest_path.parent() == Some(package_path));
     // Always scan the workspace manifest because cargo metadata omits
     // [workspace.dependencies] entries that no member inherits.
     let all_manifests = iter::once(workspace_manifest).chain(
         all_packages
             .iter()
             .filter(|pkg| {
-                pkg.dependencies.iter().any(|dep| {
-                    dep.path.is_some()
-                        && updated_package.is_none_or(|updated| dep.name == updated.name.as_str())
-                })
+                pkg.dependencies
+                    .iter()
+                    .any(|dep| dep.path.is_some() && dep.name == package_name)
             })
             .map(|pkg| pkg.manifest_path.as_path()),
     );
