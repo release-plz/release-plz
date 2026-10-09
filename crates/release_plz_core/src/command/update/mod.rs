@@ -232,9 +232,14 @@ pub(super) fn update_dependencies(
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    // Metadata resolves renamed, target-specific, build and dev dependencies.
-    // Use the package name because dependency paths still point to the original
-    // checkout when release-pr updates a temporary copy of the workspace.
+    // Only scan members with a path dependency on the package being updated.
+    // Cargo metadata includes normal, dev, build and target-specific dependencies;
+    // dep.name is the actual package name, even when the dependency is renamed.
+    //
+    // Match by name here because release-pr reuses metadata from the original
+    // checkout while editing a temporary copy: dep.path points to the original
+    // checkout, but package_path points to the copy, so the paths would not match.
+    //
     // Always scan the workspace manifest because cargo metadata omits
     // [workspace.dependencies] entries that no member inherits.
     let all_manifests = iter::once(workspace_manifest).chain(
