@@ -290,7 +290,7 @@ impl Updater<'_> {
             })
             .collect();
 
-        let mut packages_diffs = self.fill_commits(&packages_diffs_res?, repository).await?;
+        let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
             .iter()
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
@@ -367,13 +367,12 @@ impl Updater<'_> {
 
     async fn fill_commits<'a>(
         &self,
-        packages_diffs: &[(&'a Package, Diff)],
+        mut packages_diffs: Vec<(&'a Package, Diff)>,
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
         let git_client = self.req.git_client()?;
         let changelog_request: &ChangelogRequest = self.req.changelog_req();
         let mut all_commits: HashMap<String, &Commit> = HashMap::new();
-        let mut packages_diffs = packages_diffs.to_owned();
         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
             let required_info = get_required_info(&changelog_config.changelog);
             for (_package, diff) in &mut packages_diffs {
@@ -733,6 +732,7 @@ impl Updater<'_> {
             &paths.all(),
             max_analyze_commits,
         )?;
+        let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
@@ -791,9 +791,11 @@ impl Updater<'_> {
                 ));
             }
         }
-        repository
-            .checkout_head()
-            .context("can't checkout head to compare dependencies")?;
+        if checked_out_history {
+            repository
+                .checkout_head()
+                .context("can't checkout head to compare dependencies")?;
+        }
         // A simplified walk can visit an ancestor before the equal snapshot that
         // prunes it. Make the final decision with every discovered boundary,
         // keeping only ancestors whose changes survive through another lineage.
