@@ -2,6 +2,12 @@ use next_version::{NextVersion, VersionUpdater};
 use semver::Version;
 
 #[test]
+fn no_commits_leave_version_unchanged() {
+    let version = Version::new(1, 2, 3);
+    assert_eq!(version.next(std::iter::empty::<&str>()), version);
+}
+
+#[test]
 fn commit_without_semver_prefix_increments_patch_version() {
     let commits = ["my change"];
     let version = Version::new(1, 2, 3);
@@ -353,18 +359,17 @@ fn major_increment_takes_precedence_over_minor_regardless_of_commit_order() {
 
 #[test]
 fn no_increment_regex_takes_precedence_over_custom_increment_regexes() {
-    for commits in [
-        vec![],
-        vec!["skip!: breaking change", "Please skip this change"],
-    ] {
-        let next = VersionUpdater::new()
+    let commits = ["skip: conventional change", "Please skip this change"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
             .with_no_increment_regex("skip")
             .unwrap()
             .with_custom_major_increment_regex("skip")
             .unwrap()
             .with_custom_minor_increment_regex("skip")
             .unwrap()
-            .increment(&Version::new(1, 2, 3), commits);
-        assert_eq!(next, Version::new(1, 2, 3));
-    }
+            .increment(&version, commits),
+        version
+    );
 }
