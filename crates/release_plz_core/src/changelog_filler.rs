@@ -21,7 +21,7 @@ impl RequiredInfo {
         self.author_name || self.author_email || self.committer_name || self.committer_email
     }
 
-    fn is_remote_required(&self) -> bool {
+    pub(crate) fn is_remote_required(&self) -> bool {
         self.remote_username || self.remote_pr_number
     }
 }
