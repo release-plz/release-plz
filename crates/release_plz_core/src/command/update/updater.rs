@@ -1227,11 +1227,12 @@ fn get_contributors(commits: &[git_cliff_core::commit::Commit]) -> Vec<RemoteCon
     let mut unique_contributors = HashSet::new();
     commits
         .iter()
-        .filter_map(|c| c.remote.clone())
+        .filter_map(|c| c.remote.as_ref())
         .filter(|remote| remote.username.is_some())
         // Filter out duplicate contributors.
         // `insert` returns false if the contributor is already in the set.
-        .filter(|remote| unique_contributors.insert(remote.username.clone()))
+        .filter(|remote| unique_contributors.insert(remote.username.as_deref()))
+        .cloned()
         .collect()
 }
 
