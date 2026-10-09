@@ -224,12 +224,11 @@ fn add_remote_context(
 fn add_context(
     changelog: &mut GitCliffChangelog,
     key: &str,
-    value: impl serde::Serialize,
+    value: &(impl serde::Serialize + std::fmt::Debug),
 ) -> Result<(), anyhow::Error> {
-    let value_str = serde_json::to_string(&value).context("failed to serialize value")?;
     changelog
         .add_context(key, value)
-        .with_context(|| format!("failed to add `{value_str}` to the `{key}` changelog context"))
+        .with_context(|| format!("failed to add `{value:?}` to the `{key}` changelog context"))
 }
 
 /// Apply release-plz defaults
