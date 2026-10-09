@@ -241,18 +241,19 @@ impl Updater<'_> {
             let local_manifest = LocalManifest::try_new(local_manifest_path)?;
             local_manifest.get_workspace_version()
         };
+        if workspace_version_pkgs.is_empty() {
+            return Ok(None);
+        }
         let mut new_versions = Vec::new();
-        for workspace_package in workspace_version_pkgs {
-            for (p, diff) in packages_diffs {
-                if *workspace_package == *p.name {
-                    let pkg_config = self.req.get_package_config(&p.name);
-                    let version_updater = pkg_config.generic.version_updater()?;
-                    let next = p.version.next_from_diff(diff, version_updater);
-                    if let Some(workspace_version) = &workspace_version
-                        && &next >= workspace_version
-                    {
-                        new_versions.push(next);
-                    }
+        for (p, diff) in packages_diffs {
+            if workspace_version_pkgs.contains(p.name.as_str()) {
+                let pkg_config = self.req.get_package_config(&p.name);
+                let version_updater = pkg_config.generic.version_updater()?;
+                let next = p.version.next_from_diff(diff, version_updater);
+                if let Some(workspace_version) = &workspace_version
+                    && &next >= workspace_version
+                {
+                    new_versions.push(next);
                 }
             }
         }
