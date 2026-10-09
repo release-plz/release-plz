@@ -104,6 +104,7 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
             super::update::update_dependencies(
                 &all_packages,
                 &change.version,
+                package.name.as_str(),
                 package_path,
                 &workspace_manifest.path,
             )?;
