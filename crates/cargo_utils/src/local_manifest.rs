@@ -91,27 +91,21 @@ impl LocalManifest {
     ) -> impl Iterator<Item = (DepKind, &dyn toml_edit::TableLike)> + '_ {
         let root = self.data.as_table();
         root.iter().flat_map(|(key, v)| {
-            if let Some(kind) = dependency_table_kind(key) {
-                v.as_table_like()
-                    .map(|table| (kind, table))
-                    .into_iter()
-                    .collect::<Vec<_>>()
-            } else if key == "target" {
-                v.as_table_like()
-                    .unwrap()
-                    .iter()
-                    .flat_map(|(_, v)| {
-                        v.as_table_like().into_iter().flat_map(|v| {
-                            v.iter().filter_map(|(k, v)| {
-                                let kind = dependency_table_kind(k)?;
-                                v.as_table_like().map(|table| (kind, table))
-                            })
+            let package_table = dependency_table_kind(key)
+                .and_then(|kind| v.as_table_like().map(|table| (kind, table)));
+            let target_tables = (key == "target")
+                .then(|| v.as_table_like().unwrap())
+                .into_iter()
+                .flat_map(toml_edit::TableLike::iter)
+                .flat_map(|(_, v)| {
+                    v.as_table_like().into_iter().flat_map(|v| {
+                        v.iter().filter_map(|(k, v)| {
+                            let kind = dependency_table_kind(k)?;
+                            v.as_table_like().map(|table| (kind, table))
                         })
                     })
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            }
+                });
+            package_table.into_iter().chain(target_tables)
         })
     }
 
