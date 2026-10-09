@@ -43,12 +43,13 @@ pub fn release_body_from_template(
     remote: &Remote,
     body_template: Option<&str>,
 ) -> anyhow::Result<String> {
+    let Some(body_template) = body_template else {
+        return Ok(changelog.to_owned());
+    };
+
     let mut context = tera_context(package_name, version);
     context.insert(CHANGELOG_VAR, changelog);
     context.insert(REMOTE_VAR, remote);
-
-    let default_body_template = tera_var(CHANGELOG_VAR);
-    let body_template = body_template.unwrap_or(&default_body_template);
 
     render_template(body_template, &context, "release_body")
 }
@@ -89,6 +90,40 @@ mod tests {
         let body =
             release_body_from_template("my_package", "0.1.0", "my changes", &remote, None).unwrap();
         assert_eq!(body, "my changes");
+    }
+
+    #[test]
+    fn default_body_preserves_changelog_verbatim() {
+        let remote = Remote {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            link: "link".to_string(),
+            contributors: vec![],
+        };
+        let changelog = "## Changes\n\n- <details>& {{ literal }} {% syntax %}</details>\n";
+        let body = release_body_from_template("pkg", "1.0.0", changelog, &remote, None).unwrap();
+        assert_eq!(body, changelog);
+    }
+
+    #[test]
+    fn custom_body_template_has_release_context() {
+        let remote = Remote {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            link: "link".to_string(),
+            contributors: vec![],
+        };
+        let body = release_body_from_template(
+            "pkg",
+            "1.0.0",
+            "my changes",
+            &remote,
+            Some(
+                "{{ package }} {{ version }} {{ remote.owner }}/{{ remote.repo }}: {{ changelog }}",
+            ),
+        )
+        .unwrap();
+        assert_eq!(body, "pkg 1.0.0 owner/repo: my changes");
     }
 
     #[test]
