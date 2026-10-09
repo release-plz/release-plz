@@ -33,8 +33,11 @@ pub enum LocalDependenciesUpdateStrategy {
     IfNeeded,
     /// Preserve all requirements, even when they reject the new version.
     ///
-    /// Maintainers must update incompatible requirements before releasing. Versionless
-    /// Git-only dependencies still propagate releases because there is no requirement to keep.
+    /// Incompatible local path requirements cause the subsequent Cargo lockfile update to fail.
+    /// Manage incompatible package versions and dependent requirements together yourself,
+    /// or use `IfNeeded` to rewrite incompatible requirements automatically.
+    /// Versionless Git-only dependencies still propagate releases because there is no requirement
+    /// to keep.
     Never,
 }
 

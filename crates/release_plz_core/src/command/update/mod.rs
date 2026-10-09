@@ -105,6 +105,8 @@ fn update_manifests(
     for (package, update) in packages_to_update.updates() {
         let mut manifest = LocalManifest::try_new(&package.manifest_path)?;
         if manifest.version_is_inherited() {
+            // References to this package use the shared version and are updated above.
+            // Its own requirements are updated when its dependencies are processed.
             continue;
         }
         manifest.set_package_version(&update.version);

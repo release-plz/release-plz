@@ -250,10 +250,15 @@ also apply. Requirements that need rewriting use the same supported operators as
 unsupported ranges still produce an error when they need rewriting.
 
 With `"never"`, release-plz leaves even incompatible requirements unchanged and does not trigger
-releases solely to rewrite them. Use this when managing local requirements separately, and update
-incompatible requirements yourself before releasing. Otherwise, Cargo may reject the workspace or
-the published package may depend on an older library version. Versionless Git-only dependencies
-still propagate releases because they have no requirement to preserve.
+releases solely to rewrite them. Use this when managing local requirements separately.
+
+If a planned release falls outside a local path dependency's requirement, the subsequent
+`cargo update` fails. This can cause `release-plz update` or `release-pr` to fail before a release
+PR is created. For incompatible releases, manage package versions and dependent requirements
+together yourself, or use `"if-needed"` to update incompatible requirements automatically.
+
+Versionless Git-only dependencies still propagate releases because they have no requirement to
+preserve.
 
 The `"if-needed"` strategy uses the same requirement-preservation approach as Dependabot's
 [`versioning-strategy: increase-if-necessary`][dependabot-versioning-strategy], whose Cargo support
