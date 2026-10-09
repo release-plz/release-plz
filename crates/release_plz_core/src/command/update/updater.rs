@@ -288,7 +288,7 @@ impl Updater<'_> {
             })
             .collect();
 
-        let mut packages_diffs = self.fill_commits(&packages_diffs_res?, repository).await?;
+        let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
             .iter()
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
@@ -365,13 +365,12 @@ impl Updater<'_> {
 
     async fn fill_commits<'a>(
         &self,
-        packages_diffs: &[(&'a Package, Diff)],
+        mut packages_diffs: Vec<(&'a Package, Diff)>,
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
         let git_client = self.req.git_client()?;
         let changelog_request: &ChangelogRequest = self.req.changelog_req();
         let mut all_commits: HashMap<String, &Commit> = HashMap::new();
-        let mut packages_diffs = packages_diffs.to_owned();
         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
             let required_info = get_required_info(&changelog_config.changelog);
             for (_package, diff) in &mut packages_diffs {
