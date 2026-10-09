@@ -1,4 +1,5 @@
 use git_conventional::Commit;
+use regex::Regex;
 use semver::Version;
 
 use crate::{NextVersion, VersionUpdater};
@@ -51,11 +52,9 @@ impl VersionIncrement {
             let regex_input = commit
                 .as_ref()
                 .map_or(msg, |commit| commit.type_().as_str());
-            if updater
-                .no_increment_regex
-                .as_ref()
-                .is_some_and(|regex| regex.is_match(regex_input))
-            {
+            let matches =
+                |regex: Option<&Regex>| regex.is_some_and(|regex| regex.is_match(regex_input));
+            if matches(updater.no_increment_regex.as_ref()) {
                 continue;
             }
             if !current_version.pre.is_empty() {
@@ -77,12 +76,7 @@ impl VersionIncrement {
                 // but this or other commits can still request a minor increment.
             }
 
-            if can_increment_major
-                && updater
-                    .custom_major_increment_regex
-                    .as_ref()
-                    .is_some_and(|regex| regex.is_match(regex_input))
-            {
+            if can_increment_major && matches(updater.custom_major_increment_regex.as_ref()) {
                 return Some(Self::Major);
             }
             if increment != Some(Self::Minor) {
@@ -91,12 +85,7 @@ impl VersionIncrement {
                     && commit
                         .as_ref()
                         .is_some_and(|commit| commit.type_() == git_conventional::Type::FEAT);
-                if is_feature
-                    || updater
-                        .custom_minor_increment_regex
-                        .as_ref()
-                        .is_some_and(|regex| regex.is_match(regex_input))
-                {
+                if is_feature || matches(updater.custom_minor_increment_regex.as_ref()) {
                     increment = Some(Self::Minor);
                 }
             }
