@@ -289,8 +289,14 @@ impl Updater<'_> {
             .collect();
 
         let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
+        // Snapshot only histories another package includes before adding commits to diffs.
+        let included_packages: HashSet<String> = packages_diffs
+            .iter()
+            .flat_map(|(p, _)| self.req.get_package_config(&p.name).changelog_include)
+            .collect();
         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
             .iter()
+            .filter(|(p, _)| included_packages.contains(p.name.as_str()))
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
