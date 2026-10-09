@@ -41,6 +41,61 @@ fn set_version_updates_target_dependencies_and_unused_workspace_templates() {
 }
 
 #[test]
+fn set_version_updates_dependencies_with_metadata_from_original_workspace() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    let project_dir = release_plz_core::fs_utils::canonicalize_utf8(&project_dir).unwrap();
+    let two_path = project_dir.join("crates/two/Cargo.toml");
+    let two = fs_err::read_to_string(&two_path).unwrap();
+    fs_err::write(
+        &two_path,
+        format!(
+            "{two}\n[dev-dependencies]\nrenamed = {{ package = \"one\", path = \"../one\", version = \"0.1.0\" }}\n[target.'cfg(unix)'.build-dependencies]\nrenamed = {{ package = \"one\", path = \"../one\", version = \"0.1.0\" }}\n"
+        ),
+    )
+    .unwrap();
+    let metadata = cargo_utils::get_manifest_metadata(&project_dir.join(CARGO_TOML)).unwrap();
+    let mut packages: Vec<_> = cargo_utils::workspace_members(&metadata).unwrap().collect();
+    let copied = copy_to_temp_dir(&project_dir).unwrap();
+    let copied_dir = copied.path().join(project_dir.file_name().unwrap());
+    let copied_dir = release_plz_core::fs_utils::canonicalize_utf8(&copied_dir).unwrap();
+    // Match release-pr: relocate the manifests while dependency paths in the
+    // metadata still refer to the original checkout.
+    for package in &mut packages {
+        package.manifest_path =
+            copied_dir.join(package.manifest_path.strip_prefix(&project_dir).unwrap());
+    }
+    // The public API also accepts a list that omits the updated package itself.
+    for include_updated in [true, false] {
+        let packages: Vec<_> = packages
+            .iter()
+            .filter(|package| include_updated || package.name != "one")
+            .collect();
+        let version =
+            cargo_metadata::semver::Version::new(0, 1, if include_updated { 1 } else { 2 });
+        release_plz_core::set_version(
+            &packages,
+            &copied_dir.join("crates/one"),
+            &version,
+            &copied_dir.join(CARGO_TOML),
+        )
+        .unwrap();
+        let two = read_manifest(&copied_dir.join("crates/two"));
+        assert_eq!(
+            two["dev-dependencies"]["renamed"]["version"]
+                .as_str()
+                .unwrap(),
+            version.to_string()
+        );
+        assert_eq!(
+            two["target"]["cfg(unix)"]["build-dependencies"]["renamed"]["version"]
+                .as_str()
+                .unwrap(),
+            version.to_string()
+        );
+    }
+}
+
+#[test]
 fn set_version_does_not_rewrite_manifests_without_dependency_changes() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     let unchanged = [

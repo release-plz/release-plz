@@ -41,7 +41,7 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let can_increment_major =
+        let breaking_increment_major =
             current_version.major != 0 || updater.breaking_always_increment_major;
         let features_increment_minor =
             current_version.major != 0 || updater.features_always_increment_minor;
@@ -67,18 +67,18 @@ impl VersionIncrement {
             if let Some(commit) = &commit
                 && commit.breaking()
             {
-                // No other commit can request a larger increment.
-                if can_increment_major {
+                if breaking_increment_major {
+                    // No other commit can request a larger increment.
                     return Some(Self::Major);
                 }
                 if current_version.minor != 0 {
-                    return Some(Self::Minor);
+                    increment = Some(Self::Minor);
                 }
                 // In 0.0.x, breaking changes only increment the patch,
-                // but this or other commits can still request a minor increment.
+                // but this or other commits can still request a larger increment.
             }
 
-            if can_increment_major && matches(updater.custom_major_increment_regex.as_ref()) {
+            if matches(updater.custom_major_increment_regex.as_ref()) {
                 return Some(Self::Major);
             }
             if increment != Some(Self::Minor) {
