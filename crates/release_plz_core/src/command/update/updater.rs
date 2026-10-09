@@ -192,8 +192,8 @@ impl Updater<'_> {
 
         for (pkg, diff) in packages_diffs {
             let pkg_config = self.req.get_package_config(&pkg.name);
-            let version_updater = pkg_config.generic.version_updater()?;
             if let Some(version_group) = pkg_config.version_group {
+                let version_updater = pkg_config.generic.version_updater()?;
                 let next_pkg_ver = pkg.version.next_from_diff(diff, version_updater);
                 match version_groups.entry(version_group.clone()) {
                     std::collections::hash_map::Entry::Occupied(v) => {
