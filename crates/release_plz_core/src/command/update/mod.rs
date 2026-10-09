@@ -70,15 +70,12 @@ fn update_manifests(
     all_packages: &[&Package],
 ) -> anyhow::Result<()> {
     // Distinguish packages type to avoid updating the version of packages that inherit the workspace version
-    let (workspace_pkgs, independent_pkgs): (PackagesToUpdate, PackagesToUpdate) =
-        packages_to_update
-            .updates_clone()
-            .into_iter()
-            .partition(|(p, _)| {
-                let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
-                let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
-                local_manifest.version_is_inherited()
-            });
+    let (workspace_pkgs, independent_pkgs): (Vec<_>, Vec<_>) =
+        packages_to_update.updates().iter().partition(|(p, _)| {
+            let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
+            let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
+            local_manifest.version_is_inherited()
+        });
 
     if let Some(new_workspace_version) = packages_to_update.workspace_version() {
         let mut local_manifest = LocalManifest::try_new(local_manifest_path)?;
@@ -112,27 +109,13 @@ fn update_manifests(
         }
     }
 
-    update_versions(
-        all_packages,
-        &PackagesUpdate::new(independent_pkgs),
-        local_manifest_path,
-    )?;
-    Ok(())
-}
-
-#[instrument(skip_all)]
-fn update_versions(
-    all_packages: &[&Package],
-    packages_to_update: &PackagesUpdate,
-    workspace_manifest: &Utf8Path,
-) -> anyhow::Result<()> {
-    for (package, update) in packages_to_update.updates() {
+    for (package, update) in independent_pkgs {
         let package_path = package.package_path()?;
         set_version(
             all_packages,
             package_path,
             &update.version,
-            workspace_manifest,
+            local_manifest_path,
         )?;
     }
     Ok(())
