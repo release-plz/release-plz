@@ -17,6 +17,10 @@ pub struct RequiredInfo {
 }
 
 impl RequiredInfo {
+    fn is_local_required(&self) -> bool {
+        self.author_name || self.author_email || self.committer_name || self.committer_email
+    }
+
     fn is_remote_required(&self) -> bool {
         self.remote_username || self.remote_pr_number
     }
@@ -34,17 +38,20 @@ pub async fn fill_commit<'a>(
         commit.committer = existing_commit.committer.clone();
         commit.remote = existing_commit.remote.clone();
     } else {
-        if required_info.author_name {
-            commit.author.name = Some(repository.get_author_name(&commit.id)?);
-        }
-        if required_info.author_email {
-            commit.author.email = Some(repository.get_author_email(&commit.id)?);
-        }
-        if required_info.committer_name {
-            commit.committer.name = Some(repository.get_committer_name(&commit.id)?);
-        }
-        if required_info.committer_email {
-            commit.committer.email = Some(repository.get_committer_email(&commit.id)?);
+        if required_info.is_local_required() {
+            let signatures = repository.get_commit_signatures(&commit.id)?;
+            if required_info.author_name {
+                commit.author.name = Some(signatures.author_name);
+            }
+            if required_info.author_email {
+                commit.author.email = Some(signatures.author_email);
+            }
+            if required_info.committer_name {
+                commit.committer.name = Some(signatures.committer_name);
+            }
+            if required_info.committer_email {
+                commit.committer.email = Some(signatures.committer_email);
+            }
         }
         if required_info.is_remote_required() {
             let git_client = git_client
