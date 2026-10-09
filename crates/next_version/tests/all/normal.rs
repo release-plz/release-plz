@@ -211,7 +211,7 @@ fn commit_with_custom_major_increment_regex_increments_major_version_when_major_
 }
 
 #[test]
-fn conventional_commit_with_matching_description_does_not_trigger_custom_regex() {
+fn conventional_commit_with_matching_description_does_not_trigger_custom_minor_regex() {
     // The word "minor" appears in the description, but not in the type
     // For conventional commits, only the type should be checked
     let commits = ["fix: a minor bug"];
@@ -222,6 +222,21 @@ fn conventional_commit_with_matching_description_does_not_trigger_custom_regex()
             .unwrap()
             .increment(&version, commits),
         Version::new(1, 2, 4) // Patch, not minor
+    );
+}
+
+#[test]
+fn conventional_commit_with_matching_description_does_not_trigger_custom_major_regex() {
+    // The word "major" appears in the description, but not in the type
+    // For conventional commits, only the type should be checked
+    let commits = ["fix: a major bug"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_major_increment_regex("major")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4) // Patch, not major
     );
 }
 
