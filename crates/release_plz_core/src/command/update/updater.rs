@@ -731,6 +731,7 @@ impl Updater<'_> {
             &paths.all(),
             max_analyze_commits,
         )?;
+        let checked_out_history = !graph.is_empty();
         let mut retained_changes =
             history::RetainedChanges::new(repository, &head, &graph, &paths)?;
         for (current_commit_hash, _) in graph {
@@ -790,9 +791,11 @@ impl Updater<'_> {
                 ));
             }
         }
-        repository
-            .checkout_head()
-            .context("can't checkout head to compare dependencies")?;
+        if checked_out_history {
+            repository
+                .checkout_head()
+                .context("can't checkout head to compare dependencies")?;
+        }
         // A simplified walk can visit an ancestor before the equal snapshot that
         // prunes it. Make the final decision with every discovered boundary,
         // keeping only ancestors whose changes survive through another lineage.
