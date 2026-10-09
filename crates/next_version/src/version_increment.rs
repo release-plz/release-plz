@@ -43,6 +43,8 @@ impl VersionIncrement {
     {
         let can_increment_major =
             current_version.major != 0 || updater.breaking_always_increment_major;
+        let features_increment_minor =
+            current_version.major != 0 || updater.features_always_increment_minor;
         let mut increment = None;
 
         for msg in commits {
@@ -80,8 +82,7 @@ impl VersionIncrement {
                 return Some(Self::Major);
             }
             if increment != Some(Self::Minor) {
-                let is_feature = (current_version.major != 0
-                    || updater.features_always_increment_minor)
+                let is_feature = features_increment_minor
                     && commit
                         .as_ref()
                         .is_some_and(|commit| commit.type_() == git_conventional::Type::FEAT);
