@@ -105,6 +105,7 @@ fn update_manifests(
             update_dependencies(
                 all_packages,
                 new_workspace_version,
+                pkg.name.as_str(),
                 package_path,
                 local_manifest_path,
             )?;
@@ -184,12 +185,21 @@ pub fn set_version(
     let mut local_manifest =
         LocalManifest::try_new(&package_path.join("Cargo.toml")).context("cannot read manifest")?;
     local_manifest.set_package_version(version);
+    let package_name = local_manifest.data["package"]["name"]
+        .as_str()
+        .context("missing package name")?;
     local_manifest
         .write()
         .with_context(|| format!("cannot update manifest {:?}", local_manifest.path))?;
 
     let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
-    update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
+    update_dependencies(
+        all_packages,
+        version,
+        package_name,
+        &package_path,
+        workspace_manifest,
+    )?;
     Ok(())
 }
 
@@ -218,18 +228,28 @@ pub fn set_version(
 pub(super) fn update_dependencies(
     all_packages: &[&Package],
     version: &Version,
+    package_name: &str,
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    // Only path dependencies can refer to a workspace package. Metadata includes
-    // target-specific, build and dev dependencies, so other member manifests
-    // cannot contain a requirement to update.
+    // Only scan members with a path dependency on the package being updated.
+    // Cargo metadata includes normal, dev, build and target-specific dependencies;
+    // dep.name is the actual package name, even when the dependency is renamed.
+    //
+    // Match by name here because release-pr reuses metadata from the original
+    // checkout while editing a temporary copy: dep.path points to the original
+    // checkout, but package_path points to the copy, so the paths would not match.
+    //
     // Always scan the workspace manifest because cargo metadata omits
     // [workspace.dependencies] entries that no member inherits.
     let all_manifests = iter::once(workspace_manifest).chain(
         all_packages
             .iter()
-            .filter(|pkg| pkg.dependencies.iter().any(|dep| dep.path.is_some()))
+            .filter(|pkg| {
+                pkg.dependencies
+                    .iter()
+                    .any(|dep| dep.path.is_some() && dep.name == package_name)
+            })
             .map(|pkg| pkg.manifest_path.as_path()),
     );
     for manifest in all_manifests {
