@@ -120,18 +120,18 @@ impl VersionIncrement {
             }
             increment.get_or_insert(Self::Patch);
 
-            if let Some(commit) = &commit {
-                if commit.breaking() {
-                    // No other commit can request a larger increment.
-                    if can_increment_major {
-                        return Some(Self::Major);
-                    }
-                    if current.minor != 0 {
-                        return Some(Self::Minor);
-                    }
-                    // In 0.0.x, breaking changes only increment the patch,
-                    // but this or other commits can still request a minor increment.
+            if let Some(commit) = &commit
+                && commit.breaking()
+            {
+                // No other commit can request a larger increment.
+                if can_increment_major {
+                    return Some(Self::Major);
                 }
+                if current.minor != 0 {
+                    return Some(Self::Minor);
+                }
+                // In 0.0.x, breaking changes only increment the patch,
+                // but this or other commits can still request a minor increment.
             }
 
             if can_increment_major
