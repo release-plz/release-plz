@@ -19,7 +19,7 @@ pub fn release_order<'a>(packages: &'a [&Package]) -> anyhow::Result<Vec<&'a Pac
             .or_insert(package);
     }
     for p in packages {
-        release_order_inner(&packages_by_name, p, &mut order, &mut passed)?;
+        release_order_inner(&mut packages_by_name, p, &mut order, &mut passed)?;
     }
     debug!(
         "Release order: {:?}",
@@ -31,12 +31,13 @@ pub fn release_order<'a>(packages: &'a [&Package]) -> anyhow::Result<Vec<&'a Pac
 /// The `passed` argument is used to track packages that you already visited to
 /// detect circular dependencies.
 fn release_order_inner<'a>(
-    packages: &HashMap<&str, &'a Package>,
+    packages: &mut HashMap<&str, &'a Package>,
     pkg: &'a Package,
     order: &mut Vec<&'a Package>,
     passed: &mut Vec<&'a Package>,
 ) -> anyhow::Result<()> {
-    if is_package_in(pkg, order) {
+    // Completed packages have been removed from the map.
+    if !packages.contains_key(pkg.name.as_str()) {
         return Ok(());
     }
     passed.push(pkg);
@@ -59,6 +60,7 @@ fn release_order_inner<'a>(
     }
 
     order.push(pkg);
+    packages.remove(pkg.name.as_str());
     passed.clear();
     Ok(())
 }
@@ -207,6 +209,18 @@ mod tests {
             &pkg("c", &[]),
         ];
         assert_eq!(order(&pkgs), ["c", "b", "a"]);
+    }
+
+    /// Shared dependencies are emitted once, preserving traversal order.
+    #[test]
+    fn shared_dependency_is_released_once() {
+        let pkgs = [
+            &pkg("a", &[dep("b"), dep("c")]),
+            &pkg("b", &[dep("d")]),
+            &pkg("c", &[dep("d")]),
+            &pkg("d", &[]),
+        ];
+        assert_eq!(order(&pkgs), ["d", "b", "c", "a"]);
     }
 
     /// ┌──┐
