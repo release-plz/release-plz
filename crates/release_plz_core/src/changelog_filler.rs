@@ -33,6 +33,9 @@ pub async fn fill_commit<'a>(
     all_commits: &mut HashMap<String, &'a Commit>,
     git_client: Option<&GitClient>,
 ) -> anyhow::Result<()> {
+    if !required_info.is_local_required() && !required_info.is_remote_required() {
+        return Ok(());
+    }
     if let Some(existing_commit) = all_commits.get(&commit.id) {
         commit.author = existing_commit.author.clone();
         commit.committer = existing_commit.committer.clone();
