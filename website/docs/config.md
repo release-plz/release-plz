@@ -231,6 +231,9 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field), but for major
 version increments.
 
+A matching commit triggers a major increment even for `0.x` versions (for example, `0.2.3` becomes
+`1.0.0`).
+
 #### The `custom_minor_increment_regex` field
 
 A custom regex pattern to match commit types that should trigger a minor version increment.

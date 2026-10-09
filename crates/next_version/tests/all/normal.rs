@@ -184,30 +184,46 @@ fn non_conventional_commit_with_custom_major_increment_regex_increments_major_ve
 }
 
 #[test]
-fn commit_with_custom_major_increment_regex_does_not_increment_major_version_when_major_is_zero() {
-    let commits = ["major: some changes"];
-    let version = Version::new(0, 2, 3);
-    assert_eq!(
-        VersionUpdater::new()
-            .with_custom_major_increment_regex("major")
-            .unwrap()
-            .increment(&version, commits),
-        Version::new(0, 2, 4)
-    );
+fn commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero() {
+    let commit_lists: [&[&str]; 5] = [
+        &["major: some changes"],
+        &["A major change"],
+        // A custom major match takes precedence over the breaking change of the same commit...
+        &["major!: some changes"],
+        // ...and of other commits.
+        &["feat!: break user", "major: some changes"],
+        &["feat!: break user", "A major change"],
+    ];
+    for version in [Version::new(0, 0, 3), Version::new(0, 2, 3)] {
+        for commits in commit_lists {
+            assert_eq!(
+                VersionUpdater::new()
+                    .with_custom_major_increment_regex("major")
+                    .unwrap()
+                    .increment(&version, commits),
+                Version::new(1, 0, 0),
+                "{commits:?} from {version}"
+            );
+        }
+    }
 }
 
 #[test]
-fn commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero() {
-    let commits = ["major: some changes"];
-    let version = Version::new(0, 2, 3);
-    assert_eq!(
-        VersionUpdater::new()
-            .with_breaking_always_increment_major(true)
-            .with_custom_major_increment_regex("major")
-            .unwrap()
-            .increment(&version, commits),
-        Version::new(1, 0, 0)
-    );
+fn non_matching_custom_major_increment_regex_preserves_breaking_change_increments() {
+    for (version, expected) in [
+        (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+        (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+        (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+    ] {
+        assert_eq!(
+            VersionUpdater::new()
+                .with_custom_major_increment_regex("major")
+                .unwrap()
+                .increment(&version, ["feat!: break user"]),
+            expected,
+            "breaking change from {version}"
+        );
+    }
 }
 
 #[test]
