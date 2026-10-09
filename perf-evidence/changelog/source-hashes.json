@@ -1,0 +1,14 @@
+{
+  "before.rs": {
+    "commit": "267b5775",
+    "sha256": "7c8bdb47fb340b0cb0a3b5b02dc75ca130c4c66e80e2114646b449f352c4fd1d"
+  },
+  "after-remote.rs": {
+    "commit": "11cff443",
+    "sha256": "dab4d68ad14bd07838503e642a985b811cbc44a74477c1e35712ce1f8956efe5"
+  },
+  "after-defaults.rs": {
+    "commit": "a005b433",
+    "sha256": "1670c4050d8eff53a7a2a8d00524ae2adedb9d3c20940009b1df55ef9853457b"
+  }
+}

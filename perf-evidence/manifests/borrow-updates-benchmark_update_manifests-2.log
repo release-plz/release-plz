@@ -1,0 +1,12 @@
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 107.284 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 106.215 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 109.168 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1512.695 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 1461.992 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 1474.481 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.58s
+

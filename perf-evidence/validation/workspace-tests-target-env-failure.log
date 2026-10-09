@@ -1,0 +1,870 @@
+   Compiling cargo_utils v0.1.85 (/workspace/perf-validation/crates/cargo_utils)
+   Compiling next_version v0.3.2 (/workspace/perf-validation/crates/next_version)
+   Compiling git_cmd v0.8.0 (/workspace/perf-validation/crates/git_cmd)
+   Compiling next_version v0.3.2
+   Compiling test_logs v0.1.34 (/workspace/perf-validation/crates/test_logs)
+   Compiling git-cliff-core v2.14.2
+   Compiling fake_package v0.1.0 (/workspace/perf-validation/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-validation/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-validation/crates/release_plz)
+    Finished `test` profile [unoptimized] target(s) in 7.56s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/cargo_utils-d1c8bd10c6e89dd2)
+
+running 7 tests
+test registry::tests::cargo_info_token_env_var_name_for_crates_io_works ... ok
+test registry::tests::cargo_info_token_env_var_name_normalizes_dashes ... ok
+test registry::tests::cargo_info_token_env_var_name_invalid_registry_fails ... ok
+test registry::tests::test_get_registry_env_var_name ... ok
+test token::tests::test_parse_cargo_credentials_empty ... ok
+test token::tests::test_parse_cargo_credentials_cratesio_only ... ok
+test token::tests::test_parse_cargo_credentials_both ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/fake_package-d19c8faa2f1febc3)
+
+running 3 tests
+test package::tests::default_package_has_no_publish_restriction_and_no_targets ... ok
+test package::tests::unpublishable_package_has_no_registries ... ok
+test package::tests::builders_set_publish_and_targets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/git_cmd-d766f42a6d9787ea)
+
+running 17 tests
+test tests::changes_files_except_typechanges_are_detected ... ok
+test tests::clean_project_is_recognized ... ok
+test tests::configured_upstream_is_used ... ok
+test tests::commit_range_uses_the_given_tip_and_exclusions ... ok
+test tests::commit_range_ignores_missing_but_not_unreachable_boundaries ... ok
+test tests::current_commit_is_retrieved ... ok
+test tests::dirty_project_is_recognized ... ok
+test tests::commit_limit_keeps_the_newest_commit_of_every_branch ... ok
+test tests::detached_head_is_restored_after_checking_out_history ... ok
+test tests::existing_tag_is_recognized ... ok
+test tests::inexistent_previous_commit_detected ... ok
+test tests::non_existing_tag_is_recognized ... ok
+test tests::full_history_ancestors_keep_the_parent_a_simplified_walk_drops ... ok
+test tests::previous_commit_is_retrieved ... ok
+test tests::full_history_ancestors_exclude_each_release_boundary ... ok
+test tests::tags_are_retrieved ... ok
+test tests::simplified_parents_start_at_the_first_kept_commit ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/next_version-a6c07568ebd2bd3b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/all/main.rs (/workspace/release-plz/target/debug/deps/all-657a2d3a22f9f1bc)
+
+running 38 tests
+test normal::breaking_change_among_other_commits ... ok
+test normal::commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero ... ok
+test normal::commit_with_breaking_change_increments_major_version ... ok
+test normal::breaking_feature_increments_minor_version_from_0_0_x_when_features_always_increment_minor ... ok
+test normal::commit_with_breaking_change_increments_minor_version_when_major_is_zero ... ok
+test normal::commit_with_breaking_change_increments_major_version_when_major_is_zero ... ok
+test normal::commit_with_feat_semver_prefix_increments_minor_version_when_major_is_zero ... ok
+test normal::commit_with_feat_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_feat_semver_prefix_increments_patch_version_when_major_is_zero ... ok
+test normal::commit_with_fix_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_scope ... ok
+test normal::commit_with_scope_minor ... ok
+test normal::commit_with_scope_whitespace ... ok
+test normal::commit_without_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero ... ok
+test normal::commit_with_custom_major_increment_regex_increments_major_version ... ok
+test normal::commit_with_custom_minor_increment_regex_increments_minor_version ... ok
+test normal::conventional_commit_with_matching_description_does_not_trigger_custom_major_regex ... ok
+test normal::no_commits_leave_version_unchanged ... ok
+test normal::conventional_commit_with_matching_description_does_not_trigger_custom_minor_regex ... ok
+test normal::no_increment_regex_does_not_match_conventional_commit_description ... ok
+test normal::custom_minor_increment_regex_increments_minor_version_after_breaking_change_from_0_0_x ... ok
+test normal::no_increment_regex_skips_prerelease_increment ... ok
+test normal::no_increment_regex_filters_breaking_commits ... ok
+test normal::no_increment_regex_filters_matching_commits_but_keeps_other_bumps ... ok
+test normal::major_increment_takes_precedence_over_minor_regardless_of_commit_order ... ok
+test normal::no_increment_regex_takes_precedence_over_custom_increment_regexes ... ok
+test normal::non_conventional_commit_with_custom_minor_increment_regex_increments_minor_version ... ok
+test normal::non_conventional_commit_with_custom_major_increment_regex_increments_major_version ... ok
+test normal::non_matching_custom_major_increment_regex_preserves_breaking_change_increments ... ok
+test normal::non_conventional_commit_with_no_increment_regex_does_not_increment_version ... ok
+test pre_release::commit_with_breaking_change_increments_pre_release_version ... ok
+test pre_release::commit_without_semver_prefix_increments_pre_release_version ... ok
+test pre_release::dot_1_is_added_to_unversioned_pre_release ... ok
+test pre_release::dot_1_is_added_to_character_identifier_in_pre_release ... ok
+test pre_release::dot_1_is_added_to_last_identifier_in_pre_release ... ok
+test pre_release::no_commits_leave_pre_release_unchanged ... ok
+test pre_release::pre_release_increment_uses_first_commit_not_ignored_by_regex ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (/workspace/release-plz/target/debug/deps/release_plz-6a8230ad4066db33)
+
+running 39 tests
+test args::config_path::tests::load_config_no_config_file_uses_default ... ok
+test args::config_path::tests::load_config_ignores_dot_config_regular_file ... ok
+test args::config_path::tests::load_config_with_invalid_toml ... ok
+test args::config_path::tests::load_config_with_specified_path_not_found ... ok
+test args::config_path::tests::load_config_uses_first_existing_default_path ... ok
+test args::git_forge::tests::explicit_github_forge_accepts_enterprise_host ... ok
+test args::git_forge::tests::implicit_github_forge_rejects_unknown_host ... ok
+test args::config_path::tests::load_config_with_specified_path_success ... ok
+test args::release_pr::tests::git_github_url_is_parsed ... ok
+test args::release_pr::tests::gitea_url_is_parsed ... ok
+test args::release_pr::tests::https_github_url_is_parsed ... ok
+test args::release::tests::package_config_is_overriden ... ok
+test args::release::tests::input_generates_correct_release_request ... ok
+test args::release::tests::default_config_is_converted_to_default_release_request ... ok
+test config::tests::config_is_deserialized ... ok
+test config::tests::config_is_serialized ... ok
+test config::tests::config_package_release_is_deserialized_false ... ok
+test config::tests::config_package_release_is_deserialized_true ... ok
+test config::tests::config_without_update_config_is_deserialized ... ok
+test changelog_config::tests::test_deserialize_toml ... ok
+test config::tests::config_workspace_release_is_deserialized_false ... ok
+test config::tests::config_workspace_release_is_deserialized_true ... ok
+test config::tests::custom_minor_increment_regex_is_deserialized ... ok
+test changelog_config::tests::test_commit_parser_continue ... ok
+test config::tests::custom_minor_increment_regex_is_serialized ... ok
+test config::tests::test_parse_duration ... ok
+test config::tests::wrong_config_section_is_not_deserialized ... ok
+test config::tests::wrong_changelog_section_is_not_deserialized ... ok
+test config::tests::wrong_workspace_section_is_not_deserialized ... ok
+test config::tests::wrong_package_section_is_not_deserialized ... ok
+test generate_schema::tests::schema_contains_id_field ... ok
+test init::actions_yaml_string_with_persist_credentials_is_correct ... ok
+test init::actions_yaml_string_with_trusted_publishing_is_correct ... ok
+test init::tests::actions_yaml_string_is_correct ... ok
+test init::tests::actions_yaml_string_with_custom_token_is_correct ... ok
+test update_checker::tests::version_is_extracted ... ok
+test args::update::tests::input_generates_correct_release_request ... ok
+test config::tests::generated_release_notes_respect_workspace_defaults_and_package_overrides ... ok
+test generate_schema::tests::schema_is_up_to_date ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/all/main.rs (/workspace/release-plz/target/debug/deps/all-4a074434c475bac1)
+
+running 158 tests
+New user 'test580c1d67a838ba2d' has been successfully created!
+New user 'test2bc6beb8ad7f9094' has been successfully created!
+New user 'test806ab280aa72b74a' has been successfully created!
+New user 'testa9d94bd0060d20d3' has been successfully created!
+Cloning into 'test44f6b624825176dd'...
+Cloning into 'testbedaa3ee0a9d29e0'...
+Cloning into 'test8c5c8429047973db'...
+Cloning into 'test13df5a6b754dc7b6'...
+test changelog::can_generate_single_changelog_for_multiple_packages_locally ... ok
+New user 'test3a2c9d4e6c356792' has been successfully created!
+test changelog::raw_message_contains_entire_commit_message ... ok
+New user 'testceb89632c8289be8' has been successfully created!
+test changelog::can_generate_single_changelog_for_multiple_packages_in_pr ... ok
+New user 'test95925e46d31fb775' has been successfully created!
+Cloning into 'test9bc262e899eaf7ab'...
+Cloning into 'teste4628d1ba872961a'...
+Cloning into 'testcf527909d2971ccb'...
+test changelog::pr_link_is_expanded ... ok
+New user 'testad9b4f463c0b7aa5' has been successfully created!
+test changelog::release_plz_adds_changelog_on_new_project ... ok
+test completion_test::test_generate_completions ... ok
+New user 'testa0b7bf4074d25b2a' has been successfully created!
+test changelog::release_plz_adds_custom_changelog ... ok
+Cloning into 'test442e98b6c38563ee'...
+New user 'teste3533b227ad51fd6' has been successfully created!
+Cloning into 'test7053434f4f7ddd41'...
+    Updating `test-registry` index
+     Running `git -c core.fsmonitor=false fetch --no-tags --verbose --force --update-head-ok 'http://localhost:3000/testad9b4f463c0b7aa5/_cargo-index.git' '+HEAD:refs/remotes/origin/HEAD'`
+POST git-upload-pack (285 bytes)
+POST git-upload-pack (173 bytes)
+From http://localhost:3000/testad9b4f463c0b7aa5/_cargo-index
+ * [new ref]         HEAD       -> origin/HEAD
+test changelog::release_plz_does_not_open_release_pr_if_there_are_no_release_commits ... ok
+Cloning into 'test531e7e12c9a5a8f2'...
+New user 'testba1041a74ffa63db' has been successfully created!
+    Updating `test-registry` index
+     Running `git -c core.fsmonitor=false fetch --no-tags --verbose --force --update-head-ok 'http://localhost:3000/testad9b4f463c0b7aa5/_cargo-index.git' '+HEAD:refs/remotes/origin/HEAD'`
+POST git-upload-pack (285 bytes)
+From http://localhost:3000/testad9b4f463c0b7aa5/_cargo-index
+ = [up to date]      HEAD       -> origin/HEAD
+test changelog::release_plz_releases_a_new_project ... ok
+New user 'testfc8ea827aa54dbac' has been successfully created!
+Cloning into 'test035bfe3bfafd9465'...
+Cloning into 'test17997d5fabd003e3'...
+test git_only::git_only_breaking_change ... ok
+New user 'test5542153122eefb5e' has been successfully created!
+Cloning into 'test41563839d26c3d96'...
+test git_only::git_only_checks_semver_with_versionless_private_dependencies ... ok
+New user 'test9c229c80fa358284' has been successfully created!
+test git_only::git_only_detects_changes_to_inherited_readme ... ok
+test git_only::git_only_does_not_release_binary_for_library_dev_dependency_update ... ok
+Cloning into 'test2c6a076af738dfe8'...
+New user 'test55e204b9e0e40cf6' has been successfully created!
+New user 'test6b479c180f72ac2f' has been successfully created!
+Cloning into 'test851a6342a1047fbd'...
+Cloning into 'testd46c771341f46d0f'...
+test git_only::git_only_does_not_release_unrelated_binaries_for_workspace_lock_changes ... ok
+New user 'testb92f87ff20f53017' has been successfully created!
+test git_only::git_only_feat_commit_minor_bump ... ok
+New user 'testf98305551434033f' has been successfully created!
+Cloning into 'test9ae41e5ebcbe5772'...
+test git_only::git_only_ignores_non_matching_tags ... ok
+New user 'test833cfe4ca70ddbbf' has been successfully created!
+Cloning into 'test32ac8a9ac83d6035'...
+test git_only::git_only_finds_highest_version_tag ... ok
+New user 'testc338030533e9307a' has been successfully created!
+Cloning into 'test0f34199ebdd7d0b4'...
+Cloning into 'test33f20fc93defa212'...
+test git_only::git_only_invalid_tag_format ... ok
+New user 'test25fbc5eeaf752303' has been successfully created!
+test git_only::git_only_mixed_annotated_and_lightweight_tags ... ok
+Cloning into 'test48256a9cd809fbde'...
+New user 'testd4af35a7f5e96720' has been successfully created!
+test git_only::git_only_multiple_packages_changed_workspace ... ok
+New user 'test2e5b9ae6b0312391' has been successfully created!
+test git_only::git_only_no_matching_tag_creates_initial_release ... ok
+New user 'testd1f734e6918e9a75' has been successfully created!
+Cloning into 'test672ef5bfa1a559ef'...
+Cloning into 'testf2ff325356741432'...
+Cloning into 'testc97896a9c597e90a'...
+test git_only::git_only_no_tags_creates_initial_release ... ok
+New user 'test6812fea920c5f040' has been successfully created!
+Cloning into 'test6b03aa9d63af6f84'...
+test git_only::git_only_per_package_prefix ... ok
+New user 'testf3d1e119b0defadb' has been successfully created!
+    Updating `test-registry` index
+     Running `git -c core.fsmonitor=false fetch --no-tags --verbose --force --update-head-ok 'http://localhost:3000/testd1f734e6918e9a75/_cargo-index.git' '+HEAD:refs/remotes/origin/HEAD'`
+POST git-upload-pack (285 bytes)
+POST git-upload-pack (173 bytes)
+From http://localhost:3000/testd1f734e6918e9a75/_cargo-index
+ * [new ref]         HEAD       -> origin/HEAD
+test git_only::git_only_release_creates_tag ... ok
+New user 'testa7e9444216168e2f' has been successfully created!
+Cloning into 'test4447b586e7bcab3c'...
+Cloning into 'test7cc89e7f03471990'...
+test git_only::git_only_processes_packages_with_publish_false_in_manifest ... ok
+New user 'testa342d755ca4e5663' has been successfully created!
+test git_only::git_only_release_does_not_check_crates_io ... ok
+New user 'test99e6853038aac50e' has been successfully created!
+Cloning into 'test9e202a43bb771d7f'...
+Cloning into 'testd578fc5155aa1159'...
+test git_only::git_only_releases_workspace_with_versionless_private_dependencies ... ok
+test git_only::git_only_respects_release_commits_regex ... ok
+test git_only::git_only_update_handles_non_verifiable_release ... ok
+New user 'test8639967083c7b5d3' has been successfully created!
+New user 'testbaa7b29a2a2e8b98' has been successfully created!
+test git_only::git_only_releases_dependents_of_versionless_private_libraries_together ... ok
+New user 'testfe228175ccb70c95' has been successfully created!
+New user 'test42eecb1e76f89686' has been successfully created!
+Cloning into 'test62d7e172215a8278'...
+Cloning into 'testdc2842954b607468'...
+Cloning into 'test630d1288bf95b93c'...
+Cloning into 'testa08390593c7d64f8'...
+test git_only::git_only_updates_root_package_with_versionless_dependency ... ok
+New user 'testf16f96e70d29fc93' has been successfully created!
+test git_only::git_only_update_handles_packages_sharing_a_release_tag ... ok
+New user 'test90500a99bf836c19' has been successfully created!
+test git_only::git_only_update_handles_root_package_path_dependencies ... ok
+test git_only::git_only_update_handles_workspace_path_dependencies_at_different_commits ... ok
+New user 'test889932a14f208d51' has been successfully created!
+New user 'test85061cbfcb7421cc' has been successfully created!
+Cloning into 'test3ec89bc6980d8b85'...
+Cloning into 'testa3b3dc852e8ced89'...
+Cloning into 'test2b4feac087be263a'...
+Cloning into 'test0f1e6eaa6b5df51a'...
+test git_only::git_only_with_custom_tag_name ... ok
+New user 'test767fe2f4133176c1' has been successfully created!
+test git_only::git_only_with_default_tag_name ... ok
+New user 'testc2c8d7699597595c' has been successfully created!
+test git_only::git_only_with_lightweight_tags ... ok
+New user 'testcf02367970f514a9' has been successfully created!
+Cloning into 'testb2719c29904e6258'...
+Cloning into 'test726db1254cb6c5d1'...
+Cloning into 'testbfb44bc264514622'...
+test git_only::git_only_with_package_overrides_keeps_workspace_git_only ... ok
+New user 'testac5c996e34cb2383' has been successfully created!
+test git_only::git_only_with_publish_enabled_fails_validation ... ok
+New user 'test48eeeef9ddea5136' has been successfully created!
+test git_only::git_only_with_publish_enabled_fails_validation_release_cmd ... ok
+Cloning into 'testb8635379dddb3ac3'...
+New user 'testa3dc90408cea70af' has been successfully created!
+test git_only::git_only_with_publish_disabled_succeeds ... ok
+New user 'test52bb07637103133a' has been successfully created!
+Cloning into 'testd070cf5647fdd473'...
+test helpers::gitea::gitea_new::can_create_gitea_repository ... ok
+New user 'test44c2e4b89b9f548d' has been successfully created!
+Cloning into 'testadfba10ddf628684'...
+test git_only::git_only_workspace_with_package_publish_enabled_fails ... ok
+test git_only::git_only_workspace_level_applies_to_all ... ok
+New user 'test64aa5374f5aed6f4' has been successfully created!
+Cloning into 'test525d6f5b0b1cae03'...
+New user 'test52a580dd44453c5b' has been successfully created!
+Cloning into 'testa6582239efdb0b0c'...
+test history::a_change_reverted_everywhere_is_not_retained_for_a_discarded_release_edit ... ok
+Cloning into 'testb54b10cf764356c1'...
+New user 'test6bcaf3ad3520221b' has been successfully created!
+New user 'testeb798b40b175a8d5' has been successfully created!
+Cloning into 'testda9bd05348f82cc5'...
+test history::a_merge_commit_whose_resolution_survives_is_retained ... ok
+test history::a_partly_reverted_breaking_change_keeps_its_marker_after_body_edits ... ok
+Cloning into 'test4cbde590c225917f'...
+New user 'test252216ea194ba70a' has been successfully created!
+New user 'testa91b36ebeee37ec7' has been successfully created!
+test history::a_published_commit_missing_from_the_repository_is_ignored ... ok
+New user 'test8713e7a2673e8de5' has been successfully created!
+Cloning into 'testc352bd9d22642e83'...
+Cloning into 'testbb8ed11ec0b60738'...
+New user 'test1c99f6047158701d' has been successfully created!
+Cloning into 'testd616baae3cc57b29'...
+Cloning into 'test5610d0137818906c'...
+test history::a_release_side_conflict_keeps_a_breaking_change_absent_from_the_release ... ok
+test history::a_release_edit_next_to_a_retained_change_keeps_its_marker ... ok
+New user 'test279bed769c7de7dc' has been successfully created!
+New user 'test5c05163d668da738' has been successfully created!
+Cloning into 'test338eec50f4ccbda9'...
+Cloning into 'test6df5ad6fb033b93f'...
+New user 'teste3a2c49d173654e8' has been successfully created!
+New user 'test8467685ebe7e833c' has been successfully created!
+Cloning into 'test30866f0009df09da'...
+Cloning into 'test1493ffde983ccba8'...
+New user 'test0a3f9c94688672d4' has been successfully created!
+New user 'test1f4dde1c05e92d0b' has been successfully created!
+Cloning into 'testb70062d80909c74b'...
+Cloning into 'test4f20154aa0bb2f1f'...
+test history::a_discarded_change_stays_excluded_when_a_sibling_changes_the_same_file ... ok
+New user 'test06fd3d48ad8f8056' has been successfully created!
+test history::a_released_evolution_is_not_repeated_after_independent_release_edits_are_removed ... ok
+New user 'test4eaf786b9b95ec23' has been successfully created!
+Cloning into 'testc562d4227a879cdb'...
+New user 'test4a83488d63a30043' has been successfully created!
+test history::a_released_evolution_of_a_breaking_change_is_not_repeated ... ok
+Cloning into 'testabc94a9d8b6242a1'...
+New user 'test65ecf12cb00f0b50' has been successfully created!
+Cloning into 'testd5e38fbc12a20265'...
+Cloning into 'test1bf99ecae1e9f7b6'...
+test history::a_retained_change_can_move_to_a_different_file ... ok
+New user 'test1dc8970e689889c7' has been successfully created!
+New user 'test0e044d963df6e61c' has been successfully created!
+Cloning into 'testd7d978a6f9012431'...
+New user 'test4c2a551493d629b3' has been successfully created!
+test history::a_retained_change_survives_a_rename_at_head ... ok
+Cloning into 'testfaea63a80313b13d'...
+New user 'teste3c861035230a487' has been successfully created!
+Cloning into 'testc0af2e57ee3e77ad'...
+Cloning into 'test3cf2c87f7045a9e3'...
+New user 'test0d93f2333046873d' has been successfully created!
+test history::a_retained_change_moved_within_a_file_keeps_its_marker ... ok
+New user 'testb8b618e3483f0d57' has been successfully created!
+test history::a_retained_api_deletion_keeps_its_breaking_change_marker ... ok
+Cloning into 'tested8a1b0161e496e3'...
+New user 'test2f6ddee8b60174c8' has been successfully created!
+Cloning into 'test091c982ce1d866d9'...
+test history::a_shallow_clone_prunes_a_change_it_cannot_replay ... ok
+New user 'test41e664d241d3693f' has been successfully created!
+Cloning into 'test80d7661bd57a80bf'...
+test history::a_tag_bounds_the_history_of_a_package_that_is_not_published ... ok
+Cloning into 'test5ab94240bfe02eb6'...
+New user 'test07c851b0b1b5d0df' has been successfully created!
+New user 'test7b20ad0b3912b877' has been successfully created!
+test history::a_tip_matching_the_release_releases_nothing_although_its_branches_differ ... ok
+Cloning into 'testb2561fe8e805051c'...
+New user 'test1d0d30f284219129' has been successfully created!
+test history::allow_dirty_preserves_uncommitted_changes ... ok
+Cloning into 'test1e22ada6e5809c06'...
+New user 'testbbe831ae98714a76' has been successfully created!
+Cloning into 'test0a9be55adcd708a2'...
+Cloning into 'test7d306ddf4b199e91'...
+New user 'test038e57d17a932c4b' has been successfully created!
+New user 'test618b020cd7285e8d' has been successfully created!
+New user 'test6e70862db67445ce' has been successfully created!
+Cloning into 'testaaf12a74a07dcb7e'...
+test history::conflict_resolution_can_preserve_a_change_reverted_on_another_branch ... ok
+Cloning into 'test93f9be9be42a517e'...
+New user 'test1c8d89fcbe642cef' has been successfully created!
+Cloning into 'testf19e47b736583118'...
+Cloning into 'test1b49486d009c7d8d'...
+New user 'teste3a60548f4786c1c' has been successfully created!
+New user 'test1f3cd3b036da561b' has been successfully created!
+New user 'teste63965f5858cea84' has been successfully created!
+Cloning into 'testcd93dd0df8b11f02'...
+Cloning into 'test6116fa2c79ffc22b'...
+New user 'test401f3ae15dfd9cb0' has been successfully created!
+Cloning into 'test37b1f8290cb4bba5'...
+Cloning into 'test9f2f9f3fc3dfa0a9'...
+New user 'testdcf81a9811ee3c3c' has been successfully created!
+New user 'testc9d72144eafa0c1f' has been successfully created!
+test history::discarded_ancestors_are_pruned_in_either_visit_order ... ok
+New user 'testc14da495ae837a6b' has been successfully created!
+New user 'test78a1ad0898b82ebb' has been successfully created!
+Cloning into 'test965245a65f1aed6a'...
+Cloning into 'test6d214d34469f86ee'...
+Cloning into 'testd388d883acb6373b'...
+Cloning into 'testc32e232dacb39f8c'...
+New user 'test9f11b135efcefd67' has been successfully created!
+New user 'test45a5a131f25d9f3e' has been successfully created!
+test history::equal_snapshot_excludes_its_ancestors_but_keeps_sibling_changes ... ok
+test history::an_ignored_revert_does_not_hide_surviving_sequential_api_changes ... ok
+New user 'testefedb9adb9f94ef6' has been successfully created!
+New user 'test68879718205a4bd9' has been successfully created!
+Cloning into 'testd8cb7409b1fb2417'...
+Cloning into 'test1c5a8b2f06df2d74'...
+Cloning into 'test3e3f9496e92ab626'...
+Cloning into 'test519a7df900b654c6'...
+test history::an_already_released_breaking_change_is_not_repeated_after_body_edits ... ok
+New user 'testfce48a4a0d037aaa' has been successfully created!
+New user 'test91db87b3b21af1d8' has been successfully created!
+test history::every_lineage_stops_at_its_own_equal_snapshot ... ok
+New user 'test51358c3a7cba33e1' has been successfully created!
+test history::executable_bit_changes_do_not_hide_a_retained_package_change ... ok
+Cloning into 'test345b7721a9c24430'...
+Cloning into 'testeb2b564fa6b3f24f'...
+New user 'testc59133483dc84ccf' has been successfully created!
+Cloning into 'test6156c5b3f6d7ac72'...
+Cloning into 'teste90d039e1eabf341'...
+New user 'testadfbf10d17455849' has been successfully created!
+test history::executable_bit_changes_do_not_hide_retained_sequential_package_changes ... ok
+New user 'teste4d96b03ed4e8059' has been successfully created!
+test history::final_revert_does_not_release_reverted_changes ... ok
+test history::first_release_respects_the_commit_limit ... ok
+New user 'test17804665b0dc2a3d' has been successfully created!
+New user 'test6a418d2f45922df6' has been successfully created!
+Cloning into 'test158fd0e3b2b4a7e4'...
+Cloning into 'testa5a438e0bdf72fe3'...
+Cloning into 'testc96ed87c3ff547cf'...
+Cloning into 'test1605b64200d9825e'...
+New user 'test682d13ab225a195e' has been successfully created!
+test history::late_merge_keeps_mainline_changes_after_the_release ... ok
+test history::head_merge_attributes_do_not_discard_an_unreleased_breaking_change ... ok
+New user 'testbf7c3d9425fcf972' has been successfully created!
+New user 'teste11e59ae4d892719' has been successfully created!
+New user 'test0e61ff3830ac93b4' has been successfully created!
+Cloning into 'testaa90d8b27b6cb224'...
+Cloning into 'testb45b5a9e7868e0ae'...
+Cloning into 'test994443c72d444ff9'...
+Cloning into 'test4b64a4d5997b1f08'...
+test history::a_reverted_breaking_change_with_later_body_edits_is_not_released ... ok
+New user 'testd5b1a7c9f24d8526' has been successfully created!
+New user 'testdb7e990b4e53a364' has been successfully created!
+New user 'test5ae6b8608c31059c' has been successfully created!
+New user 'test6d3ea6c60db7a934' has been successfully created!
+Cloning into 'test9802e68887e05a4d'...
+Cloning into 'test8546b262a1c02b9d'...
+Cloning into 'test1a63acc6024ab337'...
+Cloning into 'testfcc304a19aead597'...
+test history::nested_cargo_vcs_info_changes_keep_their_breaking_change_marker ... ok
+New user 'test8c60a6a3c4b56305' has been successfully created!
+test history::later_same_line_edits_preserve_only_surviving_breaking_change_markers ... ok
+New user 'testbc600be3d7ad8f75' has been successfully created!
+New user 'test3b06c539e91a4c60' has been successfully created!
+New user 'test89563c0e8399e550' has been successfully created!
+Cloning into 'test18966654a90a6e66'...
+Cloning into 'test71e04b4322a68880'...
+Cloning into 'test18e559d5cb9d2098'...
+Cloning into 'testb6711071f27e9ce6'...
+New user 'test3907682f68e51bb3' has been successfully created!
+test history::local_merge_configuration_does_not_discard_an_unreleased_breaking_change ... ok
+Cloning into 'test7a55cdf2b67a6b94'...
+test history::partial_clone_extension_does_not_prevent_updates ... ok
+New user 'testff7dbf146b6a1afc' has been successfully created!
+New user 'test7cbd641135dddb96' has been successfully created!
+New user 'test5730e2f5d4df3404' has been successfully created!
+Cloning into 'testdd36ddd05dc2a661'...
+Cloning into 'test8f32b3e62aa1a941'...
+Cloning into 'test5d8d0000e8c69bba'...
+test history::outside_paths_do_not_retain_a_reverted_breaking_change ... ok
+New user 'testcf27b13674de06b8' has been successfully created!
+Cloning into 'testcf868289eaec5e91'...
+New user 'testb7a186a23728469c' has been successfully created!
+test history::partial_clones_fetch_the_package_blobs_a_replay_needs ... ok
+test history::partial_clones_replay_retained_changes_without_outside_blobs ... ok
+New user 'testb824620ee2409455' has been successfully created!
+New user 'test60fcd9f5da252c3b' has been successfully created!
+Cloning into 'test4ef3d9390d77790f'...
+Cloning into 'test4b6d64893aab0692'...
+Cloning into 'test56d0cae8b656bd16'...
+test history::sha256_repositories_fall_back_to_ancestry_pruning ... ok
+New user 'test58704fbc2229bd83' has been successfully created!
+Cloning into 'testa710127e124e222b'...
+New user 'test4ab208ab7efcb41f' has been successfully created!
+New user 'testcb34f81b96e68298' has been successfully created!
+New user 'test027167e1ce2d01c1' has been successfully created!
+Cloning into 'teste6ba4f3d5f4b01bf'...
+Cloning into 'testfdf95a7938977e68'...
+Cloning into 'testc7b881c04d9cfa7b'...
+New user 'test9a10fd940078b5c4' has been successfully created!
+test history::the_published_commit_bounds_the_walk_without_an_equal_snapshot ... ok
+New user 'testa561fc047b232013' has been successfully created!
+New user 'test4c2bba3bdd1a8904' has been successfully created!
+New user 'test67900801080323ec' has been successfully created!
+Cloning into 'test58329bf9db23f2d9'...
+Cloning into 'testb3b6836221ab08f9'...
+Cloning into 'testd16dc416e5e94411'...
+Cloning into 'testceae00257029a111'...
+test release::release_info_contains_prs_in_changelog ... ok
+New user 'testc60e2f3fcdf944ea' has been successfully created!
+test history::sibling_commits_are_collected_with_tag_published_sha_or_equality_boundary ... ok
+test history::workspace_dependency_updates_are_detected_without_package_commits ... ok
+New user 'testbf2ebffe6e7caf75' has been successfully created!
+New user 'test9c6bb31e218e2b98' has been successfully created!
+New user 'test48f07f2b76cae4fe' has been successfully created!
+Cloning into 'testc11d49e34f87a9df'...
+Cloning into 'test1c9924cfec39742b'...
+Cloning into 'testbfaa50ab536d5b20'...
+Cloning into 'test67c66d5148e5f8df'...
+    Blocking waiting for file lock on package cache
+    Updating `test-registry` index
+     Running `git -c core.fsmonitor=false fetch --no-tags --verbose --force --update-head-ok 'http://localhost:3000/testbf2ebffe6e7caf75/_cargo-index.git' '+HEAD:refs/remotes/origin/HEAD'`
+POST git-upload-pack (285 bytes)
+POST git-upload-pack (173 bytes)
+From http://localhost:3000/testbf2ebffe6e7caf75/_cargo-index
+ * [new ref]         HEAD       -> origin/HEAD
+test release::release_plz_does_not_release_a_new_project_if_release_always_is_false ... ok
+New user 'test1403da1bd6814805' has been successfully created!
+test release::release_plz_does_not_releases_twice ... ok
+New user 'test28b99fcb46f33066' has been successfully created!
+test history::later_api_edits_preserve_a_retained_breaking_change_marker ... ok
+Cloning into 'teste4490fbe4d358fa5'...
+New user 'testb51221927dc1dc4d' has been successfully created!
+Cloning into 'test5fa3c3f73e83e4a8'...
+Cloning into 'test2a745d1277380786'...
+test release::release_plz_can_do_backports ... ok
+New user 'testaf1de0c3bf3a0ff0' has been successfully created!
+test release::release_plz_releases_a_new_project_with_custom_release ... ok
+New user 'test970bd72494a64cf6' has been successfully created!
+test release::release_plz_releases_a_new_project_with_custom_tag_name ... ok
+Cloning into 'testd5a8616844ed328e'...
+New user 'test635d9b3d91c99164' has been successfully created!
+Cloning into 'test7533854be65c790d'...
+Cloning into 'test90d6646da067f5a5'...
+test release::release_plz_releases_after_release_pr_merged ... ok
+New user 'test432e948a3115e286' has been successfully created!
+test release_pr::changelog_is_not_updated_if_version_already_exists_in_changelog ... ok
+New user 'testdf2239832d7f10e4' has been successfully created!
+test release_pr::changelog_is_updated_correctly_if_no_new_line_after_h1 ... ok
+Cloning into 'test3e8b906ea650d6c1'...
+New user 'test2ac50e74fb8cca67' has been successfully created!
+Cloning into 'testa4820915942e89a7'...
+Cloning into 'test47fb90598ab6c83c'...
+test release_pr::release_plz_adds_labels_to_release_pr ... ok
+New user 'testdc68483d097955e8' has been successfully created!
+Cloning into 'testbb8214645c2ec3b8'...
+test release_pr::release_plz_can_do_backport_prs ... ok
+New user 'test285708de044011b7' has been successfully created!
+test release_pr::release_plz_detects_cargo_lock_updates_from_registry ... ok
+New user 'test9bb6729336e968b9' has been successfully created!
+Cloning into 'testc230edc4492be1fc'...
+Cloning into 'test11979f6f1edf2c2c'...
+test release_pr::release_plz_detects_edited_readme_cargo_toml_field ... ok
+New user 'test9ad66eaaaf242611' has been successfully created!
+Cloning into 'test33dc17ae9cb8b13b'...
+test release_pr::release_plz_doesnt_add_invalid_labels_to_release_pr ... ok
+New user 'test85826d950b749281' has been successfully created!
+test release_pr::release_plz_detects_symlink_package_changes ... ok
+New user 'test19243c1a90b9d853' has been successfully created!
+Cloning into 'test60699fb6fbd358d7'...
+Cloning into 'test7d5105d545a61bdc'...
+test release_pr::release_plz_handles_invalid_readme_path_gracefully ... ok
+New user 'test7400ae353a7115a5' has been successfully created!
+test release_pr::release_plz_does_not_release_version_group_without_matching_release_commits ... ok
+New user 'test117526a51ada6808' has been successfully created!
+Cloning into 'testc1bbeb91b94b6af1'...
+test release_pr::release_plz_handles_nonexistent_readme_path_in_cargo_toml ... ok
+New user 'test87324ddb4cce71d5' has been successfully created!
+Cloning into 'testb10ae3f9531aff2a'...
+Cloning into 'test817df1e5ac38e708'...
+test release_pr::release_plz_honors_features_always_increment_minor_flag ... ok
+New user 'test3dac59dd86d2ac3a' has been successfully created!
+test release_pr::release_plz_opens_pr_with_breaking_changes ... ok
+New user 'testffc0cf4336de0e14' has been successfully created!
+test release_pr::release_plz_opens_pr_with_breaking_changes_after_rlib_to_lib ... ok
+Cloning into 'test34fba2611e93db11'...
+New user 'test9665b1c9f5ee2493' has been successfully created!
+Cloning into 'test7c69401ceb9d5bd8'...
+test release_pr::release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib ... ok
+Cloning into 'test71a415c3bed0968d'...
+New user 'test3aaa733d8f09a9ca' has been successfully created!
+test release_pr::release_plz_opens_pr_with_default_config ... ok
+New user 'testec4687b2058cfc04' has been successfully created!
+Cloning into 'test25b34e016c342293'...
+test release_pr::release_plz_opens_pr_with_two_packages_and_default_config ... ok
+Cloning into 'testf25abe01d5269c0b'...
+New user 'test9e630f8c92e40abb' has been successfully created!
+test release_pr::release_plz_should_fail_for_multi_package_pr ... ok
+New user 'test01ff0f73fd9077d8' has been successfully created!
+Cloning into 'test273eb1443103641e'...
+Cloning into 'test8a19b1e6736914bc'...
+test release_pr::release_plz_should_set_custom_pr_details ... ok
+New user 'testc96e25a2d82452ce' has been successfully created!
+test release_pr::release_plz_opens_pr_without_breaking_changes ... ok
+Cloning into 'testa7cdfdecf18f4808'...
+New user 'test337cfcf9888cb745' has been successfully created!
+Cloning into 'test5bd26065da619deb'...
+test release_pr::release_plz_updates_binary_when_library_changes ... ok
+New user 'testf55730fb0b29e227' has been successfully created!
+test release_pr::release_plz_updates_binary_when_library_changes_commit_regex ... ok
+New user 'test2502cc2bdc3b2263' has been successfully created!
+Cloning into 'testb24b3a1fa2c6f71e'...
+Cloning into 'testd63003f5f4e8a223'...
+test release_pr::release_plz_updates_binary_with_no_commits_and_dependency_change ... ok
+New user 'test585fe295c3c2f612' has been successfully created!
+test release_pr::release_plz_updates_binary_when_library_has_breaking_changes ... ok
+New user 'teste2937f547ee21d89' has been successfully created!
+Cloning into 'test14723b0fb4ed856f'...
+Cloning into 'testc32c438bb4fcab9e'...
+test release_pr::release_plz_updates_commit_message_when_version_changes ... ok
+New user 'test8a43af8c5e7e54af' has been successfully created!
+test release_pr::release_plz_updates_changelog_when_version_already_bumped ... ok
+New user 'test43d2fa96d87977c2' has been successfully created!
+Cloning into 'test2340a5857d17d7c2'...
+Cloning into 'testbd49ea3abec4d048'...
+test release_pr::release_plz_works_with_valid_readme_path ... ok
+test set_version::set_version_does_not_rewrite_manifests_without_dependency_changes ... ok
+test set_version::set_version_preserves_inheritance_for_single_package ... ok
+test set_version::set_version_requires_package_names_without_workspace_version ... ok
+test set_version::set_version_updates_dependencies_with_metadata_from_original_workspace ... ok
+test set_version::set_version_updates_inherited_workspace_version ... ok
+test set_version::set_version_updates_root_package_and_workspace_dependencies ... ok
+test set_version::set_version_updates_shared_workspace_changelog_once ... ok
+test set_version::set_version_updates_target_dependencies_and_unused_workspace_templates ... ok
+test set_version::set_version_updates_version_in_package ... ok
+test set_version::set_version_updates_version_in_workspace ... ok
+test update::changelog_include_uses_only_the_requested_packages_original_commits ... ok
+test update::dependency_updates_match_renamed_packages_among_unrelated_updates ... ok
+test release_pr::release_plz_updates_whole_version_group_with_matching_release_commits ... ok
+test release_pr::release_pr_pre_bumped_shared_versions_update_dependency_requirements ... ok
+test update::dependency_updates_pass_previous_versions_to_shared_changelog_template ... ok
+test update::dependency_updates_pass_previous_versions_to_shared_changelog_template_when_versions_differ ... ok
+test update::dependency_updates_preserve_shared_changelog_entries_and_previous_versions ... ok
+test update::dependency_updates_preserve_shared_changelog_previous_versions_when_versions_differ ... ok
+test update::dependency_updates_propagate_through_a_breaking_filtered_sibling ... ok
+test update::dependency_updates_propagate_through_a_release_commits_filtered_sibling ... ok
+test release_pr::release_pr_shared_versions_propagate_through_unreleased_siblings ... ok
+test update::dependency_updates_propagate_through_a_release_disabled_sibling ... ok
+test update::dependency_updates_propagate_through_the_shared_workspace_version ... ok
+test update::dependency_updates_respect_prerelease_workspace_versions ... ok
+test update::dependency_updates_respect_pre_bumped_workspace_versions ... ok
+test update::dependency_updates_respect_pre_bumped_workspace_versions_with_release_commits_filter ... ok
+test update::release_commits_does_not_bump_workspace_for_independent_release ... ok
+test update::release_commits_leaves_filtered_workspace_unchanged ... ok
+test update::release_commits_keeps_workspace_bump_for_dependency_updates ... ok
+test update::release_commits_preserves_shared_workspace_version_calculation ... ok
+test update::shared_changelog_keeps_entry_matching_another_package_release ... ok
+test update::shared_changelog_previous_version_of_bumped_package_is_its_registry_version ... ok
+test update::update_detects_readme_changes_outside_the_package ... ok
+test update::update_changelog_includes_distinct_author_and_committer ... ok
+test update::update_refreshes_package_files_for_each_historical_snapshot ... ok
+test update::update_relocated_workspace_preserves_original_manifests ... ok
+test update::update_workspace_with_detached_head ... ok
+test update::update_workspace_with_detached_head_and_explicit_repo_url ... ok
+
+test result: ok. 158 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 171.09s
+
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/release_plz_core-9fcca70fc5c1ba40)
+
+running 186 tests
+test changelog::tests::changelog_has_commit_id ... ok
+test changelog::empty_changelog_is_updated ... ok
+test changelog::tests::changelog_entry_with_link_is_generated ... ok
+test changelog::tests::changelog_entries_are_generated ... ok
+test changelog::tests::changelog_is_updated ... ok
+test changelog_parser::tests::changelog_header_is_parsed ... ok
+test changelog::tests::generated_changelog_is_updated_correctly ... ok
+test changelog_parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test changelog::tests::changelog_without_header_is_updated ... ok
+test changelog_parser::tests::changelog_header_with_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test changelog::tests::changelog_sort_newest ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test changelog_parser::tests::changelog_header_isnt_recognized ... ok
+test changelog_parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test command::release::tests::check_publish_fields_skips_git_only_packages ... ok
+test command::release::tests::check_publish_fields_works ... ok
+test command::release::tests::git_release_config_pre_release_auto_works ... ok
+test command::release::tests::git_release_config_pre_release_default_works ... ok
+test command::release::tests::git_release_config_pre_release_pre_works ... ok
+test command::release::tests::generated_release_notes_allow_disabled_release_on_other_forges ... ok
+test command::release::tests::git_only_packages_are_never_published ... ok
+test command::release::tests::release_config_git_only_reaches_release_rule ... ok
+test command::release::tests::release_request_registry_token_env_works ... ok
+test command::release::tests::generated_release_notes_are_validated_before_accessing_the_repository ... ok
+test command::release::tests::should_reference_env_var_provided_index ... ok
+test command::release_pr::tests::github_cleans_up_temporary_branch_when_force_push_fails ... ok
+test command::release_pr::tests::github_cleans_up_temporary_branch_when_graphql_commit_fails ... ok
+test command::release::tests::release_ignores_pr_commits_outside_detached_history ... ok
+test command::release_pr::tests::github_refuses_to_update_pr_on_non_release_branch ... ok
+test command::release::tests::release_with_detached_head_respects_release_always ... ok
+test command::trusted_publishing::tests::audience_from_url_works ... ok
+test command::release_pr::tests::github_updates_existing_pr_without_git_remote_access ... ok
+test command::update::update_config::tests::version_updater_with_custom_major_regex ... ok
+test command::update::update_config::tests::version_updater_with_custom_minor_regex ... ok
+test command::update::update_config::tests::version_updater_with_invalid_regex ... ok
+test command::update::update_config::tests::version_updater_without_custom_regex ... ok
+test command::release_pr::tests::release_pr_rejects_detached_head_before_accessing_forge ... ok
+test command::update::updater::history::replay::tests::legacy_file_modes_do_not_abort_the_replay ... ok
+test command::update::updater::history::replay::tests::replayed_trees_hold_only_the_package_and_its_readme ... ok
+test command::update::updater::history::tests::a_merge_commit_is_replayed_relative_to_its_first_parent ... ok
+test command::update::package_dependencies::tests::versionless_and_workspace_dependencies_to_update ... ok
+test command::update::updater::history::tests::a_root_commit_can_be_replayed ... ok
+test command::update::updater::history::replay::tests::submodules_are_not_fetched ... ok
+test command::update::updater::history::tests::non_utf8_paths_are_scoped_to_the_package_directory ... ok
+test command::release::tests::release_uses_prepared_commit_and_restores_checkout ... ok
+test command::update::updater::history::tests::global_merge_attributes_are_isolated ... ok
+test command::update::updater::tests::contributors_are_unique_and_have_usernames ... ok
+test command::update::updater::tests::only_rust_library_targets_are_libraries ... ok
+test command::update::updater::tests::same_version_is_not_added_to_changelog ... ok
+test command::update::updater::tests::target_with_cdylib_and_rlib_kinds_is_a_library ... ok
+test copy_dir::tests::file_deleted_during_copy_is_ignored ... ok
+test copy_dir::tests::git_file_is_copied_despite_ignore_rules ... ok
+test command::update::updater::history::tests::merge_configuration_is_isolated_without_changing_worktree_indexes ... ok
+test command::update::updater::history::tests::undoing_a_deletion_re_adds_the_original_packaged_path ... ok
+test command::update::updater::history::tests::release_conflicts_do_not_prove_partly_released_or_binary_changes_absent ... ok
+test copy_dir::tests::ignored_symlink_ancestors_preserve_tracked_deletions ... ok
+test copy_dir::tests::ignored_tracked_file_replaced_by_directory_preserves_deletion ... ok
+test copy_dir::tests::ignored_tracked_paths_preserve_whitespace ... ok
+test copy_dir::tests::is_dir_copied_correctly ... ok
+test copy_dir::tests::is_symlink_created_before_file_exists ... ok
+test copy_dir::tests::is_symlink_created_if_file_exists ... ok
+test copy_dir::tests::ignored_tracked_files_preserve_working_tree_changes ... ok
+test copy_dir::tests::tracked_directory_replaced_by_file_is_copied ... ok
+test copy_dir::tests::git_metadata_is_copied_despite_ignore_rules ... ok
+test copy_dir::tests::tracked_files_are_copied_with_split_and_sparse_indexes ... ok
+test diff::tests::conventional_commit_check_uses_the_message ... ok
+test diff::tests::remote_is_omitted_from_cliff_commit_without_remote_info ... ok
+test diff::tests::remote_pr_number_is_kept_in_cliff_commit_without_username ... ok
+test diff::tests::test_is_commit_message_matched ... ok
+test diff::tests::test_is_commit_message_not_matched ... ok
+test download::tests::downloading_non_existing_package_does_not_error ... ignored, requires network
+test download::tests::one_package_is_downloaded ... ignored, requires network
+test download::tests::two_packages_are_downloaded ... ignored, requires network
+test git::forge::tests::contributors_are_extracted_from_commits ... ok
+test copy_dir::tests::tracked_files_are_copied_despite_ignore_rules ... ok
+test git::forge::tests::generated_release_notes_reject_unsupported_forges ... ok
+test copy_dir::tests::ignored_tracked_submodule_files_are_copied ... ok
+test git::forge::tests::generated_release_notes_are_sent_only_when_configured_on_github ... ok
+test git::github_graphql::tests::github_commit_query ... ok
+test git::github_graphql::tests::graphql_endpoint_from_rest_base_dotcom ... ok
+test git::github_graphql::tests::graphql_endpoint_from_rest_base_ghes ... ok
+test git::github_graphql::tests::graphql_endpoint_from_rest_base_ghes_with_port ... ok
+test git::gitlab_graphql::tests::graphql_endpoint_is_derived_from_rest_base ... ok
+test git::forge::tests::remote_commit_username_is_read_from_rest_commit ... ok
+test git::gitlab_graphql::tests::graphql_errors_are_reported ... ok
+test git::gitlab_graphql::tests::missing_project_is_an_error ... ok
+test git::gitlab_graphql::tests::unreadable_repository_is_an_error ... ok
+test git::gitlab_graphql::tests::username_is_none_when_commit_is_not_in_remote_repository ... ok
+test git::gitlab_graphql::tests::username_is_none_when_no_user_matches_author_email ... ok
+test git::gitlab_graphql::tests::username_is_read_from_commit_author ... ok
+test copy_dir::tests::submodule_absolute_symlinks_preserve_outer_copy_root ... ok
+test lock_compare::tests::registry_lock_comparison_skips_missing_lockfiles ... ok
+test lock_compare::tests::released_workspace_fails_on_invalid_lockfile ... ok
+test lock_compare::tests::lock_comparison_fails_on_stale_local_lockfile ... ok
+test lock_compare::tests::registry_lock_comparison_detects_update_when_another_member_keeps_old_version ... ok
+test lock_compare::tests::registry_workspace_lock_comparison_ignores_other_members_dependencies ... ok
+test lock_compare::tests::workspace_lock_comparison_distinguishes_same_named_path_packages ... ok
+test lock_compare::tests::workspace_lock_comparison_follows_source_qualified_git_dependencies ... ok
+test lock_compare::tests::workspace_lock_comparison_ignores_transitive_dev_dependencies ... ok
+test lock_compare::tests::workspace_lock_comparison_ignores_git_dev_dependency_with_plus_in_branch ... ok
+test lock_compare::tests::workspace_lock_comparison_distinguishes_path_and_git_packages ... ok
+test lock_compare::tests::workspace_lock_comparison_distinguishes_dependency_sources ... ok
+test lock_compare::tests::workspace_lock_comparison_ignores_unrelated_packages ... ok
+test lock_compare::tests::workspace_lock_comparison_treats_stale_released_lockfile_as_updated ... ok
+test lock_compare::tests::workspace_lock_comparison_uses_lockfile_committed_at_release ... ok
+test next_ver::tests::git_only_packages_share_released_workspace_metadata ... ok
+test lock_compare::tests::workspace_lock_comparison_preserves_replaced_path_dependencies ... ok
+test next_ver::tests::packages_taking_part_in_a_release ... ok
+test next_ver::tests::reconstruction_preserves_existing_package_named_worktree ... ok
+test next_ver::tests::git_only_reconstruction_uses_historical_cargo_config ... ok
+test package_compare::tests::compare_files_handles_empty_files_and_buffer_boundaries ... ok
+test package_compare::tests::compare_files_reports_missing_files ... ok
+test package_compare::tests::compare_packaged_files_ignores_extraction_marker ... ok
+test package_compare::tests::compare_packaged_files_ignores_lockfile_presence_and_contents ... ok
+test next_ver::tests::git_only_reconstructs_package_without_running_build_script ... ok
+test package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes ... FAILED
+test package_compare::tests::unpacked_package_is_listed_without_running_cargo ... ok
+test pr::tests::default_pr_body_template_renders ... ok
+test pr_parser::tests::parse_pr_correctly ... ok
+test package_compare::tests::package_without_original_manifest_uses_cargo_file_selection ... ok
+test pr_parser::tests::parse_pr_links_for_all_forges ... ok
+test project::tests::project_release_and_tag_template_some ... ok
+test project::tests::project_new_no_release_will_error ... ok
+test project::tests::project_tag_template_none ... ok
+test project::tests::test_empty_override ... ok
+test project::tests::test_for_typos ... ok
+test project::tests::test_license_file ... ok
+test project::tests::single_package_does_not_change_default_tag_template ... ok
+test project::tests::test_successful_override ... ok
+test release_order::tests::shared_dependency_is_released_once ... ok
+test release_order::tests::single_package_is_returned ... ok
+test release_order::tests::three_packages_are_ordered ... ok
+test release_order::tests::three_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_is_ok ... ok
+test release_order::tests::two_packages_dev_cycle_with_package_in_features_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_with_random_feature_is_ok ... ok
+test project::tests::test_typo_in_crate_names ... ok
+test release_regex::tests::release_regex_custom_template ... ok
+test package_compare::tests::compare_source_packages_uses_cargo_file_selection ... ok
+test release_regex::tests::release_regex_escapes_special_chars_in_package_name ... ok
+test release_regex::tests::release_regex_invalid_tera_syntax ... ok
+test release_regex::tests::release_regex_escapes_special_chars_in_template ... ok
+test release_order::tests::workspace_release_order_is_correct ... ok
+test release_regex::tests::release_regex_package_and_version_template ... ok
+test repo_url::tests::file_url_does_not_identify_a_provider ... ok
+test repo_url::tests::gh_release_link_for_crates_already_published ... ok
+test repo_url::tests::gh_release_link_works_for_first_release ... ok
+test repo_url::tests::git_pr_link_uses_merge_requests_for_gitlab ... ok
+test repo_url::tests::git_pr_link_uses_pull_for_github_including_enterprise ... ok
+test repo_url::tests::git_pr_link_uses_pulls_for_gitea ... ok
+test repo_url::tests::github_api_url_dotcom ... ok
+test lock_compare::tests::workspace_lock_comparison_preserves_patched_path_dependencies ... ok
+test repo_url::tests::github_api_url_dotcom_aliases ... ok
+test repo_url::tests::github_api_url_dotcom_http_still_uses_https ... ok
+test repo_url::tests::github_api_url_enterprise_https ... ok
+test repo_url::tests::github_enterprise_git_transport_uses_https_without_git_port ... ok
+test repo_url::tests::github_enterprise_https_port_is_kept_for_api_and_web_links ... ok
+test repo_url::tests::github_api_url_enterprise_ssh_origin ... ok
+test repo_url::tests::github_enterprise_ssh_port_is_not_reused_for_https ... ok
+test repo_url::tests::gitlab_api_url ... ok
+test repo_url::tests::scp_hosts_can_match_url_schemes ... ok
+test repo_url::tests::scp_style_ipv6_url ... ok
+test repo_url::tests::scp_style_path_can_contain_ipv6_separator_characters ... ok
+test repo_url::tests::ssh_scheme_aliases_use_https_for_gitlab_api ... ok
+test repo_url::tests::trailing_slash_is_removed_from_repo_path ... ok
+test repo_url::tests::standard_git_url_parts ... ok
+test repo_url::tests::windows_file_paths_do_not_identify_a_provider ... ok
+test tera::tests::custom_body_template_has_release_context ... ok
+test release_regex::tests::release_regex_version_only_template ... ok
+test tera::tests::default_body_preserves_changelog_verbatim ... ok
+test tera::tests::default_body_template_is_rendered ... ok
+test tera::tests::default_tag_template_multi_package ... ok
+test tera::tests::default_tag_template_single_package ... ok
+test tera::tests::template_renders_custom_format ... ok
+test tera::tests::template_renders_package_and_version ... ok
+test url_utils::tests::url_components_are_percent_encoded ... ok
+test tera::tests::template_renders_version_only ... ok
+test version::tests::next_version_bumps_0_x_minor_version_for_features ... ok
+test version::tests::next_version_doesnt_bump_0_x_minor_version_for_features ... ok
+test version::tests::next_version_of_new_package_is_unchanged ... ok
+test version::tests::next_version_of_existing_package_is_updated ... ok
+test semver_check::tests::checks_private_library_with_versionless_dependency ... ok
+test semver_check::tests::only_major_changes_are_incompatible ... ok
+
+failures:
+
+---- package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes stdout ----
+
+thread 'package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes' (215068) panicked at crates/release_plz_core/src/package_compare.rs:459:89:
+called `Result::unwrap()` on an `Err` value: Custom { kind: NotFound, error: Error { kind: OpenFile, source: Os { code: 2, kind: NotFound, message: "No such file or directory" }, path: "/tmp/.tmpu06dbI/target/package/example-0.1.0.crate" } }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes
+
+test result: FAILED. 182 passed; 1 failed; 3 ignored; 0 measured; 0 filtered out; finished in 1.95s
+
+error: test failed, to rerun pass `-p release_plz_core --lib`

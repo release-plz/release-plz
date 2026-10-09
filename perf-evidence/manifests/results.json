@@ -1,0 +1,276 @@
+{
+  "dependency-scan": {
+    "dependency_scan/one_matching/1": {
+      "before": [
+        7.04,
+        7.036,
+        7.298
+      ],
+      "after": [
+        7.023,
+        7.021,
+        7.003
+      ],
+      "mean_before_us": 7.124666666666666,
+      "mean_after_us": 7.015666666666666,
+      "reduction_percent": 1.529896135491715
+    },
+    "dependency_scan/no_matching/1": {
+      "before": [
+        6.811,
+        6.831,
+        6.854
+      ],
+      "after": [
+        0.011,
+        0.011,
+        0.011
+      ],
+      "mean_before_us": 6.832,
+      "mean_after_us": 0.011,
+      "reduction_percent": 99.83899297423888
+    },
+    "dependency_scan/no_dependencies/1": {
+      "before": [
+        0.009,
+        0.01,
+        0.01
+      ],
+      "after": [
+        0.009,
+        0.013,
+        0.009
+      ],
+      "mean_before_us": 0.009666666666666667,
+      "mean_after_us": 0.010333333333333333,
+      "reduction_percent": -6.896551724137923
+    },
+    "dependency_scan/registry_only_100/1": {
+      "before": [
+        0.025,
+        0.025,
+        0.023
+      ],
+      "after": [
+        0.025,
+        0.027,
+        0.025
+      ],
+      "mean_before_us": 0.024333333333333335,
+      "mean_after_us": 0.025666666666666667,
+      "reduction_percent": -5.47945205479452
+    },
+    "dependency_scan/one_matching/10": {
+      "before": [
+        25.477,
+        25.742,
+        25.615
+      ],
+      "after": [
+        7.213,
+        7.011,
+        7.082
+      ],
+      "mean_before_us": 25.611333333333334,
+      "mean_after_us": 7.102,
+      "reduction_percent": 72.27008876278731
+    },
+    "dependency_scan/no_matching/10": {
+      "before": [
+        26.141,
+        25.298,
+        25.128
+      ],
+      "after": [
+        0.024,
+        0.022,
+        0.022
+      ],
+      "mean_before_us": 25.522333333333332,
+      "mean_after_us": 0.022666666666666665,
+      "reduction_percent": 99.91118889338749
+    },
+    "dependency_scan/no_dependencies/10": {
+      "before": [
+        0.009,
+        0.01,
+        0.009
+      ],
+      "after": [
+        0.01,
+        0.009,
+        0.009
+      ],
+      "mean_before_us": 0.009333333333333332,
+      "mean_after_us": 0.009333333333333332,
+      "reduction_percent": 0.0
+    },
+    "dependency_scan/registry_only_100/10": {
+      "before": [
+        0.023,
+        0.023,
+        0.024
+      ],
+      "after": [
+        0.027,
+        0.027,
+        0.027
+      ],
+      "mean_before_us": 0.023333333333333334,
+      "mean_after_us": 0.027,
+      "reduction_percent": -15.714285714285703
+    },
+    "dependency_scan/one_matching/100": {
+      "before": [
+        207.272,
+        205.94,
+        203.563
+      ],
+      "after": [
+        7.178,
+        7.198,
+        7.194
+      ],
+      "mean_before_us": 205.59166666666667,
+      "mean_after_us": 7.19,
+      "reduction_percent": 96.50277653925662
+    },
+    "dependency_scan/no_matching/100": {
+      "before": [
+        209.004,
+        202.466,
+        202.807
+      ],
+      "after": [
+        0.1,
+        0.097,
+        0.097
+      ],
+      "mean_before_us": 204.759,
+      "mean_after_us": 0.098,
+      "reduction_percent": 99.9521388559233
+    },
+    "dependency_scan/no_dependencies/100": {
+      "before": [
+        0.009,
+        0.009,
+        0.009
+      ],
+      "after": [
+        0.009,
+        0.009,
+        0.009
+      ],
+      "mean_before_us": 0.009,
+      "mean_after_us": 0.009,
+      "reduction_percent": 0.0
+    },
+    "dependency_scan/registry_only_100/100": {
+      "before": [
+        0.024,
+        0.026,
+        0.025
+      ],
+      "after": [
+        0.025,
+        0.027,
+        0.027
+      ],
+      "mean_before_us": 0.025,
+      "mean_after_us": 0.026333333333333334,
+      "reduction_percent": -5.333333333333323
+    }
+  },
+  "borrow-updates": {
+    "update_manifests/10_packages/0_changelog_bytes": {
+      "before": [
+        117.106,
+        114.239,
+        112.286
+      ],
+      "after": [
+        110.373,
+        107.284,
+        106.833
+      ],
+      "mean_before_us": 114.54366666666667,
+      "mean_after_us": 108.16333333333334,
+      "reduction_percent": 5.570219217707361
+    },
+    "update_manifests/10_packages/65536_changelog_bytes": {
+      "before": [
+        163.197,
+        163.064,
+        162.488
+      ],
+      "after": [
+        107.182,
+        106.215,
+        106.35
+      ],
+      "mean_before_us": 162.91633333333334,
+      "mean_after_us": 106.58233333333334,
+      "reduction_percent": 34.578485071069196
+    },
+    "update_manifests/10_packages/524288_changelog_bytes": {
+      "before": [
+        834.321,
+        803.879,
+        800.595
+      ],
+      "after": [
+        109.338,
+        109.168,
+        111.299
+      ],
+      "mean_before_us": 812.9316666666667,
+      "mean_after_us": 109.935,
+      "reduction_percent": 86.47672313581091
+    },
+    "update_manifests/100_packages/0_changelog_bytes": {
+      "before": [
+        1513.19,
+        1526.82,
+        1517.65
+      ],
+      "after": [
+        1513.596,
+        1512.695,
+        1501.719
+      ],
+      "mean_before_us": 1519.22,
+      "mean_after_us": 1509.3366666666666,
+      "reduction_percent": 0.6505531347226534
+    },
+    "update_manifests/100_packages/65536_changelog_bytes": {
+      "before": [
+        2522.905,
+        2481.8,
+        2459.974
+      ],
+      "after": [
+        1480.6,
+        1461.992,
+        1490.069
+      ],
+      "mean_before_us": 2488.2263333333335,
+      "mean_after_us": 1477.5536666666667,
+      "reduction_percent": 40.61819671013315
+    },
+    "update_manifests/100_packages/524288_changelog_bytes": {
+      "before": [
+        11474.952,
+        11518.416,
+        11701.953
+      ],
+      "after": [
+        1486.959,
+        1474.481,
+        1469.538
+      ],
+      "mean_before_us": 11565.107,
+      "mean_after_us": 1476.9926666666668,
+      "reduction_percent": 87.22888887524631
+    }
+  }
+}

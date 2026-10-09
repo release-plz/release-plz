@@ -1,0 +1,71 @@
+diff --git a/crates/release_plz_core/src/command/update/mod.rs b/crates/release_plz_core/src/command/update/mod.rs
+index cd4bad97..17b61960 100644
+--- a/crates/release_plz_core/src/command/update/mod.rs
++++ b/crates/release_plz_core/src/command/update/mod.rs
+@@ -70,15 +70,12 @@ fn update_manifests(
+     all_packages: &[&Package],
+ ) -> anyhow::Result<()> {
+     // Distinguish packages type to avoid updating the version of packages that inherit the workspace version
+-    let (workspace_pkgs, independent_pkgs): (PackagesToUpdate, PackagesToUpdate) =
+-        packages_to_update
+-            .updates_clone()
+-            .into_iter()
+-            .partition(|(p, _)| {
+-                let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
+-                let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
+-                local_manifest.version_is_inherited()
+-            });
++    let (workspace_pkgs, independent_pkgs): (Vec<_>, Vec<_>) =
++        packages_to_update.updates().iter().partition(|(p, _)| {
++            let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
++            let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
++            local_manifest.version_is_inherited()
++        });
+ 
+     if let Some(new_workspace_version) = packages_to_update.workspace_version() {
+         let mut local_manifest = LocalManifest::try_new(local_manifest_path)?;
+@@ -112,27 +109,13 @@ fn update_manifests(
+         }
+     }
+ 
+-    update_versions(
+-        all_packages,
+-        &PackagesUpdate::new(independent_pkgs),
+-        local_manifest_path,
+-    )?;
+-    Ok(())
+-}
+-
+-#[instrument(skip_all)]
+-fn update_versions(
+-    all_packages: &[&Package],
+-    packages_to_update: &PackagesUpdate,
+-    workspace_manifest: &Utf8Path,
+-) -> anyhow::Result<()> {
+-    for (package, update) in packages_to_update.updates() {
++    for (package, update) in independent_pkgs {
+         let package_path = package.package_path()?;
+         set_version(
+             all_packages,
+             package_path,
+             &update.version,
+-            workspace_manifest,
++            local_manifest_path,
+         )?;
+     }
+     Ok(())
+diff --git a/crates/release_plz_core/src/command/update/packages_update.rs b/crates/release_plz_core/src/command/update/packages_update.rs
+index 8f7c80fa..4557ce2e 100644
+--- a/crates/release_plz_core/src/command/update/packages_update.rs
++++ b/crates/release_plz_core/src/command/update/packages_update.rs
+@@ -31,10 +31,6 @@ impl PackagesUpdate {
+         &self.updates
+     }
+ 
+-    pub fn updates_clone(&self) -> PackagesToUpdate {
+-        self.updates.clone()
+-    }
+-
+     pub fn updates_mut(&mut self) -> &mut PackagesToUpdate {
+         &mut self.updates
+     }

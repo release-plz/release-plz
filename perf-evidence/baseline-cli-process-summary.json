@@ -1,0 +1,20 @@
+{
+  "fixture": "one package, 10 fix commits, adapted PR #3146 update fixture",
+  "counts": {
+    "git checkout": 24,
+    "cargo package": 24,
+    "rustc": 15,
+    "git log": 11,
+    "git rev-parse": 9,
+    "cargo metadata": 6,
+    "git rev-list": 3,
+    "git status": 2,
+    "cargo update": 2,
+    "release-plz-before": 1,
+    "git check-ignore": 1,
+    "git ls-files": 1,
+    "git config": 1,
+    "git --git-dir=.git": 1
+  },
+  "note": "Cargo counts include rustup shim exec and actual cargo process."
+}

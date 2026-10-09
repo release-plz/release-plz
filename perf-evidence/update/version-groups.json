@@ -1,0 +1,154 @@
+{
+  "benchmark": "version_groups",
+  "runs": [
+    {
+      "repetition": 1,
+      "before": {
+        "groups_10_custom_false": {
+          "ns": 160.5197662084836,
+          "iterations": 3114912
+        },
+        "groups_10_custom_true": {
+          "ns": 907726.3854166666,
+          "iterations": 576
+        },
+        "groups_100_custom_false": {
+          "ns": 1569.313557672994,
+          "iterations": 318624
+        },
+        "groups_100_custom_true": {
+          "ns": 9217569.203125,
+          "iterations": 64
+        }
+      },
+      "after": {
+        "groups_10_custom_false": {
+          "ns": 63.893916175279905,
+          "iterations": 7825472
+        },
+        "groups_10_custom_true": {
+          "ns": 240.25079473991727,
+          "iterations": 2081184
+        },
+        "groups_100_custom_false": {
+          "ns": 569.2040681578085,
+          "iterations": 878432
+        },
+        "groups_100_custom_true": {
+          "ns": 2479.0312549579567,
+          "iterations": 201696
+        }
+      }
+    },
+    {
+      "repetition": 2,
+      "after": {
+        "groups_10_custom_false": {
+          "ns": 63.38511740443554,
+          "iterations": 7888288
+        },
+        "groups_10_custom_true": {
+          "ns": 240.50733545492326,
+          "iterations": 2078944
+        },
+        "groups_100_custom_false": {
+          "ns": 531.5592150025515,
+          "iterations": 940640
+        },
+        "groups_100_custom_true": {
+          "ns": 2341.2830105633802,
+          "iterations": 213568
+        }
+      },
+      "before": {
+        "groups_10_custom_false": {
+          "ns": 160.30946759449256,
+          "iterations": 3118976
+        },
+        "groups_10_custom_true": {
+          "ns": 908060.734375,
+          "iterations": 576
+        },
+        "groups_100_custom_false": {
+          "ns": 1762.954501861672,
+          "iterations": 283616
+        },
+        "groups_100_custom_true": {
+          "ns": 9969725.859375,
+          "iterations": 64
+        }
+      }
+    },
+    {
+      "repetition": 3,
+      "before": {
+        "groups_10_custom_false": {
+          "ns": 162.22465167466103,
+          "iterations": 3082176
+        },
+        "groups_10_custom_true": {
+          "ns": 902445.0347222222,
+          "iterations": 576
+        },
+        "groups_100_custom_false": {
+          "ns": 1551.1340052362518,
+          "iterations": 322368
+        },
+        "groups_100_custom_true": {
+          "ns": 9153785.25,
+          "iterations": 64
+        }
+      },
+      "after": {
+        "groups_10_custom_false": {
+          "ns": 63.20576769049671,
+          "iterations": 7910688
+        },
+        "groups_10_custom_true": {
+          "ns": 236.7370804104421,
+          "iterations": 2112064
+        },
+        "groups_100_custom_false": {
+          "ns": 523.740595880539,
+          "iterations": 954688
+        },
+        "groups_100_custom_true": {
+          "ns": 2424.4681584561677,
+          "iterations": 206240
+        }
+      }
+    }
+  ],
+  "binaries": {
+    "before": {
+      "path": "/workspace/perf-evidence/update/bench-before",
+      "sha256": "c31c28d67c8d8daabe0424ee4148af03f1e679540bbc96e2c8c7c892d12eecd4"
+    },
+    "after": {
+      "path": "/workspace/perf-evidence/update/bench-groups",
+      "sha256": "22595ce4157d95224d1503750d837395039264bb0df18e6d9cac3280f8bfe81a"
+    }
+  },
+  "summary": {
+    "groups_10_custom_false": {
+      "before_ns": 160.5197662084836,
+      "after_ns": 63.38511740443554,
+      "reduction_percent": 60.51257804468096
+    },
+    "groups_10_custom_true": {
+      "before_ns": 907726.3854166666,
+      "after_ns": 240.25079473991727,
+      "reduction_percent": 99.97353268577406
+    },
+    "groups_100_custom_false": {
+      "before_ns": 1569.313557672994,
+      "after_ns": 531.5592150025515,
+      "reduction_percent": 66.12791545682197
+    },
+    "groups_100_custom_true": {
+      "before_ns": 9217569.203125,
+      "after_ns": 2424.4681584561677,
+      "reduction_percent": 99.9736973153656
+    }
+  }
+}

@@ -1,0 +1,37 @@
+
+running 32 tests
+test after_defaults::tests::changelog_has_commit_id ... ok
+test after_defaults::tests::changelog_entry_with_link_is_generated ... ok
+test after_defaults::empty_changelog_is_updated ... ok
+test after_defaults::tests::changelog_entries_are_generated ... ok
+test after_defaults::tests::changelog_is_updated ... ok
+test after_defaults::tests::changelog_without_header_is_updated ... ok
+test after_defaults::tests::changelog_sort_newest ... ok
+test after_defaults::tests::generated_changelog_is_updated_correctly ... ok
+test after_remote::empty_changelog_is_updated ... ok
+test after_remote::tests::changelog_entries_are_generated ... ok
+test after_remote::tests::changelog_has_commit_id ... ok
+test after_remote::tests::changelog_entry_with_link_is_generated ... ok
+test after_remote::tests::changelog_is_updated ... ok
+test after_remote::tests::changelog_sort_newest ... ok
+test after_remote::tests::changelog_without_header_is_updated ... ok
+test after_remote::tests::generated_changelog_is_updated_correctly ... ok
+test before::empty_changelog_is_updated ... ok
+test before::tests::changelog_entries_are_generated ... ok
+test before::tests::changelog_has_commit_id ... ok
+test before::tests::changelog_entry_with_link_is_generated ... ok
+test before::tests::changelog_is_updated ... ok
+test before::tests::changelog_sort_newest ... ok
+test before::tests::changelog_without_header_is_updated ... ok
+test changelog_parser::tests::changelog_header_is_parsed ... ok
+test changelog_parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test changelog_parser::tests::changelog_header_with_versions_is_parsed ... ok
+test before::tests::generated_changelog_is_updated_correctly ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test changelog_parser::tests::changelog_header_isnt_recognized ... ok
+test changelog_parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

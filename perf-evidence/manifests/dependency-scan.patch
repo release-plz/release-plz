@@ -1,0 +1,70 @@
+diff --git a/crates/release_plz/tests/all/update.rs b/crates/release_plz/tests/all/update.rs
+index 02d7bf59..e02fa7a4 100644
+--- a/crates/release_plz/tests/all/update.rs
++++ b/crates/release_plz/tests/all/update.rs
+@@ -275,6 +275,41 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
+     assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+ }
+ 
++#[test]
++fn dependency_updates_match_renamed_packages_among_unrelated_updates() {
++    let (temp_dir, repo) = released_workspace(
++        &[
++            ("support", "version = \"1.0.0\"\n"),
++            ("unrelated", "version = \"1.0.0\"\n"),
++            (
++                "consumer",
++                "version = \"1.0.0\"\n[target.'cfg(unix)'.build-dependencies]\nshared.workspace = true\n",
++            ),
++        ],
++        "[workspace.dependencies]\nshared = { package = \"support\", path = \"support\", version = \"=1.0.0\" }\n",
++        "[workspace]\nsemver_check = false\n",
++    );
++    change_package(&repo, "support", "feat: update support");
++    change_package(&repo, "unrelated", "fix: update unrelated");
++
++    run_workspace_update(&temp_dir, &repo, None);
++
++    assert_locked_versions(
++        repo.directory(),
++        &[
++            ("support", "1.1.0"),
++            ("unrelated", "1.0.1"),
++            ("consumer", "1.0.1"),
++        ],
++    );
++    let changelog = fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
++    assert!(
++        changelog.contains("updated the following local packages: support"),
++        "{changelog}"
++    );
++    assert!(!changelog.contains("unrelated"), "{changelog}");
++}
++
+ #[test]
+ fn dependency_updates_preserve_shared_changelog_entries_and_previous_versions() {
+     // Both packages are released as 1.0.1, the version of the entry that support
+diff --git a/crates/release_plz_core/src/command/update/package_dependencies.rs b/crates/release_plz_core/src/command/update/package_dependencies.rs
+index 242c9777..cf1dca74 100644
+--- a/crates/release_plz_core/src/command/update/package_dependencies.rs
++++ b/crates/release_plz_core/src/command/update/package_dependencies.rs
+@@ -30,6 +30,19 @@ impl PackageDependencies for Package {
+             return Ok(Vec::new());
+         }
+ 
++        // Only path dependencies with the updated package's actual name can match.
++        let mut updated_packages = updated_packages
++            .iter()
++            .filter(|(package, _)| {
++                self.dependencies
++                    .iter()
++                    .any(|dep| dep.path.is_some() && dep.name == package.name.as_str())
++            })
++            .peekable();
++        if updated_packages.peek().is_none() {
++            return Ok(Vec::new());
++        }
++
+         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
+         // empty `version` in Cargo.toml and `version = "*"`
+         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;

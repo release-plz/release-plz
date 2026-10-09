@@ -1,0 +1,154 @@
+{
+  "benchmark": "lazy_client",
+  "runs": [
+    {
+      "repetition": 1,
+      "before": {
+        "client_0_template_false": {
+          "ns": 455497.3517857143,
+          "iterations": 1120
+        },
+        "client_0_template_true": {
+          "ns": 416369.7351973684,
+          "iterations": 1216
+        },
+        "client_100_template_false": {
+          "ns": 410452.1266025641,
+          "iterations": 1248
+        },
+        "client_100_template_true": {
+          "ns": 427977.9856418919,
+          "iterations": 1184
+        }
+      },
+      "after": {
+        "client_0_template_false": {
+          "ns": 165.40468164471872,
+          "iterations": 3022912
+        },
+        "client_0_template_true": {
+          "ns": 187.43170163379875,
+          "iterations": 2667648
+        },
+        "client_100_template_false": {
+          "ns": 165.01221749920794,
+          "iterations": 3030080
+        },
+        "client_100_template_true": {
+          "ns": 568.746279301496,
+          "iterations": 879136
+        }
+      }
+    },
+    {
+      "repetition": 2,
+      "after": {
+        "client_0_template_false": {
+          "ns": 165.637864003053,
+          "iterations": 3018656
+        },
+        "client_0_template_true": {
+          "ns": 185.4044927529783,
+          "iterations": 2696832
+        },
+        "client_100_template_false": {
+          "ns": 163.13068602988005,
+          "iterations": 3065056
+        },
+        "client_100_template_true": {
+          "ns": 577.9441843745376,
+          "iterations": 865152
+        }
+      },
+      "before": {
+        "client_0_template_false": {
+          "ns": 401068.6201923077,
+          "iterations": 1248
+        },
+        "client_0_template_true": {
+          "ns": 403988.06330128206,
+          "iterations": 1248
+        },
+        "client_100_template_false": {
+          "ns": 403170.83974358975,
+          "iterations": 1248
+        },
+        "client_100_template_true": {
+          "ns": 438081.5095486111,
+          "iterations": 1152
+        }
+      }
+    },
+    {
+      "repetition": 3,
+      "before": {
+        "client_0_template_false": {
+          "ns": 403404.78766025644,
+          "iterations": 1248
+        },
+        "client_0_template_true": {
+          "ns": 400833.2676282051,
+          "iterations": 1248
+        },
+        "client_100_template_false": {
+          "ns": 437137.73784722225,
+          "iterations": 1152
+        },
+        "client_100_template_true": {
+          "ns": 408101.7139423077,
+          "iterations": 1248
+        }
+      },
+      "after": {
+        "client_0_template_false": {
+          "ns": 163.20376051023607,
+          "iterations": 3063680
+        },
+        "client_0_template_true": {
+          "ns": 185.2622543425421,
+          "iterations": 2698880
+        },
+        "client_100_template_false": {
+          "ns": 162.90180377305379,
+          "iterations": 3069344
+        },
+        "client_100_template_true": {
+          "ns": 565.8996765329035,
+          "iterations": 883552
+        }
+      }
+    }
+  ],
+  "binaries": {
+    "before": {
+      "path": "/workspace/perf-evidence/update/bench-before-controls",
+      "sha256": "b7b13e56247a8dbe6edf6284a4d00922d573b652adebfeec12d1bde803e92f43"
+    },
+    "after": {
+      "path": "/workspace/perf-evidence/update/bench-client",
+      "sha256": "28f86eea2741209cd4d99dc12195764f82686fbfa24834d042c9323ecd62f7de"
+    }
+  },
+  "summary": {
+    "client_0_template_false": {
+      "before_ns": 403404.78766025644,
+      "after_ns": 165.40468164471872,
+      "reduction_percent": 99.95899783872075
+    },
+    "client_0_template_true": {
+      "before_ns": 403988.06330128206,
+      "after_ns": 185.4044927529783,
+      "reduction_percent": 99.95410644283945
+    },
+    "client_100_template_false": {
+      "before_ns": 410452.1266025641,
+      "after_ns": 163.13068602988005,
+      "reduction_percent": 99.96025585556586
+    },
+    "client_100_template_true": {
+      "before_ns": 427977.9856418919,
+      "after_ns": 568.746279301496,
+      "reduction_percent": 99.8671085199748
+    }
+  }
+}

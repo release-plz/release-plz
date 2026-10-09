@@ -1,0 +1,10 @@
+
+running 1 test
+test command::update::updater::perf_update_bench::lazy_client ... BENCH client_0_template_false 403404.78766025644 1248
+BENCH client_0_template_true 400833.2676282051 1248
+BENCH client_100_template_false 437137.73784722225 1152
+BENCH client_100_template_true 408101.7139423077 1248
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 189 filtered out; finished in 2.48s
+

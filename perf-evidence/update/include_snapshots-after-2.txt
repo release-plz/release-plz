@@ -1,0 +1,15 @@
+
+running 1 test
+test command::update::updater::perf_update_bench::include_snapshots ... BENCH snapshots_10x100_include_none 80.3029654864937 6226432
+BENCH snapshots_10x100_include_one 8274.625942959237 60448
+BENCH snapshots_10x100_include_all 91964.53492647059 5440
+BENCH snapshots_100x100_include_none 641.3443207938267 779616
+BENCH snapshots_100x100_include_one 9956.12884156051 50240
+BENCH snapshots_100x100_include_all 945319.0514705882 544
+BENCH snapshots_100x0_include_none 632.7479916680165 790208
+BENCH snapshots_100x0_include_one 1901.0690617396594 263040
+BENCH snapshots_100x0_include_all 16562.495663400423 30208
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 189 filtered out; finished in 5.56s
+

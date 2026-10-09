@@ -1,0 +1,12 @@
+{
+  "passed": 463,
+  "failed": 0,
+  "ignored": 3,
+  "suites": 16,
+  "clippy": "passed --all-targets --all-features --workspace -- -D warnings",
+  "format": "passed",
+  "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+  "combined_commit": "cd20127f",
+  "note": "Initial test attempt exported CARGO_TARGET_DIR and failed one existing packaging fixture; rerun used --target-dir so fixture subprocess output stayed local. Recheck and complete rerun passed.",
+  "original_benchmark_smoke": "all 8 cases passed (manifest_updates: 2, update: 6)"
+}

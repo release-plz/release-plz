@@ -1,0 +1,68 @@
+   Compiling num-traits v0.2.19
+   Compiling zerocopy v0.8.59
+   Compiling zerocopy-derive v0.8.59
+   Compiling cargo_utils v0.1.85 (/workspace/perf-bench-validation/crates/cargo_utils)
+   Compiling next_version v0.3.2
+   Compiling chrono v0.4.45
+   Compiling ordered-float v2.10.1
+   Compiling serde-value v0.7.0
+   Compiling cargo-util-schemas v0.14.3
+   Compiling chrono-tz v0.9.0
+   Compiling alloca v0.4.0
+   Compiling ciborium-io v0.2.2
+   Compiling predicates-core v1.0.10
+   Compiling plotters-backend v0.3.7
+   Compiling cargo v0.100.0
+   Compiling plotters-svg v0.3.7
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling ciborium-ll v0.2.2
+   Compiling rand v0.8.8
+   Compiling next_version v0.3.2 (/workspace/perf-bench-validation/crates/next_version)
+   Compiling git_cmd v0.8.0 (/workspace/perf-bench-validation/crates/git_cmd)
+   Compiling tera v1.20.1
+   Compiling itertools v0.13.0
+   Compiling cast v0.3.0
+   Compiling difflib v0.4.0
+   Compiling assert_cmd v2.2.2
+   Compiling termtree v0.5.1
+   Compiling predicates-tree v1.0.13
+   Compiling git-cliff-core v2.14.2
+   Compiling criterion-plot v0.8.2
+   Compiling predicates v3.1.4
+   Compiling ciborium v0.2.2
+   Compiling plotters v0.3.7
+   Compiling tinytemplate v1.2.1
+   Compiling page_size v0.6.0
+   Compiling wait-timeout v0.2.1
+   Compiling oorandom v11.1.5
+   Compiling anes v0.1.6
+   Compiling criterion v0.8.2
+   Compiling fake_package v0.1.0 (/workspace/perf-bench-validation/crates/fake_package)
+   Compiling test_logs v0.1.34 (/workspace/perf-bench-validation/crates/test_logs)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-bench-validation/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-bench-validation/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 1m 22s
+     Running benches/manifest_updates.rs (/workspace/perf-main/target/release/deps/manifest_updates-2b3f1a091efcbabc)
+Gnuplot not found, using plotters backend
+Testing manifest_updates/independent/10
+Success
+Testing manifest_updates/independent/100
+Success
+
+     Running benches/update.rs (/workspace/perf-main/target/release/deps/update-46e98e8b271ba6f8)
+Gnuplot not found, using plotters backend
+Testing update/single_noop
+Success
+Testing update/single_change
+Success
+Testing update/history_100
+Success
+Testing update/workspace_10_noop
+Success
+Testing update/workspace_10_one_change
+Success
+Testing update/workspace_10_dependency_chain
+Success
+

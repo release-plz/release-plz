@@ -1,0 +1,8 @@
+   Compiling next_version v0.3.2
+   Compiling cargo_utils v0.1.85 (/workspace/perf-update-client/crates/cargo_utils)
+   Compiling git_cmd v0.8.0 (/workspace/perf-update-client/crates/git_cmd)
+   Compiling next_version v0.3.2 (/workspace/perf-update-client/crates/next_version)
+   Compiling git-cliff-core v2.14.2
+   Compiling release_plz_core v0.38.7 (/workspace/perf-update-client/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-update-client/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 19.70s

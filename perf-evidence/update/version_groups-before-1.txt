@@ -1,0 +1,10 @@
+
+running 1 test
+test command::update::updater::perf_update_bench::version_groups ... BENCH groups_10_custom_false 160.5197662084836 3114912
+BENCH groups_10_custom_true 907726.3854166666 576
+BENCH groups_100_custom_false 1569.313557672994 318624
+BENCH groups_100_custom_true 9217569.203125 64
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 189 filtered out; finished in 2.59s
+

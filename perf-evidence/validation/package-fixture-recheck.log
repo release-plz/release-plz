@@ -1,0 +1,60 @@
+   Compiling serde v1.0.229
+   Compiling tokio v1.53.2
+   Compiling serde_json v1.0.151
+   Compiling clap_builder v4.6.7
+   Compiling url v2.5.8
+   Compiling chrono v0.4.45
+   Compiling ssri v9.2.0
+   Compiling clap v4.6.7
+   Compiling serde-value v0.7.0
+   Compiling git2 v0.21.0
+   Compiling chrono-tz v0.9.0
+   Compiling cargo_metadata v0.23.1
+   Compiling tokio-util v0.7.19
+   Compiling h2 v0.4.19
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.6
+   Compiling async-compression v0.4.50
+   Compiling fs-err v3.3.2
+   Compiling tower-http v0.6.11
+   Compiling tokio-stream v0.1.19
+   Compiling cargo-credential v0.4.11
+   Compiling cargo-util-terminal v0.1.2
+   Compiling cacache v13.1.0
+   Compiling pasetors v0.7.8
+   Compiling cargo-credential-libsecret v0.5.10
+   Compiling deadpool v0.12.3
+   Compiling clap_complete v4.6.11
+   Compiling tera v1.20.1
+   Compiling hyper v1.11.1
+   Compiling humantime-serde v1.1.1
+   Compiling cargo_utils v0.1.85 (/workspace/perf-validation/crates/cargo_utils)
+   Compiling git2-curl v0.22.0
+   Compiling cargo-util-schemas v0.14.3
+   Compiling hyper-util v0.1.21
+   Compiling git-conventional v0.12.9
+   Compiling crates-io v0.41.2
+   Compiling assert-json-diff v2.0.2
+   Compiling tracing-chrome v0.7.2
+   Compiling hyper-rustls v0.27.10
+   Compiling rustfix v0.9.8
+   Compiling serde_regex v1.2.0
+   Compiling reqwest v0.13.5
+   Compiling secrecy v0.8.0
+   Compiling cargo v0.100.0
+   Compiling git-cliff-core v2.14.2
+   Compiling wiremock v0.6.5
+   Compiling fake_package v0.1.0 (/workspace/perf-validation/crates/fake_package)
+   Compiling reqwest-middleware v0.5.2
+   Compiling reqwest-retry v0.9.1
+   Compiling git_cmd v0.8.0 (/workspace/perf-validation/crates/git_cmd)
+   Compiling tera v2.4.0
+   Compiling release_plz_core v0.38.7 (/workspace/perf-validation/crates/release_plz_core)
+    Finished `test` profile [unoptimized] target(s) in 41.20s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/release_plz_core-0beb163c803e8d11)
+
+running 1 test
+test package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.19s
+

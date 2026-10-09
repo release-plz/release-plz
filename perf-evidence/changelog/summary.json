@@ -1,0 +1,234 @@
+{
+  "base_commit": "267b5775",
+  "remote_commit": "11cff443",
+  "default_commit": "a005b433",
+  "method": "Three fresh processes. Each process alternates 21 before/after blocks of at least 100ms after 100ms warmup per variant; operations in batches of 10. Run values are block medians. Identical dependency rlibs and opt-level=3 for both exact-source snapshots.",
+  "binary_sha256": "c72f802c3487c6013ad62108c68aca6743c1db6f356fa6daedbb448a46028c85",
+  "cases": {
+    "remote_context_10": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 5759.213,
+          "after_ns": 4090.786,
+          "reduction_percent": 28.97
+        },
+        {
+          "run": 2,
+          "before_ns": 5728.853,
+          "after_ns": 4040.155,
+          "reduction_percent": 29.477
+        },
+        {
+          "run": 3,
+          "before_ns": 5711.939,
+          "after_ns": 4095.736,
+          "reduction_percent": 28.295
+        }
+      ],
+      "median_before_ns": 5728.853,
+      "median_after_ns": 4090.786,
+      "median_reduction_percent": 28.593280365197018
+    },
+    "remote_generate_10": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 153564.961,
+          "after_ns": 152044.764,
+          "reduction_percent": 0.99
+        },
+        {
+          "run": 2,
+          "before_ns": 155347.175,
+          "after_ns": 154526.455,
+          "reduction_percent": 0.528
+        },
+        {
+          "run": 3,
+          "before_ns": 156347.17,
+          "after_ns": 154406.151,
+          "reduction_percent": 1.241
+        }
+      ],
+      "median_before_ns": 155347.175,
+      "median_after_ns": 154406.151,
+      "median_reduction_percent": 0.6057554635286899
+    },
+    "remote_context_100": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 60170.782,
+          "after_ns": 52004.582,
+          "reduction_percent": 13.572
+        },
+        {
+          "run": 2,
+          "before_ns": 60087.109,
+          "after_ns": 51034.506,
+          "reduction_percent": 15.066
+        },
+        {
+          "run": 3,
+          "before_ns": 60780.868,
+          "after_ns": 51110.99,
+          "reduction_percent": 15.909
+        }
+      ],
+      "median_before_ns": 60170.782,
+      "median_after_ns": 51110.99,
+      "median_reduction_percent": 15.056796170606523
+    },
+    "remote_generate_100": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 336222.357,
+          "after_ns": 325607.5,
+          "reduction_percent": 3.157
+        },
+        {
+          "run": 2,
+          "before_ns": 340829.87,
+          "after_ns": 330552.2,
+          "reduction_percent": 3.015
+        },
+        {
+          "run": 3,
+          "before_ns": 333616.003,
+          "after_ns": 324506.332,
+          "reduction_percent": 2.731
+        }
+      ],
+      "median_before_ns": 336222.357,
+      "median_after_ns": 325607.5,
+      "median_reduction_percent": 3.1570943392083883
+    },
+    "remote_context_1000": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 576675.161,
+          "after_ns": 484240.829,
+          "reduction_percent": 16.029
+        },
+        {
+          "run": 2,
+          "before_ns": 581177.628,
+          "after_ns": 483336.148,
+          "reduction_percent": 16.835
+        },
+        {
+          "run": 3,
+          "before_ns": 583484.822,
+          "after_ns": 493245.414,
+          "reduction_percent": 15.466
+        }
+      ],
+      "median_before_ns": 581177.628,
+      "median_after_ns": 484240.829,
+      "median_reduction_percent": 16.67937551787523
+    },
+    "remote_generate_1000": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 1781226.683,
+          "after_ns": 1682685.567,
+          "reduction_percent": 5.532
+        },
+        {
+          "run": 2,
+          "before_ns": 1832762.267,
+          "after_ns": 1743673.6,
+          "reduction_percent": 4.861
+        },
+        {
+          "run": 3,
+          "before_ns": 1796699.917,
+          "after_ns": 1715241.683,
+          "reduction_percent": 4.534
+        }
+      ],
+      "median_before_ns": 1796699.917,
+      "median_after_ns": 1715241.683,
+      "median_reduction_percent": 4.533769564369605
+    },
+    "default_config": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 2305.262,
+          "after_ns": 1153.814,
+          "reduction_percent": 49.949
+        },
+        {
+          "run": 2,
+          "before_ns": 2336.558,
+          "after_ns": 1189.021,
+          "reduction_percent": 49.112
+        },
+        {
+          "run": 3,
+          "before_ns": 2304.093,
+          "after_ns": 1176.318,
+          "reduction_percent": 48.947
+        }
+      ],
+      "median_before_ns": 2305.262,
+      "median_after_ns": 1176.318,
+      "median_reduction_percent": 48.9724812190545
+    },
+    "default_generate": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 143000.059,
+          "after_ns": 142906.776,
+          "reduction_percent": 0.065
+        },
+        {
+          "run": 2,
+          "before_ns": 143928.996,
+          "after_ns": 143136.57,
+          "reduction_percent": 0.551
+        },
+        {
+          "run": 3,
+          "before_ns": 145607.659,
+          "after_ns": 144858.24,
+          "reduction_percent": 0.515
+        }
+      ],
+      "median_before_ns": 143928.996,
+      "median_after_ns": 143136.57,
+      "median_reduction_percent": 0.5505673088972318
+    },
+    "default_prepend_pr": {
+      "runs": [
+        {
+          "run": 1,
+          "before_ns": 146101.08,
+          "after_ns": 145030.929,
+          "reduction_percent": 0.732
+        },
+        {
+          "run": 2,
+          "before_ns": 147905.315,
+          "after_ns": 146245.757,
+          "reduction_percent": 1.122
+        },
+        {
+          "run": 3,
+          "before_ns": 154214.217,
+          "after_ns": 152255.065,
+          "reduction_percent": 1.27
+        }
+      ],
+      "median_before_ns": 147905.315,
+      "median_after_ns": 146245.757,
+      "median_reduction_percent": 1.1220408137462723
+    }
+  }
+}

@@ -1,0 +1,83 @@
+[
+  {
+    "branch": "perf/changelog-scan",
+    "commit": "11cff443df8602030d54ff7362f09257ced2e011",
+    "title": "perf: format changelog context errors lazily",
+    "body_file": "changelog/pr-remote.md",
+    "evidence_dir": "changelog",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz_core/src/changelog.rs"
+    ]
+  },
+  {
+    "branch": "perf/changelog-defaults",
+    "commit": "a005b433cbdd8b63851a88ea8f0b06cdd9f85a48",
+    "title": "perf: construct default changelog configuration once",
+    "body_file": "changelog/pr-defaults.md",
+    "evidence_dir": "changelog",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz_core/src/changelog.rs"
+    ]
+  },
+  {
+    "branch": "perf/update-scan",
+    "commit": "c9e418f0e6439ad6459021f3c6ad08b5f8696e8f",
+    "title": "perf: compile version group rules only for grouped packages",
+    "body_file": "update/pr-body-groups.md",
+    "evidence_dir": "update",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz_core/src/command/update/updater.rs"
+    ]
+  },
+  {
+    "branch": "perf/update-include-snapshots",
+    "commit": "beb5632cd895e534693045ca71c65a42c9e27ed1",
+    "title": "perf: snapshot commits only for changelog includes",
+    "body_file": "update/pr-body-includes.md",
+    "evidence_dir": "update",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz/tests/all/update.rs",
+      "crates/release_plz_core/src/command/update/updater.rs"
+    ]
+  },
+  {
+    "branch": "perf/update-lazy-git-client",
+    "commit": "c2e2782e6c122f6d1b0103f513e5ab875cfefb5f",
+    "title": "perf: build Git client only for remote changelog data",
+    "body_file": "update/pr-body-client.md",
+    "evidence_dir": "update",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz_core/src/changelog_filler.rs",
+      "crates/release_plz_core/src/command/update/updater.rs"
+    ]
+  },
+  {
+    "branch": "perf/manifest-scan",
+    "commit": "a13cac0183e03f246156e6d2a93431b533ecd439",
+    "title": "perf: filter dependency release checks by package name",
+    "body_file": "manifests/dependency-scan-pr-body.md",
+    "evidence_dir": "manifests",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz/tests/all/update.rs",
+      "crates/release_plz_core/src/command/update/package_dependencies.rs"
+    ]
+  },
+  {
+    "branch": "perf/borrow-manifest-updates",
+    "commit": "b0a13f030d0c483bf7463515d685402085f296ba",
+    "title": "perf: borrow planned updates while editing manifests",
+    "body_file": "manifests/borrow-updates-pr-body.md",
+    "evidence_dir": "manifests",
+    "base": "267b5775ee1d52e9d22460fc5b65babe4f681f52",
+    "files": [
+      "crates/release_plz_core/src/command/update/mod.rs",
+      "crates/release_plz_core/src/command/update/packages_update.rs"
+    ]
+  }
+]

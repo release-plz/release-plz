@@ -1,0 +1,180 @@
+
+running 1 test
+test command::update::package_dependencies::perf_dependency_scan::benchmark_dependency_scan ... dependency_scan/one_matching/1: 7.040 us/iteration (10000 iterations)
+dependency_scan/no_matching/1: 6.811 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/1: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/1: 0.025 us/iteration (1000000 iterations)
+dependency_scan/one_matching/10: 25.477 us/iteration (10000 iterations)
+dependency_scan/no_matching/10: 26.141 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/10: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/10: 0.023 us/iteration (1000000 iterations)
+dependency_scan/one_matching/100: 207.272 us/iteration (10000 iterations)
+dependency_scan/no_matching/100: 209.004 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/100: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/100: 0.024 us/iteration (1000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 5.00s
+
+
+running 1 test
+test command::update::package_dependencies::perf_dependency_scan::benchmark_dependency_scan ... dependency_scan/one_matching/1: 7.023 us/iteration (10000 iterations)
+dependency_scan/no_matching/1: 0.011 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/1: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/1: 0.025 us/iteration (1000000 iterations)
+dependency_scan/one_matching/10: 7.213 us/iteration (10000 iterations)
+dependency_scan/no_matching/10: 0.024 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/10: 0.010 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/10: 0.027 us/iteration (1000000 iterations)
+dependency_scan/one_matching/100: 7.178 us/iteration (10000 iterations)
+dependency_scan/no_matching/100: 0.100 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/100: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/100: 0.025 us/iteration (1000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.36s
+
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 117.106 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 163.197 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 834.321 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1513.190 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 2522.905 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 11474.952 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 1.92s
+
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 110.373 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 107.182 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 109.338 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1513.596 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 1480.600 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 1486.959 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.59s
+
+
+running 1 test
+test command::update::package_dependencies::perf_dependency_scan::benchmark_dependency_scan ... dependency_scan/one_matching/1: 7.036 us/iteration (10000 iterations)
+dependency_scan/no_matching/1: 6.831 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/1: 0.010 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/1: 0.025 us/iteration (1000000 iterations)
+dependency_scan/one_matching/10: 25.742 us/iteration (10000 iterations)
+dependency_scan/no_matching/10: 25.298 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/10: 0.010 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/10: 0.023 us/iteration (1000000 iterations)
+dependency_scan/one_matching/100: 205.940 us/iteration (10000 iterations)
+dependency_scan/no_matching/100: 202.466 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/100: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/100: 0.026 us/iteration (1000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.92s
+
+
+running 1 test
+test command::update::package_dependencies::perf_dependency_scan::benchmark_dependency_scan ... dependency_scan/one_matching/1: 7.021 us/iteration (10000 iterations)
+dependency_scan/no_matching/1: 0.011 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/1: 0.013 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/1: 0.027 us/iteration (1000000 iterations)
+dependency_scan/one_matching/10: 7.011 us/iteration (10000 iterations)
+dependency_scan/no_matching/10: 0.022 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/10: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/10: 0.027 us/iteration (1000000 iterations)
+dependency_scan/one_matching/100: 7.198 us/iteration (10000 iterations)
+dependency_scan/no_matching/100: 0.097 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/100: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/100: 0.027 us/iteration (1000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.37s
+
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 114.239 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 163.064 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 803.879 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1526.820 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 2481.800 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 11518.416 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 1.89s
+
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 107.284 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 106.215 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 109.168 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1512.695 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 1461.992 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 1474.481 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.58s
+
+
+running 1 test
+test command::update::package_dependencies::perf_dependency_scan::benchmark_dependency_scan ... dependency_scan/one_matching/1: 7.298 us/iteration (10000 iterations)
+dependency_scan/no_matching/1: 6.854 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/1: 0.010 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/1: 0.023 us/iteration (1000000 iterations)
+dependency_scan/one_matching/10: 25.615 us/iteration (10000 iterations)
+dependency_scan/no_matching/10: 25.128 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/10: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/10: 0.024 us/iteration (1000000 iterations)
+dependency_scan/one_matching/100: 203.563 us/iteration (10000 iterations)
+dependency_scan/no_matching/100: 202.807 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/100: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/100: 0.025 us/iteration (1000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 4.90s
+
+
+running 1 test
+test command::update::package_dependencies::perf_dependency_scan::benchmark_dependency_scan ... dependency_scan/one_matching/1: 7.003 us/iteration (10000 iterations)
+dependency_scan/no_matching/1: 0.011 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/1: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/1: 0.025 us/iteration (1000000 iterations)
+dependency_scan/one_matching/10: 7.082 us/iteration (10000 iterations)
+dependency_scan/no_matching/10: 0.022 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/10: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/10: 0.027 us/iteration (1000000 iterations)
+dependency_scan/one_matching/100: 7.194 us/iteration (10000 iterations)
+dependency_scan/no_matching/100: 0.097 us/iteration (10000 iterations)
+dependency_scan/no_dependencies/100: 0.009 us/iteration (1000000 iterations)
+dependency_scan/registry_only_100/100: 0.027 us/iteration (1000000 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.36s
+
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 112.286 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 162.488 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 800.595 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1517.650 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 2459.974 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 11701.953 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 1.91s
+
+
+running 1 test
+test command::update::perf_update_manifests::benchmark_update_manifests ... update_manifests/10_packages/0_changelog_bytes: 106.833 us/iteration (100 iterations)
+update_manifests/10_packages/65536_changelog_bytes: 106.350 us/iteration (100 iterations)
+update_manifests/10_packages/524288_changelog_bytes: 111.299 us/iteration (100 iterations)
+update_manifests/100_packages/0_changelog_bytes: 1501.719 us/iteration (100 iterations)
+update_manifests/100_packages/65536_changelog_bytes: 1490.069 us/iteration (100 iterations)
+update_manifests/100_packages/524288_changelog_bytes: 1469.538 us/iteration (100 iterations)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.59s
+
