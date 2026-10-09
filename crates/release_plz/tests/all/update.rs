@@ -47,6 +47,50 @@ body = """
     }
 }
 
+#[test]
+fn changelog_include_uses_only_the_requested_packages_original_commits() {
+    let config = r#"
+[workspace]
+semver_check = false
+[[package]]
+name = "one"
+changelog_include = ["two", "two"]
+[[package]]
+name = "two"
+changelog_include = ["three"]
+"#;
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("one", "version = \"1.0.0\"\n"),
+            ("two", "version = \"1.0.0\"\n"),
+            ("three", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        config,
+    );
+    for name in ["one", "two", "three"] {
+        change_package(&repo, name, &format!("fix: update {name}"));
+    }
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    for (name, included) in [
+        ("one", vec!["one", "two"]),
+        ("two", vec!["two", "three"]),
+        ("three", vec!["three"]),
+    ] {
+        let changelog =
+            fs_err::read_to_string(repo.directory().join(name).join("CHANGELOG.md")).unwrap();
+        for source in ["one", "two", "three"] {
+            assert_eq!(
+                changelog.matches(&format!("update {source}")).count(),
+                usize::from(included.contains(&source)),
+                "{name}: {changelog}",
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn update_relocated_workspace_preserves_original_manifests() {
     let (temp_dir, repo) = released_workspace(
