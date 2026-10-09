@@ -368,11 +368,15 @@ impl Updater<'_> {
         mut packages_diffs: Vec<(&'a Package, Diff)>,
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
-        let git_client = self.req.git_client()?;
         let changelog_request: &ChangelogRequest = self.req.changelog_req();
         let mut all_commits: HashMap<String, &Commit> = HashMap::new();
         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
             let required_info = get_required_info(&changelog_config.changelog);
+            let git_client = if required_info.is_remote_required() {
+                self.req.git_client()?
+            } else {
+                None
+            };
             for (_package, diff) in &mut packages_diffs {
                 for commit in &mut diff.commits {
                     fill_commit(
