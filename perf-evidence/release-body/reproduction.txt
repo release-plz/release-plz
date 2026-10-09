@@ -1,0 +1,15 @@
+Base production source: 03a7393d (origin/main at start).
+Changed production commit: 8bdfdda7120b23e14f6466b3ee9833a047835ed6.
+Rust release profile, x86_64 Linux. The shared target was /workspace/release-plz/target.
+
+The primary measurement built uniquely named before/after optimized Cargo examples in one invocation. Their tera module was included from exact snapshots obtained via git show origin/main:crates/release_plz_core/src/tera.rs and the changed production source. Both call the same public Remote type. Examples used no added dependencies. Only the selected production function and helpers are measured; all source snapshots are retained. This avoids cross-worktree stale Cargo artifact reuse. Binary hashes differ, and build.log records compiling the proper worktree. Tests explicitly compiled changed core and executed the newly added test names.
+
+Portable reproduction:
+  git worktree add /tmp/release-body-before 03a7393d
+  git worktree add /tmp/release-body-after 8bdfdda7120b23e14f6466b3ee9833a047835ed6
+  export CARGO_TARGET_DIR=/tmp/release-body-target
+  flock /tmp/release-body-benchmark.lock bash reproduce.sh /tmp/release-body-before /tmp/release-body-after /tmp/release-body-results
+
+reproduce.sh copies perf_release_body.rs into each checkout's temporary examples directory and builds it against that checkout's exact production source. It cleans local workspace crates before each build, preserves separate executables and runs each three times serially. No benchmark file or dependency belongs to the production commit.
+
+The raw case label default_17kb is retained for auditability: the fixture is precisely 18,000 bytes (approximately 17.6 KiB), as printed in each output. Each invocation validates exact output. The custom-template case is a control; the PR's performance claim concerns only the default path.

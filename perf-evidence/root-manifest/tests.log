@@ -1,0 +1,24 @@
+     Removed 17 files, 74.5MiB total
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/unique-root-manifest/crates/cargo_utils)
+   Compiling git-cliff-core v2.14.2
+   Compiling git_cmd v0.8.0 (/workspace/perf-worktrees/unique-root-manifest/crates/git_cmd)
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/unique-root-manifest/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/unique-root-manifest/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-worktrees/unique-root-manifest/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 33.34s
+     Running tests/all/main.rs (/workspace/release-plz/target/release/deps/all-ce7badf3a1bc028e)
+
+running 10 tests
+test set_version::set_version_updates_dependencies_with_metadata_from_original_workspace ... ok
+test set_version::set_version_preserves_inheritance_for_single_package ... ok
+test set_version::set_version_requires_package_names_without_workspace_version ... ok
+test set_version::set_version_does_not_rewrite_manifests_without_dependency_changes ... ok
+test set_version::set_version_updates_root_package_and_workspace_dependencies ... ok
+test set_version::set_version_updates_inherited_workspace_version ... ok
+test set_version::set_version_updates_shared_workspace_changelog_once ... ok
+test set_version::set_version_updates_target_dependencies_and_unused_workspace_templates ... ok
+test set_version::set_version_updates_version_in_package ... ok
+test set_version::set_version_updates_version_in_workspace ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 104 filtered out; finished in 0.27s
+

@@ -1,0 +1,2 @@
+root_package/10: 91.913 us/iteration; iterations=10000; elapsed=0.919132s
+root_package/100: 652.868 us/iteration; iterations=3000; elapsed=1.958604s

@@ -1,0 +1,14 @@
+{
+  "release-order": {
+    "worktree": "/workspace/perf-worktrees/core-update",
+    "commit": "5625847f434d7f431ce4cd59573a6531268b4364",
+    "branch": "perf/core-update-scan",
+    "body": "/workspace/perf-results/core-update/release-order-pr-body.txt"
+  },
+  "owned-diffs": {
+    "worktree": "/workspace/perf-worktrees/owned-package-diffs",
+    "commit": "d5b405f52fc2dbee6f576d5c5bd082a3fcb3e8fb",
+    "branch": "perf/reuse-owned-package-diffs",
+    "body": "/workspace/perf-results/core-update/owned-diffs-pr-body.txt"
+  }
+}

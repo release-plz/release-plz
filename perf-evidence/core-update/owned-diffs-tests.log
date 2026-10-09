@@ -1,0 +1,9 @@
+
+running 4 tests
+test command::update::updater::tests::contributors_are_unique_and_have_usernames ... ok
+test command::update::updater::tests::only_rust_library_targets_are_libraries ... ok
+test command::update::updater::tests::same_version_is_not_added_to_changelog ... ok
+test command::update::updater::tests::target_with_cdylib_and_rlib_kinds_is_a_library ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 180 filtered out; finished in 0.00s
+

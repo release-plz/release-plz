@@ -1,0 +1,27 @@
+     Removed 49 files, 256.9MiB total
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/baseline/crates/cargo_utils)
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/baseline/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/baseline/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-worktrees/baseline/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 11.87s
+     Removed 18 files, 14.4MiB total
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/unique-root-manifest/crates/cargo_utils)
+   Compiling git-cliff-core v2.14.2
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/unique-root-manifest/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/unique-root-manifest/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-worktrees/unique-root-manifest/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 14.32s
+95b680ad4d0ddb42e969b478db4ab57ade371457bbe1caab7ed7f9a7459648cb  /workspace/perf-evidence/root-manifest/before
+65536c9ef51f1a578eb6b76752e78ca5c336fe787fb8399c6c3a6010fa449745  /workspace/perf-evidence/root-manifest/after
+root_package/10: 91.913 us/iteration; iterations=10000; elapsed=0.919132s
+root_package/100: 652.868 us/iteration; iterations=3000; elapsed=1.958604s
+root_package/10: 53.947 us/iteration; iterations=10000; elapsed=0.539471s
+root_package/100: 387.776 us/iteration; iterations=3000; elapsed=1.163328s
+root_package/10: 90.352 us/iteration; iterations=10000; elapsed=0.903524s
+root_package/100: 690.334 us/iteration; iterations=3000; elapsed=2.071001s
+root_package/10: 55.002 us/iteration; iterations=10000; elapsed=0.550017s
+root_package/100: 379.407 us/iteration; iterations=3000; elapsed=1.138220s
+root_package/10: 92.114 us/iteration; iterations=10000; elapsed=0.921142s
+root_package/100: 663.355 us/iteration; iterations=3000; elapsed=1.990066s
+root_package/10: 55.749 us/iteration; iterations=10000; elapsed=0.557489s
+root_package/100: 374.912 us/iteration; iterations=3000; elapsed=1.124736s

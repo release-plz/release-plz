@@ -1,0 +1,18 @@
+{
+  "main": "d1e29d975ae37158fc29713ff70234077b480c20",
+  "combined_commit": "2284aaf1e89ee7517b1ef60e681d218753699740",
+  "passed": 340,
+  "failed": 0,
+  "ignored": 83,
+  "commands": [
+    "cargo fmt --all --check",
+    "env -u CARGO_TARGET_DIR cargo test --target-dir /workspace/release-plz/target --locked --release --no-default-features --features all-static --workspace",
+    "env -u CARGO_TARGET_DIR cargo clippy --target-dir /workspace/release-plz/target --locked --all-targets --all-features --workspace -- -D warnings"
+  ],
+  "notes": [
+    "Docker-dependent tests were disabled, as in the repository no-Docker CI job.",
+    "The combined validation includes already-merged PR #3181 without duplicating it in any production branch.",
+    "The two Git changes touch adjacent history lines; the combined patch resolves their small textual overlap.",
+    "Cargo target storage is supplied as a CLI flag so child Cargo commands in test fixtures use their expected local target directories."
+  ]
+}

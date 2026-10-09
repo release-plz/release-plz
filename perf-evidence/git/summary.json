@@ -1,0 +1,222 @@
+[
+  {
+    "candidate": "skip-empty",
+    "commit": "ad2dd0f4",
+    "cases": [
+      {
+        "name": "tagged100",
+        "before_mean_seconds": 1.0729683285332914,
+        "after_mean_seconds": 0.8058340559333222,
+        "improvement_percent": 24.89675282075958,
+        "profile": {
+          "before": {
+            "total_git_commands": 512,
+            "command_counts": {
+              "rev-parse": 106,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 101,
+              "rev-list": 200,
+              "log": 100,
+              "head hash": 100
+            }
+          },
+          "after": {
+            "total_git_commands": 412,
+            "command_counts": {
+              "rev-parse": 106,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 1,
+              "rev-list": 200,
+              "log": 100,
+              "head hash": 100
+            }
+          }
+        },
+        "run_means": [
+          {
+            "before": 1.084231605999912,
+            "after": 0.7891649605999647
+          },
+          {
+            "before": 1.0393146525999781,
+            "after": 0.8091350689999672
+          },
+          {
+            "before": 1.0953587269999843,
+            "after": 0.8192021382000348
+          }
+        ]
+      },
+      {
+        "name": "tagged10",
+        "before_mean_seconds": 0.15314407820002696,
+        "after_mean_seconds": 0.12811464606669082,
+        "improvement_percent": 16.343715295765016,
+        "profile": {
+          "before": {
+            "total_git_commands": 62,
+            "command_counts": {
+              "rev-parse": 16,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 11,
+              "rev-list": 20,
+              "log": 10,
+              "head hash": 10
+            }
+          },
+          "after": {
+            "total_git_commands": 52,
+            "command_counts": {
+              "rev-parse": 16,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 1,
+              "rev-list": 20,
+              "log": 10,
+              "head hash": 10
+            }
+          }
+        },
+        "run_means": [
+          {
+            "before": 0.15516325439998582,
+            "after": 0.12895539740002276
+          },
+          {
+            "before": 0.1523890238000149,
+            "after": 0.12892135380006947
+          },
+          {
+            "before": 0.15187995640008012,
+            "after": 0.1264671869999802
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "candidate": "share-head",
+    "commit": "cfeedee8",
+    "cases": [
+      {
+        "name": "tagged100",
+        "before_mean_seconds": 1.0699649480666569,
+        "after_mean_seconds": 0.898407952133357,
+        "improvement_percent": 16.033889357150432,
+        "profile": {
+          "before": {
+            "total_git_commands": 512,
+            "command_counts": {
+              "rev-parse": 106,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 101,
+              "rev-list": 200,
+              "log": 100,
+              "head hash": 100
+            }
+          },
+          "after": {
+            "total_git_commands": 413,
+            "command_counts": {
+              "rev-parse": 106,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 101,
+              "log": 1,
+              "head hash": 1,
+              "rev-list": 200
+            }
+          }
+        },
+        "run_means": [
+          {
+            "before": 1.0604931235999628,
+            "after": 0.8969854050000322
+          },
+          {
+            "before": 1.0562052354000115,
+            "after": 0.8885924746
+          },
+          {
+            "before": 1.0931964851999965,
+            "after": 0.9096459768000387
+          }
+        ]
+      },
+      {
+        "name": "untagged10",
+        "before_mean_seconds": 0.8936427460666285,
+        "after_mean_seconds": 0.8624032365333429,
+        "improvement_percent": 3.4957492432838966,
+        "profile": {
+          "before": {
+            "total_git_commands": 82,
+            "command_counts": {
+              "rev-parse": 6,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 31,
+              "rev-list": 30,
+              "log": 10,
+              "head hash": 10
+            }
+          },
+          "after": {
+            "total_git_commands": 73,
+            "command_counts": {
+              "rev-parse": 6,
+              "check-ignore": 1,
+              "ls-files": 1,
+              "config": 1,
+              "--git-dir=.git": 1,
+              "status": 1,
+              "checkout": 31,
+              "log": 1,
+              "head hash": 1,
+              "rev-list": 30
+            }
+          }
+        },
+        "run_means": [
+          {
+            "before": 0.9331376325999827,
+            "after": 0.8681217557999844
+          },
+          {
+            "before": 0.8714324587999727,
+            "after": 0.8579647416000171
+          },
+          {
+            "before": 0.8763581467999302,
+            "after": 0.8611232122000274
+          }
+        ]
+      }
+    ]
+  }
+]

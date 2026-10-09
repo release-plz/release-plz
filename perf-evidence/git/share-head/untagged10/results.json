@@ -1,0 +1,132 @@
+{
+  "packages": 10,
+  "tagged": false,
+  "iterations": 5,
+  "binaries": {
+    "before": {
+      "path": "/workspace/perf-results/baseline/release-plz",
+      "sha256": "d7d80feca1d49921637f3a8703bf06d404a2b48e1cd45dae26256c816f8905ea",
+      "version": "release-plz 0.3.170"
+    },
+    "after": {
+      "path": "/workspace/perf-results/git/share-head/release-plz",
+      "sha256": "54564574df9a5ad286e670483287392873c0fecfb86ddd6ad5bbc9196c360152",
+      "version": "release-plz 0.3.170"
+    }
+  },
+  "runs": [
+    {
+      "repetition": 1,
+      "before": {
+        "seconds": [
+          0.8727097129999493,
+          0.9052847329999167,
+          0.9979034250000041,
+          1.0063603300000068,
+          0.8834299620000365
+        ],
+        "mean": 0.9331376325999827,
+        "median": 0.9052847329999167
+      },
+      "after": {
+        "seconds": [
+          0.8692577449999135,
+          0.8694352259999505,
+          0.8715228320002097,
+          0.8513839130000633,
+          0.8790090629997849
+        ],
+        "mean": 0.8681217557999844,
+        "median": 0.8694352259999505
+      },
+      "improvement_percent": 6.967447729960896
+    },
+    {
+      "repetition": 2,
+      "after": {
+        "seconds": [
+          0.8420529420000094,
+          0.8633643100001791,
+          0.8688416859999961,
+          0.8668611919999876,
+          0.8487035779999133
+        ],
+        "mean": 0.8579647416000171,
+        "median": 0.8633643100001791
+      },
+      "before": {
+        "seconds": [
+          0.8757255620000706,
+          0.878181492000067,
+          0.871737080999992,
+          0.8580581659998643,
+          0.8734599929998694
+        ],
+        "mean": 0.8714324587999727,
+        "median": 0.8734599929998694
+      },
+      "improvement_percent": 1.5454688500473823
+    },
+    {
+      "repetition": 3,
+      "before": {
+        "seconds": [
+          0.8576740999999402,
+          0.8745965589998832,
+          0.8810689869999351,
+          0.8874507129999074,
+          0.8810003749999851
+        ],
+        "mean": 0.8763581467999302,
+        "median": 0.8810003749999851
+      },
+      "after": {
+        "seconds": [
+          0.8549035989999538,
+          0.8737747910001872,
+          0.8550070240000878,
+          0.8698218360000283,
+          0.85210881099988
+        ],
+        "mean": 0.8611232122000274,
+        "median": 0.8550070240000878
+      },
+      "improvement_percent": 1.7384370369048274
+    }
+  ],
+  "profile": {
+    "before": {
+      "total_git_commands": 82,
+      "command_counts": {
+        "rev-parse": 6,
+        "check-ignore": 1,
+        "ls-files": 1,
+        "config": 1,
+        "--git-dir=.git": 1,
+        "status": 1,
+        "checkout": 31,
+        "rev-list": 30,
+        "log": 10,
+        "head hash": 10
+      }
+    },
+    "after": {
+      "total_git_commands": 73,
+      "command_counts": {
+        "rev-parse": 6,
+        "check-ignore": 1,
+        "ls-files": 1,
+        "config": 1,
+        "--git-dir=.git": 1,
+        "status": 1,
+        "checkout": 31,
+        "log": 1,
+        "head hash": 1,
+        "rev-list": 30
+      }
+    }
+  },
+  "before_mean": 0.8936427460666285,
+  "after_mean": 0.8624032365333429,
+  "improvement_percent": 3.4957492432838966
+}

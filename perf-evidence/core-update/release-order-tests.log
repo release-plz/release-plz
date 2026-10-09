@@ -1,0 +1,14 @@
+
+running 9 tests
+test release_order::tests::shared_dependency_is_released_once ... ok
+test release_order::tests::single_package_is_returned ... ok
+test release_order::tests::three_packages_are_ordered ... ok
+test release_order::tests::three_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_cycle_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_is_ok ... ok
+test release_order::tests::two_packages_dev_cycle_with_package_in_features_is_detected ... ok
+test release_order::tests::two_packages_dev_cycle_with_random_feature_is_ok ... ok
+test release_order::tests::workspace_release_order_is_correct ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 0.02s
+

@@ -1,0 +1,420 @@
+diff --git a/crates/cargo_utils/src/local_manifest.rs b/crates/cargo_utils/src/local_manifest.rs
+index f67c5d7a..cd2003ee 100644
+--- a/crates/cargo_utils/src/local_manifest.rs
++++ b/crates/cargo_utils/src/local_manifest.rs
+@@ -91,27 +91,21 @@ impl LocalManifest {
+     ) -> impl Iterator<Item = (DepKind, &dyn toml_edit::TableLike)> + '_ {
+         let root = self.data.as_table();
+         root.iter().flat_map(|(key, v)| {
+-            if let Some(kind) = dependency_table_kind(key) {
+-                v.as_table_like()
+-                    .map(|table| (kind, table))
+-                    .into_iter()
+-                    .collect::<Vec<_>>()
+-            } else if key == "target" {
+-                v.as_table_like()
+-                    .unwrap()
+-                    .iter()
+-                    .flat_map(|(_, v)| {
+-                        v.as_table_like().into_iter().flat_map(|v| {
+-                            v.iter().filter_map(|(k, v)| {
+-                                let kind = dependency_table_kind(k)?;
+-                                v.as_table_like().map(|table| (kind, table))
+-                            })
++            let package_table = dependency_table_kind(key)
++                .and_then(|kind| v.as_table_like().map(|table| (kind, table)));
++            let target_tables = (key == "target")
++                .then(|| v.as_table_like().unwrap())
++                .into_iter()
++                .flat_map(toml_edit::TableLike::iter)
++                .flat_map(|(_, v)| {
++                    v.as_table_like().into_iter().flat_map(|v| {
++                        v.iter().filter_map(|(k, v)| {
++                            let kind = dependency_table_kind(k)?;
++                            v.as_table_like().map(|table| (kind, table))
+                         })
+                     })
+-                    .collect::<Vec<_>>()
+-            } else {
+-                Vec::new()
+-            }
++                });
++            package_table.into_iter().chain(target_tables)
+         })
+     }
+ 
+diff --git a/crates/release_plz/tests/all/set_version.rs b/crates/release_plz/tests/all/set_version.rs
+index 2936ebb6..825425b7 100644
+--- a/crates/release_plz/tests/all/set_version.rs
++++ b/crates/release_plz/tests/all/set_version.rs
+@@ -4,6 +4,53 @@ use release_plz_core::{CHANGELOG_FILENAME, copy_to_temp_dir, fs_utils::Utf8TempD
+ 
+ use crate::helpers::test_context::run_set_version;
+ 
++#[test]
++fn set_version_updates_root_package_and_workspace_dependencies() {
++    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
++    let workspace_path = project_dir.join(CARGO_TOML);
++    let workspace = fs_err::read_to_string(&workspace_path).unwrap();
++    fs_err::write(
++        &workspace_path,
++        format!(
++            r#"{workspace}
++[package]
++name = "root-app"
++version = "0.1.0"
++edition = "2024"
++
++[dependencies]
++renamed = {{ package = "one", path = "crates/one", version = "0.1.0" }}
++
++[target.'cfg(windows)'.build-dependencies]
++renamed.workspace = true
++
++[workspace.dependencies]
++renamed = {{ package = "one", path = "crates/one", version = "0.1.0" }}
++"#
++        ),
++    )
++    .unwrap();
++    fs_err::create_dir_all(project_dir.join("src")).unwrap();
++    fs_err::write(project_dir.join("src/lib.rs"), "").unwrap();
++
++    run_set_version(&project_dir, "one@0.1.1");
++
++    let root = read_manifest(&project_dir);
++    assert_eq!(root["package"]["version"].as_str(), Some("0.1.0"));
++    assert_eq!(
++        root["dependencies"]["renamed"]["version"].as_str(),
++        Some("0.1.1")
++    );
++    assert_eq!(
++        root["workspace"]["dependencies"]["renamed"]["version"].as_str(),
++        Some("0.1.1")
++    );
++    assert_eq!(
++        root["target"]["cfg(windows)"]["build-dependencies"]["renamed"]["workspace"].as_bool(),
++        Some(true)
++    );
++}
++
+ #[test]
+ fn set_version_updates_target_dependencies_and_unused_workspace_templates() {
+     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+diff --git a/crates/release_plz/tests/all/update.rs b/crates/release_plz/tests/all/update.rs
+index 02d7bf59..7325cafe 100644
+--- a/crates/release_plz/tests/all/update.rs
++++ b/crates/release_plz/tests/all/update.rs
+@@ -4,6 +4,23 @@ use release_plz_core::fs_utils::Utf8TempDir;
+ 
+ use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
+ 
++#[test]
++fn update_workspace_without_publishable_packages() {
++    let (temp_dir, repo) = released_workspace(
++        &[("one", "version = \"1.0.0\"\npublish = false\n")],
++        "",
++        "[workspace]\nsemver_check = false\n",
++    );
++    change_package(&repo, "one", "feat: update private package");
++    let original_commit = repo.current_commit_hash().unwrap();
++
++    run_workspace_update(&temp_dir, &repo, None);
++
++    repo.is_clean().unwrap();
++    assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
++    assert!(!repo.directory().join("one/CHANGELOG.md").exists());
++}
++
+ #[test]
+ fn update_changelog_includes_distinct_author_and_committer() {
+     for (body, expected) in [
+diff --git a/crates/release_plz_core/src/changelog_filler.rs b/crates/release_plz_core/src/changelog_filler.rs
+index a14bc092..f21237ec 100644
+--- a/crates/release_plz_core/src/changelog_filler.rs
++++ b/crates/release_plz_core/src/changelog_filler.rs
+@@ -33,6 +33,9 @@ pub async fn fill_commit<'a>(
+     all_commits: &mut HashMap<String, &'a Commit>,
+     git_client: Option<&GitClient>,
+ ) -> anyhow::Result<()> {
++    if !required_info.is_local_required() && !required_info.is_remote_required() {
++        return Ok(());
++    }
+     if let Some(existing_commit) = all_commits.get(&commit.id) {
+         commit.author = existing_commit.author.clone();
+         commit.committer = existing_commit.committer.clone();
+diff --git a/crates/release_plz_core/src/command/update/mod.rs b/crates/release_plz_core/src/command/update/mod.rs
+index fd45916e..cd4bad97 100644
+--- a/crates/release_plz_core/src/command/update/mod.rs
++++ b/crates/release_plz_core/src/command/update/mod.rs
+@@ -240,11 +240,12 @@ pub(super) fn update_dependencies(
+     // checkout while editing a temporary copy: dep.path points to the original
+     // checkout, but package_path points to the copy, so the paths would not match.
+     //
+-    // Always scan the workspace manifest because cargo metadata omits
++    // Always scan the workspace manifest once because cargo metadata omits
+     // [workspace.dependencies] entries that no member inherits.
+     let all_manifests = iter::once(workspace_manifest).chain(
+         all_packages
+             .iter()
++            .filter(|pkg| pkg.manifest_path != workspace_manifest)
+             .filter(|pkg| {
+                 pkg.dependencies
+                     .iter()
+diff --git a/crates/release_plz_core/src/command/update/updater.rs b/crates/release_plz_core/src/command/update/updater.rs
+index aa604a53..aa1eb00c 100644
+--- a/crates/release_plz_core/src/command/update/updater.rs
++++ b/crates/release_plz_core/src/command/update/updater.rs
+@@ -269,18 +269,20 @@ impl Updater<'_> {
+         // package at a time.
+ 
+         let packages = self.packages_to_process();
+-        // Each successful get_diff restores HEAD before returning, so the
+-        // following packages can reuse the checkout left by the previous one.
+-        if !packages.is_empty() {
+-            repository
+-                .checkout_head()
+-                .context("can't checkout head to calculate diff")?;
++        if packages.is_empty() {
++            return Ok(Vec::new());
+         }
++        // Each successful get_diff restores HEAD before returning, so the
++        // following packages can reuse that checkout and the same history tip.
++        repository
++            .checkout_head()
++            .context("can't checkout head to calculate diff")?;
++        let head = repository.current_commit_hash()?;
+         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = packages
+             .iter()
+             .map(|&p| {
+                 let diff = self
+-                    .get_diff(p, registry_packages, repository)
++                    .get_diff(p, registry_packages, repository, &head)
+                     .with_context(|| {
+                         format!("failed to retrieve difference of package {}", p.name)
+                     })?;
+@@ -288,7 +290,7 @@ impl Updater<'_> {
+             })
+             .collect();
+ 
+-        let mut packages_diffs = self.fill_commits(&packages_diffs_res?, repository).await?;
++        let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
+         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
+             .iter()
+             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
+@@ -365,13 +367,12 @@ impl Updater<'_> {
+ 
+     async fn fill_commits<'a>(
+         &self,
+-        packages_diffs: &[(&'a Package, Diff)],
++        mut packages_diffs: Vec<(&'a Package, Diff)>,
+         repository: &Repo,
+     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
+         let git_client = self.req.git_client()?;
+         let changelog_request: &ChangelogRequest = self.req.changelog_req();
+         let mut all_commits: HashMap<String, &Commit> = HashMap::new();
+-        let mut packages_diffs = packages_diffs.to_owned();
+         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
+             let required_info = get_required_info(&changelog_config.changelog);
+             for (_package, diff) in &mut packages_diffs {
+@@ -639,14 +640,12 @@ impl Updater<'_> {
+         package: &Package,
+         registry_packages: &PackagesCollection,
+         repository: &Repo,
++        head: &str,
+     ) -> anyhow::Result<Diff> {
+         info!(
+             "determining next version for {} {}",
+             package.name, package.version
+         );
+-        let package_path = get_package_path(package, repository, self.project.root())
+-            .context("failed to determine package path")?;
+-
+         let registry_package = registry_packages.get_registry_package(&package.name);
+         let mut diff = Diff::new(registry_package.is_some());
+         let git_tag = self
+@@ -673,10 +672,10 @@ impl Updater<'_> {
+             }
+         }
+         self.get_package_diff(
+-            &package_path,
+             package,
+             registry_package,
+             repository,
++            head,
+             tag_commit.as_deref(),
+             &mut diff,
+         )?;
+@@ -686,13 +685,16 @@ impl Updater<'_> {
+ 
+     fn get_package_diff(
+         &self,
+-        package_path: &Utf8Path,
+         package: &Package,
+         registry_package: Option<&RegistryPackage>,
+         repository: &Repo,
++        head: &str,
+         tag_commit: Option<&str>,
+         diff: &mut Diff,
+     ) -> anyhow::Result<()> {
++        let package_path = get_package_path(package, repository, self.project.root())
++            .context("failed to determine package path")?;
++        let package_path = package_path.as_path();
+         let released_package_files = PackageFiles::default();
+         // The released package, paired with the path of its extracted sources.
+         let released = registry_package
+@@ -722,17 +724,16 @@ impl Updater<'_> {
+             .into_iter()
+             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
+             .collect();
+-        let head = repository.current_commit_hash()?;
+         // Enumerate from the branch tip before checking out any historical snapshot.
+         // The parents let RetainedChanges follow the lineages of this same walk.
+         let graph = repository.parents_at_paths(
+-            &head,
++            head,
+             &release_boundaries,
+             &paths.all(),
+             max_analyze_commits,
+         )?;
+-        let mut retained_changes =
+-            history::RetainedChanges::new(repository, &head, &graph, &paths)?;
++        let checked_out_history = !graph.is_empty();
++        let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
+         for (current_commit_hash, _) in graph {
+             // Stop lineages that have reached an equal snapshot. Still inspect
+             // ancestors reachable through another lineage: they can contain
+@@ -790,9 +791,11 @@ impl Updater<'_> {
+                 ));
+             }
+         }
+-        repository
+-            .checkout_head()
+-            .context("can't checkout head to compare dependencies")?;
++        if checked_out_history {
++            repository
++                .checkout_head()
++                .context("can't checkout head to compare dependencies")?;
++        }
+         // A simplified walk can visit an ancestor before the equal snapshot that
+         // prunes it. Make the final decision with every discovered boundary,
+         // keeping only ancestors whose changes survive through another lineage.
+diff --git a/crates/release_plz_core/src/release_order.rs b/crates/release_plz_core/src/release_order.rs
+index cc43b3df..43013d3c 100644
+--- a/crates/release_plz_core/src/release_order.rs
++++ b/crates/release_plz_core/src/release_order.rs
+@@ -19,7 +19,7 @@ pub fn release_order<'a>(packages: &'a [&Package]) -> anyhow::Result<Vec<&'a Pac
+             .or_insert(package);
+     }
+     for p in packages {
+-        release_order_inner(&packages_by_name, p, &mut order, &mut passed)?;
++        release_order_inner(&mut packages_by_name, p, &mut order, &mut passed)?;
+     }
+     debug!(
+         "Release order: {:?}",
+@@ -31,12 +31,13 @@ pub fn release_order<'a>(packages: &'a [&Package]) -> anyhow::Result<Vec<&'a Pac
+ /// The `passed` argument is used to track packages that you already visited to
+ /// detect circular dependencies.
+ fn release_order_inner<'a>(
+-    packages: &HashMap<&str, &'a Package>,
++    packages: &mut HashMap<&str, &'a Package>,
+     pkg: &'a Package,
+     order: &mut Vec<&'a Package>,
+     passed: &mut Vec<&'a Package>,
+ ) -> anyhow::Result<()> {
+-    if is_package_in(pkg, order) {
++    // Completed packages have been removed from the map.
++    if !packages.contains_key(pkg.name.as_str()) {
+         return Ok(());
+     }
+     passed.push(pkg);
+@@ -59,6 +60,7 @@ fn release_order_inner<'a>(
+     }
+ 
+     order.push(pkg);
++    packages.remove(pkg.name.as_str());
+     passed.clear();
+     Ok(())
+ }
+@@ -209,6 +211,18 @@ mod tests {
+         assert_eq!(order(&pkgs), ["c", "b", "a"]);
+     }
+ 
++    /// Shared dependencies are emitted once, preserving traversal order.
++    #[test]
++    fn shared_dependency_is_released_once() {
++        let pkgs = [
++            &pkg("a", &[dep("b"), dep("c")]),
++            &pkg("b", &[dep("d")]),
++            &pkg("c", &[dep("d")]),
++            &pkg("d", &[]),
++        ];
++        assert_eq!(order(&pkgs), ["d", "b", "c", "a"]);
++    }
++
+     /// ┌──┐
+     /// │  ▼
+     /// A  B (dev dependency)
+diff --git a/crates/release_plz_core/src/tera.rs b/crates/release_plz_core/src/tera.rs
+index 8f57fc58..a17ff4ad 100644
+--- a/crates/release_plz_core/src/tera.rs
++++ b/crates/release_plz_core/src/tera.rs
+@@ -43,13 +43,14 @@ pub fn release_body_from_template(
+     remote: &Remote,
+     body_template: Option<&str>,
+ ) -> anyhow::Result<String> {
++    let Some(body_template) = body_template else {
++        return Ok(changelog.to_owned());
++    };
++
+     let mut context = tera_context(package_name, version);
+     context.insert(CHANGELOG_VAR, changelog);
+     context.insert(REMOTE_VAR, remote);
+ 
+-    let default_body_template = tera_var(CHANGELOG_VAR);
+-    let body_template = body_template.unwrap_or(&default_body_template);
+-
+     render_template(body_template, &context, "release_body")
+ }
+ 
+@@ -91,6 +92,40 @@ mod tests {
+         assert_eq!(body, "my changes");
+     }
+ 
++    #[test]
++    fn default_body_preserves_changelog_verbatim() {
++        let remote = Remote {
++            owner: "owner".to_string(),
++            repo: "repo".to_string(),
++            link: "link".to_string(),
++            contributors: vec![],
++        };
++        let changelog = "## Changes\n\n- <details>& {{ literal }} {% syntax %}</details>\n";
++        let body = release_body_from_template("pkg", "1.0.0", changelog, &remote, None).unwrap();
++        assert_eq!(body, changelog);
++    }
++
++    #[test]
++    fn custom_body_template_has_release_context() {
++        let remote = Remote {
++            owner: "owner".to_string(),
++            repo: "repo".to_string(),
++            link: "link".to_string(),
++            contributors: vec![],
++        };
++        let body = release_body_from_template(
++            "pkg",
++            "1.0.0",
++            "my changes",
++            &remote,
++            Some(
++                "{{ package }} {{ version }} {{ remote.owner }}/{{ remote.repo }}: {{ changelog }}",
++            ),
++        )
++        .unwrap();
++        assert_eq!(body, "pkg 1.0.0 owner/repo: my changes");
++    }
++
+     #[test]
+     fn default_tag_template_single_package() {
+         let template = default_tag_name_template(false);

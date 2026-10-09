@@ -1,0 +1,27 @@
+     Removed 31 files, 70.3MiB total
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/manifest-scan/crates/cargo_utils)
+    Finished `release` profile [optimized] target(s) in 0.81s
+     Running unittests src/lib.rs (/workspace/release-plz/target/release/deps/cargo_utils-eaa962b9599788d6)
+
+running 7 tests
+test registry::tests::cargo_info_token_env_var_name_invalid_registry_fails ... ok
+test registry::tests::cargo_info_token_env_var_name_for_crates_io_works ... ok
+test registry::tests::cargo_info_token_env_var_name_normalizes_dashes ... ok
+test registry::tests::test_get_registry_env_var_name ... ok
+test token::tests::test_parse_cargo_credentials_both ... ok
+test token::tests::test_parse_cargo_credentials_cratesio_only ... ok
+test token::tests::test_parse_cargo_credentials_empty ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/manifest-scan/crates/cargo_utils)
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/manifest-scan/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/manifest-scan/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 21.28s
+     Running unittests src/lib.rs (/workspace/release-plz/target/release/deps/release_plz_core-a4d7a6c46fc7d815)
+
+running 1 test
+test command::update::package_dependencies::tests::versionless_and_workspace_dependencies_to_update ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 182 filtered out; finished in 0.17s
+

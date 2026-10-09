@@ -1,0 +1,214 @@
+{
+  "release-order": {
+    "independent/10": {
+      "before_ns": [
+        400.728,
+        388.329,
+        387.942
+      ],
+      "after_ns": [
+        587.259,
+        583.235,
+        585.268
+      ],
+      "iterations": 100000,
+      "before_median_ns": 388.329,
+      "after_median_ns": 585.268,
+      "latency_reduction_percent": -50.71447149195656
+    },
+    "chain/10": {
+      "before_ns": [
+        751.879,
+        974.335,
+        697.411
+      ],
+      "after_ns": [
+        887.052,
+        896.881,
+        897.06
+      ],
+      "iterations": 100000,
+      "before_median_ns": 751.879,
+      "after_median_ns": 896.881,
+      "latency_reduction_percent": -19.285283935314055
+    },
+    "shared_dependencies/10": {
+      "before_ns": [
+        1248.175,
+        1274.879,
+        1249.94
+      ],
+      "after_ns": [
+        1078.208,
+        1065.556,
+        1070.946
+      ],
+      "iterations": 100000,
+      "before_median_ns": 1249.94,
+      "after_median_ns": 1070.946,
+      "latency_reduction_percent": 14.320207369953764
+    },
+    "independent/100": {
+      "before_ns": [
+        14155.523,
+        14031.023,
+        13879.029
+      ],
+      "after_ns": [
+        5834.216,
+        5867.694,
+        5908.069
+      ],
+      "iterations": 10000,
+      "before_median_ns": 14031.023,
+      "after_median_ns": 5867.694,
+      "latency_reduction_percent": 58.18056887227681
+    },
+    "chain/100": {
+      "before_ns": [
+        28169.043,
+        28095.169,
+        28060.928
+      ],
+      "after_ns": [
+        19199.113,
+        19216.167,
+        19385.108
+      ],
+      "iterations": 10000,
+      "before_median_ns": 28095.169,
+      "after_median_ns": 19216.167,
+      "latency_reduction_percent": 31.603305180331898
+    },
+    "shared_dependencies/100": {
+      "before_ns": [
+        67230.294,
+        66397.321,
+        66665.112
+      ],
+      "after_ns": [
+        14638.824,
+        14700.183,
+        14855.925
+      ],
+      "iterations": 10000,
+      "before_median_ns": 66665.112,
+      "after_median_ns": 14700.183,
+      "latency_reduction_percent": 77.94921127560694
+    },
+    "independent/1000": {
+      "before_ns": [
+        1170698.916,
+        1235288.412,
+        1150784.656
+      ],
+      "after_ns": [
+        49203.592,
+        48871.654,
+        49340.896
+      ],
+      "iterations": 500,
+      "before_median_ns": 1170698.916,
+      "after_median_ns": 49203.592,
+      "latency_reduction_percent": 95.79707546256924
+    },
+    "chain/1000": {
+      "before_ns": [
+        2381262.802,
+        2368040.036,
+        2371746.416
+      ],
+      "after_ns": [
+        1217968.436,
+        1221425.488,
+        1250601.556
+      ],
+      "iterations": 500,
+      "before_median_ns": 2371746.416,
+      "after_median_ns": 1221425.488,
+      "latency_reduction_percent": 48.50100838099043
+    },
+    "shared_dependencies/1000": {
+      "before_ns": [
+        5716593.056,
+        5745239.96,
+        5679345.95
+      ],
+      "after_ns": [
+        198010.486,
+        205563.616,
+        196167.76
+      ],
+      "iterations": 500,
+      "before_median_ns": 5716593.056,
+      "after_median_ns": 198010.486,
+      "latency_reduction_percent": 96.53621511868555
+    }
+  },
+  "owned-diffs": {
+    "false/100": {
+      "before_ns": [
+        7651.294,
+        7663.913,
+        7909.702
+      ],
+      "after_ns": [
+        55.145,
+        58.955,
+        53.387
+      ],
+      "iterations": 10000,
+      "before_median_ns": 7663.913,
+      "after_median_ns": 55.145,
+      "latency_reduction_percent": 99.28045895093017
+    },
+    "false/1000": {
+      "before_ns": [
+        75300.011,
+        75421.474,
+        76759.427
+      ],
+      "after_ns": [
+        72.025,
+        76.835,
+        67.076
+      ],
+      "iterations": 2000,
+      "before_median_ns": 75421.474,
+      "after_median_ns": 72.025,
+      "latency_reduction_percent": 99.90450332487535
+    },
+    "true/100": {
+      "before_ns": [
+        18539.085,
+        18579.719,
+        18613.6
+      ],
+      "after_ns": [
+        11269.249,
+        10731.432,
+        10579.875
+      ],
+      "iterations": 10000,
+      "before_median_ns": 18579.719,
+      "after_median_ns": 10731.432,
+      "latency_reduction_percent": 42.24115014871861
+    },
+    "true/1000": {
+      "before_ns": [
+        196621.397,
+        195644.856,
+        230524.397
+      ],
+      "after_ns": [
+        118555.182,
+        117602.633,
+        115202.011
+      ],
+      "iterations": 2000,
+      "before_median_ns": 196621.397,
+      "after_median_ns": 117602.633,
+      "latency_reduction_percent": 40.18828327214051
+    }
+  }
+}

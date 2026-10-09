@@ -1,0 +1,56 @@
+   Compiling serde v1.0.229
+   Compiling tokio v1.53.2
+   Compiling serde_json v1.0.151
+   Compiling httpdate v1.0.3
+   Compiling clap_builder v4.6.7
+   Compiling url v2.5.8
+   Compiling chrono v0.4.45
+   Compiling ssri v9.2.0
+   Compiling chrono-tz v0.9.0
+   Compiling tokio-util v0.7.19
+   Compiling h2 v0.4.19
+   Compiling tokio-rustls v0.26.6
+   Compiling async-compression v0.4.50
+   Compiling tower v0.5.3
+   Compiling tower-http v0.6.11
+   Compiling fs-err v3.3.2
+   Compiling hyper v1.11.1
+   Compiling tokio-stream v0.1.19
+   Compiling serde-value v0.7.0
+   Compiling hyper-util v0.1.21
+   Compiling git2 v0.21.0
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.13.5
+   Compiling clap v4.6.7
+   Compiling cargo_metadata v0.23.1
+   Compiling cargo-credential v0.4.11
+   Compiling humantime-serde v1.1.1
+   Compiling cargo-util-terminal v0.1.2
+   Compiling clap_complete v4.6.11
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/changelog-audit/crates/cargo_utils)
+   Compiling pasetors v0.7.8
+   Compiling tera v1.20.1
+   Compiling cargo-util-schemas v0.14.3
+   Compiling cargo-credential-libsecret v0.5.10
+   Compiling cacache v13.1.0
+   Compiling git2-curl v0.22.0
+   Compiling reqwest-middleware v0.5.2
+   Compiling git-conventional v0.12.9
+   Compiling crates-io v0.41.2
+   Compiling tracing-chrome v0.7.2
+   Compiling rustfix v0.9.8
+   Compiling serde_regex v1.2.0
+   Compiling secrecy v0.8.0
+   Compiling num_cpus v1.17.0
+   Compiling deadpool-runtime v0.1.4
+   Compiling cargo v0.100.0
+   Compiling deadpool v0.12.3
+   Compiling git-cliff-core v2.14.2
+   Compiling reqwest-retry v0.9.1
+   Compiling git_cmd v0.8.0 (/workspace/perf-worktrees/changelog-audit/crates/git_cmd)
+   Compiling assert-json-diff v2.0.2
+   Compiling tera v2.4.0
+   Compiling wiremock v0.6.5
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/changelog-audit/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/changelog-audit/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 2m 38s

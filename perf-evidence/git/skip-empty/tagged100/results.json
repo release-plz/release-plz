@@ -1,0 +1,132 @@
+{
+  "packages": 100,
+  "tagged": true,
+  "iterations": 5,
+  "binaries": {
+    "before": {
+      "path": "/workspace/perf-results/baseline/release-plz",
+      "sha256": "d7d80feca1d49921637f3a8703bf06d404a2b48e1cd45dae26256c816f8905ea",
+      "version": "release-plz 0.3.170"
+    },
+    "after": {
+      "path": "/workspace/perf-results/git/skip-empty/release-plz",
+      "sha256": "ea557c897ad1795925d14b0b720d2405887b66b1f1f29b2ae94ce42757ce15c0",
+      "version": "release-plz 0.3.170"
+    }
+  },
+  "runs": [
+    {
+      "repetition": 1,
+      "before": {
+        "seconds": [
+          1.093674240999917,
+          1.0702827570000863,
+          1.0721106919997965,
+          1.0611020499998176,
+          1.123988289999943
+        ],
+        "mean": 1.084231605999912,
+        "median": 1.0721106919997965
+      },
+      "after": {
+        "seconds": [
+          0.8317625729998781,
+          0.8391614919999029,
+          0.7548970409998219,
+          0.7650059610000426,
+          0.7549977360001776
+        ],
+        "mean": 0.7891649605999647,
+        "median": 0.7650059610000426
+      },
+      "improvement_percent": 27.21435565677204
+    },
+    {
+      "repetition": 2,
+      "after": {
+        "seconds": [
+          0.7956798939999317,
+          0.8714461590000155,
+          0.7976795649999531,
+          0.7785409900000104,
+          0.8023287369999252
+        ],
+        "mean": 0.8091350689999672,
+        "median": 0.7976795649999531
+      },
+      "before": {
+        "seconds": [
+          1.0393379659999482,
+          1.0638065660000393,
+          1.0410024089999297,
+          1.0313855800000056,
+          1.0210407419999683
+        ],
+        "mean": 1.0393146525999781,
+        "median": 1.0393379659999482
+      },
+      "improvement_percent": 22.14724703670705
+    },
+    {
+      "repetition": 3,
+      "before": {
+        "seconds": [
+          1.0941719369998282,
+          1.0815302930000144,
+          1.0813116209999407,
+          1.095168319000095,
+          1.1246114650000436
+        ],
+        "mean": 1.0953587269999843,
+        "median": 1.0941719369998282
+      },
+      "after": {
+        "seconds": [
+          0.8294681339998533,
+          0.8391459090000808,
+          0.8077415510001629,
+          0.8013243780001176,
+          0.8183307189999596
+        ],
+        "mean": 0.8192021382000348,
+        "median": 0.8183307189999596
+      },
+      "improvement_percent": 25.21152038988168
+    }
+  ],
+  "profile": {
+    "before": {
+      "total_git_commands": 512,
+      "command_counts": {
+        "rev-parse": 106,
+        "check-ignore": 1,
+        "ls-files": 1,
+        "config": 1,
+        "--git-dir=.git": 1,
+        "status": 1,
+        "checkout": 101,
+        "rev-list": 200,
+        "log": 100,
+        "head hash": 100
+      }
+    },
+    "after": {
+      "total_git_commands": 412,
+      "command_counts": {
+        "rev-parse": 106,
+        "check-ignore": 1,
+        "ls-files": 1,
+        "config": 1,
+        "--git-dir=.git": 1,
+        "status": 1,
+        "checkout": 1,
+        "rev-list": 200,
+        "log": 100,
+        "head hash": 100
+      }
+    }
+  },
+  "before_mean": 1.0729683285332914,
+  "after_mean": 0.8058340559333222,
+  "improvement_percent": 24.89675282075958
+}

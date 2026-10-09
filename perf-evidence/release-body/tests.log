@@ -1,0 +1,16 @@
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/changelog-audit/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 26.40s
+     Running unittests src/lib.rs (/workspace/release-plz/target/release/deps/release_plz_core-a4d7a6c46fc7d815)
+
+running 8 tests
+test tera::tests::default_body_preserves_changelog_verbatim ... ok
+test tera::tests::default_tag_template_multi_package ... ok
+test tera::tests::default_body_template_is_rendered ... ok
+test tera::tests::custom_body_template_has_release_context ... ok
+test tera::tests::default_tag_template_single_package ... ok
+test tera::tests::template_renders_custom_format ... ok
+test tera::tests::template_renders_package_and_version ... ok
+test tera::tests::template_renders_version_only ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 0.00s
+

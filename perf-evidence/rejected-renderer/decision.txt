@@ -1,0 +1,13 @@
+Decision: do not open a PR for moving Release into the changelog renderer.
+
+The independent production change was three lines (saved in rejected-change.patch). It moves an already-owned Release into GitCliffChangelog::new rather than cloning. All 17 targeted changelog tests passed both before and after a targeted clean/rebuild, and generated output hashes matched in every sample.
+
+However, timing evidence does not establish a stable win across the measured generation/prepend cases. The first experiment used 1-second measured cases and is retained under pilot-1s/. The prespecified follow-up lengthened each measured case to 5 seconds, with three independent before/after process pairs, serially under the shared machine lock. Those unmodified raw results are run-{1,2,3}-{before,after}.txt. No further fixture tuning or measurements were attempted.
+
+Five-second sample times, milliseconds per operation:
+case                         before runs 1 / 2 / 3        after runs 1 / 2 / 3
+Generate 100 commits         2.509 / 2.750 / 2.717         2.425 / 2.827 / 2.314
+Generate 1000 commits        24.168 / 29.621 / 28.168      23.749 / 25.609 / 22.520
+Prepend 1000 commits         23.981 / 27.039 / 26.684      25.373 / 25.765 / 24.310
+
+Generation with 100 commits regressed in pair 2; prepending regressed in pair 1. Baseline/changed sample variability is large enough that median reductions would overstate confidence in the change. The baseline and changed source snapshots, full harness, distinct executable hashes, build/test logs and summary.json remain available for audit. The uncommitted production change was reverted in the isolated worktree; no PR or production commit was created.

@@ -1,0 +1,20 @@
+
+running 2 tests
+test command::update::updater::perf_bench_fill_commits::benchmark_fill_commits ... FILL_COMMITS configured=false commits=100 iterations=10000 ns_per_call=7619.345
+FILL_COMMITS configured=false commits=1000 iterations=2000 ns_per_call=77442.156
+FILL_COMMITS configured=true commits=100 iterations=10000 ns_per_call=18613.713
+FILL_COMMITS configured=true commits=1000 iterations=2000 ns_per_call=196995.540
+ok
+test release_order::perf_bench_release_order::benchmark_release_order ... RELEASE_ORDER scenario=independent packages=10 iterations=100000 ns_per_call=408.956
+RELEASE_ORDER scenario=chain packages=10 iterations=100000 ns_per_call=730.414
+RELEASE_ORDER scenario=shared_dependencies packages=10 iterations=100000 ns_per_call=1301.954
+RELEASE_ORDER scenario=independent packages=100 iterations=10000 ns_per_call=13851.708
+RELEASE_ORDER scenario=chain packages=100 iterations=10000 ns_per_call=28388.973
+RELEASE_ORDER scenario=shared_dependencies packages=100 iterations=10000 ns_per_call=66913.513
+RELEASE_ORDER scenario=independent packages=1000 iterations=500 ns_per_call=1165595.496
+RELEASE_ORDER scenario=chain packages=1000 iterations=500 ns_per_call=2385735.114
+RELEASE_ORDER scenario=shared_dependencies packages=1000 iterations=500 ns_per_call=5707468.406
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 183 filtered out; finished in 8.93s
+

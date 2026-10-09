@@ -1,0 +1,15 @@
+
+running 1 test
+test release_order::perf_bench_release_order::benchmark_release_order ... RELEASE_ORDER scenario=independent packages=10 iterations=100000 ns_per_call=587.259
+RELEASE_ORDER scenario=chain packages=10 iterations=100000 ns_per_call=887.052
+RELEASE_ORDER scenario=shared_dependencies packages=10 iterations=100000 ns_per_call=1078.208
+RELEASE_ORDER scenario=independent packages=100 iterations=10000 ns_per_call=5834.216
+RELEASE_ORDER scenario=chain packages=100 iterations=10000 ns_per_call=19199.113
+RELEASE_ORDER scenario=shared_dependencies packages=100 iterations=10000 ns_per_call=14638.824
+RELEASE_ORDER scenario=independent packages=1000 iterations=500 ns_per_call=49203.592
+RELEASE_ORDER scenario=chain packages=1000 iterations=500 ns_per_call=1217968.436
+RELEASE_ORDER scenario=shared_dependencies packages=1000 iterations=500 ns_per_call=198010.486
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 1.48s
+

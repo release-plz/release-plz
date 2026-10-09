@@ -1,0 +1,3 @@
+standard_3_tables/all: 78.992 ns/iteration; iterations=10000000; elapsed=0.789920s
+target_63_tables/all: 2179.152 ns/iteration; iterations=1000000; elapsed=2.179152s
+target_63_tables/first_match: 1974.912 ns/iteration; iterations=1000000; elapsed=1.974912s

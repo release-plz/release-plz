@@ -1,0 +1,66 @@
+[
+  {
+    "workload": "configured=false commits=100",
+    "before_ns": [
+      7628.44,
+      7588.341,
+      7545.412
+    ],
+    "after_ns": [
+      7655.166,
+      7618.543,
+      7824.381
+    ],
+    "before_median_ns": 7588.341,
+    "after_median_ns": 7655.166,
+    "reduction_percent": -0.8806272675410787
+  },
+  {
+    "workload": "configured=false commits=1000",
+    "before_ns": [
+      75364.89,
+      75460.17,
+      75231.439
+    ],
+    "after_ns": [
+      76870.389,
+      75717.33,
+      81143.333
+    ],
+    "before_median_ns": 75364.89,
+    "after_median_ns": 76870.389,
+    "reduction_percent": -1.9976132122
+  },
+  {
+    "workload": "configured=true commits=100",
+    "before_ns": [
+      18377.714,
+      18491.649,
+      18363.039
+    ],
+    "after_ns": [
+      8322.499,
+      8308.641,
+      8438.152
+    ],
+    "before_median_ns": 18377.714,
+    "after_median_ns": 8322.499,
+    "reduction_percent": 54.714177182211024
+  },
+  {
+    "workload": "configured=true commits=1000",
+    "before_ns": [
+      194874.309,
+      195558.583,
+      197754.683
+    ],
+    "after_ns": [
+      80542.215,
+      80812.833,
+      81532.135
+    ],
+    "before_median_ns": 195558.583,
+    "after_median_ns": 80812.833,
+    "reduction_percent": 58.67589560106396
+  }
+]

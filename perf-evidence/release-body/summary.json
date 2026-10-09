@@ -1,0 +1,40 @@
+{
+  "runs": [
+    {
+      "before": {
+        "default_small": 9873.082,
+        "default_17kb": 12095.194,
+        "custom_small": 15264.759
+      },
+      "after": {
+        "default_small": 19.524,
+        "default_17kb": 113.926,
+        "custom_small": 9936.182
+      }
+    },
+    {
+      "before": {
+        "default_small": 10640.078,
+        "default_17kb": 12012.99,
+        "custom_small": 12302.384
+      },
+      "after": {
+        "default_small": 33.917,
+        "default_17kb": 115.577,
+        "custom_small": 9638.512
+      }
+    },
+    {
+      "before": {
+        "default_small": 10641.373,
+        "default_17kb": 11705.403,
+        "custom_small": 15332.931
+      },
+      "after": {
+        "default_small": 24.37,
+        "default_17kb": 147.684,
+        "custom_small": 9328.303
+      }
+    }
+  ]
+}

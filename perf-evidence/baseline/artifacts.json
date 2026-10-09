@@ -1,0 +1,14 @@
+{
+  "release-plz": {
+    "source": "/workspace/release-plz/target/release/release-plz",
+    "sha256": "d7d80feca1d49921637f3a8703bf06d404a2b48e1cd45dae26256c816f8905ea"
+  },
+  "update": {
+    "source": "/workspace/release-plz/target/release/deps/update-49590c60526d2d92",
+    "sha256": "84b58eee23e07dccfbd3b3e09e3d5267e58dedeee17b421c6baafb8c8038c7ad"
+  },
+  "manifest_updates": {
+    "source": "/workspace/release-plz/target/release/deps/manifest_updates-045fabbba5077202",
+    "sha256": "2269f6d85d12d261a355eb630019e1d81a7913fcb94846f17544073f3c3d43a1"
+  }
+}

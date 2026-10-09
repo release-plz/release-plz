@@ -1,0 +1,3 @@
+generate_100_commits output_hash=fc35be63bbfcc3a2 commits=100 output_bytes=3496 iterations=1994 elapsed_ns=5002412744 ns_per_iter=2508732.570
+generate_1000_commits output_hash=1cddba5c20ef40c1 commits=1000 output_bytes=33196 iterations=207 elapsed_ns=5002681383 ns_per_iter=24167542.913
+prepend_1000_commits output_hash=46ede41032af2ef9 commits=1000 output_bytes=33238 iterations=209 elapsed_ns=5011962001 ns_per_iter=23980679.431

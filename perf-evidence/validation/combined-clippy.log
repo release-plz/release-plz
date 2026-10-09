@@ -1,0 +1,4 @@
+    Checking next_version v0.3.2 (/workspace/perf-worktrees/combined/crates/next_version)
+    Checking release_plz_core v0.38.7 (/workspace/perf-worktrees/combined/crates/release_plz_core)
+    Checking release-plz v0.3.170 (/workspace/perf-worktrees/combined/crates/release_plz)
+    Finished `dev` profile [unoptimized] target(s) in 5.38s

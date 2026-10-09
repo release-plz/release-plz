@@ -1,0 +1,28 @@
+   Compiling openssl-sys v0.9.117
+   Compiling curl-sys v0.4.90+curl-8.21.0
+   Compiling curl v0.4.50
+   Compiling libgit2-sys v0.18.8+1.9.7
+   Compiling cargo v0.100.0
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/cargo_utils)
+   Compiling next_version v0.3.2
+   Compiling next_version v0.3.2 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/next_version)
+   Compiling libssh2-sys v0.3.3
+   Compiling git-cliff-core v2.14.2
+   Compiling gix-transport v0.57.2
+   Compiling gix-protocol v0.63.0
+   Compiling gix v0.85.0
+   Compiling git_cmd v0.8.0 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/git_cmd)
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/fake_package)
+   Compiling test_logs v0.1.34 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/test_logs)
+   Compiling git2 v0.21.0
+   Compiling git2-curl v0.22.0
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/release_plz)
+    Finished `release` profile [optimized] target(s) in 2m 30s
+     Running tests/all/main.rs (/workspace/release-plz/target/release/deps/all-0179c8cadf69e532)
+
+running 1 test
+test update::update_changelog_includes_distinct_author_and_committer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 112 filtered out; finished in 0.58s
+

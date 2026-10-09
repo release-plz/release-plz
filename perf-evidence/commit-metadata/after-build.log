@@ -1,0 +1,6 @@
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/cargo_utils)
+   Compiling git-cliff-core v2.14.2
+   Compiling git_cmd v0.8.0 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/git_cmd)
+   Compiling fake_package v0.1.0 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/fake_package)
+   Compiling release_plz_core v0.38.7 (/workspace/perf-worktrees/skip-unused-commit-metadata/crates/release_plz_core)
+    Finished `release` profile [optimized] target(s) in 26.20s

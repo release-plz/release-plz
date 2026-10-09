@@ -1,0 +1,76 @@
+[
+  {
+    "name": "skip-empty-history",
+    "branch": "perf/skip-empty-history-checkout",
+    "commit": "ad2dd0f4e1289067f32a597b454affc9332922dd",
+    "evidence": "git",
+    "files": [
+      "crates/release_plz_core/src/command/update/updater.rs"
+    ]
+  },
+  {
+    "name": "share-history-head",
+    "branch": "perf/share-history-head",
+    "commit": "cfeedee8abdafb4a3d164d160896480fd8ca1cb3",
+    "evidence": "git",
+    "files": [
+      "crates/release_plz/tests/all/update.rs",
+      "crates/release_plz_core/src/command/update/updater.rs"
+    ]
+  },
+  {
+    "name": "default-release-body",
+    "branch": "perf/direct-default-release-body",
+    "commit": "8bdfdda7120b23e14f6466b3ee9833a047835ed6",
+    "evidence": "release-body",
+    "files": [
+      "crates/release_plz_core/src/tera.rs"
+    ]
+  },
+  {
+    "name": "manifest-iterator",
+    "branch": "perf/manifest-scan",
+    "commit": "9b5f782504382686ca94282dc8fc6e9d0ed97417",
+    "evidence": "manifest-iterator",
+    "files": [
+      "crates/cargo_utils/src/local_manifest.rs"
+    ]
+  },
+  {
+    "name": "root-manifest",
+    "branch": "perf/unique-root-manifest",
+    "commit": "bf225fb1563e3a6c89358be90291f8488522e9a9",
+    "evidence": "root-manifest",
+    "files": [
+      "crates/release_plz/tests/all/set_version.rs",
+      "crates/release_plz_core/src/command/update/mod.rs"
+    ]
+  },
+  {
+    "name": "commit-metadata",
+    "branch": "perf/skip-unused-commit-metadata",
+    "commit": "7532f156cc35a252a39875a476c56b7f3c49b9e6",
+    "evidence": "commit-metadata",
+    "files": [
+      "crates/release_plz_core/src/changelog_filler.rs"
+    ]
+  },
+  {
+    "name": "release-order",
+    "branch": "perf/core-update-scan",
+    "commit": "5625847f434d7f431ce4cd59573a6531268b4364",
+    "evidence": "core-update",
+    "files": [
+      "crates/release_plz_core/src/release_order.rs"
+    ]
+  },
+  {
+    "name": "owned-diffs",
+    "branch": "perf/reuse-owned-package-diffs",
+    "commit": "d5b405f52fc2dbee6f576d5c5bd082a3fcb3e8fb",
+    "evidence": "core-update",
+    "files": [
+      "crates/release_plz_core/src/command/update/updater.rs"
+    ]
+  }
+]

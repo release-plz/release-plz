@@ -1,0 +1,37 @@
+[
+  {
+    "command": "release-plz update",
+    "count": 1,
+    "child_seconds": 6.337137
+  },
+  {
+    "command": "cargo package",
+    "count": 20,
+    "child_seconds": 2.45949
+  },
+  {
+    "command": "git -C /tmp/.tmpTcpg7r/current",
+    "count": 74,
+    "child_seconds": 1.690682
+  },
+  {
+    "command": "rustc -vV",
+    "count": 20,
+    "child_seconds": 0.74152
+  },
+  {
+    "command": "cargo metadata",
+    "count": 12,
+    "child_seconds": 0.586638
+  },
+  {
+    "command": "git -C /tmp/release-plz-profile-xhcwoep4/current",
+    "count": 7,
+    "child_seconds": 0.126204
+  },
+  {
+    "command": "git --git-dir=.git ls-files",
+    "count": 1,
+    "child_seconds": 0.018927
+  }
+]

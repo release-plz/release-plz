@@ -1,0 +1,14 @@
+{
+  "baseline_commit": "03a7393d",
+  "benchmark_pr": "https://github.com/release-plz/release-plz/pull/3146",
+  "excluded_pr": "https://github.com/release-plz/release-plz/pull/3181",
+  "cpu": {
+    "Architecture": "x86_64",
+    "CPU(s)": "5",
+    "Model name": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "Thread(s) per core": "1",
+    "Core(s) per socket": "5"
+  },
+  "cpu_quota": "400000 100000",
+  "benchmark_policy": "All builds, tests and timed measurements serialized with flock /workspace/perf-build.lock. Three runs before and after for each reported optimization. No benchmark files included in production PRs."
+}

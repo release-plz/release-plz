@@ -1,0 +1,3 @@
+default_small bytes=45 iterations=25936838 elapsed_ns=506390133 ns_per_iter=19.524
+default_17kb bytes=18000 iterations=4445380 elapsed_ns=506446120 ns_per_iter=113.926
+custom_small bytes=45 iterations=52289 elapsed_ns=519553033 ns_per_iter=9936.182

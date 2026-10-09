@@ -1,0 +1,42 @@
+[
+  {
+    "command": "release-plz update",
+    "count": 1,
+    "child_seconds": 29.345041
+  },
+  {
+    "command": "cargo package",
+    "count": 102,
+    "child_seconds": 14.650992
+  },
+  {
+    "command": "git -C /tmp/.tmpWOjPj4/current",
+    "count": 311,
+    "child_seconds": 10.149372
+  },
+  {
+    "command": "rustc -vV",
+    "count": 105,
+    "child_seconds": 3.717694
+  },
+  {
+    "command": "cargo update",
+    "count": 1,
+    "child_seconds": 0.288089
+  },
+  {
+    "command": "git -C /tmp/release-plz-profile-vh51wb01/current",
+    "count": 11,
+    "child_seconds": 0.247785
+  },
+  {
+    "command": "cargo metadata",
+    "count": 3,
+    "child_seconds": 0.067624
+  },
+  {
+    "command": "git --git-dir=.git ls-files",
+    "count": 1,
+    "child_seconds": 0.008138
+  }
+]

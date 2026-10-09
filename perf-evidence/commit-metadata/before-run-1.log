@@ -1,0 +1,10 @@
+
+running 1 test
+test command::update::updater::perf_bench_fill_commits::benchmark_fill_commits ... FILL_COMMITS configured=false commits=100 iterations=10000 ns_per_call=7628.440
+FILL_COMMITS configured=false commits=1000 iterations=2000 ns_per_call=75364.890
+FILL_COMMITS configured=true commits=100 iterations=10000 ns_per_call=18377.714
+FILL_COMMITS configured=true commits=1000 iterations=2000 ns_per_call=194874.309
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 184 filtered out; finished in 2.44s
+

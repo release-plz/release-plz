@@ -1,0 +1,26 @@
+     Removed 29 files, 6.5MiB total
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/baseline/crates/cargo_utils)
+    Finished `release` profile [optimized] target(s) in 1.69s
+     Removed 11 files, 1.5MiB total
+   Compiling cargo_utils v0.1.85 (/workspace/perf-worktrees/manifest-scan/crates/cargo_utils)
+    Finished `release` profile [optimized] target(s) in 1.78s
+71c18ca6da193c2fbe081c1e4283fe3227ae437c9428957a96f519a8cd9c6612  /workspace/perf-evidence/manifest-iterator/before
+fbd0cf244fc6dc2d5b1f58affd46cf20ce82d2621efc86915c0f268d15bd2631  /workspace/perf-evidence/manifest-iterator/after
+standard_3_tables/all: 81.316 ns/iteration; iterations=10000000; elapsed=0.813157s
+target_63_tables/all: 2175.977 ns/iteration; iterations=1000000; elapsed=2.175977s
+target_63_tables/first_match: 1977.437 ns/iteration; iterations=1000000; elapsed=1.977437s
+standard_3_tables/all: 69.791 ns/iteration; iterations=10000000; elapsed=0.697906s
+target_63_tables/all: 857.533 ns/iteration; iterations=1000000; elapsed=0.857533s
+target_63_tables/first_match: 150.242 ns/iteration; iterations=1000000; elapsed=0.150242s
+standard_3_tables/all: 80.133 ns/iteration; iterations=10000000; elapsed=0.801330s
+target_63_tables/all: 2177.569 ns/iteration; iterations=1000000; elapsed=2.177569s
+target_63_tables/first_match: 1961.038 ns/iteration; iterations=1000000; elapsed=1.961038s
+standard_3_tables/all: 69.205 ns/iteration; iterations=10000000; elapsed=0.692053s
+target_63_tables/all: 853.821 ns/iteration; iterations=1000000; elapsed=0.853821s
+target_63_tables/first_match: 150.985 ns/iteration; iterations=1000000; elapsed=0.150985s
+standard_3_tables/all: 78.992 ns/iteration; iterations=10000000; elapsed=0.789920s
+target_63_tables/all: 2179.152 ns/iteration; iterations=1000000; elapsed=2.179152s
+target_63_tables/first_match: 1974.912 ns/iteration; iterations=1000000; elapsed=1.974912s
+standard_3_tables/all: 68.926 ns/iteration; iterations=10000000; elapsed=0.689261s
+target_63_tables/all: 868.558 ns/iteration; iterations=1000000; elapsed=0.868558s
+target_63_tables/first_match: 151.279 ns/iteration; iterations=1000000; elapsed=0.151279s
