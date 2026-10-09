@@ -320,6 +320,41 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
 }
 
 #[test]
+fn dependency_updates_match_renamed_packages_among_unrelated_updates() {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            ("unrelated", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[target.'cfg(unix)'.build-dependencies]\nshared.workspace = true\n",
+            ),
+        ],
+        "[workspace.dependencies]\nshared = { package = \"support\", path = \"support\", version = \"=1.0.0\" }\n",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "support", "feat: update support");
+    change_package(&repo, "unrelated", "fix: update unrelated");
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            ("support", "1.1.0"),
+            ("unrelated", "1.0.1"),
+            ("consumer", "1.0.1"),
+        ],
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        changelog.contains("updated the following local packages: support"),
+        "{changelog}"
+    );
+    assert!(!changelog.contains("unrelated"), "{changelog}");
+}
+
+#[test]
 fn dependency_updates_preserve_shared_changelog_entries_and_previous_versions() {
     // Both packages are released as 1.0.1, the version of the entry that support
     // has just added to the shared changelog.
