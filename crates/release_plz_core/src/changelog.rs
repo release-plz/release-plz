@@ -55,9 +55,9 @@ pub struct Remote {
 
 impl Changelog<'_> {
     /// Generate the full changelog.
-    pub fn generate(self) -> anyhow::Result<String> {
+    pub fn generate(mut self) -> anyhow::Result<String> {
         let config = self.changelog_config(None);
-        let changelog = self.get_changelog(&config)?;
+        let changelog = self.get_changelog(config)?;
         let mut out = Vec::new();
         changelog
             .generate(&mut out)
@@ -66,7 +66,7 @@ impl Changelog<'_> {
     }
 
     /// Update an existing changelog.
-    pub fn prepend(self, old_changelog: impl Into<String>) -> anyhow::Result<String> {
+    pub fn prepend(mut self, old_changelog: impl Into<String>) -> anyhow::Result<String> {
         let old_changelog: String = old_changelog.into();
         if is_version_unchanged(&self.release) {
             // The changelog already contains this version, so we don't update the changelog.
@@ -74,7 +74,7 @@ impl Changelog<'_> {
         }
         let old_header = changelog_parser::parse_header(&old_changelog);
         let config = self.changelog_config(old_header.clone());
-        let changelog = self.get_changelog(&config)?;
+        let changelog = self.get_changelog(config)?;
 
         // If we successfully parsed an old header, compose manually to preserve exact formatting
         // and avoid potential header duplication.
@@ -90,21 +90,17 @@ impl Changelog<'_> {
         String::from_utf8(out).context("cannot convert bytes to string")
     }
 
-    fn get_changelog<'a>(
-        &'a self,
-        config: &'a Config,
-    ) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
-        let mut changelog =
-            GitCliffChangelog::new(vec![self.release.clone()], config.clone(), None)
-                .context("error while building changelog")?;
+    fn get_changelog<'a>(&'a self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
+        let mut changelog = GitCliffChangelog::new(vec![self.release.clone()], config, None)
+            .context("error while building changelog")?;
         add_package_context(&mut changelog, &self.package)?;
         add_release_link_context(&mut changelog, self.release_link.as_deref())?;
         add_remote_context(&mut changelog, self.remote.as_ref())?;
         Ok(changelog)
     }
 
-    fn changelog_config(&self, header: Option<String>) -> Config {
-        let user_config = self.config.clone().unwrap_or_else(default_git_cliff_config);
+    fn changelog_config(&mut self, header: Option<String>) -> Config {
+        let user_config = self.config.take().unwrap_or_else(default_git_cliff_config);
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
             git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
