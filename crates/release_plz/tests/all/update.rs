@@ -698,6 +698,367 @@ fn update_workspace_version_consumer(
 }
 
 #[test]
+fn always_updates_an_unchanged_inherited_dependents_requirement() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            (
+                "consumer",
+                r#"version.workspace = true
+[dependencies]
+support = { path = "../support", version = "0.6.7" }
+"#,
+            ),
+            ("support", "version = \"0.6.7\"\n"),
+        ],
+        r#"[workspace.package]
+version = "1.0.0"
+"#,
+        r#"[workspace]
+semver_check = false
+local_dependencies_update_strategy = "always"
+"#,
+    );
+    repo.git(&["tag", "consumer-v1.0.0"]).unwrap();
+    repo.git(&["tag", "support-v0.6.7"]).unwrap();
+    fs_err::write(
+        repo.directory().join("support/src/lib.rs"),
+        "// Updated support\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: update support").unwrap();
+
+    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
+    cmd.current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        .args(["--repo-url", "https://github.com/test/project"]);
+    cmd.assert().success();
+
+    let consumer_manifest = fs_err::read_to_string(repo.directory().join("consumer/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        consumer_manifest["package"]["version"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        consumer_manifest["dependencies"]["support"]["version"].as_str(),
+        Some("0.6.8")
+    );
+    let workspace_manifest = fs_err::read_to_string(repo.directory().join("Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        workspace_manifest["workspace"]["package"]["version"].as_str(),
+        Some("1.0.1")
+    );
+    let support_manifest = fs_err::read_to_string(repo.directory().join("support/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        support_manifest["package"]["version"].as_str(),
+        Some("0.6.8")
+    );
+    let consumer_changelog =
+        fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        consumer_changelog.contains("## [1.0.1]"),
+        "{consumer_changelog}"
+    );
+    cargo_metadata::MetadataCommand::new()
+        .current_dir(repo.directory())
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap();
+}
+
+#[test]
+fn if_needed_updates_an_unchanged_inherited_dependents_exact_requirement() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            (
+                "consumer",
+                r#"version.workspace = true
+[dependencies]
+support = { path = "../support", version = "=0.6.7" }
+"#,
+            ),
+            ("support", "version = \"0.6.7\"\n"),
+        ],
+        r#"[workspace.package]
+version = "1.0.0"
+"#,
+        r#"[workspace]
+semver_check = false
+local_dependencies_update_strategy = "if-needed"
+"#,
+    );
+    repo.git(&["tag", "consumer-v1.0.0"]).unwrap();
+    repo.git(&["tag", "support-v0.6.7"]).unwrap();
+    fs_err::write(
+        repo.directory().join("support/src/lib.rs"),
+        "// Updated support\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: update support").unwrap();
+
+    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
+    cmd.current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        .args(["--repo-url", "https://github.com/test/project"]);
+    cmd.assert().success();
+
+    let consumer_manifest = fs_err::read_to_string(repo.directory().join("consumer/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        consumer_manifest["package"]["version"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        consumer_manifest["dependencies"]["support"]["version"].as_str(),
+        Some("=0.6.8")
+    );
+    let workspace_manifest = fs_err::read_to_string(repo.directory().join("Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        workspace_manifest["workspace"]["package"]["version"].as_str(),
+        Some("1.0.1")
+    );
+    let support_manifest = fs_err::read_to_string(repo.directory().join("support/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        support_manifest["package"]["version"].as_str(),
+        Some("0.6.8")
+    );
+    let consumer_changelog =
+        fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        consumer_changelog.contains("## [1.0.1]"),
+        "{consumer_changelog}"
+    );
+    cargo_metadata::MetadataCommand::new()
+        .current_dir(repo.directory())
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap();
+}
+
+#[test]
+fn if_needed_updates_an_unchanged_inherited_dependents_incompatible_requirement() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            (
+                "consumer",
+                r#"version.workspace = true
+[dependencies]
+support = { path = "../support", version = "0.6.7" }
+"#,
+            ),
+            ("support", "version = \"0.6.7\"\n"),
+        ],
+        r#"[workspace.package]
+version = "1.0.0"
+"#,
+        r#"[workspace]
+semver_check = false
+local_dependencies_update_strategy = "if-needed"
+"#,
+    );
+    repo.git(&["tag", "consumer-v1.0.0"]).unwrap();
+    repo.git(&["tag", "support-v0.6.7"]).unwrap();
+    fs_err::write(
+        repo.directory().join("support/src/lib.rs"),
+        "// Updated support\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix!: update support").unwrap();
+
+    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
+    cmd.current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        .args(["--repo-url", "https://github.com/test/project"]);
+    cmd.assert().success();
+
+    let consumer_manifest = fs_err::read_to_string(repo.directory().join("consumer/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        consumer_manifest["package"]["version"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        consumer_manifest["dependencies"]["support"]["version"].as_str(),
+        Some("0.7.0")
+    );
+    let workspace_manifest = fs_err::read_to_string(repo.directory().join("Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        workspace_manifest["workspace"]["package"]["version"].as_str(),
+        Some("1.0.1")
+    );
+    let support_manifest = fs_err::read_to_string(repo.directory().join("support/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        support_manifest["package"]["version"].as_str(),
+        Some("0.7.0")
+    );
+    let consumer_changelog =
+        fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        consumer_changelog.contains("## [1.0.1]"),
+        "{consumer_changelog}"
+    );
+    cargo_metadata::MetadataCommand::new()
+        .current_dir(repo.directory())
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap();
+}
+
+#[test]
+fn if_needed_preserves_an_unchanged_inherited_dependents_compatible_requirement() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            (
+                "consumer",
+                r#"version.workspace = true
+[dependencies]
+support = { path = "../support", version = "0.6.7" }
+"#,
+            ),
+            ("support", "version = \"0.6.7\"\n"),
+        ],
+        r#"[workspace.package]
+version = "1.0.0"
+"#,
+        r#"[workspace]
+semver_check = false
+local_dependencies_update_strategy = "if-needed"
+"#,
+    );
+    repo.git(&["tag", "consumer-v1.0.0"]).unwrap();
+    repo.git(&["tag", "support-v0.6.7"]).unwrap();
+    fs_err::write(
+        repo.directory().join("support/src/lib.rs"),
+        "// Updated support\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: update support").unwrap();
+
+    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
+    cmd.current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        .args(["--repo-url", "https://github.com/test/project"]);
+    cmd.assert().success();
+
+    let consumer_manifest = fs_err::read_to_string(repo.directory().join("consumer/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        consumer_manifest["package"]["version"]["workspace"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        consumer_manifest["dependencies"]["support"]["version"].as_str(),
+        Some("0.6.7")
+    );
+    let workspace_manifest = fs_err::read_to_string(repo.directory().join("Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        workspace_manifest["workspace"]["package"]["version"].as_str(),
+        Some("1.0.0")
+    );
+    let support_manifest = fs_err::read_to_string(repo.directory().join("support/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        support_manifest["package"]["version"].as_str(),
+        Some("0.6.8")
+    );
+    assert!(!repo.directory().join("consumer/CHANGELOG.md").exists());
+    cargo_metadata::MetadataCommand::new()
+        .current_dir(repo.directory())
+        .other_options(vec!["--locked".to_string(), "--offline".to_string()])
+        .exec()
+        .unwrap();
+}
+
+#[test]
+fn never_reports_cargo_failure_when_a_local_requirement_rejects_the_release() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            (
+                "consumer",
+                r#"version = "1.0.0"
+[dependencies]
+support = { path = "../support", version = "0.6.7" }
+"#,
+            ),
+            ("support", "version = \"0.6.7\"\n"),
+        ],
+        "",
+        r#"[workspace]
+semver_check = false
+local_dependencies_update_strategy = "never"
+"#,
+    );
+    repo.git(&["tag", "consumer-v1.0.0"]).unwrap();
+    repo.git(&["tag", "support-v0.6.7"]).unwrap();
+    fs_err::write(
+        repo.directory().join("support/src/lib.rs"),
+        "// Updated support\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix!: update support").unwrap();
+
+    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
+    cmd.current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        .args(["--repo-url", "https://github.com/test/project"]);
+    let result = cmd.assert().failure();
+
+    let stderr = std::str::from_utf8(&result.get_output().stderr).unwrap();
+    assert!(stderr.contains("cargo update failed"), "{stderr}");
+    assert!(stderr.contains("support = \"^0.6.7\""), "{stderr}");
+    assert!(stderr.contains("0.7.0"), "{stderr}");
+    let consumer_manifest = fs_err::read_to_string(repo.directory().join("consumer/Cargo.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert_eq!(
+        consumer_manifest["dependencies"]["support"]["version"].as_str(),
+        Some("0.6.7")
+    );
+    assert_eq!(
+        consumer_manifest["package"]["version"].as_str(),
+        Some("1.0.0")
+    );
+    assert!(!repo.directory().join("consumer/CHANGELOG.md").exists());
+}
+
+#[test]
 fn local_dependencies_update_strategy_preserves_compatible_floors() {
     check_local_dependencies_update_strategy(
         "if-needed",
