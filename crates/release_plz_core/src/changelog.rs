@@ -358,16 +358,19 @@ impl<'a> ChangelogBuilder<'a> {
     }
 
     pub fn build(&self) -> Changelog<'a> {
-        let git_config = self
-            .config
-            .clone()
-            .map(|c| c.git)
-            .unwrap_or_else(|| default_git_config(self.pr_link.as_deref()));
+        let default_config;
+        let git_config = match &self.config {
+            Some(config) => &config.git,
+            None => {
+                default_config = default_git_config(self.pr_link.as_deref());
+                &default_config
+            }
+        };
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
             .commits
             .iter()
-            .filter_map(|c| c.process(&git_config).ok())
+            .filter_map(|c| c.process(git_config).ok())
             .collect();
 
         match git_config.sort_commits.to_lowercase().as_str() {
