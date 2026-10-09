@@ -305,8 +305,8 @@ impl Updater<'_> {
                         diff.add_commits(commits);
                     }
                 }
-                if should_check_semver(p, registry_package, package_config.semver_check())
-                    && diff.should_update_version()
+                if diff.should_update_version()
+                    && should_check_semver(p, registry_package, package_config.semver_check())
                 {
                     let registry_package_path = registry_package
                         .package_path()
