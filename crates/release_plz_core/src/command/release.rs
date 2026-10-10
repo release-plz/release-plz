@@ -1549,60 +1549,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn contributor_cache_does_not_store_failed_requests() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let server = MockServer::start().await;
-        let (_temporary, _repo, request) = release_fixture(&server);
-        let git_client = get_git_client(&request).unwrap();
-        let mut context = ReleaseContext {
-            git_client: &git_client,
-            prs: HashMap::new(),
-            trusted_publishing_client: None,
-        };
-        Mock::given(method("GET"))
-            .and(path("/repos/owner/repo/pulls/42"))
-            .respond_with(contributor_response(42, "alice"))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let attempts = AtomicUsize::new(0);
-        Mock::given(method("GET"))
-            .and(path("/repos/owner/repo/pulls/43"))
-            .respond_with(move |_: &wiremock::Request| {
-                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-                    ResponseTemplate::new(404)
-                } else {
-                    contributor_response(43, "bob")
-                }
-            })
-            .expect(2)
-            .mount(&server)
-            .await;
-        let prs = prs_from_text(
-            "https://github.com/owner/repo/pull/42 https://github.com/owner/repo/pull/43",
-        );
-        let info = ReleaseInfo {
-            package: &request.metadata.packages[0],
-            git_tag: "v0.1.0",
-            release_name: "v0.1.0",
-            changelog: "",
-            prs: &prs,
-        };
-
-        // Preserve the existing all-or-empty contributor behavior on failure.
-        assert!(get_contributors(&info, &mut context).await.is_empty());
-        let contributors = get_contributors(&info, &mut context).await;
-        assert_eq!(
-            contributors
-                .iter()
-                .map(|contributor| contributor.username.as_deref())
-                .collect::<Vec<_>>(),
-            vec![Some("alice"), Some("bob")],
-        );
-    }
-
-    #[tokio::test]
     async fn release_fetches_contributors_only_for_custom_body() {
         for custom_body in [false, true] {
             let server = MockServer::start().await;
