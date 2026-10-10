@@ -429,11 +429,11 @@ impl GitClient {
         }
     }
 
-    /// Get all opened Prs which branch starts with the given `branch_prefix`.
-    pub async fn opened_prs(&self, branch_prefix: &str) -> anyhow::Result<Vec<GitPr>> {
+    /// Get all opened PRs.
+    pub async fn opened_prs(&self) -> anyhow::Result<Vec<GitPr>> {
         let mut page = 1;
         let page_size = 30;
-        let mut release_prs: Vec<GitPr> = vec![];
+        let mut opened_prs = vec![];
         loop {
             debug!(
                 "Loading prs from {}, page {page}",
@@ -444,17 +444,13 @@ impl GitClient {
                 .await
                 .context("Failed to retrieve open PRs")?;
             let prs_len = prs.len();
-            let current_release_prs: Vec<GitPr> = prs
-                .into_iter()
-                .filter(|pr| pr.head.ref_field.starts_with(branch_prefix))
-                .collect();
-            release_prs.extend(current_release_prs);
+            opened_prs.extend(prs);
             if prs_len < page_size {
                 break;
             }
             page += 1;
         }
-        Ok(release_prs)
+        Ok(opened_prs)
     }
 
     async fn opened_prs_page(&self, page: i32, page_size: usize) -> anyhow::Result<Vec<GitPr>> {
