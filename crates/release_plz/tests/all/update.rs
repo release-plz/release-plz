@@ -256,19 +256,24 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
     );
 }
 
-/// Assert that updating the workspace of [`workspace_with_source_changes`]
+/// Assert that updating a [`single_package_workspace`] after the commits
+/// `fix: first change` and `fix: second change` to the Rust source of `one`
 /// runs `cargo package --list` `cargo_runs` times, once for the released source
 /// tree, and reuses a historical package file list `reuses` times, while the
-/// update still finds exactly the two source changes. `change` is committed
-/// with a Rust source change, so root-only configuration changes are part of
-/// the path-limited walk and are compared with the next snapshot.
+/// update still finds exactly the two source changes. `change` edits the
+/// project directory before the second commit, so it is committed with a Rust
+/// source change: root-only configuration changes are part of the path-limited
+/// walk and are compared with the next snapshot.
 fn assert_package_file_listings(
     case: &str,
     change: impl FnOnce(&Utf8Path),
     cargo_runs: usize,
     reuses: usize,
 ) {
-    let (temp_dir, repo) = workspace_with_source_changes(change);
+    let (temp_dir, repo) = single_package_workspace();
+    change_package(&repo, "one", "fix: first change");
+    change(repo.directory());
+    change_package(&repo, "one", "fix: second change");
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
@@ -283,23 +288,6 @@ fn assert_package_file_listings(
         "{case}: {logs}"
     );
     assert_patch_release(&repo, case, &["first change", "second change"]);
-}
-
-/// Creates a workspace with [`single_package_workspace`] whose package `one`
-/// then changes its Rust source in the commits `fix: first change` and
-/// `fix: second change`. `change` edits the project directory before the
-/// second commit.
-fn workspace_with_source_changes(change: impl FnOnce(&Utf8Path)) -> (Utf8TempDir, Repo) {
-    let (temp_dir, repo) = single_package_workspace();
-    change_package(&repo, "one", "fix: first change");
-    change(repo.directory());
-    fs_err::write(
-        repo.directory().join("one/src/lib.rs"),
-        "// Second change\n",
-    )
-    .unwrap();
-    repo.add_all_and_commit("fix: second change").unwrap();
-    (temp_dir, repo)
 }
 
 /// Creates a workspace with [`init_workspace`] whose only package `one` is at 1.0.0.
@@ -332,12 +320,7 @@ fn update_lists_package_files_of_replaced_commits() {
     repo.git(&["commit", "--allow-empty", "-m", "fix: add extra"])
         .unwrap();
     let replaced = repo.current_commit_hash().unwrap();
-    fs_err::write(
-        repo.directory().join("one/src/lib.rs"),
-        "// Second change\n",
-    )
-    .unwrap();
-    repo.add_all_and_commit("fix: second change").unwrap();
+    change_package(&repo, "one", "fix: second change");
     // Checkouts of the empty commit follow its replacement, which adds a
     // packaged file. The empty commit's own tree differs from HEAD's only in a
     // Rust source.
@@ -1000,10 +983,13 @@ fn generate_lockfile(dir: &Utf8Path) {
         .success();
 }
 
+/// Commit `commit_message` with a change to the Rust source of package `name`.
+/// The source contains the message, so commits with distinct messages always
+/// change it, even for the same package.
 fn change_package(repo: &Repo, name: &str, commit_message: &str) {
     fs_err::write(
         repo.directory().join(name).join("src/lib.rs"),
-        format!("// Updated {name}\n"),
+        format!("// {commit_message}\n"),
     )
     .unwrap();
     repo.add_all_and_commit(commit_message).unwrap();
