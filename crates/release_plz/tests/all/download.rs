@@ -5,7 +5,7 @@ use crate::helpers::test_context::TestContext;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
+async fn download_preserves_request_order_and_skips_missing_packages() {
     let context = TestContext::new_workspace(&["first", "second"]).await;
     context.run_cargo_publish("first");
     context.run_cargo_publish("second");
@@ -42,7 +42,7 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn registry_batches_reject_duplicate_and_nonempty_destinations() {
+async fn download_rejects_duplicate_and_nonempty_destinations() {
     let context = TestContext::new().await;
     let name = &context.gitea.repo;
     context.run_cargo_publish(name);
@@ -73,7 +73,7 @@ async fn registry_batches_reject_duplicate_and_nonempty_destinations() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn registry_batches_respect_source_replacement() {
+async fn download_respects_source_replacement() {
     let context = TestContext::new_workspace(&["first", "second"]).await;
     context.run_cargo_publish("first");
     context.run_cargo_publish("second");
