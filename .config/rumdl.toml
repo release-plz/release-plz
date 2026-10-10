@@ -1,0 +1,47 @@
+[global]
+# Include website MDX pages in the repository-wide Markdown check.
+include = ["**/*.md", "**/*.markdown", "**/*.mdx"]
+# Prevent prose lines over 100 characters in hand-maintained Markdown.
+line-length = 100
+
+# Existing findings at adoption (rumdl 0.2.77); counts are scoped to each file pattern.
+[per-file-ignores]
+# Generated changelogs keep the release tool's layout.
+"**/CHANGELOG.md" = [
+  "blanks-around-lists", # 595: allow lists adjacent to headings and paragraphs
+  "line-length", # 4: allow release entries longer than prose width
+  "blanks-around-headings", # 3: allow compact release sections
+  "no-multiple-blanks", # 1: allow extra spacing between releases
+]
+# The README starts with a logo and uses HTML for its footer.
+"README.md" = [
+  "first-line-h1", # 1: allow the logo before the heading
+  "no-inline-html", # 6: allow footer markup
+]
+# Prevent repeated 1, 1, 1 markers in ordered lists; require 1, 2, 3.
+[ol-prefix]
+style = "ordered"
+
+# Long links in headings have no useful wrap point.
+[line-length]
+headings = false
+
+# Prevent Setext underlined headings; require # headings.
+[heading-style]
+style = "atx"
+
+# Prevent alternate horizontal-rule markers; require ---.
+[hr-style]
+style = "dash"
+
+# Prevent indented code blocks; require fenced blocks.
+[code-block-style]
+style = "fenced"
+
+# Prevent tilde code fences; require backticks.
+[code-fence-style]
+style = "backtick"
+
+# Allow disclosure widgets, but prevent other inline HTML outside file exceptions.
+[no-inline-html]
+allowed-elements = ["details", "summary"]

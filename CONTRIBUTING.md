@@ -42,6 +42,14 @@ Read our [AI policy](https://github.com/release-plz/.github/blob/main/AI_POLICY.
   cargo test --all-features --workspace
   ```
 
+- Check Markdown across the repository with the Rust-based `rumdl` linter.
+  Install it with `cargo install rumdl --locked` or
+  `brew install rumdl`, then run:
+
+  ```shell
+  rumdl check .
+  ```
+
 - Check to see if there are code formatting issues
 
   ```shell
