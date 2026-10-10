@@ -151,18 +151,7 @@ async fn update_relocated_workspace_preserves_original_manifests() {
 
 #[test]
 fn update_reuses_package_files_after_source_content_changes() {
-    let (temp_dir, repo) = init_workspace(
-        &[("one", "version = \"1.0.0\"\n")],
-        "",
-        "[workspace]\nsemver_check = false\n",
-    );
-    change_package(&repo, "one", "fix: first change");
-    fs_err::write(
-        repo.directory().join("one/src/lib.rs"),
-        "// Second change\n",
-    )
-    .unwrap();
-    repo.add_all_and_commit("fix: second change").unwrap();
+    let (temp_dir, repo) = workspace_with_source_changes(|_| {});
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
@@ -229,24 +218,12 @@ fn update_invalidates_package_files_after_mode_changes() {
     });
 }
 
-/// Assert that the package files listed before `change`, which edits the
-/// project directory together with a Rust source, are listed again after it.
+/// Assert that the package files listed before `change` are listed again after
+/// it. [`workspace_with_source_changes`] commits `change` with a Rust source
+/// change, so root-only configuration changes are part of the path-limited
+/// walk and are compared with the next snapshot.
 fn assert_invalidates_package_files(case: &str, change: impl FnOnce(&Utf8Path)) {
-    let (temp_dir, repo) = init_workspace(
-        &[("one", "version = \"1.0.0\"\n")],
-        "",
-        "[workspace]\nsemver_check = false\n",
-    );
-    change_package(&repo, "one", "fix: first change");
-    change(repo.directory());
-    // Touch the package too, so root-only configuration changes are part
-    // of the path-limited walk and are compared with the next snapshot.
-    fs_err::write(
-        repo.directory().join("one/src/lib.rs"),
-        "// Second change\n",
-    )
-    .unwrap();
-    repo.add_all_and_commit("fix: selection change").unwrap();
+    let (temp_dir, repo) = workspace_with_source_changes(change);
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
@@ -263,12 +240,30 @@ fn assert_invalidates_package_files(case: &str, change: impl FnOnce(&Utf8Path)) 
         "{case}: {logs}"
     );
     let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
-    assert!(changelog.contains("first change"), "{case}: {changelog}");
-    assert!(
-        changelog.contains("selection change"),
-        "{case}: {changelog}"
-    );
+    for message in ["first change", "second change"] {
+        assert!(changelog.contains(message), "{case}: {changelog}");
+    }
     assert!(!changelog.contains("add README"), "{case}: {changelog}");
+}
+
+/// Creates a workspace with [`init_workspace`] whose package `one` then changes
+/// its Rust source in the commits `fix: first change` and `fix: second change`.
+/// `change` edits the project directory before the second commit.
+fn workspace_with_source_changes(change: impl FnOnce(&Utf8Path)) -> (Utf8TempDir, Repo) {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "one", "fix: first change");
+    change(repo.directory());
+    fs_err::write(
+        repo.directory().join("one/src/lib.rs"),
+        "// Second change\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: second change").unwrap();
+    (temp_dir, repo)
 }
 
 #[test]
