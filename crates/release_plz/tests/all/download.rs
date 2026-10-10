@@ -6,14 +6,22 @@ use crate::helpers::test_context::TestContext;
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn download_preserves_request_order_and_skips_missing_packages() {
-    let context = TestContext::new_workspace(&["first", "second"]).await;
-    context.run_cargo_publish("first");
-    context.run_cargo_publish("second");
+    let crates = ["first", "second", "third"];
+    let context = TestContext::new_workspace(&crates).await;
+    for name in crates {
+        context.run_cargo_publish(name);
+    }
 
     // Repeat in a fresh destination to cover both downloads and Cargo's local cache.
     for (requested, expected) in [
-        (["second", "missing", "first"], ["second", "first"]),
-        (["first", "missing", "second"], ["first", "second"]),
+        (
+            ["third", "missing", "first", "second"],
+            ["third", "first", "second"],
+        ),
+        (
+            ["second", "first", "missing", "third"],
+            ["second", "first", "third"],
+        ),
     ] {
         let dest_dir = Utf8TempDir::new().unwrap();
         let packages = context
