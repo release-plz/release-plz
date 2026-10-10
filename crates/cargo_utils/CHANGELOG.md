@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.87](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.86...cargo_utils-v0.1.87) - 2026-10-10
+
+### Performance
+
+- find workspace packages without collecting all members ([#3211](https://github.com/release-plz/release-plz/pull/3211))
+- collect mutable dependency tables into one buffer ([#3214](https://github.com/release-plz/release-plz/pull/3214))
+
 ## [0.1.86](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.85...cargo_utils-v0.1.86) - 2026-10-10
 
 ### Performance
