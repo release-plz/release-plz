@@ -91,8 +91,9 @@ impl Updater<'_> {
             )
         };
         let mut inheriting_packages = Vec::new();
-        // A workspace root without a shared version cannot have inheriting members.
-        // Still scan if a library caller supplied a package manifest instead.
+        // Skip version-inheritance checks only for a workspace root without
+        // workspace.package.version. A member manifest may inherit a version
+        // defined in the root, so keep scanning when given a member manifest.
         if workspace_version.is_some() || !is_workspace_root {
             for package in &workspace_packages {
                 if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
