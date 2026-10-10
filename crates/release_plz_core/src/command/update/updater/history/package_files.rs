@@ -59,20 +59,22 @@ impl<'a> CheckoutPackageFiles<'a> {
                 false
             })
         });
-        if !reuses {
+        if reuses {
+            if self.files.is_cached() {
+                debug!("reusing historical package file list at {commit}");
+            }
+        } else {
             self.files = PackageFiles::default();
-        } else if self.files.is_cached() {
-            debug!("reusing historical package file list at {commit}");
-        }
-        let cacheable = reuses
-            || has_symlinked_manifest(self.repository)
-                .inspect_err(|error| {
+            let has_symlinked_manifest =
+                has_symlinked_manifest(self.repository).unwrap_or_else(|error| {
                     debug!("cannot find symlinked manifests at {commit}: {error:#}");
-                })
-                .is_ok_and(|found| !found);
-        if cacheable {
-            self.commit = Some(commit.to_owned());
+                    true
+                });
+            if has_symlinked_manifest {
+                return &self.files;
+            }
         }
+        self.commit = Some(commit.to_owned());
         &self.files
     }
 }
