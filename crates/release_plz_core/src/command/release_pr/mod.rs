@@ -196,20 +196,8 @@ async fn open_or_update_release_pr(
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
 ) -> anyhow::Result<ReleasePr> {
-    let mut opened_release_prs = git_client
-        .opened_prs(&release_pr_options.pr_branch_prefix)
-        .await
-        .context("cannot get opened release-plz prs")?;
-
-    // Check if there are opened release-plz prs with the old prefix.
-    // This ensures retro-compatibility with the release-plz versions.
-    // TODO: Remove this check on release-plz v0.4.0.
-    if opened_release_prs.is_empty() {
-        opened_release_prs = git_client
-            .opened_prs(OLD_BRANCH_PREFIX)
-            .await
-            .context("cannot get opened release-plz prs")?;
-    }
+    let opened_release_prs =
+        opened_release_prs(git_client, &release_pr_options.pr_branch_prefix).await?;
 
     // Close all release-plz prs, except one.
     let old_release_prs = opened_release_prs.iter().skip(1);
@@ -259,6 +247,29 @@ async fn open_or_update_release_pr(
         ..release_pr
     };
     Ok(release_pr)
+}
+
+async fn opened_release_prs(
+    git_client: &GitClient,
+    branch_prefix: &str,
+) -> anyhow::Result<Vec<GitPr>> {
+    let mut opened_prs = git_client
+        .opened_prs()
+        .await
+        .context("cannot get opened release-plz prs")?;
+
+    // Fall back to the old prefix only if no PR uses the configured prefix.
+    // TODO: Remove this check on release-plz v0.4.0.
+    let branch_prefix = if opened_prs
+        .iter()
+        .any(|pr| pr.branch().starts_with(branch_prefix))
+    {
+        branch_prefix
+    } else {
+        OLD_BRANCH_PREFIX
+    };
+    opened_prs.retain(|pr| pr.branch().starts_with(branch_prefix));
+    Ok(opened_prs)
 }
 
 async fn handle_opened_pr(
@@ -524,7 +535,7 @@ mod tests {
     use tempfile::tempdir;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
-        matchers::{body_json, body_partial_json, header, method, path, path_regex},
+        matchers::{body_json, body_partial_json, header, method, path, path_regex, query_param},
     };
 
     use super::*;
@@ -537,6 +548,82 @@ mod tests {
         let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
             .with_base_url(server.uri().parse().unwrap());
         GitClient::new(GitForge::Github(github)).unwrap()
+    }
+
+    async fn assert_opened_release_prs(
+        branches: &[&str],
+        branch_prefix: &str,
+        expected_numbers: &[u64],
+    ) {
+        let server = MockServer::start().await;
+        let prs: Vec<_> = branches
+            .iter()
+            .enumerate()
+            .map(|(i, branch)| {
+                json!({
+                    "user": {"id": 1, "login": "release-plz[bot]"},
+                    "number": i + 1,
+                    "html_url": format!("https://github.com/owner/repo/pull/{}", i + 1),
+                    "head": {"ref": branch, "sha": "release-sha"},
+                    "title": "chore: release",
+                    "labels": []
+                })
+            })
+            .collect();
+        let page_size = 30;
+        let page_count = prs.len() / page_size + 1;
+        for page in 0..page_count {
+            let start = page * page_size;
+            let end = (start + page_size).min(prs.len());
+            Mock::given(method("GET"))
+                .and(path("/repos/owner/repo/pulls"))
+                .and(query_param("state", "open"))
+                .and(query_param("page", (page + 1).to_string()))
+                .and(query_param("per_page", page_size.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&prs[start..end]))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+
+        let prs = opened_release_prs(&github_client(&server), branch_prefix)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            prs.iter().map(|pr| pr.number).collect::<Vec<_>>(),
+            expected_numbers
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), page_count);
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn opened_release_prs_prefer_configured_prefix_on_later_page() {
+        let mut branches = vec!["feature"; 30];
+        branches[0] = "release-plz/old-first";
+        branches.extend([
+            "custom-release/first",
+            "release-plz/old-second",
+            "custom-release/second",
+        ]);
+
+        assert_opened_release_prs(&branches, "custom-release/", &[31, 33]).await;
+    }
+
+    #[tokio::test]
+    async fn opened_release_prs_reuse_pages_for_legacy_prefix() {
+        let mut branches = vec!["feature"; 30];
+        branches[0] = "release-plz/first";
+        branches.push("release-plz/second");
+
+        assert_opened_release_prs(&branches, DEFAULT_BRANCH_PREFIX, &[1, 31]).await;
+    }
+
+    #[tokio::test]
+    async fn opened_release_prs_do_not_refetch_when_no_prefix_matches() {
+        assert_opened_release_prs(&["feature"; 30], DEFAULT_BRANCH_PREFIX, &[]).await;
+        assert_opened_release_prs(&[], DEFAULT_BRANCH_PREFIX, &[]).await;
     }
 
     fn graphql_commit_created() -> ResponseTemplate {
