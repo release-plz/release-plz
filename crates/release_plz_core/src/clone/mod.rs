@@ -126,14 +126,14 @@ impl Cloner {
         let mut sources = SourceMap::new();
         sources.insert(src);
         let package_set = PackageSet::new(&package_ids, sources, &self.config)?;
-        // Cargo downloads this batch concurrently under the package-cache lock. Use the
-        // set's unique IDs so repeated requests cannot download the same package twice.
+        // Use the set's deduplicated IDs: Cargo panics if a batch downloads the same ID twice.
         package_set
             .get_many(package_set.package_ids())
             .context("failed to download packages")?;
 
         let mut cloned_pkgs = Vec::with_capacity(destinations.len());
-        // Downloads finish in any order. Read Cargo's populated cache in request order.
+        // `get_many` returns packages in completion order.
+        // Look each one up by ID to keep request order.
         for (id, dest_path) in destinations {
             let pkg = package_set.get_one(id)?;
             self.clone_package_into(pkg, &dest_path)
