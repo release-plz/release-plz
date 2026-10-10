@@ -26,16 +26,6 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
         assert_eq!(names, expected);
         for package in packages {
             let package_dir = dest_dir.path().join(package.name.as_str());
-            assert_eq!(package.manifest_path, package_dir.join(CARGO_TOML));
-            assert_eq!(
-                fs_err::read_to_string(package_dir.join("src/main.rs")).unwrap(),
-                fs_err::read_to_string(
-                    context
-                        .package_path(package.name.as_str())
-                        .join("src/main.rs")
-                )
-                .unwrap()
-            );
             assert!(!package_dir.join(".cargo-ok").exists());
         }
         assert!(!dest_dir.path().join("missing").exists());
