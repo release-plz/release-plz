@@ -141,20 +141,18 @@ fn compose_changelog(
 
 /// Apply release-plz defaults to git config
 fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) -> GitConfig {
-    let default_git_config = default_git_config(pr_link);
-
     GitConfig {
         conventional_commits: git_config.conventional_commits,
         require_conventional: git_config.require_conventional,
         filter_unconventional: git_config.filter_unconventional,
         split_commits: git_config.split_commits,
         commit_preprocessors: if git_config.commit_preprocessors.is_empty() {
-            default_git_config.commit_preprocessors
+            default_commit_preprocessors(pr_link)
         } else {
             git_config.commit_preprocessors
         },
         commit_parsers: if git_config.commit_parsers.is_empty() {
-            default_git_config.commit_parsers
+            kac_commit_parsers()
         } else {
             git_config.commit_parsers
         },
@@ -170,17 +168,13 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         topo_order_commits: git_config.topo_order_commits,
         processing_order: git_config.processing_order,
         sort_commits: if git_config.sort_commits.is_empty() {
-            default_git_config.sort_commits
+            "newest".to_string()
         } else {
             git_config.sort_commits
         },
         limit_commits: git_config.limit_commits,
         recurse_submodules: git_config.recurse_submodules,
-        link_parsers: if git_config.link_parsers.is_empty() {
-            default_git_config.link_parsers
-        } else {
-            git_config.link_parsers
-        },
+        link_parsers: git_config.link_parsers,
         exclude_paths: git_config.exclude_paths,
         include_paths: git_config.include_paths,
         fail_on_unmatched_commit: git_config.fail_on_unmatched_commit,
@@ -439,22 +433,26 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
         ignore_tags: None,
         limit_commits: None,
         sort_commits: "newest".to_string(),
-        commit_preprocessors: pr_link
-            .map(|pr_link| {
-                static PR_NUMBER: LazyLock<Regex> =
-                    LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
-                // Replace #123 with [#123](https://link_to_pr).
-                // If the number refers to an issue, GitHub redirects the PR link to the issue link.
-                vec![TextProcessor {
-                    pattern: PR_NUMBER.clone(),
-                    replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
-                    replace_command: None,
-                }]
-            })
-            .unwrap_or_default(),
+        commit_preprocessors: default_commit_preprocessors(pr_link),
         link_parsers: vec![],
         ..Default::default()
     }
+}
+
+fn default_commit_preprocessors(pr_link: Option<&str>) -> Vec<TextProcessor> {
+    pr_link
+        .map(|pr_link| {
+            static PR_NUMBER: LazyLock<Regex> =
+                LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
+            // Replace #123 with [#123](https://link_to_pr).
+            // If the number refers to an issue, GitHub redirects the PR link to the issue link.
+            vec![TextProcessor {
+                pattern: PR_NUMBER.clone(),
+                replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
+                replace_command: None,
+            }]
+        })
+        .unwrap_or_default()
 }
 
 fn commit_parser(regex: &str, group: &str) -> CommitParser {
