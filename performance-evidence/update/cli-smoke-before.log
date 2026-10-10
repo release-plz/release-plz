@@ -1,0 +1,16 @@
+    Finished `bench` profile [optimized] target(s) in 0.16s
+     Running benches/update.rs (/workspace/release-plz/target/release/deps/update-b3c357cbcd67371f)
+Gnuplot not found, using plotters backend
+Testing update/single_noop
+Success
+Testing update/single_change
+Success
+Testing update/history_100
+Success
+Testing update/workspace_10_noop
+Success
+Testing update/workspace_10_one_change
+Success
+Testing update/workspace_10_dependency_chain
+Success
+

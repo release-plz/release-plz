@@ -1,0 +1,30 @@
+   Compiling changelog-git-defaults-evidence v0.0.0 (/workspace/performance-evidence/git-defaults)
+    Finished `release` profile [optimized] target(s) in 1.20s
+     Running unittests src/lib.rs (/workspace/release-plz/target/release/deps/changelog_git_defaults_evidence-4ebd086ef802fa98)
+
+running 16 tests
+test changelog_parser::tests::changelog_header_is_parsed ... ok
+test changelog_parser::tests::changelog_header_with_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test changelog_parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test changelog_parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test changelog_parser::tests::changelog_header_isnt_recognized ... ok
+test implementation::empty_changelog_is_updated ... ok
+test implementation::tests::changelog_entry_with_link_is_generated ... ok
+test implementation::tests::changelog_entries_are_generated ... ok
+test implementation::tests::changelog_has_commit_id ... ok
+test implementation::tests::changelog_is_updated ... ok
+test implementation::tests::changelog_sort_newest ... ok
+test implementation::tests::changelog_without_header_is_updated ... ok
+test implementation::tests::generated_changelog_is_updated_correctly ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests changelog_git_defaults_evidence
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

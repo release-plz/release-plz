@@ -1,0 +1,46 @@
+   Compiling changelog-header-evidence v0.0.0 (/workspace/performance-evidence/changelog)
+    Finished `bench` profile [optimized] target(s) in 1.14s
+     Running benches/header.rs (/workspace/release-plz/target/release/deps/header-a1b9e105540e00b2)
+Benchmarking changelog_header/without_unreleased/short
+Benchmarking changelog_header/without_unreleased/short: Warming up for 1.0000 s
+Benchmarking changelog_header/without_unreleased/short: Collecting 100 samples in estimated 3.0008 s (16M iterations)
+Benchmarking changelog_header/without_unreleased/short: Analyzing
+changelog_header/without_unreleased/short
+                        time:   [185.98 ns 186.53 ns 187.20 ns]
+                        change: [−65.410% −65.186% −64.969%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high mild
+Benchmarking changelog_header/without_unreleased/long_header
+Benchmarking changelog_header/without_unreleased/long_header: Warming up for 1.0000 s
+Benchmarking changelog_header/without_unreleased/long_header: Collecting 100 samples in estimated 3.0628 s (242k iterations)
+Benchmarking changelog_header/without_unreleased/long_header: Analyzing
+changelog_header/without_unreleased/long_header
+                        time:   [12.451 µs 12.466 µs 12.484 µs]
+                        change: [−78.314% −78.097% −77.928%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 15 outliers among 100 measurements (15.00%)
+  1 (1.00%) high mild
+  14 (14.00%) high severe
+Benchmarking changelog_header/without_unreleased/history_100
+Benchmarking changelog_header/without_unreleased/history_100: Warming up for 1.0000 s
+Benchmarking changelog_header/without_unreleased/history_100: Collecting 100 samples in estimated 3.0010 s (414k iterations)
+Benchmarking changelog_header/without_unreleased/history_100: Analyzing
+changelog_header/without_unreleased/history_100
+                        time:   [7.2362 µs 7.2677 µs 7.3131 µs]
+                        change: [−5.3299% −4.8886% −4.1931%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) high mild
+  6 (6.00%) high severe
+Benchmarking changelog_header/unreleased_control
+Benchmarking changelog_header/unreleased_control: Warming up for 1.0000 s
+Benchmarking changelog_header/unreleased_control: Collecting 100 samples in estimated 3.0004 s (24M iterations)
+Benchmarking changelog_header/unreleased_control: Analyzing
+changelog_header/unreleased_control
+                        time:   [108.40 ns 109.20 ns 110.00 ns]
+                        change: [−0.4569% +1.3102% +3.0479%] (p = 0.15 > 0.05)
+                        No change in performance detected.
+Found 15 outliers among 100 measurements (15.00%)
+  15 (15.00%) high mild
+

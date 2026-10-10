@@ -1,0 +1,48 @@
+   Compiling changelog-git-defaults-evidence v0.0.0 (/workspace/performance-evidence/git-defaults)
+    Finished `bench` profile [optimized] target(s) in 1.52s
+     Running benches/git_defaults.rs (/workspace/release-plz/target/release/deps/git_defaults-37d2df507aa37a55)
+Benchmarking git_defaults/configured_phase
+Benchmarking git_defaults/configured_phase: Warming up for 1.0000 s
+Benchmarking git_defaults/configured_phase: Collecting 100 samples in estimated 3.0185 s (510k iterations)
+Benchmarking git_defaults/configured_phase: Analyzing
+git_defaults/configured_phase
+                        time:   [1.2595 µs 1.2643 µs 1.2697 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+Benchmarking git_defaults/empty_phase_control
+Benchmarking git_defaults/empty_phase_control: Warming up for 1.0000 s
+Benchmarking git_defaults/empty_phase_control: Collecting 100 samples in estimated 3.0074 s (682k iterations)
+Benchmarking git_defaults/empty_phase_control: Analyzing
+git_defaults/empty_phase_control
+                        time:   [1.1238 µs 1.1691 µs 1.2134 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+Benchmarking git_defaults/build_generate_custom_1
+Benchmarking git_defaults/build_generate_custom_1: Warming up for 1.0000 s
+Benchmarking git_defaults/build_generate_custom_1: Collecting 100 samples in estimated 3.7575 s (20k iterations)
+Benchmarking git_defaults/build_generate_custom_1: Analyzing
+git_defaults/build_generate_custom_1
+                        time:   [185.92 µs 186.72 µs 187.56 µs]
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking git_defaults/build_generate_custom_20
+Benchmarking git_defaults/build_generate_custom_20: Warming up for 1.0000 s
+Benchmarking git_defaults/build_generate_custom_20: Collecting 100 samples in estimated 5.4220 s (10k iterations)
+Benchmarking git_defaults/build_generate_custom_20: Analyzing
+git_defaults/build_generate_custom_20
+                        time:   [632.97 µs 651.68 µs 669.05 µs]
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+Benchmarking git_defaults/build_generate_default_control_1
+Benchmarking git_defaults/build_generate_default_control_1: Warming up for 1.0000 s
+Benchmarking git_defaults/build_generate_default_control_1: Collecting 100 samples in estimated 4.2003 s (15k iterations)
+Benchmarking git_defaults/build_generate_default_control_1: Analyzing
+git_defaults/build_generate_default_control_1
+                        time:   [267.50 µs 276.38 µs 285.48 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  4 (4.00%) high mild
+

@@ -1,0 +1,83 @@
+{
+  "round1": {
+    "build_generate_custom_1": {
+      "before_ns": 184935.2235478727,
+      "after_ns": 185917.91412440783,
+      "change_percent": 0.5313701509549018
+    },
+    "build_generate_custom_20": {
+      "before_ns": 594653.3736611988,
+      "after_ns": 654011.5188601359,
+      "change_percent": 9.98197400840044
+    },
+    "build_generate_default_control_1": {
+      "before_ns": 267242.9399178121,
+      "after_ns": 371943.9188336935,
+      "change_percent": 39.17820203148532
+    },
+    "configured_phase": {
+      "before_ns": 1296.9093428942913,
+      "after_ns": 46.1737773323879,
+      "change_percent": -96.43970663135616
+    },
+    "empty_phase_control": {
+      "before_ns": 1108.7303919554124,
+      "after_ns": 1731.955574279973,
+      "change_percent": 56.210706123551766
+    }
+  },
+  "round2": {
+    "build_generate_custom_1": {
+      "before_ns": 192256.97651975625,
+      "after_ns": 199560.22984307268,
+      "change_percent": 3.7986935275485134
+    },
+    "build_generate_custom_20": {
+      "before_ns": 604867.8985020434,
+      "after_ns": 570291.5813554847,
+      "change_percent": -5.716341904106182
+    },
+    "build_generate_default_control_1": {
+      "before_ns": 183761.84339807404,
+      "after_ns": 183972.83952116797,
+      "change_percent": 0.11482042147175076
+    },
+    "configured_phase": {
+      "before_ns": 1186.3834109029387,
+      "after_ns": 44.07514877690427,
+      "change_percent": -96.28491528355413
+    },
+    "empty_phase_control": {
+      "before_ns": 1426.3906457093306,
+      "after_ns": 1492.1716337295554,
+      "change_percent": 4.611709156821675
+    }
+  },
+  "round3": {
+    "build_generate_custom_1": {
+      "before_ns": 190188.22937848303,
+      "after_ns": 189273.37948036497,
+      "change_percent": -0.48102340565854274
+    },
+    "build_generate_custom_20": {
+      "before_ns": 590855.9512035432,
+      "after_ns": 589993.3734198475,
+      "change_percent": -0.1459878303567419
+    },
+    "build_generate_default_control_1": {
+      "before_ns": 186623.24984135907,
+      "after_ns": 180105.22081109704,
+      "change_percent": -3.4926136136857244
+    },
+    "configured_phase": {
+      "before_ns": 1266.7150138099962,
+      "after_ns": 51.12456483664886,
+      "change_percent": -95.9640041935812
+    },
+    "empty_phase_control": {
+      "before_ns": 1454.4385984780322,
+      "after_ns": 1458.3162012546911,
+      "change_percent": 0.2666047766276769
+    }
+  }
+}

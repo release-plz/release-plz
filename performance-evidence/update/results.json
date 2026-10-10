@@ -1,0 +1,58 @@
+[
+  {
+    "benchmark": "inheritance_scan/independent/100",
+    "statistic": "slope",
+    "before_ns": 235103.70438121047,
+    "after_ns": 2112.485345946862,
+    "reduction_percent": 99.10146658407322
+  },
+  {
+    "benchmark": "inheritance_scan/independent/10",
+    "statistic": "slope",
+    "before_ns": 26143.215698616797,
+    "after_ns": 2124.814192169171,
+    "reduction_percent": 91.87240691174196
+  },
+  {
+    "benchmark": "inheritance_scan/inherited/100",
+    "statistic": "slope",
+    "before_ns": 261026.61851206608,
+    "after_ns": 254231.70997289973,
+    "reduction_percent": 2.6031477471146314
+  },
+  {
+    "benchmark": "inheritance_scan/inherited/10",
+    "statistic": "slope",
+    "before_ns": 28738.574921600164,
+    "after_ns": 28199.984078765854,
+    "reduction_percent": 1.8741042111642736
+  },
+  {
+    "benchmark": "inheritance_scan/member_manifest/100",
+    "statistic": "slope",
+    "before_ns": 281444.5872107567,
+    "after_ns": 259264.86339205058,
+    "reduction_percent": 7.880671658502036
+  },
+  {
+    "benchmark": "inheritance_scan/member_manifest/10",
+    "statistic": "slope",
+    "before_ns": 27985.210306924684,
+    "after_ns": 27893.479724982433,
+    "reduction_percent": 0.32778235695285485
+  },
+  {
+    "benchmark": "update/workspace_10_one_change",
+    "statistic": "mean",
+    "before_ns": 562016809.3,
+    "after_ns": 574860748.7,
+    "reduction_percent": -2.285330116015105
+  },
+  {
+    "benchmark": "update/workspace_10_noop",
+    "statistic": "mean",
+    "before_ns": 539555023.1,
+    "after_ns": 540587223.3,
+    "reduction_percent": -0.19130582717392652
+  }
+]

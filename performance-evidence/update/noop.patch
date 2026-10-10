@@ -1,0 +1,12 @@
+--- a/crates/release_plz_core/src/command/update/mod.rs
++++ b/crates/release_plz_core/src/command/update/mod.rs
+@@ -42,6 +42,9 @@
+     let (packages_to_update, repository) = crate::next_versions(input)
+         .await
+         .context("failed to determine next versions")?;
++    if packages_to_update.updates().is_empty() && packages_to_update.workspace_version().is_none() {
++        return Ok((packages_to_update, repository));
++    }
+     let local_manifest_path = input.local_manifest();
+     // Version analysis runs in an isolated copy, so the request's metadata is
+     // still current. Relocate manifest paths when release-pr updates a copy.

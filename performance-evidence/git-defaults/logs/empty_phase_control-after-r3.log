@@ -1,0 +1,9 @@
+Benchmarking git_defaults/empty_phase_control
+Benchmarking git_defaults/empty_phase_control: Warming up for 1.0000 s
+Benchmarking git_defaults/empty_phase_control: Collecting 100 samples in estimated 3.0261 s (540k iterations)
+Benchmarking git_defaults/empty_phase_control: Analyzing
+git_defaults/empty_phase_control
+                        time:   [1.9676 µs 2.0836 µs 2.1726 µs]
+                        change: [−15.605% +0.2666% +16.816%] (p = 0.98 > 0.05)
+                        No change in performance detected.
+

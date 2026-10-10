@@ -1,0 +1,55 @@
+    Finished `bench` profile [optimized] target(s) in 0.17s
+     Running benches/inheritance.rs (/workspace/release-plz/target/release/deps/inheritance-2ed518a0b240235b)
+Gnuplot not found, using plotters backend
+Benchmarking inheritance_scan/independent/10
+Benchmarking inheritance_scan/independent/10: Warming up for 1.0000 s
+Benchmarking inheritance_scan/independent/10: Collecting 40 samples in estimated 3.0212 s (116k iterations)
+Benchmarking inheritance_scan/independent/10: Analyzing
+inheritance_scan/independent/10
+                        time:   [25.358 µs 26.143 µs 27.150 µs]
+Found 3 outliers among 40 measurements (7.50%)
+  3 (7.50%) high severe
+Benchmarking inheritance_scan/independent/100
+Benchmarking inheritance_scan/independent/100: Warming up for 1.0000 s
+Benchmarking inheritance_scan/independent/100: Collecting 40 samples in estimated 3.1241 s (13k iterations)
+Benchmarking inheritance_scan/independent/100: Analyzing
+inheritance_scan/independent/100
+                        time:   [233.68 µs 235.10 µs 236.82 µs]
+Found 2 outliers among 40 measurements (5.00%)
+  2 (5.00%) high mild
+Benchmarking inheritance_scan/inherited/10
+Benchmarking inheritance_scan/inherited/10: Warming up for 1.0000 s
+Benchmarking inheritance_scan/inherited/10: Collecting 40 samples in estimated 3.0092 s (101k iterations)
+Benchmarking inheritance_scan/inherited/10: Analyzing
+inheritance_scan/inherited/10
+                        time:   [28.357 µs 28.739 µs 29.216 µs]
+Found 1 outliers among 40 measurements (2.50%)
+  1 (2.50%) high severe
+Benchmarking inheritance_scan/inherited/100
+Benchmarking inheritance_scan/inherited/100: Warming up for 1.0000 s
+Benchmarking inheritance_scan/inherited/100: Collecting 40 samples in estimated 3.0184 s (11k iterations)
+Benchmarking inheritance_scan/inherited/100: Analyzing
+inheritance_scan/inherited/100
+                        time:   [257.89 µs 261.03 µs 265.26 µs]
+Found 6 outliers among 40 measurements (15.00%)
+  3 (7.50%) high mild
+  3 (7.50%) high severe
+Benchmarking inheritance_scan/member_manifest/10
+Benchmarking inheritance_scan/member_manifest/10: Warming up for 1.0000 s
+Benchmarking inheritance_scan/member_manifest/10: Collecting 40 samples in estimated 3.0148 s (105k iterations)
+Benchmarking inheritance_scan/member_manifest/10: Analyzing
+inheritance_scan/member_manifest/10
+                        time:   [27.602 µs 27.985 µs 28.482 µs]
+Found 2 outliers among 40 measurements (5.00%)
+  1 (2.50%) high mild
+  1 (2.50%) high severe
+Benchmarking inheritance_scan/member_manifest/100
+Benchmarking inheritance_scan/member_manifest/100: Warming up for 1.0000 s
+Benchmarking inheritance_scan/member_manifest/100: Collecting 40 samples in estimated 3.0009 s (11k iterations)
+Benchmarking inheritance_scan/member_manifest/100: Analyzing
+inheritance_scan/member_manifest/100
+                        time:   [271.32 µs 281.44 µs 292.83 µs]
+Found 4 outliers among 40 measurements (10.00%)
+  1 (2.50%) high mild
+  3 (7.50%) high severe
+

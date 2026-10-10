@@ -1,0 +1,36 @@
+   Compiling syn v3.0.6
+   Compiling aho-corasick v1.1.5
+   Compiling serde_json v1.0.151
+   Compiling regex-automata v0.4.18
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling thiserror v2.0.21
+   Compiling regex v1.13.1
+   Compiling parse-changelog v0.6.17
+   Compiling serde v1.0.229
+   Compiling tinytemplate v1.2.1
+   Compiling ciborium v0.2.2
+   Compiling cargo_metadata v0.23.1
+   Compiling criterion v0.8.2
+   Compiling changelog-header-evidence v0.0.0 (/workspace/performance-evidence/changelog)
+    Finished `test` profile [unoptimized] target(s) in 3.65s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/changelog_header_evidence-07be299dbc4259b0)
+
+running 8 tests
+test parser::tests::changelog_header_with_crlf_parsed_will_contain_crlf ... ok
+test parser::tests::changelog_header_with_versions_is_parsed ... ok
+test parser::tests::changelog_header_is_parsed ... ok
+test parser::tests::changelog_header_without_unreleased_and_two_previous_versions_is_parsed ... ok
+test parser::tests::changelog_header_without_unreleased_is_parsed ... ok
+test parser::tests::changelog_without_unreleased_section_is_parsed ... ok
+test parser::tests::changelog_with_unreleased_section_is_parsed ... ok
+test parser::tests::changelog_header_isnt_recognized ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests changelog_header_evidence
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,4 @@
+/target/
+/binaries/
+/logs/metadata.json
+/logs/build-*.jsonl

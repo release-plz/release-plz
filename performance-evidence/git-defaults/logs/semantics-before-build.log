@@ -1,0 +1,3 @@
+   Compiling changelog-git-defaults-evidence v0.0.0 (/workspace/performance-evidence/git-defaults)
+    Finished `release` profile [optimized] target(s) in 1.25s
+     Running `/workspace/release-plz/target/release/examples/semantics`

@@ -1,0 +1,558 @@
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libz.so.1", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libgcc_s.so.1", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libm.so.6", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/local/ssl/openssl.cnf", O_RDONLY) = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/proc/self/maps", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/proc/self/cgroup", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/sys/fs/cgroup/cpu.max", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72176, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "./release-plz.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72181, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72182, si_uid=1000, si_status=1, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72183, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72184, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72186, si_uid=1000, si_status=1, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/proc/self/cgroup", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/sys/fs/cgroup/cpu.max", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/cliff.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72187, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/proc/self/cgroup", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/sys/fs/cgroup/cpu.max", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/info/exclude", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.gitattributes", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.gitattributes", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/Cargo.lock", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/Cargo.lock", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-7", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-7/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-7/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-7/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-7/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-7/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-0", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-0/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-0/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-0/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-0/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-0/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-4", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-4/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-4/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-4/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-4/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-4/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-8", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-8/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-8/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-8/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-8/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-8/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-1", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-1/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-1/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-1/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-1/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-1/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-6", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-6/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-6/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-6/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-6/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-6/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-2", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-2/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-2/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-2/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-2/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-2/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-9", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-9/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-9/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-9/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-9/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-9/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-3", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-3/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-3/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-3/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-3/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-3/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-5", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-5/src", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-5/src/lib.rs", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-5/src/lib.rs", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-5/Cargo.toml", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-5/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/cliff.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/cliff.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/release-plz.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/release-plz.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/README.md", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/README.md", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/Cargo.toml", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/logs", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/logs/refs", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/logs/refs/heads", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/logs/refs/heads/master", O_RDONLY|O_CLOEXEC) = 11
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/logs/refs/heads/master", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 12
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/logs/HEAD", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/logs/HEAD", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/d5", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/d5/7fbf4b23365c745a3a5a40f452bc657abf6643", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/d5/7fbf4b23365c745a3a5a40f452bc657abf6643", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/55", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/55/d75a936f7cee9244daf0fde2508291f619c9f2", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/55/d75a936f7cee9244daf0fde2508291f619c9f2", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/dd", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/dd/8a9d17987c43434c3a38c89c4c104eaffab4fd", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/dd/8a9d17987c43434c3a38c89c4c104eaffab4fd", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/a9", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/a9/862baf6635e083878b204d0aaa1ef102633e61", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/a9/862baf6635e083878b204d0aaa1ef102633e61", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/16", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/16/7eab8789f31600bef5cfa7d70224a00256546e", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/16/7eab8789f31600bef5cfa7d70224a00256546e", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/fb", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/fb/6e9a09f98eb0762e06de62f15c49b41f2e2481", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/fb/6e9a09f98eb0762e06de62f15c49b41f2e2481", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/e2", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/e2/7c5f1ceabd8df0462895ca3164c7daf5b75561", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/e2/7c5f1ceabd8df0462895ca3164c7daf5b75561", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/ba", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/ba/0fa0938e788fc5aeb71fca8cdad8ff554cca92", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/ba/0fa0938e788fc5aeb71fca8cdad8ff554cca92", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/c2", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/c2/72f1ea4029556b95310ebc16a48cedfb9b9fb3", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/c2/72f1ea4029556b95310ebc16a48cedfb9b9fb3", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/53", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/53/9a9ef3ebf57785346020592a1adc56c34838a1", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/53/9a9ef3ebf57785346020592a1adc56c34838a1", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/e7", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/e7/cfe2e402feb00feed9f7028fbd1569e6a3e3ef", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/e7/cfe2e402feb00feed9f7028fbd1569e6a3e3ef", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/3e", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/3e/34ae8d70e0ad57e08985fce141d3be958fc0c8", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/3e/34ae8d70e0ad57e08985fce141d3be958fc0c8", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/3e/6fa4e2d57f60564c3d7de0a20c7d99dd24a2fd", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/3e/6fa4e2d57f60564c3d7de0a20c7d99dd24a2fd", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/ff", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/ff/356350078c6d610a118ac97a9053f1f156d13e", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/ff/356350078c6d610a118ac97a9053f1f156d13e", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/info", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/0f", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/0f/641a21767cdb9c8ef833dea0d018af45f6903a", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/0f/641a21767cdb9c8ef833dea0d018af45f6903a", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/2d", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/2d/9397970701480c4c222a141e873516ce459799", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/2d/9397970701480c4c222a141e873516ce459799", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/8f", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/8f/f445ddd8082a0771a904601f325e47f356e4e0", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/8f/f445ddd8082a0771a904601f325e47f356e4e0", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/a7", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/a7/835a0fb529c8e27a3730e3740a58e5af004969", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/a7/835a0fb529c8e27a3730e3740a58e5af004969", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/pack", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/6a", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/6a/98d6476c634528fb06df331d85eae2e87e63ea", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/6a/98d6476c634528fb06df331d85eae2e87e63ea", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/eb", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/eb/265dc0aa7f04d5e7b1d190a480230300f43d3d", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/eb/265dc0aa7f04d5e7b1d190a480230300f43d3d", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/86", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/86/cfa5d50b9a6d63cc632822e0492792ab592303", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/86/cfa5d50b9a6d63cc632822e0492792ab592303", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/98", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/98/b2b849e195abc4cbb88a732f8559ae26dd9a93", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/98/b2b849e195abc4cbb88a732f8559ae26dd9a93", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/6d", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/6d/9f79b9f3236182e8beb1313b87a00e4005009f", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/6d/9f79b9f3236182e8beb1313b87a00e4005009f", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/f2", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/f2/da05c8f688de695bc2b3c75623189d88940900", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/f2/da05c8f688de695bc2b3c75623189d88940900", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/e3", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/e3/5dc17b8cccb14a02836da08869c264b4091a6d", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/e3/5dc17b8cccb14a02836da08869c264b4091a6d", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/fa", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/fa/1385d99a319b43c06f5309d1aae9fdd3adea46", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/fa/1385d99a319b43c06f5309d1aae9fdd3adea46", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/2b", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/2b/be1d16113b3f99d7c2511f0d662be27f63294d", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/2b/be1d16113b3f99d7c2511f0d662be27f63294d", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/ca", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/ca/c96f708fbbb01edfa38b02bba1c302b94ed261", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/ca/c96f708fbbb01edfa38b02bba1c302b94ed261", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/03", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/03/4e5b19fb996e16889eec2201a55de728435eb2", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/03/4e5b19fb996e16889eec2201a55de728435eb2", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/0c", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/0c/037ea9675376b1c90b76c44e2744d880d916d4", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/0c/037ea9675376b1c90b76c44e2744d880d916d4", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/f9", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/objects/f9/0e1080e331ca33ccfc3fc91c448420f0e47f20", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/objects/f9/0e1080e331ca33ccfc3fc91c448420f0e47f20", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100400) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/index", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/index", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/refs", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/refs/heads", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/refs/heads/master", O_RDONLY|O_CLOEXEC) = 10
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/refs/heads/master", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 11
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/refs/tags", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/config", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/config", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/HEAD", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/HEAD", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/info", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/info/exclude", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/info/exclude", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 7
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/post-update.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/post-update.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/pre-push.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/pre-push.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/sendemail-validate.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/sendemail-validate.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/pre-applypatch.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/pre-applypatch.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/prepare-commit-msg.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/prepare-commit-msg.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/pre-commit.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/pre-commit.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/applypatch-msg.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/applypatch-msg.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/pre-merge-commit.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/pre-merge-commit.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/pre-receive.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/pre-receive.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/update.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/update.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/fsmonitor-watchman.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/fsmonitor-watchman.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/commit-msg.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/commit-msg.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/pre-rebase.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/pre-rebase.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/hooks/push-to-checkout.sample", O_RDONLY|O_CLOEXEC) = 8
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/hooks/push-to-checkout.sample", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100700) = 10
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/description", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/description", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/.git/COMMIT_EDITMSG", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/.git/COMMIT_EDITMSG", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0100600) = 8
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72196, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72197, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72199, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72200, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72201, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-0/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-0/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72202, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+openat(AT_FDCWD, "/tmp/.tmpI3hUfW", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgVS0P0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-0/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-0/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72238, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-1/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-1/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpaqh58N", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72280, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmplTHFtH", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-1/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-1/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72288, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72293, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72294, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72297, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-2/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-2/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72298, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpEylODY", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72319, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpMPlm97", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-2/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-2/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72327, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72333, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72336, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-3/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-3/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72337, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpfZNzhk", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72358, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmplas31e", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-3/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-3/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72365, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72366, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72372, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72373, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72374, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72375, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-4/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-4/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72376, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpmr30q4", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72397, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmp2KkZTL", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-4/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-4/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72410, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72411, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72412, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72413, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-5/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-5/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72415, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+openat(AT_FDCWD, "/tmp/.tmpsBuk6p", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72436, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpY8vRUb", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-5/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-5/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72443, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72444, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72449, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72450, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72451, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72452, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-6/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-6/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72454, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpO1EW9r", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72475, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpG1xMRF", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-6/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-6/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72488, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72489, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72491, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-7/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-7/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72493, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpWGSiGp", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72514, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpxH9fYV", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-7/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-7/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72521, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72522, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72529, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72530, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-8/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-8/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72532, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpm8E83l", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72553, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpPvGZvM", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-8/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-8/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72560, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72561, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72566, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72567, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72568, si_uid=1000, si_status=128, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72569, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72570, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-9/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-9/Cargo.toml", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72571, si_uid=1000, si_status=0, si_utime=1 /* 0.01 s */, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpUj7qHs", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72592, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/tmp/.tmpeUOaGf", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3/current/packages/package-9/src/lib.rs", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/released/packages/package-9/src/lib.rs", O_RDONLY|O_CLOEXEC) = 7
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72599, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72600, si_uid=1000, si_status=0, si_utime=0, si_stime=1 /* 0.01 s */} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72605, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/dev/null", O_RDONLY|O_CLOEXEC) = 6
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=72606, si_uid=1000, si_status=0, si_utime=0, si_stime=0} ---
+openat(AT_FDCWD, "/proc/self/cgroup", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/sys/fs/cgroup/cpu.max", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-0/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-1/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-2/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-3/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-4/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-5/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-6/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-7/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-8/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/packages/package-9/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/workspace/perf-evidence/update/fixture-10/current/Cargo.toml", O_RDONLY|O_CLOEXEC) = 6
+openat(AT_FDCWD, "/tmp/.tmpgwM1L3", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 6
+openat(6, "current", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 7
+openat(7, ".git", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 8
+openat(8, "hooks", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(8, "info", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(8, "refs", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "tags", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "heads", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "objects", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "f9", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "0c", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "03", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "ca", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "2b", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "fa", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "e3", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "f2", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "6d", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "98", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "86", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "eb", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "6a", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "pack", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "a7", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "8f", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "2d", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "0f", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "info", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "ff", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "3e", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "e7", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "53", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "c2", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "ba", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "e2", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "fb", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "16", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "a9", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "dd", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "55", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(10, "d5", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "logs", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "refs", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(11, "heads", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 12
+openat(7, "packages", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 8
+openat(8, "package-5", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-3", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-9", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-2", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-6", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-1", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-8", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-4", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
+openat(8, "package-7", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 10
+openat(10, "src", O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 11
++++ exited with 0 +++

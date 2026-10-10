@@ -1,0 +1,8 @@
+    Checking cargo_utils v0.1.86 (/workspace/perf-validation/crates/cargo_utils)
+    Checking next_version v0.3.3 (/workspace/perf-validation/crates/next_version)
+    Checking git_cmd v0.9.0 (/workspace/perf-validation/crates/git_cmd)
+    Checking test_logs v0.1.34 (/workspace/perf-validation/crates/test_logs)
+    Checking release_plz_core v0.39.0 (/workspace/perf-validation/crates/release_plz_core)
+    Checking fake_package v0.1.0 (/workspace/perf-validation/crates/fake_package)
+    Checking release-plz v0.3.171 (/workspace/perf-validation/crates/release_plz)
+    Finished `dev` profile [unoptimized] target(s) in 3.19s

@@ -1,0 +1,117 @@
+    Updating crates.io index
+     Locking 17 packages to highest Rust 1.99.0 compatible versions
+      Adding alloca v0.4.0
+      Adding anes v0.1.6
+      Adding cast v0.3.0
+      Adding ciborium v0.2.2
+      Adding ciborium-io v0.2.2
+      Adding ciborium-ll v0.2.2
+      Adding criterion v0.8.2
+      Adding criterion-plot v0.8.2
+      Adding crunchy v0.2.4
+      Adding half v2.7.1
+      Adding itertools v0.13.0
+      Adding oorandom v11.1.5
+      Adding page_size v0.6.0
+      Adding tinytemplate v1.2.1
+      Adding winapi v0.3.9
+      Adding winapi-i686-pc-windows-gnu v0.4.0
+      Adding winapi-x86_64-pc-windows-gnu v0.4.0
+   Compiling syn v3.0.6
+   Compiling zerocopy v0.8.59
+   Compiling serde_json v1.0.151
+   Compiling zerocopy-derive v0.8.59
+   Compiling smallvec v1.16.2
+   Compiling cc v1.6.0
+   Compiling alloca v0.4.0
+   Compiling synstructure v0.14.0
+   Compiling num-traits v0.2.19
+   Compiling fs-err v3.3.2
+   Compiling percent-encoding v2.3.2
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerovec-derive v0.11.6
+   Compiling zerofrom v0.1.8
+   Compiling displaydoc v0.2.7
+   Compiling yoke v0.8.3
+   Compiling serde_derive v1.0.229
+   Compiling zerotrie v0.2.5
+   Compiling zerovec v0.11.8
+   Compiling thiserror-impl v2.0.21
+   Compiling tinystr v0.8.4
+   Compiling icu_locale_core v2.3.0
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling half v2.7.1
+   Compiling icu_provider v2.3.1
+   Compiling serde v1.0.229
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling rustix v1.1.5
+   Compiling hashbrown v0.17.1
+   Compiling either v1.18.0
+   Compiling idna_adapter v1.2.2
+   Compiling regex-syntax v0.8.11
+   Compiling getrandom v0.4.3
+   Compiling ciborium-ll v0.2.2
+   Compiling idna v1.1.0
+   Compiling indexmap v2.14.2
+   Compiling itertools v0.13.0
+   Compiling thiserror v2.0.21
+   Compiling regex-automata v0.4.18
+   Compiling form_urlencoded v1.2.2
+   Compiling serde_spanned v1.1.1
+   Compiling zeroize v1.9.0
+   Compiling toml v1.1.6+spec-1.1.0
+   Compiling secrecy v0.10.3
+   Compiling criterion-plot v0.8.2
+   Compiling regex v1.13.1
+   Compiling cargo_metadata v0.23.1
+   Compiling url v2.5.8
+   Compiling toml_edit v0.25.15+spec-1.1.0
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling criterion v0.8.2
+   Compiling tempfile v3.27.0
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `bench` profile [optimized] target(s) in 26.37s
+     Running benches/manifest_perf.rs (/workspace/release-plz/target/release/deps/manifest_perf-b7e6cca4704b6375)
+Benchmarking workspace_members/shared_3/10
+Benchmarking workspace_members/shared_3/10: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_3/10: Collecting 100 samples in estimated 3.1325 s (101k iterations)
+Benchmarking workspace_members/shared_3/10: Analyzing
+workspace_members/shared_3/10
+                        time:   [30.730 µs 30.862 µs 30.996 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  6 (6.00%) high mild
+  1 (1.00%) high severe
+Benchmarking workspace_members/shared_10/100
+Benchmarking workspace_members/shared_10/100: Warming up for 1.0000 s
+
+Warning: Unable to complete 100 samples in 3.0s. You may wish to increase target time to 4.4s, enable flat sampling, or reduce sample count to 50.
+Benchmarking workspace_members/shared_10/100: Collecting 100 samples in estimated 4.3756 s (5050 iterations)
+Benchmarking workspace_members/shared_10/100: Analyzing
+workspace_members/shared_10/100
+                        time:   [849.82 µs 853.04 µs 856.66 µs]
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+Benchmarking workspace_members/shared_0/100
+Benchmarking workspace_members/shared_0/100: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_0/100: Collecting 100 samples in estimated 3.3060 s (25k iterations)
+Benchmarking workspace_members/shared_0/100: Analyzing
+workspace_members/shared_0/100
+                        time:   [119.35 µs 120.98 µs 123.77 µs]
+Found 13 outliers among 100 measurements (13.00%)
+  8 (8.00%) high mild
+  5 (5.00%) high severe
+Benchmarking workspace_members/unique_chain/100
+Benchmarking workspace_members/unique_chain/100: Warming up for 1.0000 s
+Benchmarking workspace_members/unique_chain/100: Collecting 100 samples in estimated 3.0734 s (15k iterations)
+Benchmarking workspace_members/unique_chain/100: Analyzing
+workspace_members/unique_chain/100
+                        time:   [199.79 µs 203.23 µs 207.98 µs]
+Found 9 outliers among 100 measurements (9.00%)
+  5 (5.00%) high mild
+  4 (4.00%) high severe
+

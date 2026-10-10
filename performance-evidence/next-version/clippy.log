@@ -1,0 +1,7 @@
+    Checking memchr v2.8.3
+    Checking semver v1.0.28
+    Checking aho-corasick v1.1.5
+    Checking regex-automata v0.4.18
+    Checking regex v1.13.1
+    Checking next_version v0.3.3 (/workspace/perf-next-version/crates/next_version)
+    Finished `dev` profile [unoptimized] target(s) in 1.61s

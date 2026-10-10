@@ -1,0 +1,10 @@
+Benchmarking git_defaults/build_generate_custom_20
+Benchmarking git_defaults/build_generate_custom_20: Warming up for 1.0000 s
+Benchmarking git_defaults/build_generate_custom_20: Collecting 100 samples in estimated 5.2552 s (10k iterations)
+Benchmarking git_defaults/build_generate_custom_20: Analyzing
+git_defaults/build_generate_custom_20
+                        time:   [607.17 µs 646.49 µs 693.16 µs]
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) high mild
+  4 (4.00%) high severe
+

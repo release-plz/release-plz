@@ -1,0 +1,9 @@
+Benchmarking git_defaults/configured_phase
+Benchmarking git_defaults/configured_phase: Warming up for 1.0000 s
+Benchmarking git_defaults/configured_phase: Collecting 100 samples in estimated 3.0243 s (520k iterations)
+Benchmarking git_defaults/configured_phase: Analyzing
+git_defaults/configured_phase
+                        time:   [62.137 ns 65.365 ns 68.134 ns]
+                        change: [−96.303% −95.964% −95.612%] (p = 0.00 < 0.05)
+                        Performance has improved.
+

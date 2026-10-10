@@ -1,0 +1,56 @@
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `bench` profile [optimized] target(s) in 2.72s
+     Running benches/manifest_perf.rs (/workspace/release-plz/target/release/deps/manifest_perf-b7e6cca4704b6375)
+Benchmarking workspace_package/first/10
+Benchmarking workspace_package/first/10: Warming up for 1.0000 s
+Benchmarking workspace_package/first/10: Collecting 100 samples in estimated 3.0016 s (6.5M iterations)
+Benchmarking workspace_package/first/10: Analyzing
+workspace_package/first/10
+                        time:   [444.08 ns 447.08 ns 451.32 ns]
+Found 12 outliers among 100 measurements (12.00%)
+  1 (1.00%) low severe
+  3 (3.00%) low mild
+  3 (3.00%) high mild
+  5 (5.00%) high severe
+Benchmarking workspace_package/last/10
+Benchmarking workspace_package/last/10: Warming up for 1.0000 s
+Benchmarking workspace_package/last/10: Collecting 100 samples in estimated 3.0016 s (6.6M iterations)
+Benchmarking workspace_package/last/10: Analyzing
+workspace_package/last/10
+                        time:   [466.64 ns 471.06 ns 475.74 ns]
+Benchmarking workspace_package/missing/10
+Benchmarking workspace_package/missing/10: Warming up for 1.0000 s
+Benchmarking workspace_package/missing/10: Collecting 100 samples in estimated 3.0019 s (5.7M iterations)
+Benchmarking workspace_package/missing/10: Analyzing
+workspace_package/missing/10
+                        time:   [494.31 ns 499.71 ns 506.50 ns]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking workspace_package/first/100
+Benchmarking workspace_package/first/100: Warming up for 1.0000 s
+Benchmarking workspace_package/first/100: Collecting 100 samples in estimated 3.0851 s (96k iterations)
+Benchmarking workspace_package/first/100: Analyzing
+workspace_package/first/100
+                        time:   [32.204 µs 32.323 µs 32.461 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+Benchmarking workspace_package/last/100
+Benchmarking workspace_package/last/100: Warming up for 1.0000 s
+Benchmarking workspace_package/last/100: Collecting 100 samples in estimated 3.0676 s (96k iterations)
+Benchmarking workspace_package/last/100: Analyzing
+workspace_package/last/100
+                        time:   [31.894 µs 32.044 µs 32.215 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  7 (7.00%) high mild
+  1 (1.00%) high severe
+Benchmarking workspace_package/missing/100
+Benchmarking workspace_package/missing/100: Warming up for 1.0000 s
+Benchmarking workspace_package/missing/100: Collecting 100 samples in estimated 3.1178 s (96k iterations)
+Benchmarking workspace_package/missing/100: Analyzing
+workspace_package/missing/100
+                        time:   [32.222 µs 32.280 µs 32.345 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  6 (6.00%) high mild
+  2 (2.00%) high severe
+

@@ -1,0 +1,26 @@
+[
+  {
+    "case": "unreleased_control",
+    "before_ns": 108.73035101734234,
+    "after_ns": 110.15491387622511,
+    "less_time_pct": -1.3101795823831752
+  },
+  {
+    "case": "without_unreleased/history_100",
+    "before_ns": 7634.044508842784,
+    "after_ns": 7260.848413949526,
+    "less_time_pct": 4.88857635635962
+  },
+  {
+    "case": "without_unreleased/long_header",
+    "before_ns": 57053.39533728684,
+    "after_ns": 12496.418771414039,
+    "less_time_pct": 78.09697617900211
+  },
+  {
+    "case": "without_unreleased/short",
+    "before_ns": 539.9900684271469,
+    "after_ns": 187.9924618130048,
+    "less_time_pct": 65.18594085247183
+  }
+]

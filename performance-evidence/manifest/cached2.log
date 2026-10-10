@@ -1,0 +1,41 @@
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `bench` profile [optimized] target(s) in 2.74s
+     Running benches/manifest_perf.rs (/workspace/release-plz/target/release/deps/manifest_perf-b7e6cca4704b6375)
+Benchmarking workspace_members/shared_3/10
+Benchmarking workspace_members/shared_3/10: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_3/10: Collecting 100 samples in estimated 3.0021 s (162k iterations)
+Benchmarking workspace_members/shared_3/10: Analyzing
+workspace_members/shared_3/10
+                        time:   [18.370 µs 18.437 µs 18.512 µs]
+Found 9 outliers among 100 measurements (9.00%)
+  7 (7.00%) high mild
+  2 (2.00%) high severe
+Benchmarking workspace_members/shared_10/100
+Benchmarking workspace_members/shared_10/100: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_10/100: Collecting 100 samples in estimated 3.8771 s (15k iterations)
+Benchmarking workspace_members/shared_10/100: Analyzing
+workspace_members/shared_10/100
+                        time:   [257.01 µs 257.59 µs 258.23 µs]
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+Benchmarking workspace_members/shared_0/100
+Benchmarking workspace_members/shared_0/100: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_0/100: Collecting 100 samples in estimated 3.1083 s (25k iterations)
+Benchmarking workspace_members/shared_0/100: Analyzing
+workspace_members/shared_0/100
+                        time:   [120.93 µs 121.98 µs 123.58 µs]
+Found 11 outliers among 100 measurements (11.00%)
+  2 (2.00%) low mild
+  5 (5.00%) high mild
+  4 (4.00%) high severe
+Benchmarking workspace_members/unique_chain/100
+Benchmarking workspace_members/unique_chain/100: Warming up for 1.0000 s
+Benchmarking workspace_members/unique_chain/100: Collecting 100 samples in estimated 3.3868 s (15k iterations)
+Benchmarking workspace_members/unique_chain/100: Analyzing
+workspace_members/unique_chain/100
+                        time:   [226.81 µs 227.68 µs 228.64 µs]
+Found 6 outliers among 100 measurements (6.00%)
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+

@@ -1,0 +1,22 @@
+[package]
+name = "changelog-header-evidence"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[dependencies]
+anyhow = "1.0.99"
+cargo_metadata = "0.23.0"
+fs-err = "3.1.1"
+parse-changelog = { version = "0.6.13", default-features = false }
+regex = "1.11.2"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "header"
+harness = false

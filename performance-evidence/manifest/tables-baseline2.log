@@ -1,0 +1,30 @@
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `bench` profile [optimized] target(s) in 2.60s
+     Running benches/manifest_perf.rs (/workspace/release-plz/target/release/deps/manifest_perf-b7e6cca4704b6375)
+Benchmarking dependency_tables_mut/0
+Benchmarking dependency_tables_mut/0: Warming up for 1.0000 s
+Benchmarking dependency_tables_mut/0: Collecting 100 samples in estimated 3.0002 s (50M iterations)
+Benchmarking dependency_tables_mut/0: Analyzing
+dependency_tables_mut/0 time:   [60.291 ns 60.761 ns 61.331 ns]
+Found 21 outliers among 100 measurements (21.00%)
+  16 (16.00%) high mild
+  5 (5.00%) high severe
+Benchmarking dependency_tables_mut/10
+Benchmarking dependency_tables_mut/10: Warming up for 1.0000 s
+Benchmarking dependency_tables_mut/10: Collecting 100 samples in estimated 3.0022 s (5.9M iterations)
+Benchmarking dependency_tables_mut/10: Analyzing
+dependency_tables_mut/10
+                        time:   [489.80 ns 491.77 ns 493.96 ns]
+Found 10 outliers among 100 measurements (10.00%)
+  4 (4.00%) high mild
+  6 (6.00%) high severe
+Benchmarking dependency_tables_mut/100
+Benchmarking dependency_tables_mut/100: Warming up for 1.0000 s
+Benchmarking dependency_tables_mut/100: Collecting 100 samples in estimated 3.0042 s (808k iterations)
+Benchmarking dependency_tables_mut/100: Analyzing
+dependency_tables_mut/100
+                        time:   [3.6633 µs 3.6779 µs 3.6974 µs]
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+

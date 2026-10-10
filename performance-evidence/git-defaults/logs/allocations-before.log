@@ -1,0 +1,5 @@
+   Compiling changelog-git-defaults-evidence v0.0.0 (/workspace/performance-evidence/git-defaults)
+    Finished `release` profile [optimized] target(s) in 0.33s
+     Running `/workspace/release-plz/target/release/examples/allocations`
+configured: 36 allocations / 15781 requested bytes
+empty: 36 allocations / 15781 requested bytes

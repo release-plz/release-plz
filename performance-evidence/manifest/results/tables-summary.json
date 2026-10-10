@@ -1,0 +1,29 @@
+[
+  {
+    "target_tables": 0,
+    "dependency_tables": 4,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 60.76056095439379,
+    "after": 38.95670985762762,
+    "percent_less_time": 35.88487458687536
+  },
+  {
+    "target_tables": 10,
+    "dependency_tables": 34,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 491.767133592915,
+    "after": 435.0581922310978,
+    "percent_less_time": 11.531665596985762
+  },
+  {
+    "target_tables": 100,
+    "dependency_tables": 304,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 3677.850209269248,
+    "after": 3094.9880508818474,
+    "percent_less_time": 15.847903672597086
+  }
+]

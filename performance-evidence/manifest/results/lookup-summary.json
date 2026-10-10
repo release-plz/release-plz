@@ -1,0 +1,62 @@
+[
+  {
+    "case": "first",
+    "members": 10,
+    "nonmembers": 101,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 447.0797668762837,
+    "after": 7.975977571946459,
+    "percent_less_time": 98.21598332940135
+  },
+  {
+    "case": "first",
+    "members": 100,
+    "nonmembers": 1001,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 32323.199069633592,
+    "after": 29.121433654072487,
+    "percent_less_time": 99.90990547194497
+  },
+  {
+    "case": "last",
+    "members": 10,
+    "nonmembers": 101,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 471.0594001766523,
+    "after": 36.61317710826873,
+    "percent_less_time": 92.22748190683842
+  },
+  {
+    "case": "last",
+    "members": 100,
+    "nonmembers": 1001,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 32044.248381075344,
+    "after": 354.66472012683107,
+    "percent_less_time": 98.89320318607851
+  },
+  {
+    "case": "missing",
+    "members": 10,
+    "nonmembers": 101,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 499.7108488753193,
+    "after": 77.35640767318395,
+    "percent_less_time": 84.51976621134258
+  },
+  {
+    "case": "missing",
+    "members": 100,
+    "nonmembers": 1001,
+    "estimate": "slope",
+    "units": "ns",
+    "before": 32279.84740108732,
+    "after": 508.39918453208344,
+    "percent_less_time": 98.42502605971131
+  }
+]

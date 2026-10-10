@@ -1,0 +1,17 @@
+[package]
+name = "next-version-perf-evidence"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+next_version = { path = "/workspace/perf-next-version/crates/next_version" }
+semver = "1.0"
+criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support", "html_reports", "plotters"] }
+
+[[bench]]
+name = "next_version"
+harness = false
+
+[workspace]
+resolver = "3"

@@ -1,0 +1,21 @@
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `test` profile [unoptimized] target(s) in 0.42s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/cargo_utils-5d111b04b5e830ad)
+
+running 7 tests
+test registry::tests::cargo_info_token_env_var_name_normalizes_dashes ... ok
+test registry::tests::cargo_info_token_env_var_name_for_crates_io_works ... ok
+test registry::tests::test_get_registry_env_var_name ... ok
+test registry::tests::cargo_info_token_env_var_name_invalid_registry_fails ... ok
+test token::tests::test_parse_cargo_credentials_empty ... ok
+test token::tests::test_parse_cargo_credentials_cratesio_only ... ok
+test token::tests::test_parse_cargo_credentials_both ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cargo_utils
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,13 @@
+Gnuplot not found, using plotters backend
+Benchmarking next_version/features/1000
+Benchmarking next_version/features/1000: Warming up for 500.00 ms
+Benchmarking next_version/features/1000: Collecting 40 samples in estimated 1.1104 s (5740 iterations)
+Benchmarking next_version/features/1000: Analyzing
+next_version/features/1000
+                        time:   [196.84 µs 198.21 µs 199.70 µs]
+                        thrpt:  [5.0076 Melem/s 5.0451 Melem/s 5.0804 Melem/s]
+                 change:
+                        time:   [+0.2514% +1.0403% +1.7924%] (p = 0.01 < 0.05)
+                        thrpt:  [−1.7608% −1.0295% −0.2507%]
+                        Change within noise threshold.
+

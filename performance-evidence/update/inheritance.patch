@@ -1,0 +1,63 @@
+diff --git a/crates/release_plz_core/src/command/update/updater.rs b/crates/release_plz_core/src/command/update/updater.rs
+index d52059aa..92a5f9e6 100644
+--- a/crates/release_plz_core/src/command/update/updater.rs
++++ b/crates/release_plz_core/src/command/update/updater.rs
+@@ -83,10 +83,21 @@ impl Updater<'_> {
+             self.req.cargo_metadata(),
+             crate::manifest_dir(local_manifest_path)?,
+         )?;
++        let (workspace_version, is_workspace_root) = {
++            let manifest = LocalManifest::try_new(local_manifest_path)?;
++            (
++                manifest.get_workspace_version(),
++                manifest.data.contains_key("workspace"),
++            )
++        };
+         let mut inheriting_packages = Vec::new();
+-        for package in &workspace_packages {
+-            if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
+-                inheriting_packages.push(package);
++        // A workspace root without a shared version cannot have inheriting members.
++        // Still scan if a library caller supplied a package manifest instead.
++        if workspace_version.is_some() || !is_workspace_root {
++            for package in &workspace_packages {
++                if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
++                    inheriting_packages.push(package);
++                }
+             }
+         }
+         let workspace_version_pkgs: HashSet<String> = inheriting_packages
+@@ -95,7 +106,7 @@ impl Updater<'_> {
+             .collect();
+ 
+         let new_workspace_version = self.new_workspace_version(
+-            local_manifest_path,
++            workspace_version.as_ref(),
+             &packages_diffs,
+             &workspace_version_pkgs,
+         )?;
+@@ -233,14 +244,10 @@ impl Updater<'_> {
+ 
+     fn new_workspace_version(
+         &self,
+-        local_manifest_path: &Utf8Path,
++        workspace_version: Option<&Version>,
+         packages_diffs: &[(&Package, Diff)],
+         workspace_version_pkgs: &HashSet<String>,
+     ) -> anyhow::Result<Option<Version>> {
+-        let workspace_version = {
+-            let local_manifest = LocalManifest::try_new(local_manifest_path)?;
+-            local_manifest.get_workspace_version()
+-        };
+         if workspace_version_pkgs.is_empty() {
+             return Ok(None);
+         }
+@@ -250,7 +257,7 @@ impl Updater<'_> {
+                 let pkg_config = self.req.get_package_config(&p.name);
+                 let version_updater = pkg_config.generic.version_updater()?;
+                 let next = p.version.next_from_diff(diff, version_updater);
+-                if let Some(workspace_version) = &workspace_version
++                if let Some(workspace_version) = workspace_version
+                     && &next >= workspace_version
+                 {
+                     new_versions.push(next);

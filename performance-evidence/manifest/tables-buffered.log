@@ -1,0 +1,35 @@
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `bench` profile [optimized] target(s) in 2.45s
+     Running benches/manifest_perf.rs (/workspace/release-plz/target/release/deps/manifest_perf-b7e6cca4704b6375)
+Benchmarking dependency_tables_mut/0
+Benchmarking dependency_tables_mut/0: Warming up for 1.0000 s
+Benchmarking dependency_tables_mut/0: Collecting 100 samples in estimated 3.0002 s (76M iterations)
+Benchmarking dependency_tables_mut/0: Analyzing
+dependency_tables_mut/0 time:   [38.635 ns 38.957 ns 39.300 ns]
+                        change: [−36.556% −35.964% −35.336%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+Benchmarking dependency_tables_mut/10
+Benchmarking dependency_tables_mut/10: Warming up for 1.0000 s
+Benchmarking dependency_tables_mut/10: Collecting 100 samples in estimated 3.0013 s (6.9M iterations)
+Benchmarking dependency_tables_mut/10: Analyzing
+dependency_tables_mut/10
+                        time:   [432.17 ns 435.06 ns 438.12 ns]
+                        change: [−12.243% −11.828% −11.388%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+Benchmarking dependency_tables_mut/100
+Benchmarking dependency_tables_mut/100: Warming up for 1.0000 s
+Benchmarking dependency_tables_mut/100: Collecting 100 samples in estimated 3.0019 s (954k iterations)
+Benchmarking dependency_tables_mut/100: Analyzing
+dependency_tables_mut/100
+                        time:   [3.0804 µs 3.0950 µs 3.1114 µs]
+                        change: [−16.426% −15.976% −15.507%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 100 measurements (8.00%)
+  8 (8.00%) high mild
+

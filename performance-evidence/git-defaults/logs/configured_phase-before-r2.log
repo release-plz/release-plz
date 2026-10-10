@@ -1,0 +1,11 @@
+Benchmarking git_defaults/configured_phase
+Benchmarking git_defaults/configured_phase: Warming up for 1.0000 s
+Benchmarking git_defaults/configured_phase: Collecting 100 samples in estimated 3.0128 s (520k iterations)
+Benchmarking git_defaults/configured_phase: Analyzing
+git_defaults/configured_phase
+                        time:   [1.1628 µs 1.1749 µs 1.1869 µs]
+Found 9 outliers among 100 measurements (9.00%)
+  5 (5.00%) low mild
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+

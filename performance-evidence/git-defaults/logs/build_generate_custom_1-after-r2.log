@@ -1,0 +1,12 @@
+Benchmarking git_defaults/build_generate_custom_1
+Benchmarking git_defaults/build_generate_custom_1: Warming up for 1.0000 s
+Benchmarking git_defaults/build_generate_custom_1: Collecting 100 samples in estimated 3.0084 s (15k iterations)
+Benchmarking git_defaults/build_generate_custom_1: Analyzing
+git_defaults/build_generate_custom_1
+                        time:   [195.94 µs 199.83 µs 204.30 µs]
+                        change: [+0.6556% +3.7987% +7.3568%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 100 measurements (12.00%)
+  7 (7.00%) high mild
+  5 (5.00%) high severe
+

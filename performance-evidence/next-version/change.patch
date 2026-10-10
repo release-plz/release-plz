@@ -1,0 +1,91 @@
+diff --git a/crates/next_version/src/version_increment.rs b/crates/next_version/src/version_increment.rs
+index 1de30a73..a37da546 100644
+--- a/crates/next_version/src/version_increment.rs
++++ b/crates/next_version/src/version_increment.rs
+@@ -41,6 +41,20 @@ impl VersionIncrement {
+         I: IntoIterator,
+         I::Item: AsRef<str>,
+     {
++        if current_version.major == 0
++            && current_version.minor == 0
++            && current_version.pre.is_empty()
++            && !updater.breaking_always_increment_major
++            && !updater.features_always_increment_minor
++            && updater.custom_major_increment_regex.is_none()
++            && updater.custom_minor_increment_regex.is_none()
++            && updater.no_increment_regex.is_none()
++        {
++            // With the default rules, every nonempty 0.0.x history only increments
++            // the patch. The messages cannot affect the result.
++            return commits.into_iter().next().map(|_| Self::Patch);
++        }
++
+         let breaking_increment_major =
+             current_version.major != 0 || updater.breaking_always_increment_major;
+         let features_increment_minor =
+diff --git a/crates/next_version/tests/all/normal.rs b/crates/next_version/tests/all/normal.rs
+index f8634834..395c1383 100644
+--- a/crates/next_version/tests/all/normal.rs
++++ b/crates/next_version/tests/all/normal.rs
+@@ -3,8 +3,9 @@ use semver::Version;
+ 
+ #[test]
+ fn no_commits_leave_version_unchanged() {
+-    let version = Version::new(1, 2, 3);
+-    assert_eq!(version.next(std::iter::empty::<&str>()), version);
++    for version in [Version::new(0, 0, 3), Version::new(1, 2, 3)] {
++        assert_eq!(version.next(std::iter::empty::<&str>()), version);
++    }
+ }
+ 
+ #[test]
+@@ -287,6 +288,26 @@ fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
+     );
+ }
+ 
++#[test]
++fn no_increment_regex_filters_commits_when_major_and_minor_are_zero() {
++    let version = Version::new(0, 0, 3);
++    for (commits, expected) in [
++        (vec!["docs: update readme"], version.clone()),
++        (
++            vec!["docs: update readme", "fix: correct behavior"],
++            Version::new(0, 0, 4),
++        ),
++    ] {
++        assert_eq!(
++            VersionUpdater::new()
++                .with_no_increment_regex("^docs$")
++                .unwrap()
++                .increment(&version, commits),
++            expected
++        );
++    }
++}
++
+ #[test]
+ fn no_increment_regex_filters_breaking_commits() {
+     let commits = ["docs!: change documentation", "fix: correct behavior"];
+diff --git a/crates/next_version/tests/all/pre_release.rs b/crates/next_version/tests/all/pre_release.rs
+index 619455be..20c2379e 100644
+--- a/crates/next_version/tests/all/pre_release.rs
++++ b/crates/next_version/tests/all/pre_release.rs
+@@ -27,9 +27,15 @@ fn pre_release_increment_uses_first_commit_not_ignored_by_regex() {
+ #[test]
+ fn commit_without_semver_prefix_increments_pre_release_version() {
+     let commits = ["my change"];
+-    let version = Version::parse("1.0.0-alpha.2").unwrap();
+-    let expected = Version::parse("1.0.0-alpha.3").unwrap();
+-    assert_eq!(version.next(commits), expected);
++    for (version, expected) in [
++        ("0.0.1-alpha.2", "0.0.1-alpha.3"),
++        ("1.0.0-alpha.2", "1.0.0-alpha.3"),
++    ] {
++        assert_eq!(
++            Version::parse(version).unwrap().next(commits),
++            Version::parse(expected).unwrap()
++        );
++    }
+ }
+ 
+ #[test]

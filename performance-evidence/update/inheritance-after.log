@@ -1,0 +1,67 @@
+    Finished `bench` profile [optimized] target(s) in 0.15s
+     Running benches/inheritance.rs (/workspace/release-plz/target/release/deps/inheritance-2ed518a0b240235b)
+Gnuplot not found, using plotters backend
+Benchmarking inheritance_scan/independent/10
+Benchmarking inheritance_scan/independent/10: Warming up for 1.0000 s
+Benchmarking inheritance_scan/independent/10: Collecting 40 samples in estimated 3.0009 s (1.4M iterations)
+Benchmarking inheritance_scan/independent/10: Analyzing
+inheritance_scan/independent/10
+                        time:   [2.1023 µs 2.1248 µs 2.1618 µs]
+                        change: [−91.943% −91.745% −91.582%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 40 measurements (7.50%)
+  1 (2.50%) high mild
+  2 (5.00%) high severe
+Benchmarking inheritance_scan/independent/100
+Benchmarking inheritance_scan/independent/100: Warming up for 1.0000 s
+Benchmarking inheritance_scan/independent/100: Collecting 40 samples in estimated 3.0012 s (1.4M iterations)
+Benchmarking inheritance_scan/independent/100: Analyzing
+inheritance_scan/independent/100
+                        time:   [2.0987 µs 2.1125 µs 2.1285 µs]
+                        change: [−99.107% −99.099% −99.089%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 40 measurements (7.50%)
+  2 (5.00%) high mild
+  1 (2.50%) high severe
+Benchmarking inheritance_scan/inherited/10
+Benchmarking inheritance_scan/inherited/10: Warming up for 1.0000 s
+Benchmarking inheritance_scan/inherited/10: Collecting 40 samples in estimated 3.0098 s (106k iterations)
+Benchmarking inheritance_scan/inherited/10: Analyzing
+inheritance_scan/inherited/10
+                        time:   [27.982 µs 28.200 µs 28.462 µs]
+                        change: [−4.6399% −2.7905% −1.0355%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 40 measurements (7.50%)
+  3 (7.50%) high severe
+Benchmarking inheritance_scan/inherited/100
+Benchmarking inheritance_scan/inherited/100: Warming up for 1.0000 s
+Benchmarking inheritance_scan/inherited/100: Collecting 40 samples in estimated 3.1558 s (12k iterations)
+Benchmarking inheritance_scan/inherited/100: Analyzing
+inheritance_scan/inherited/100
+                        time:   [253.22 µs 254.23 µs 255.29 µs]
+                        change: [−6.3887% −4.0887% −2.1018%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 40 measurements (5.00%)
+  2 (5.00%) high mild
+Benchmarking inheritance_scan/member_manifest/10
+Benchmarking inheritance_scan/member_manifest/10: Warming up for 1.0000 s
+Benchmarking inheritance_scan/member_manifest/10: Collecting 40 samples in estimated 3.0151 s (103k iterations)
+Benchmarking inheritance_scan/member_manifest/10: Analyzing
+inheritance_scan/member_manifest/10
+                        time:   [27.671 µs 27.893 µs 28.213 µs]
+                        change: [−2.5529% −0.7661% +0.8669%] (p = 0.40 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 40 measurements (17.50%)
+  2 (5.00%) high mild
+  5 (12.50%) high severe
+Benchmarking inheritance_scan/member_manifest/100
+Benchmarking inheritance_scan/member_manifest/100: Warming up for 1.0000 s
+Benchmarking inheritance_scan/member_manifest/100: Collecting 40 samples in estimated 3.1677 s (11k iterations)
+Benchmarking inheritance_scan/member_manifest/100: Analyzing
+inheritance_scan/member_manifest/100
+                        time:   [256.89 µs 259.26 µs 262.15 µs]
+                        change: [−8.9677% −4.4300% −0.3119%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 40 measurements (5.00%)
+  2 (5.00%) high mild
+

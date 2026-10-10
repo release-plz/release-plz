@@ -1,0 +1,286 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 4f4d7543..c1c9cec7 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -23,6 +23,15 @@ dependencies = [
+  "memchr",
+ ]
+ 
++[[package]]
++name = "alloca"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e5a7d05ea6aea7e9e64d25b9156ba2fee3fdd659e34e41063cd2fc7cd020d7f4"
++dependencies = [
++ "cc",
++]
++
+ [[package]]
+ name = "allocator-api2"
+ version = "0.2.21"
+@@ -38,6 +47,12 @@ dependencies = [
+  "libc",
+ ]
+ 
++[[package]]
++name = "anes"
++version = "0.1.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
++
+ [[package]]
+ name = "annotate-snippets"
+ version = "0.12.16"
+@@ -445,7 +460,7 @@ dependencies = [
+  "ignore",
+  "im-rc",
+  "indexmap",
+- "itertools",
++ "itertools 0.15.0",
+  "jiff",
+  "jobserver",
+  "libc",
+@@ -629,17 +644,25 @@ version = "0.1.86"
+ dependencies = [
+  "anyhow",
+  "cargo_metadata",
++ "criterion",
+  "dunce",
+  "expect-test",
+  "fs-err",
+  "secrecy 0.10.3",
+  "semver",
+  "serde",
++ "tempfile",
+  "toml 1.1.6+spec-1.1.0",
+  "toml_edit",
+  "url",
+ ]
+ 
++[[package]]
++name = "cast"
++version = "0.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
++
+ [[package]]
+ name = "cc"
+ version = "1.6.0"
+@@ -711,6 +734,33 @@ dependencies = [
+  "phf_codegen",
+ ]
+ 
++[[package]]
++name = "ciborium"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
++dependencies = [
++ "ciborium-io",
++ "ciborium-ll",
++ "serde",
++]
++
++[[package]]
++name = "ciborium-io"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
++
++[[package]]
++name = "ciborium-ll"
++version = "0.2.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
++dependencies = [
++ "ciborium-io",
++ "half",
++]
++
+ [[package]]
+ name = "clap"
+ version = "4.6.7"
+@@ -946,6 +996,39 @@ dependencies = [
+  "cfg-if",
+ ]
+ 
++[[package]]
++name = "criterion"
++version = "0.8.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "950046b2aa2492f9a536f5f4f9a3de7b9e2476e575e05bd6c333371add4d98f3"
++dependencies = [
++ "alloca",
++ "anes",
++ "cast",
++ "ciborium",
++ "clap",
++ "criterion-plot",
++ "itertools 0.13.0",
++ "num-traits",
++ "oorandom",
++ "page_size",
++ "regex",
++ "serde",
++ "serde_json",
++ "tinytemplate",
++ "walkdir",
++]
++
++[[package]]
++name = "criterion-plot"
++version = "0.8.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d8d80a2f4f5b554395e47b5d8305bc3d27813bacb73493eb1001e8f76dae29ea"
++dependencies = [
++ "cast",
++ "itertools 0.13.0",
++]
++
+ [[package]]
+ name = "crossbeam-channel"
+ version = "0.5.17"
+@@ -980,6 +1063,12 @@ version = "0.8.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+ 
++[[package]]
++name = "crunchy"
++version = "0.2.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
++
+ [[package]]
+ name = "crypto-bigint"
+ version = "0.5.5"
+@@ -2594,6 +2683,17 @@ dependencies = [
+  "tracing",
+ ]
+ 
++[[package]]
++name = "half"
++version = "2.7.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
++dependencies = [
++ "cfg-if",
++ "crunchy",
++ "zerocopy",
++]
++
+ [[package]]
+ name = "hash32"
+ version = "0.3.1"
+@@ -3088,6 +3188,15 @@ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+ 
++[[package]]
++name = "itertools"
++version = "0.13.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
++dependencies = [
++ "either",
++]
++
+ [[package]]
+ name = "itertools"
+ version = "0.15.0"
+@@ -3778,6 +3887,12 @@ version = "1.70.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+ 
++[[package]]
++name = "oorandom"
++version = "11.1.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
++
+ [[package]]
+ name = "opener"
+ version = "0.8.5"
+@@ -3894,6 +4009,16 @@ dependencies = [
+  "sha2 0.10.9",
+ ]
+ 
++[[package]]
++name = "page_size"
++version = "0.6.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "30d5b2194ed13191c1999ae0704b7839fb18384fa22e49b57eeaa97d79ce40da"
++dependencies = [
++ "libc",
++ "winapi",
++]
++
+ [[package]]
+ name = "parking_lot"
+ version = "0.12.5"
+@@ -5506,6 +5631,16 @@ dependencies = [
+  "zerovec",
+ ]
+ 
++[[package]]
++name = "tinytemplate"
++version = "1.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
++dependencies = [
++ "serde",
++ "serde_json",
++]
++
+ [[package]]
+ name = "tinyvec"
+ version = "1.13.3"
+@@ -6042,6 +6177,22 @@ dependencies = [
+  "rustls-pki-types",
+ ]
+ 
++[[package]]
++name = "winapi"
++version = "0.3.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
++dependencies = [
++ "winapi-i686-pc-windows-gnu",
++ "winapi-x86_64-pc-windows-gnu",
++]
++
++[[package]]
++name = "winapi-i686-pc-windows-gnu"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
++
+ [[package]]
+ name = "winapi-util"
+ version = "0.1.11"
+@@ -6051,6 +6202,12 @@ dependencies = [
+  "windows-sys 0.61.2",
+ ]
+ 
++[[package]]
++name = "winapi-x86_64-pc-windows-gnu"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
++
+ [[package]]
+ name = "windows"
+ version = "0.62.2"
+diff --git a/crates/cargo_utils/Cargo.toml b/crates/cargo_utils/Cargo.toml
+index 44844ca9..6f743dfb 100644
+--- a/crates/cargo_utils/Cargo.toml
++++ b/crates/cargo_utils/Cargo.toml
+@@ -25,3 +25,9 @@ secrecy.workspace = true
+ 
+ [dev-dependencies]
+ expect-test.workspace = true
++criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
++tempfile.workspace = true
++
++[[bench]]
++name = "manifest_perf"
++harness = false

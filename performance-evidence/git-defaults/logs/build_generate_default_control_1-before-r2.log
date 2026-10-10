@@ -1,0 +1,10 @@
+Benchmarking git_defaults/build_generate_default_control_1
+Benchmarking git_defaults/build_generate_default_control_1: Warming up for 1.0000 s
+Benchmarking git_defaults/build_generate_default_control_1: Collecting 100 samples in estimated 3.5880 s (20k iterations)
+Benchmarking git_defaults/build_generate_default_control_1: Analyzing
+git_defaults/build_generate_default_control_1
+                        time:   [180.55 µs 181.56 µs 182.80 µs]
+Found 10 outliers among 100 measurements (10.00%)
+  7 (7.00%) high mild
+  3 (3.00%) high severe
+

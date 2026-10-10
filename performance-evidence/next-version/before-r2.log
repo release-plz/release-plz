@@ -1,0 +1,12 @@
+Gnuplot not found, using plotters backend
+Benchmarking next_version/features/1000
+Benchmarking next_version/features/1000: Warming up for 500.00 ms
+Benchmarking next_version/features/1000: Collecting 40 samples in estimated 1.1065 s (5740 iterations)
+Benchmarking next_version/features/1000: Analyzing
+next_version/features/1000
+                        time:   [193.70 µs 194.60 µs 195.72 µs]
+                        thrpt:  [5.1092 Melem/s 5.1387 Melem/s 5.1627 Melem/s]
+Found 2 outliers among 40 measurements (5.00%)
+  1 (2.50%) high mild
+  1 (2.50%) high severe
+

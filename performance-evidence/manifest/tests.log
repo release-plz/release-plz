@@ -1,0 +1,85 @@
+   Compiling syn v3.0.6
+   Compiling syn v2.0.119
+   Compiling serde_json v1.0.151
+   Compiling zerocopy v0.8.59
+   Compiling memchr v2.8.3
+   Compiling smallvec v1.16.2
+   Compiling cc v1.6.0
+   Compiling fs-err v3.3.2
+   Compiling either v1.18.0
+   Compiling rustix v1.1.5
+   Compiling synstructure v0.14.0
+   Compiling alloca v0.4.0
+   Compiling hashbrown v0.17.1
+   Compiling ciborium-io v0.2.2
+   Compiling regex-syntax v0.8.11
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerofrom v0.1.8
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling yoke v0.8.3
+   Compiling serde_derive v1.0.229
+   Compiling zerotrie v0.2.5
+   Compiling zerovec v0.11.8
+   Compiling zerocopy-derive v0.8.59
+   Compiling thiserror-impl v2.0.21
+   Compiling tinystr v0.8.4
+   Compiling icu_locale_core v2.3.0
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling serde v1.0.229
+   Compiling getrandom v0.4.3
+   Compiling percent-encoding v2.3.2
+   Compiling clap_builder v4.6.7
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling form_urlencoded v1.2.2
+   Compiling thiserror v2.0.21
+   Compiling regex-automata v0.4.18
+   Compiling indexmap v2.14.2
+   Compiling itertools v0.13.0
+   Compiling half v2.7.1
+   Compiling serde_spanned v1.1.1
+   Compiling cast v0.3.0
+   Compiling zeroize v1.9.0
+   Compiling ciborium-ll v0.2.2
+   Compiling secrecy v0.10.3
+   Compiling ciborium v0.2.2
+   Compiling criterion-plot v0.8.2
+   Compiling toml v1.1.6+spec-1.1.0
+   Compiling cargo_metadata v0.23.1
+   Compiling regex v1.13.1
+   Compiling clap v4.6.7
+   Compiling toml_edit v0.25.15+spec-1.1.0
+   Compiling url v2.5.8
+   Compiling tinytemplate v1.2.1
+   Compiling page_size v0.6.0
+   Compiling anes v0.1.6
+   Compiling oorandom v11.1.5
+   Compiling tempfile v3.27.0
+   Compiling criterion v0.8.2
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `test` profile [unoptimized] target(s) in 7.61s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/cargo_utils-5d111b04b5e830ad)
+
+running 7 tests
+test registry::tests::cargo_info_token_env_var_name_for_crates_io_works ... ok
+test registry::tests::cargo_info_token_env_var_name_invalid_registry_fails ... ok
+test registry::tests::cargo_info_token_env_var_name_normalizes_dashes ... ok
+test registry::tests::test_get_registry_env_var_name ... ok
+test token::tests::test_parse_cargo_credentials_empty ... ok
+test token::tests::test_parse_cargo_credentials_cratesio_only ... ok
+test token::tests::test_parse_cargo_credentials_both ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cargo_utils
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

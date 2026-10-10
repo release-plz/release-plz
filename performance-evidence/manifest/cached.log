@@ -1,0 +1,48 @@
+   Compiling cargo_utils v0.1.86 (/workspace/perf-manifest/crates/cargo_utils)
+    Finished `bench` profile [optimized] target(s) in 2.36s
+     Running benches/manifest_perf.rs (/workspace/release-plz/target/release/deps/manifest_perf-b7e6cca4704b6375)
+Benchmarking workspace_members/shared_3/10
+Benchmarking workspace_members/shared_3/10: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_3/10: Collecting 100 samples in estimated 3.0643 s (167k iterations)
+Benchmarking workspace_members/shared_3/10: Analyzing
+workspace_members/shared_3/10
+                        time:   [18.370 µs 18.898 µs 19.647 µs]
+                        change: [−40.556% −39.602% −38.264%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 16 outliers among 100 measurements (16.00%)
+  6 (6.00%) high mild
+  10 (10.00%) high severe
+Benchmarking workspace_members/shared_10/100
+Benchmarking workspace_members/shared_10/100: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_10/100: Collecting 100 samples in estimated 3.8890 s (15k iterations)
+Benchmarking workspace_members/shared_10/100: Analyzing
+workspace_members/shared_10/100
+                        time:   [259.60 µs 262.08 µs 264.68 µs]
+                        change: [−69.783% −69.588% −69.392%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  5 (5.00%) high mild
+  1 (1.00%) high severe
+Benchmarking workspace_members/shared_0/100
+Benchmarking workspace_members/shared_0/100: Warming up for 1.0000 s
+Benchmarking workspace_members/shared_0/100: Collecting 100 samples in estimated 3.1089 s (25k iterations)
+Benchmarking workspace_members/shared_0/100: Analyzing
+workspace_members/shared_0/100
+                        time:   [126.19 µs 127.11 µs 128.09 µs]
+                        change: [+5.3491% +6.6743% +7.8674%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 5 outliers among 100 measurements (5.00%)
+  3 (3.00%) high mild
+  2 (2.00%) high severe
+Benchmarking workspace_members/unique_chain/100
+Benchmarking workspace_members/unique_chain/100: Warming up for 1.0000 s
+Benchmarking workspace_members/unique_chain/100: Collecting 100 samples in estimated 3.4319 s (15k iterations)
+Benchmarking workspace_members/unique_chain/100: Analyzing
+workspace_members/unique_chain/100
+                        time:   [222.90 µs 225.32 µs 229.17 µs]
+                        change: [+9.5356% +12.392% +15.207%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 8 outliers among 100 measurements (8.00%)
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+

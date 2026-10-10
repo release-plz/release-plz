@@ -1,0 +1,27 @@
+[package]
+name = "changelog-git-defaults-evidence"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0.99"
+cargo_metadata = "0.23.0"
+chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
+fs-err = "3.1.1"
+git-cliff-core = { version = "2.14.2", default-features = false }
+parse-changelog = { version = "0.6.13", default-features = false }
+regex = "1.11.2"
+serde = { version = "1.0.219", features = ["derive"] }
+tracing = "0.1.41"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+expect-test = "1.5.1"
+
+[[bench]]
+name = "git_defaults"
+harness = false
+
+[workspace]
+resolver = "3"

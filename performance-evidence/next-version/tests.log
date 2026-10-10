@@ -1,0 +1,82 @@
+   Compiling aho-corasick v1.1.5
+   Compiling semver v1.0.28
+   Compiling regex-automata v0.4.18
+   Compiling regex v1.13.1
+   Compiling next_version v0.3.3 (/workspace/perf-next-version/crates/next_version)
+    Finished `test` profile [unoptimized] target(s) in 2.04s
+     Running unittests src/lib.rs (/workspace/release-plz/target/debug/deps/next_version-ea0c48bf7eabf63e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/all/main.rs (/workspace/release-plz/target/debug/deps/all-ab22e8944cbbb2f6)
+
+running 40 tests
+test normal::commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero ... ok
+test normal::breaking_feature_increments_minor_version_from_0_0_x_when_features_always_increment_minor ... ok
+test normal::commit_with_breaking_change_increments_major_version ... ok
+test normal::commit_with_breaking_change_increments_major_version_when_major_is_zero ... ok
+test normal::commit_with_breaking_change_increments_minor_version_when_major_is_zero ... ok
+test normal::breaking_change_among_other_commits ... ok
+test normal::commit_with_feat_semver_prefix_increments_minor_version_when_major_is_zero ... ok
+test normal::commit_with_feat_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_feat_semver_prefix_increments_patch_version_when_major_is_zero ... ok
+test normal::commit_with_fix_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_scope ... ok
+test normal::commit_with_scope_minor ... ok
+test normal::commit_with_scope_whitespace ... ok
+test normal::commit_without_semver_prefix_increments_patch_version ... ok
+test normal::commit_with_custom_minor_increment_regex_increments_minor_version ... ok
+test normal::commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero ... ok
+test normal::conventional_commit_with_matching_description_does_not_trigger_custom_major_regex ... ok
+test normal::commit_with_custom_major_increment_regex_increments_major_version ... ok
+test normal::conventional_commit_with_matching_description_does_not_trigger_custom_minor_regex ... ok
+test normal::custom_minor_increment_regex_increments_minor_version_after_breaking_change_from_0_0_x ... ok
+test normal::feature_does_not_hide_later_major_increment_when_major_is_zero ... ok
+test normal::no_commits_leave_version_unchanged ... ok
+test normal::no_increment_regex_does_not_match_conventional_commit_description ... ok
+test normal::no_increment_regex_filters_breaking_commits ... ok
+test normal::no_increment_regex_filters_commits_when_major_and_minor_are_zero ... ok
+test normal::no_increment_regex_takes_precedence_over_custom_increment_regexes ... ok
+test normal::no_increment_regex_filters_matching_commits_but_keeps_other_bumps ... ok
+test normal::major_increment_takes_precedence_over_minor_regardless_of_commit_order ... ok
+test normal::non_conventional_commit_with_custom_major_increment_regex_increments_major_version ... ok
+test normal::no_increment_regex_skips_prerelease_increment ... ok
+test normal::non_conventional_commit_with_custom_minor_increment_regex_increments_minor_version ... ok
+test normal::non_conventional_commit_with_no_increment_regex_does_not_increment_version ... ok
+test pre_release::commit_with_breaking_change_increments_pre_release_version ... ok
+test pre_release::commit_without_semver_prefix_increments_pre_release_version ... ok
+test normal::non_matching_custom_major_increment_regex_preserves_breaking_change_increments ... ok
+test pre_release::dot_1_is_added_to_character_identifier_in_pre_release ... ok
+test pre_release::dot_1_is_added_to_unversioned_pre_release ... ok
+test pre_release::dot_1_is_added_to_last_identifier_in_pre_release ... ok
+test pre_release::no_commits_leave_pre_release_unchanged ... ok
+test pre_release::pre_release_increment_uses_first_commit_not_ignored_by_regex ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests next_version
+
+running 17 tests
+test crates/next_version/src/lib.rs - (line 24) ... ok
+test crates/next_version/src/lib.rs - (line 12) ... ok
+test crates/next_version/src/lib.rs - (line 119) ... ok
+test crates/next_version/src/lib.rs - (line 46) ... ok
+test crates/next_version/src/lib.rs - (line 79) ... ok
+test crates/next_version/src/lib.rs - (line 66) ... ok
+test crates/next_version/src/lib.rs - (line 99) ... ok
+test crates/next_version/src/version_increment.rs - version_increment::VersionIncrement::breaking (line 121) ... ok
+test crates/next_version/src/next_version.rs - next_version::Version::next (line 31) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater (line 13) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::new (line 45) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::with_breaking_always_increment_major (line 112) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::with_custom_major_increment_regex (line 156) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::with_features_always_increment_minor (line 76) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::with_custom_major_increment_regex (line 182) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::with_custom_minor_increment_regex (line 229) ... ok
+test crates/next_version/src/version_updater.rs - version_updater::VersionUpdater::with_no_increment_regex (line 274) ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+all doctests ran in 0.23s; merged doctests compilation took 0.22s
