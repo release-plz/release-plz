@@ -1,5 +1,6 @@
 mod changelog;
 mod completion_test;
+mod download;
 mod git_only;
 mod helpers;
 #[cfg(feature = "docker-tests")]
