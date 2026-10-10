@@ -212,6 +212,50 @@ fn update_invalidates_package_files_after_mode_changes() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn update_lists_package_files_with_a_symlinked_manifest() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\ninclude = [\"src/**\"]\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    for dir in [
+        repo.directory().to_path_buf(),
+        temp_dir.path().join("registry"),
+    ] {
+        fs_err::write(dir.join("one/src/extra.rs"), "// Initial extra module\n").unwrap();
+    }
+    let package = repo.directory().join("one");
+    let manifest = package.join("manifest.rs");
+    fs_err::rename(package.join("Cargo.toml"), &manifest).unwrap();
+    std::os::unix::fs::symlink("manifest.rs", package.join("Cargo.toml")).unwrap();
+    repo.git(&["add", "."]).unwrap();
+    repo.git(&["commit", "--amend", "-m", "feat!: initial API"])
+        .unwrap();
+
+    fs_err::write(package.join("src/extra.rs"), "// Extra capability\n").unwrap();
+    repo.add_all_and_commit("feat: extra capability").unwrap();
+    let contents = fs_err::read_to_string(&manifest).unwrap();
+    fs_err::write(&manifest, contents.replace("src/**", "src/lib.rs")).unwrap();
+    change_package(&repo, "one", "fix: select sources");
+
+    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+    // The symlink itself is unchanged, but its regular .rs target changes
+    // Cargo's file selection. Reusing HEAD's list also hides the equal released
+    // snapshot, bringing the already released breaking change into this update.
+    assert_locked_versions(repo.directory(), &[("one", "1.1.0")]);
+    let changelog = fs_err::read_to_string(package.join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("extra capability"), "{changelog}");
+    assert!(changelog.contains("select sources"), "{changelog}");
+    assert!(!changelog.contains("initial API"), "{changelog}");
+    assert!(
+        !logs.contains("reusing historical package file list"),
+        "{logs}"
+    );
+}
+
 /// Assert that updating the workspace of [`workspace_with_source_changes`]
 /// runs `cargo package --list` `cargo_runs` times, once for the released source
 /// tree, and reuses a historical package file list `reuses` times, while the

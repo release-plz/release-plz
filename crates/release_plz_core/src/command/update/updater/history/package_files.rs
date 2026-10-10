@@ -6,10 +6,11 @@
 //! tracked paths. Cargo selects packaged files by their paths and types,
 //! manifests, ignore rules and configuration, never by the contents of Rust
 //! sources. Commits whose trees differ only in the contents of non-executable
-//! `.rs` files therefore package the same files. Configuration outside the
-//! repository is assumed stable during a walk, just as for the released-package
-//! cache. Whenever the checked-out trees cannot be compared, Cargo lists the
-//! files again.
+//! `.rs` files therefore package the same files, unless a symlinked manifest
+//! makes Cargo read a `.rs` file as TOML. Configuration outside the repository
+//! is assumed stable during a walk, just as for the released-package cache.
+//! Whenever the checked-out trees cannot be compared or contain a symlinked
+//! manifest, Cargo lists the files again.
 
 use std::{cell::OnceCell, path::Path};
 
@@ -28,8 +29,9 @@ pub(crate) struct CheckoutPackageFiles<'a> {
     /// checkout. `None` when those trees cannot be read: then Cargo lists the
     /// files of every checkout.
     repo: OnceCell<Option<git2::Repository>>,
-    /// The tree of the last checkout, which `files` belongs to. `None` before
-    /// the first checkout and when that tree cannot be read.
+    /// The tree of the last checkout, which `files` belongs to, provided it
+    /// contains no symlinked manifests. `None` before the first checkout, when
+    /// that tree cannot be read, and when it contains a symlinked manifest.
     tree: Option<git2::Oid>,
     files: PackageFiles,
 }
@@ -60,8 +62,8 @@ impl<'a> CheckoutPackageFiles<'a> {
         &self.files
     }
 
-    /// Whether the files listed at the previous checkout are those at `commit`,
-    /// whose tree becomes the previous one.
+    /// Whether the files listed at the previous checkout are those at `commit`.
+    /// Remember its tree only when it contains no symlinked manifests.
     fn reuses_files_at(&mut self, commit: &str) -> anyhow::Result<bool> {
         // Clear the previous tree before reading `commit`'s: if that fails, the
         // list Cargo computes at this checkout must not later be compared with
@@ -79,13 +81,18 @@ impl<'a> CheckoutPackageFiles<'a> {
             return Ok(false);
         };
         let tree = repo.find_commit(git2::Oid::from_str(commit)?)?.tree()?;
-        self.tree = Some(tree.id());
         // Differing only in Rust sources is transitive, so comparing with the
         // previous checkout covers every checkout since the list was computed.
-        let Some(previous) = previous else {
-            return Ok(false);
+        let reuses = match previous {
+            Some(previous) => only_rust_sources_differ(repo, &repo.find_tree(previous)?, &tree)?,
+            None => false,
         };
-        only_rust_sources_differ(repo, &repo.find_tree(previous)?, &tree)
+        // A source-only diff also preserves the absence of symlinked manifests.
+        // Scan the full tree only when starting a new cached list.
+        if reuses || !has_symlinked_manifest(&tree)? {
+            self.tree = Some(tree.id());
+        }
+        Ok(reuses)
     }
 }
 
@@ -99,6 +106,22 @@ fn checked_out_trees(repository: &Repo, commit: &str) -> anyhow::Result<git2::Re
         "the repository has replace refs"
     );
     read_only_objects(repository, commit)
+}
+
+/// A manifest can point to a regular `.rs` file whose contents affect Cargo's
+/// file selection. Inspect nested packages too, including workspace members.
+fn has_symlinked_manifest(tree: &git2::Tree<'_>) -> anyhow::Result<bool> {
+    let mut found = false;
+    tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
+        // Cargo.toml can resolve to another casing on case-insensitive filesystems.
+        if entry.name_bytes().eq_ignore_ascii_case(b"Cargo.toml")
+            && entry.filemode() == i32::from(git2::FileMode::Link)
+        {
+            found = true;
+        }
+        git2::TreeWalkResult::Ok
+    })?;
+    Ok(found)
 }
 
 /// Whether the trees `old` and `new` differ only in the contents of Rust
