@@ -12,27 +12,20 @@
 //! Whenever the checked-out trees cannot be compared or contain a symlinked
 //! manifest, Cargo lists the files again.
 
-use std::{cell::OnceCell, path::Path};
-
+use anyhow::Context as _;
 use git_cmd::Repo;
 use tracing::debug;
 
 use crate::package_compare::PackageFiles;
 
-use super::read_only_objects;
-
 /// The package files of a checkout, reused by the following checkouts while
 /// their trees differ from its tree only in the contents of Rust sources.
 pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
-    /// Reads the trees of the checked-out commits, opened at the first
-    /// checkout. `None` when those trees cannot be read: then Cargo lists the
-    /// files of every checkout.
-    repo: OnceCell<Option<git2::Repository>>,
-    /// The tree of the last checkout, which `files` belongs to, provided it
-    /// contains no symlinked manifests. `None` before the first checkout, when
-    /// that tree cannot be read, and when it contains a symlinked manifest.
-    tree: Option<git2::Oid>,
+    /// The last checked-out commit, whose files `files` lists. `None` before the
+    /// first checkout and when the tree of that commit contains, or cannot be
+    /// checked for, a symlinked manifest.
+    commit: Option<String>,
     files: PackageFiles,
 }
 
@@ -41,8 +34,7 @@ impl<'a> CheckoutPackageFiles<'a> {
     pub(crate) fn new(repository: &'a Repo) -> Self {
         Self {
             repository,
-            repo: OnceCell::new(),
-            tree: None,
+            commit: None,
             files: PackageFiles::default(),
         }
     }
@@ -50,111 +42,74 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// The package files at `commit`. Call this after checking `commit` out,
     /// before inspecting the package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
-        let reuses = self.reuses_files_at(commit).unwrap_or_else(|error| {
-            debug!("cannot compare the package files at {commit} with the cached list: {error:#}");
-            false
+        // Differing only in Rust sources is transitive, so comparing with the
+        // previous checkout covers every checkout since the list was computed.
+        let reuses = self.commit.take().is_some_and(|previous| {
+            only_rust_sources_differ(self.repository, &previous, commit).unwrap_or_else(|error| {
+                debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
+                false
+            })
         });
         if !reuses {
             self.files = PackageFiles::default();
         } else if self.files.is_cached() {
             debug!("reusing historical package file list at {commit}");
         }
-        &self.files
-    }
-
-    /// Whether the files listed at the previous checkout are those at `commit`.
-    /// Remember its tree only when it contains no symlinked manifests.
-    fn reuses_files_at(&mut self, commit: &str) -> anyhow::Result<bool> {
-        // Clear the previous tree before reading `commit`'s: if that fails, the
-        // list Cargo computes at this checkout must not later be compared with
-        // the old tree.
-        let previous = self.tree.take();
-        // Opening the objects runs Git, so skip it for packages without history.
-        let repo = self.repo.get_or_init(|| {
-            checked_out_trees(self.repository, commit)
-                .inspect_err(|error| {
-                    debug!("cannot reuse historical package file lists: {error:#}");
-                })
-                .ok()
-        });
-        let Some(repo) = repo else {
-            return Ok(false);
-        };
-        let tree = repo.find_commit(git2::Oid::from_str(commit)?)?.tree()?;
-        // Differing only in Rust sources is transitive, so comparing with the
-        // previous checkout covers every checkout since the list was computed.
-        let reuses = match previous {
-            Some(previous) => only_rust_sources_differ(repo, &repo.find_tree(previous)?, &tree)?,
-            None => false,
-        };
         // A source-only diff also preserves the absence of symlinked manifests.
         // Scan the full tree only when starting a new cached list.
-        if reuses || !has_symlinked_manifest(&tree)? {
-            self.tree = Some(tree.id());
+        let cacheable = reuses
+            || has_symlinked_manifest(self.repository, commit)
+                .inspect_err(|error| {
+                    debug!("cannot find symlinked manifests at {commit}: {error:#}");
+                })
+                .is_ok_and(|found| !found);
+        if cacheable {
+            self.commit = Some(commit.to_owned());
         }
-        Ok(reuses)
+        &self.files
     }
-}
-
-/// The [`read_only_objects`] of `repository`, provided that Git checks out the
-/// trees they store.
-fn checked_out_trees(repository: &Repo, commit: &str) -> anyhow::Result<git2::Repository> {
-    // libgit2 ignores replace refs, which checkouts follow: the tree it reads
-    // for a replaced commit is not the one on disk.
-    anyhow::ensure!(
-        repository.git(&["replace", "--list"])?.is_empty(),
-        "the repository has replace refs"
-    );
-    read_only_objects(repository, commit)
 }
 
 /// A manifest can point to a regular `.rs` file whose contents affect Cargo's
 /// file selection. Inspect nested packages too, including workspace members.
-fn has_symlinked_manifest(tree: &git2::Tree<'_>) -> anyhow::Result<bool> {
-    let mut found = false;
-    tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
-        // Cargo.toml can resolve to another casing on case-insensitive filesystems.
-        if entry.name_bytes().eq_ignore_ascii_case(b"Cargo.toml")
-            && entry.filemode() == i32::from(git2::FileMode::Link)
-        {
-            found = true;
-        }
-        git2::TreeWalkResult::Ok
-    })?;
-    Ok(found)
+fn has_symlinked_manifest(repository: &Repo, commit: &str) -> anyhow::Result<bool> {
+    let tree = repository.git(&["ls-tree", "-r", "-z", commit])?;
+    // Each entry is `<mode> <type> <id>\t<path>`, NUL-terminated.
+    Ok(tree.split_terminator('\0').any(|entry| {
+        entry.split_once('\t').is_some_and(|(info, path)| {
+            // Cargo.toml can resolve to another casing on case-insensitive filesystems.
+            let name = path.rsplit('/').next().unwrap_or(path);
+            info.starts_with("120000 ") && name.eq_ignore_ascii_case("Cargo.toml")
+        })
+    }))
 }
 
-/// Whether the trees `old` and `new` differ only in the contents of Rust
-/// sources that are non-executable regular files in both. Additions, deletions
-/// and renames, which a diff without rename detection reports as both, change
-/// the file list. Symlinks and submodules stand for other files, and executable
-/// scripts can be Cargo or rustc wrappers.
-fn only_rust_sources_differ(
-    repo: &git2::Repository,
-    old: &git2::Tree<'_>,
-    new: &git2::Tree<'_>,
-) -> anyhow::Result<bool> {
-    // Without rename detection, the diff reads no blobs.
-    let diff = repo.diff_tree_to_tree(Some(old), Some(new), None)?;
-    for delta in diff.deltas() {
-        if delta.status() != git2::Delta::Modified {
+/// Whether the trees of the commits `old` and `new` differ only in the contents
+/// of Rust sources that are non-executable regular files in both. Additions,
+/// deletions and renames, which a diff without rename detection reports as
+/// both, change the file list. Symlinks and submodules stand for other files,
+/// and executable scripts can be Cargo or rustc wrappers.
+fn only_rust_sources_differ(repository: &Repo, old: &str, new: &str) -> anyhow::Result<bool> {
+    // `diff-tree` detects no renames, so it reads no blobs. Report submodule
+    // updates even if `submodule.<name>.ignore` hides them.
+    let diff = repository.git(&[
+        "diff-tree",
+        "-r",
+        "-z",
+        "--ignore-submodules=none",
+        old,
+        new,
+    ])?;
+    // Each change is `:<old mode> <new mode> <old id> <new id> <status>`
+    // followed by its path, both NUL-terminated.
+    let mut fields = diff.split_terminator('\0');
+    while let Some(change) = fields.next() {
+        let path = fields
+            .next()
+            .with_context(|| format!("no path follows the change `{change}`"))?;
+        let modified_regular_file = change.starts_with(":100644 100644 ") && change.ends_with(" M");
+        if !(modified_regular_file && path.ends_with(".rs")) {
             return Ok(false);
-        }
-        // `DiffFile::path` panics on non-UTF-8 paths on Windows, which Cargo
-        // cannot list anyway.
-        let path = delta
-            .new_file()
-            .path_bytes()
-            .and_then(|path| std::str::from_utf8(path).ok());
-        let Some(path) = path.filter(|path| path.ends_with(".rs")) else {
-            return Ok(false);
-        };
-        // Read the modes from the trees, since `DiffFile::mode` panics on
-        // legacy modes Git accepts, such as 100600.
-        for tree in [old, new] {
-            if tree.get_path(Path::new(path))?.filemode() != i32::from(git2::FileMode::Blob) {
-                return Ok(false);
-            }
         }
     }
     Ok(true)

@@ -8,7 +8,7 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 use tracing::debug;
 
-use super::read_only_objects;
+use crate::fs_utils;
 
 /// Replay changes onto other snapshots in an isolated libgit2 repository that
 /// reads the source objects without writing to the source repository.
@@ -23,19 +23,28 @@ pub(super) struct ChangeReplay<'a> {
 }
 
 impl<'a> ChangeReplay<'a> {
-    /// Read the objects of `repository` as [`read_only_objects`] does. Replays
-    /// read only the repository-relative `paths`, see [`Self::restrict`].
+    /// Read the objects of `repository`, whose `head` commit id shows its object
+    /// format: only SHA-1 repositories are supported, since libgit2 cannot read
+    /// SHA-256 objects. Replays read only the repository-relative `paths`,
+    /// see [`Self::restrict`].
     pub(super) fn new(
         repository: &'a Repo,
         head: &str,
         paths: &[&Utf8Path],
     ) -> anyhow::Result<Self> {
-        let repo = read_only_objects(repository, head)?;
-        // The alternate is read-only: store synthetic attributes and replay
-        // results in memory, so no objects are added to the source, including
-        // worktrees. The results of every replay stay in memory until this
-        // replay is dropped with the walk of its package.
-        repo.odb()?.add_new_mempack_backend(1000)?;
+        anyhow::ensure!(
+            git2::Oid::from_str(head).is_ok(),
+            "SHA-256 repositories are not supported"
+        );
+        let objects = objects_directory(repository)?;
+        // Alternates are read-only. Store synthetic attributes and replay results
+        // in memory so no objects are added to the source, including worktrees.
+        // The results of every replay stay in memory until this replay is
+        // dropped with the walk of its package.
+        let odb = git2::Odb::new()?;
+        odb.add_disk_alternate(objects.as_str())?;
+        odb.add_new_mempack_backend(1000)?;
+        let repo = git2::Repository::from_odb(odb)?;
         // Remove user configuration and force the built-in text driver through
         // a synthetic index, overriding worktree, global and system attributes.
         repo.set_config(&git2::Config::new()?)?;
@@ -430,6 +439,16 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
         .flatten()
 }
 
+/// The absolute path of the object database of `repository`.
+///
+/// Let Git resolve it: libgit2 cannot open repositories with some valid
+/// extensions, such as `extensions.partialClone`. Git reports the path relative
+/// to the repository directory unless it is absolute, as in linked worktrees.
+fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
+    let objects = repository.git(&["rev-parse", "--git-path", "objects"])?;
+    fs_utils::canonicalize_utf8(&repository.directory().join(objects))
+}
+
 /// Whether all `modes` describe regular files, so that merging the contents as
 /// text is meaningful. Package equality ignores differences in executable bits.
 fn regular_file_modes<const N: usize>(modes: [u32; N]) -> bool {
@@ -532,7 +551,6 @@ fn encode_conflict<const N: usize>(blobs: [&[u8]; N]) -> anyhow::Result<Option<[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fs_utils;
 
     /// The repository-relative paths of the blobs of `tree`, in tree order.
     fn blob_paths(tree: &git2::Tree<'_>) -> Vec<String> {
