@@ -2,6 +2,7 @@ name: CI # Continuous Integration
 
 on:
   push:
+    # Run same checks as the merge group. Used to populate the GitHub cache.
     branches:
       - main
     paths-ignore:
@@ -9,10 +10,8 @@ on:
       - "**.js"
       - "**.ts"
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "**.js"
-      - "**.ts"
+  merge_group:
+    types: [checks_requested]
 
 permissions: {}
 
@@ -108,3 +107,19 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --document-private-items --all-features --workspace --examples
+
+  zizmor:
+    name: Zizmor
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          persona: pedantic
+          # Don't use GitHub advanced security.
+          # Instead, fail if there's a security issue.
+          advanced-security: false
