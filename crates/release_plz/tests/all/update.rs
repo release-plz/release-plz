@@ -265,9 +265,9 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
 /// runs `cargo package --list` `cargo_runs` times, once for the released source
 /// tree, and reuses a historical package file list `reuses` times, while the
 /// update still finds exactly the two source changes. `change` edits the
-/// project directory before the second commit, so it is committed with a Rust
-/// source change: root-only configuration changes are part of the path-limited
-/// walk and are compared with the next snapshot.
+/// project directory before the second commit, so it is committed together
+/// with a Rust source change: every case walks the same snapshots, and changes
+/// outside the package directory land in a walked commit.
 fn assert_package_file_listings(
     case: &str,
     change: impl FnOnce(&Utf8Path),
