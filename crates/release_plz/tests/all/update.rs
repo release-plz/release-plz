@@ -151,28 +151,9 @@ async fn update_relocated_workspace_preserves_original_manifests() {
 
 #[test]
 fn update_reuses_package_files_after_source_content_changes() {
-    let (temp_dir, repo) = workspace_with_source_changes(|_| {});
-
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
-
     // The three historical snapshots differ only in Rust source contents. Cargo
     // is invoked once for the local history and once for the released source tree.
-    assert_eq!(
-        logs.matches("Run `cargo package --list").count(),
-        2,
-        "{logs}"
-    );
-    assert_eq!(
-        logs.matches("reusing historical package file list").count(),
-        2,
-        "{logs}"
-    );
-    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
-    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
-    for message in ["first change", "second change"] {
-        assert!(changelog.contains(message), "{changelog}");
-    }
-    assert!(!changelog.contains("add README"), "{changelog}");
+    assert_package_file_listings("source contents", |_| {}, 2, 2);
 }
 
 #[test]
@@ -198,11 +179,18 @@ fn update_invalidates_package_files_after_selection_changes() {
             "# Changed lockfile\nversion = 4\n[[package]]\nname = \"one\"\nversion = \"1.0.0\"\n",
         ),
     ] {
-        assert_invalidates_package_files(path, |dir| {
-            let changed = dir.join(path);
-            fs_err::create_dir_all(changed.parent().unwrap()).unwrap();
-            fs_err::write(changed, contents).unwrap();
-        });
+        // HEAD and its parent must each ask Cargo. The parent and initial
+        // release differ only in Rust contents and share the second list.
+        assert_package_file_listings(
+            path,
+            |dir| {
+                let changed = dir.join(path);
+                fs_err::create_dir_all(changed.parent().unwrap()).unwrap();
+                fs_err::write(changed, contents).unwrap();
+            },
+            3,
+            1,
+        );
     }
 }
 
@@ -211,34 +199,46 @@ fn update_invalidates_package_files_after_selection_changes() {
 fn update_invalidates_package_files_after_mode_changes() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    // Executable scripts can be Cargo or rustc wrappers.
-    assert_invalidates_package_files("executable source", |dir| {
-        let permissions = std::fs::Permissions::from_mode(0o755);
-        fs_err::set_permissions(dir.join("one/src/lib.rs"), permissions).unwrap();
-    });
+    // Executable scripts can be Cargo or rustc wrappers. As for selection
+    // changes, HEAD and its parent must each ask Cargo.
+    assert_package_file_listings(
+        "executable source",
+        |dir| {
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            fs_err::set_permissions(dir.join("one/src/lib.rs"), permissions).unwrap();
+        },
+        3,
+        1,
+    );
 }
 
-/// Assert that the package files listed before `change` are listed again after
-/// it. [`workspace_with_source_changes`] commits `change` with a Rust source
-/// change, so root-only configuration changes are part of the path-limited
-/// walk and are compared with the next snapshot.
-fn assert_invalidates_package_files(case: &str, change: impl FnOnce(&Utf8Path)) {
+/// Assert that updating the workspace of [`workspace_with_source_changes`]
+/// runs `cargo package --list` `cargo_runs` times, once for the released source
+/// tree, and reuses a historical package file list `reuses` times, while the
+/// update still finds exactly the two source changes. `change` is committed
+/// with a Rust source change, so root-only configuration changes are part of
+/// the path-limited walk and are compared with the next snapshot.
+fn assert_package_file_listings(
+    case: &str,
+    change: impl FnOnce(&Utf8Path),
+    cargo_runs: usize,
+    reuses: usize,
+) {
     let (temp_dir, repo) = workspace_with_source_changes(change);
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
-    // HEAD and its parent must each ask Cargo. The parent and initial
-    // release differ only in Rust contents and share the second list.
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
-        3,
+        cargo_runs,
         "{case}: {logs}"
     );
     assert_eq!(
         logs.matches("reusing historical package file list").count(),
-        1,
+        reuses,
         "{case}: {logs}"
     );
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
     let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
     for message in ["first change", "second change"] {
         assert!(changelog.contains(message), "{case}: {changelog}");
