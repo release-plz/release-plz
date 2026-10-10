@@ -11,6 +11,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
+use git_cliff_core::contributor::RemoteContributor;
 use git_cmd::Repo;
 use secrecy::SecretString;
 use serde::Serialize;
@@ -1160,9 +1161,8 @@ fn log_dry_run_info(
 async fn get_contributors(
     release_info: &ReleaseInfo<'_>,
     context: &mut ReleaseContext<'_>,
-) -> Vec<git_cliff_core::contributor::RemoteContributor> {
-    let mut unique_usernames = HashSet::new();
-    let mut contributors = vec![];
+) -> Vec<RemoteContributor> {
+    let mut contributors: Vec<RemoteContributor> = vec![];
     for pr in release_info.prs {
         let username = match context.pr_author(pr.number).await {
             Ok(username) => username,
@@ -1171,8 +1171,11 @@ async fn get_contributors(
                 return vec![];
             }
         };
-        if unique_usernames.insert(username.to_owned()) {
-            contributors.push(git_cliff_core::contributor::RemoteContributor {
+        if !contributors
+            .iter()
+            .any(|c| c.username.as_deref() == Some(username))
+        {
+            contributors.push(RemoteContributor {
                 username: Some(username.to_owned()),
                 ..Default::default()
             });
