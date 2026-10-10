@@ -8,7 +8,7 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 use tracing::debug;
 
-use crate::fs_utils;
+use crate::{fs_utils, package_compare::has_ignored_contents};
 
 /// Replay changes onto other snapshots in an isolated libgit2 repository that
 /// reads the source objects without writing to the source repository.
@@ -248,6 +248,8 @@ impl<'a> ChangeReplay<'a> {
 
     /// The paths of the change from `parent` to `tree`, mapped to their paths
     /// in `target`: a merge applies edits to a renamed file at its new path.
+    /// Changes package equality ignores leave their paths out, so the merge
+    /// cannot credit the change with adding or removing a file it only edited.
     fn changed_paths(
         &self,
         parent: &git2::Tree<'_>,
@@ -273,6 +275,7 @@ impl<'a> ChangeReplay<'a> {
             .diff_tree_to_tree(Some(parent), Some(tree), None)?;
         Ok(changed
             .deltas()
+            .filter(|delta| !package_equality_ignores(delta))
             .flat_map(|delta| delta_paths(&delta))
             .map(|path| {
                 (
@@ -344,8 +347,10 @@ impl<'a> ChangeReplay<'a> {
     }
 
     /// Whether merging the edits made from `base` to `theirs` into `ours` changes
-    /// the files `includes` selects. Unresolved conflicts count as changes. Text
-    /// conflicts are retried at token granularity, resolved as `conflicts` says.
+    /// the files `includes` selects, as package equality compares them.
+    /// Unresolved conflicts count as changes, except those package equality
+    /// ignores. Text conflicts are retried at token granularity, resolved as
+    /// `conflicts` says.
     fn merging_affects_files(
         &self,
         base: &git2::Tree<'_>,
@@ -365,7 +370,10 @@ impl<'a> ChangeReplay<'a> {
             .into_iter()
             .flatten()
             .any(|entry| includes(&entry.path));
-            if affects_package && !self.conflict_leaves_file_unchanged(&conflict, conflicts)? {
+            if affects_package
+                && !package_equality_ignores_conflict(&conflict)
+                && !self.conflict_leaves_file_unchanged(&conflict, conflicts)?
+            {
                 return Ok(true);
             }
         }
@@ -376,8 +384,7 @@ impl<'a> ChangeReplay<'a> {
             .deltas()
             // Conflicted paths were checked above, including nonconflicting hunks.
             .filter(|delta| delta.status() != git2::Delta::Conflicted)
-            // Package equality ignores executable bits when contents are unchanged.
-            .filter(|delta| delta.old_file().id() != delta.new_file().id())
+            .filter(|delta| !package_equality_ignores(delta))
             .any(|delta| delta_paths(&delta).any(&includes)))
     }
 
@@ -430,6 +437,36 @@ fn file_mode(entry: &git2::TreeEntry<'_>) -> anyhow::Result<git2::FileMode> {
                 entry.name()
             )
         })
+}
+
+/// Whether package equality ignores `delta`: a modification that changes only
+/// executable bits, or that edits a file whose contents it ignores. Other
+/// changes count, such as additions and removals, which change the packaged
+/// file list.
+fn package_equality_ignores(delta: &git2::DiffDelta<'_>) -> bool {
+    delta.status() == git2::Delta::Modified
+        && (delta.old_file().id() == delta.new_file().id()
+            || delta_paths(delta).all(ignores_contents))
+}
+
+/// Whether package equality ignores `conflict`, as [`package_equality_ignores`]
+/// does a delta: theirs has a file whose contents it ignores, and ours has it
+/// too or deleted it, so the merge keeps the file's presence in ours. The
+/// entries of a conflict share its path, so a rename conflict still counts
+/// through its entry at the new path, which only one side has.
+fn package_equality_ignores_conflict(conflict: &git2::IndexConflict) -> bool {
+    match (&conflict.ancestor, &conflict.our, &conflict.their) {
+        (_, Some(_), Some(theirs)) | (Some(_), None, Some(theirs)) => {
+            ignores_contents(&theirs.path)
+        }
+        _ => false,
+    }
+}
+
+/// Whether package equality ignores the contents of the file at `path`, as Git
+/// reports it, see [`has_ignored_contents`]. Non-UTF-8 paths count as compared.
+fn ignores_contents(path: &[u8]) -> bool {
+    std::str::from_utf8(path).is_ok_and(|path| has_ignored_contents(Utf8Path::new(path)))
 }
 
 /// The old and the new path of `delta`, as Git reports them.
