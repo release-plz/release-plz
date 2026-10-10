@@ -22,7 +22,7 @@ use crate::{
     ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{CargoRegistry, CmdOutput, is_published, run_cargo_with_env, wait_until_published},
     changelog_parser,
-    git::forge::{GitClient, GitPr},
+    git::forge::GitClient,
     next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
@@ -658,7 +658,7 @@ async fn release_packages(
     let mut package_releases: Vec<PackageRelease> = vec![];
     let mut context = ReleaseContext {
         git_client,
-        prs: HashMap::new(),
+        pr_authors: HashMap::new(),
         trusted_publishing_client: None,
     };
     for package in packages {
@@ -682,18 +682,21 @@ async fn release_packages(
 /// State shared by packages within a single release invocation.
 struct ReleaseContext<'a> {
     git_client: &'a GitClient,
-    prs: HashMap<u64, GitPr>,
+    /// PR author usernames by PR number.
+    pr_authors: HashMap<u64, String>,
     // The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
 }
 
 impl ReleaseContext<'_> {
-    async fn get_pr_info(&mut self, pr_number: u64) -> anyhow::Result<&GitPr> {
-        let pr = match self.prs.entry(pr_number) {
+    async fn pr_author(&mut self, pr_number: u64) -> anyhow::Result<&str> {
+        let author = match self.pr_authors.entry(pr_number) {
             Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => entry.insert(self.git_client.get_pr_info(pr_number).await?),
+            Entry::Vacant(entry) => {
+                entry.insert(self.git_client.get_pr_info(pr_number).await?.user.login)
+            }
         };
-        Ok(pr)
+        Ok(author)
     }
 }
 
@@ -1161,17 +1164,16 @@ async fn get_contributors(
     let mut unique_usernames = HashSet::new();
     let mut contributors = vec![];
     for pr in release_info.prs {
-        let pr = match context.get_pr_info(pr.number).await {
-            Ok(pr) => pr,
+        let username = match context.pr_author(pr.number).await {
+            Ok(username) => username,
             Err(e) => {
                 warn!("failed to retrieve contributors: {e}");
                 return vec![];
             }
         };
-        let username = &pr.user.login;
-        if unique_usernames.insert(username.clone()) {
+        if unique_usernames.insert(username.to_owned()) {
             contributors.push(git_cliff_core::contributor::RemoteContributor {
-                username: Some(username.clone()),
+                username: Some(username.to_owned()),
                 ..Default::default()
             });
         }
