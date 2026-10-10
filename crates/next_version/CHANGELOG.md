@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4](https://github.com/release-plz/release-plz/compare/next_version-v0.3.3...next_version-v0.3.4) - 2026-10-10
+
+### Performance
+
+- stop scanning after a decisive minor increment ([#3202](https://github.com/release-plz/release-plz/pull/3202))
+
 ## [0.3.3](https://github.com/release-plz/release-plz/compare/next_version-v0.3.2...next_version-v0.3.3) - 2026-10-10
 
 ### Fixed

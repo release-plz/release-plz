@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.172](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.171...release-plz-v0.3.172) - 2026-10-10
+
+### Performance
+
+- find workspace packages without collecting all members ([#3211](https://github.com/release-plz/release-plz/pull/3211))
+- skip contributor requests for default release bodies ([#3216](https://github.com/release-plz/release-plz/pull/3216))
+- skip inheritance scans without a workspace version ([#3215](https://github.com/release-plz/release-plz/pull/3215))
+- avoid captures when parsing release-only changelog headers ([#3212](https://github.com/release-plz/release-plz/pull/3212))
+- initialize Git changelog defaults only when needed ([#3213](https://github.com/release-plz/release-plz/pull/3213))
+- filter manifest dependencies before resolving paths ([#3203](https://github.com/release-plz/release-plz/pull/3203))
+- filter dependency paths before release propagation ([#3204](https://github.com/release-plz/release-plz/pull/3204))
+- move releases into the changelog renderer ([#3206](https://github.com/release-plz/release-plz/pull/3206))
+- inspect package file metadata once ([#3205](https://github.com/release-plz/release-plz/pull/3205))
+- move commits into changelog builder ([#3207](https://github.com/release-plz/release-plz/pull/3207))
+
 ## [0.3.171](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.170...release-plz-v0.3.171) - 2026-10-10
 
 ### Fixed
