@@ -11,9 +11,9 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
     context.run_cargo_publish("second");
 
     // Repeat in a fresh destination to cover both downloads and Cargo's local cache.
-    for requested in [
-        ["second", "missing", "first"],
-        ["first", "missing", "second"],
+    for (requested, expected) in [
+        (["second", "missing", "first"], ["second", "first"]),
+        (["first", "missing", "second"], ["first", "second"]),
     ] {
         let dest_dir = Utf8TempDir::new().unwrap();
         let packages = context
@@ -23,7 +23,7 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
             .unwrap();
 
         let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, [requested[0], requested[2]]);
+        assert_eq!(names, expected);
         for package in packages {
             let package_dir = dest_dir.path().join(package.name.as_str());
             assert_eq!(package.manifest_path, package_dir.join(CARGO_TOML));
