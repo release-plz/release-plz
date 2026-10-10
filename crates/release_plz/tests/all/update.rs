@@ -150,6 +150,203 @@ async fn update_relocated_workspace_preserves_original_manifests() {
 }
 
 #[test]
+fn update_reuses_package_files_after_source_content_changes() {
+    // The three historical snapshots differ only in Rust source contents. Cargo
+    // is invoked once for the local history and once for the released source tree.
+    assert_package_file_listings("source contents", |_| {}, 2, 2);
+}
+
+#[test]
+fn update_lists_package_files_again_after_changes_beyond_source_contents() {
+    // Only some cases change Cargo's file list. The others, such as the
+    // lockfile, the build configuration or the workspace license, show that
+    // any tree change beyond the contents of Rust sources makes Cargo list the
+    // files again.
+    for (path, contents) in [
+        (
+            "one/Cargo.toml",
+            "[package]\nname = \"one\"\nversion = \"1.0.0\"\nedition = \"2024\"\ninclude = [\"src/**\"]\n",
+        ),
+        (
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"one\"]\nresolver = \"3\"\n[workspace.package]\nlicense = \"MIT\"\n",
+        ),
+        ("one/.gitignore", "ignored\n"),
+        (".cargo/config.toml", "[build]\njobs = 1\n"),
+        ("one/src/extra.rs", "// Another module\n"),
+        (
+            "one/nested/Cargo.toml",
+            "[package]\nname = \"nested\"\nversion = \"0.1.0\"\n[workspace]\n",
+        ),
+        (
+            "Cargo.lock",
+            "# Changed lockfile\nversion = 4\n[[package]]\nname = \"one\"\nversion = \"1.0.0\"\n",
+        ),
+    ] {
+        // HEAD and its parent must each ask Cargo. The parent and initial
+        // release differ only in Rust contents and share the second list.
+        assert_package_file_listings(
+            path,
+            |dir| {
+                let changed = dir.join(path);
+                fs_err::create_dir_all(changed.parent().unwrap()).unwrap();
+                fs_err::write(changed, contents).unwrap();
+            },
+            3,
+            1,
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn update_invalidates_package_files_after_mode_changes() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    // Executable scripts can be Cargo or rustc wrappers. As for other changes
+    // beyond source contents, HEAD and its parent must each ask Cargo.
+    assert_package_file_listings(
+        "executable source",
+        |dir| {
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            fs_err::set_permissions(dir.join("one/src/lib.rs"), permissions).unwrap();
+        },
+        3,
+        1,
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn update_lists_package_files_with_a_symlinked_manifest() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\ninclude = [\"src/**\"]\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    for dir in [
+        repo.directory().to_path_buf(),
+        temp_dir.path().join("registry"),
+    ] {
+        fs_err::write(dir.join("one/src/extra.rs"), "// Initial extra module\n").unwrap();
+    }
+    let package = repo.directory().join("one");
+    let manifest = package.join("manifest.rs");
+    fs_err::rename(package.join("Cargo.toml"), &manifest).unwrap();
+    std::os::unix::fs::symlink("manifest.rs", package.join("Cargo.toml")).unwrap();
+    repo.git(&["add", "."]).unwrap();
+    repo.git(&["commit", "--amend", "-m", "feat!: initial API"])
+        .unwrap();
+
+    fs_err::write(package.join("src/extra.rs"), "// Extra capability\n").unwrap();
+    repo.add_all_and_commit("feat: extra capability").unwrap();
+    let contents = fs_err::read_to_string(&manifest).unwrap();
+    fs_err::write(&manifest, contents.replace("src/**", "src/lib.rs")).unwrap();
+    change_package(&repo, "one", "fix: select sources");
+
+    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+    // The symlink itself is unchanged, but its regular .rs target changes
+    // Cargo's file selection. Reusing HEAD's list also hides the equal released
+    // snapshot, bringing the already released breaking change into this update.
+    assert_locked_versions(repo.directory(), &[("one", "1.1.0")]);
+    let changelog = fs_err::read_to_string(package.join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("extra capability"), "{changelog}");
+    assert!(changelog.contains("select sources"), "{changelog}");
+    assert!(!changelog.contains("initial API"), "{changelog}");
+    assert!(
+        !logs.contains("reusing historical package file list"),
+        "{logs}"
+    );
+}
+
+/// Assert that updating a [`single_package_workspace`] after the commits
+/// `fix: first change` and `fix: second change` to the Rust source of `one`
+/// runs `cargo package --list` `cargo_runs` times, once for the released source
+/// tree, and reuses a historical package file list `reuses` times, while the
+/// update still finds exactly the two source changes. `change` edits the
+/// project directory before the second commit, so it is committed with a Rust
+/// source change: root-only configuration changes are part of the path-limited
+/// walk and are compared with the next snapshot.
+fn assert_package_file_listings(
+    case: &str,
+    change: impl FnOnce(&Utf8Path),
+    cargo_runs: usize,
+    reuses: usize,
+) {
+    let (temp_dir, repo) = single_package_workspace();
+    change_package(&repo, "one", "fix: first change");
+    change(repo.directory());
+    change_package(&repo, "one", "fix: second change");
+
+    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+    assert_eq!(
+        logs.matches("Run `cargo package --list").count(),
+        cargo_runs,
+        "{case}: {logs}"
+    );
+    assert_eq!(
+        logs.matches("reusing historical package file list").count(),
+        reuses,
+        "{case}: {logs}"
+    );
+    assert_patch_release(&repo, case, &["first change", "second change"]);
+}
+
+/// Creates a workspace with [`init_workspace`] whose only package `one` is at 1.0.0.
+fn single_package_workspace() -> (Utf8TempDir, Repo) {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    // Converted line endings would make every snapshot differ from the release.
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    (temp_dir, repo)
+}
+
+/// Assert that the update released `one` as 1.0.1 with a changelog that lists
+/// `messages` but not the initial commit, "add README".
+fn assert_patch_release(repo: &Repo, case: &str, messages: &[&str]) {
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    for message in messages {
+        assert!(changelog.contains(message), "{case}: {changelog}");
+    }
+    assert!(!changelog.contains("add README"), "{case}: {changelog}");
+}
+
+#[test]
+fn update_lists_package_files_of_replaced_commits() {
+    let (temp_dir, repo) = single_package_workspace();
+    let release = repo.current_commit_hash().unwrap();
+    repo.git(&["commit", "--allow-empty", "-m", "fix: add extra"])
+        .unwrap();
+    let replaced = repo.current_commit_hash().unwrap();
+    change_package(&repo, "one", "fix: second change");
+    // Checkouts of the empty commit follow its replacement, which adds a
+    // packaged file. The empty commit's own tree differs from HEAD's only in a
+    // Rust source.
+    repo.git(&["checkout", "--detach", &release]).unwrap();
+    fs_err::write(repo.directory().join("one/extra.txt"), "extra\n").unwrap();
+    repo.add_all_and_commit("fix: add extra").unwrap();
+    let replacement = repo.current_commit_hash().unwrap();
+    repo.git(&["checkout", "-"]).unwrap();
+    repo.git(&["replace", &replaced, &replacement]).unwrap();
+
+    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+    // Reusing HEAD's file list would miss the added file and make the replaced
+    // commit equal the release, stopping the walk there.
+    assert!(
+        !logs.contains("reusing historical package file list"),
+        "{logs}"
+    );
+    assert_patch_release(&repo, "replaced commits", &["add extra", "second change"]);
+}
+
+#[test]
 fn update_refreshes_package_files_for_each_historical_snapshot() {
     let (temp_dir, repo) = init_workspace(
         &[("one", "version = \"1.0.0\"\n")],
@@ -790,23 +987,44 @@ fn generate_lockfile(dir: &Utf8Path) {
         .success();
 }
 
+/// Commit `commit_message` with a change to the Rust source of package `name`.
+/// The source contains the message, so commits with distinct messages always
+/// change it, even for the same package.
 fn change_package(repo: &Repo, name: &str, commit_message: &str) {
     fs_err::write(
         repo.directory().join(name).join("src/lib.rs"),
-        format!("// Updated {name}\n"),
+        format!("// {commit_message}\n"),
     )
     .unwrap();
     repo.add_all_and_commit(commit_message).unwrap();
 }
 
 fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&str>) -> String {
-    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
-    cmd.current_dir(repo.directory())
-        .args(["update", "--registry-manifest-path"])
-        .arg(temp_dir.path().join("registry/Cargo.toml"));
+    let mut cmd = workspace_update_command(temp_dir, repo);
     if let Some(url) = repo_url {
         cmd.args(["--repo-url", url]);
     }
     let output = cmd.assert().success().get_output().stdout.clone();
     String::from_utf8(output).unwrap()
+}
+
+/// Run [`workspace_update_command`] and return its debug logs.
+fn run_workspace_update_with_logs(temp_dir: &Utf8TempDir, repo: &Repo) -> String {
+    let output = workspace_update_command(temp_dir, repo)
+        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
+        .assert()
+        .success()
+        .get_output()
+        .stderr
+        .clone();
+    String::from_utf8(output).unwrap()
+}
+
+/// `release-plz update` for a workspace created by [`init_workspace`].
+fn workspace_update_command(temp_dir: &Utf8TempDir, repo: &Repo) -> assert_cmd::Command {
+    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
+    cmd.current_dir(repo.directory())
+        .args(["update", "--registry-manifest-path"])
+        .arg(temp_dir.path().join("registry/Cargo.toml"));
+    cmd
 }

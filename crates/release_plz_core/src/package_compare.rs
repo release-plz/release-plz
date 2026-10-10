@@ -44,7 +44,7 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
 }
 
 /// The packaged files of one package snapshot, computed at most once.
-/// Recreate this cache whenever the package is checked out at another commit.
+/// Recreate this cache whenever file-selection inputs change.
 #[derive(Default)]
 pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 

@@ -752,6 +752,7 @@ impl Updater<'_> {
         )?;
         let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
+        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository);
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -765,7 +766,7 @@ impl Updater<'_> {
             }
             checkout_commit(repository, &current_commit_hash)?;
             // Equality and changed-file checks inspect the same snapshot.
-            let local_package_files = PackageFiles::default();
+            let local_package_files = checkout_package_files.files_at(&current_commit_hash);
             if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
@@ -773,7 +774,7 @@ impl Updater<'_> {
                     package_path,
                     released_package,
                     released_path,
-                    (&local_package_files, &released_package_files),
+                    (local_package_files, &released_package_files),
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     // Collect pruning candidates with full history: a "keep mine"
@@ -801,7 +802,7 @@ impl Updater<'_> {
                 package_path,
                 repository,
                 &current_commit_hash,
-                &local_package_files,
+                local_package_files,
             )? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
@@ -841,14 +842,18 @@ impl Updater<'_> {
         (local_package_files, released_package_files): (&PackageFiles, &PackageFiles),
     ) -> anyhow::Result<bool> {
         let packages_equal = self
-            .with_cargo_lock_restored(repository, || {
-                crate::package_compare::are_packages_equal_cached(
-                    package_path,
-                    registry_package_path,
-                    local_package_files,
-                    released_package_files,
-                )
-            })?
+            .with_cargo_lock_restored_unless_cached(
+                repository,
+                &[local_package_files, released_package_files],
+                || {
+                    crate::package_compare::are_packages_equal_cached(
+                        package_path,
+                        registry_package_path,
+                        local_package_files,
+                        released_package_files,
+                    )
+                },
+            )?
             .context("cannot compare packages");
         // Most historical snapshots already differ in their packaged files.
         // Read README metadata only when that comparison cannot decide equality
@@ -945,6 +950,21 @@ impl Updater<'_> {
         Ok(result)
     }
 
+    /// Run `f`, which runs `cargo package` only to fill `package_files`, with
+    /// [`Self::with_cargo_lock_restored`] unless all of them are already cached.
+    fn with_cargo_lock_restored_unless_cached<T>(
+        &self,
+        repository: &Repo,
+        package_files: &[&PackageFiles],
+        f: impl FnOnce() -> T,
+    ) -> anyhow::Result<T> {
+        if package_files.iter().all(|files| files.is_cached()) {
+            Ok(f())
+        } else {
+            self.with_cargo_lock_restored(repository, f)
+        }
+    }
+
     fn get_next_version(
         &self,
         new_workspace_version: Option<&Version>,
@@ -987,14 +1007,10 @@ impl Updater<'_> {
         hash: &str,
         package_files: &PackageFiles,
     ) -> anyhow::Result<bool> {
-        let get_files = || get_package_files(package_path, repository, package_files);
-        let package_files_res = if package_files.is_cached() {
-            // Equality already listed this snapshot's files and restored the lockfile.
-            // Reading the cached list cannot change Cargo.lock.
-            get_files()
-        } else {
-            self.with_cargo_lock_restored(repository, get_files)?
-        };
+        let package_files_res =
+            self.with_cargo_lock_restored_unless_cached(repository, &[package_files], || {
+                get_package_files(package_path, repository, package_files)
+            })?;
         let Ok(package_files) = package_files_res.inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
