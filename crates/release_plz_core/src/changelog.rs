@@ -53,7 +53,7 @@ pub struct Remote {
     pub contributors: Vec<RemoteContributor>,
 }
 
-impl Changelog<'_> {
+impl<'a> Changelog<'a> {
     /// Generate the full changelog.
     pub fn generate(mut self) -> anyhow::Result<String> {
         let config = self.changelog_config(None);
@@ -90,8 +90,8 @@ impl Changelog<'_> {
         String::from_utf8(out).context("cannot convert bytes to string")
     }
 
-    fn get_changelog<'a>(&'a self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
-        let mut changelog = GitCliffChangelog::new(vec![self.release.clone()], config, None)
+    fn get_changelog(self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
+        let mut changelog = GitCliffChangelog::new(vec![self.release], config, None)
             .context("error while building changelog")?;
         add_package_context(&mut changelog, &self.package)?;
         add_release_link_context(&mut changelog, self.release_link.as_deref())?;
