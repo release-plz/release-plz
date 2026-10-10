@@ -255,6 +255,8 @@ fn workspace_with_source_changes(change: impl FnOnce(&Utf8Path)) -> (Utf8TempDir
         "",
         "[workspace]\nsemver_check = false\n",
     );
+    // Converted line endings would make every snapshot differ from the release.
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
     change_package(&repo, "one", "fix: first change");
     change(repo.directory());
     fs_err::write(
