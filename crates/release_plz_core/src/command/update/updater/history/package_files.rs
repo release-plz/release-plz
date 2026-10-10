@@ -27,8 +27,8 @@ pub(crate) struct HistoryPackageFiles<'a> {
     /// checkout. `None` when the objects cannot be read: then Cargo lists the
     /// files of every checkout.
     repo: OnceCell<Option<git2::Repository>>,
-    /// The tree `files` belongs to. `None` before the first checkout and after
-    /// a failed comparison.
+    /// The tree of the last checkout, which `files` belongs to. `None` before
+    /// the first checkout and when that tree cannot be read.
     tree: Option<git2::Oid>,
     files: PackageFiles,
 }
@@ -64,11 +64,11 @@ impl<'a> HistoryPackageFiles<'a> {
         &self.files
     }
 
-    /// Whether the files listed for the cached tree are those at `commit`.
-    /// Otherwise `commit`'s tree replaces the cached one.
+    /// Whether the files listed at the previous checkout are those at `commit`,
+    /// whose tree becomes the previous one.
     fn reuses_files_at(&mut self, commit: &str) -> anyhow::Result<bool> {
-        // Forget the cached tree unless the comparison succeeds.
-        let cached = self.tree.take();
+        // Forget the previous tree unless `commit`'s tree replaces it.
+        let previous = self.tree.take();
         // Opening the objects runs Git, so skip it for packages without history.
         let repo = self.repo.get_or_init(|| {
             read_only_objects(self.repository, commit)
@@ -81,16 +81,13 @@ impl<'a> HistoryPackageFiles<'a> {
             return Ok(false);
         };
         let tree = repo.find_commit(git2::Oid::from_str(commit)?)?.tree()?;
-        // Differing only in Rust sources is transitive, so comparing with the
-        // tree the list belongs to covers every checkout since.
-        if let Some(cached) = cached
-            && only_rust_sources_differ(repo, &repo.find_tree(cached)?, &tree)?
-        {
-            self.tree = Some(cached);
-            return Ok(true);
-        }
         self.tree = Some(tree.id());
-        Ok(false)
+        // Differing only in Rust sources is transitive, so comparing with the
+        // previous checkout covers every checkout since the list was computed.
+        let Some(previous) = previous else {
+            return Ok(false);
+        };
+        only_rust_sources_differ(repo, &repo.find_tree(previous)?, &tree)
     }
 }
 
