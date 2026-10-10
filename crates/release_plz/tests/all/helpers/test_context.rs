@@ -226,8 +226,13 @@ impl TestContext {
     }
 
     pub fn run_release(&self) -> Assert {
+        self.release_command().assert()
+    }
+
+    pub fn release_command(&self) -> assert_cmd::Command {
         let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
-        super::cmd::release_plz_cmd(&self.cargo_target_dir())
+        let mut command = super::cmd::release_plz_cmd(&self.cargo_target_dir());
+        command
             .current_dir(self.repo_dir())
             .env(RELEASE_PLZ_LOG, log_level())
             .env(token_env_var, format!("Bearer {}", self.gitea.token))
@@ -241,8 +246,8 @@ impl TestContext {
             .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
-            .timeout(Duration::from_secs(300))
-            .assert()
+            .timeout(Duration::from_secs(300));
+        command
     }
 
     pub fn repo_dir(&self) -> Utf8PathBuf {
