@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.8.0...git_cmd-v0.9.0) - 2026-10-10
+
+### Performance
+
+- read commit signatures with one git command ([#3178](https://github.com/release-plz/release-plz/pull/3178))
+
 ## [0.8.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.7.0...git_cmd-v0.8.0) - 2026-10-07
 
 ### Fixed

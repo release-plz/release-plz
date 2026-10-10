@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.86](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.85...cargo_utils-v0.1.86) - 2026-10-10
+
+### Performance
+
+- iterate package dependency tables lazily ([#3186](https://github.com/release-plz/release-plz/pull/3186))
+- clone only selected workspace packages ([#3176](https://github.com/release-plz/release-plz/pull/3176))
+- borrow version requirements while upgrading ([#3177](https://github.com/release-plz/release-plz/pull/3177))
+
 ## [0.1.85](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.84...cargo_utils-v0.1.85) - 2026-10-07
 
 ### Other
