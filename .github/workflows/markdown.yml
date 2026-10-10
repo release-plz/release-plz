@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "**.md"
+      - "**.markdown"
       - "**.mdx"
       - ".config/rumdl.toml"
       - "website/.rumdl.toml"
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - "**.md"
+      - "**.markdown"
       - "**.mdx"
       - ".config/rumdl.toml"
       - "website/.rumdl.toml"
