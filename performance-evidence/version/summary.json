@@ -1,0 +1,58 @@
+[
+  {
+    "case": "prerelease/long_body",
+    "before_ns": 3225.67100485792,
+    "after_ns": 51.65208844447172,
+    "reduction_percent": 98.39871802280261,
+    "speedup": 62.44996285727456
+  },
+  {
+    "case": "prerelease/short",
+    "before_ns": 257.22944468645153,
+    "after_ns": 52.21932618331816,
+    "reduction_percent": 79.69932009651126,
+    "speedup": 4.925943390832671
+  },
+  {
+    "case": "zero_major/breaking/10",
+    "before_ns": 1697.5139156159303,
+    "after_ns": 186.3134090484691,
+    "reduction_percent": 89.0243368649578,
+    "speedup": 9.111066800212566
+  },
+  {
+    "case": "zero_major/breaking/100",
+    "before_ns": 17243.83879661892,
+    "after_ns": 185.66580195294017,
+    "reduction_percent": 98.92329194129705,
+    "speedup": 92.87568639586968
+  },
+  {
+    "case": "zero_major/breaking/1000",
+    "before_ns": 171051.66033724783,
+    "after_ns": 191.83045056006728,
+    "reduction_percent": 99.88785233058724,
+    "speedup": 891.681481421986
+  },
+  {
+    "case": "zero_major/features/10",
+    "before_ns": 2024.853651629963,
+    "after_ns": 233.0429494327639,
+    "reduction_percent": 88.4908744271385,
+    "speedup": 8.688757400979261
+  },
+  {
+    "case": "zero_major/features/100",
+    "before_ns": 19384.151633108617,
+    "after_ns": 227.7941923341319,
+    "reduction_percent": 98.8248431159347,
+    "speedup": 85.09502123160215
+  },
+  {
+    "case": "zero_major/features/1000",
+    "before_ns": 195198.93806893198,
+    "after_ns": 244.4967718564103,
+    "reduction_percent": 99.87474482480532,
+    "speedup": 798.3702058183808
+  }
+]

@@ -1,0 +1,54 @@
+[
+  {
+    "benchmark": "single_noop",
+    "runs": [
+      {
+        "run": 1,
+        "before_ms": 78.95625926666666,
+        "after_ms": 81.15868371666667,
+        "change_percent": 2.7894234991066913
+      },
+      {
+        "run": 2,
+        "before_ms": 93.66036128333333,
+        "after_ms": 91.31280288333332,
+        "change_percent": -2.5064588347020966
+      },
+      {
+        "run": 3,
+        "before_ms": 97.04340845,
+        "after_ms": 92.47252253333333,
+        "change_percent": -4.710145686011991
+      }
+    ],
+    "before_median_ms": 93.66036128333333,
+    "after_median_ms": 91.31280288333332,
+    "median_change_percent": -2.5064588347020966
+  },
+  {
+    "benchmark": "workspace_10_noop",
+    "runs": [
+      {
+        "run": 1,
+        "before_ms": 521.2260953,
+        "after_ms": 482.16766595,
+        "change_percent": -7.493567513637112
+      },
+      {
+        "run": 2,
+        "before_ms": 600.4793055,
+        "after_ms": 603.5895894,
+        "change_percent": 0.5179668760458167
+      },
+      {
+        "run": 3,
+        "before_ms": 589.6989946,
+        "after_ms": 605.1122737999999,
+        "change_percent": 2.6137536847006038
+      }
+    ],
+    "before_median_ms": 589.6989946,
+    "after_median_ms": 603.5895894,
+    "median_change_percent": 2.3555398478205314
+  }
+]

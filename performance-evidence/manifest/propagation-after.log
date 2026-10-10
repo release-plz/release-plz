@@ -1,0 +1,28 @@
+   Compiling release_plz_core v0.38.7 (/workspace/perf-manifest/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-manifest/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 18.48s
+     Running benches/dependency_propagation.rs (/workspace/perf-coordinator/target/release/deps/dependency_propagation-e6d65b3bc72581f7)
+Gnuplot not found, using plotters backend
+Benchmarking dependency_propagation/many_updated_dependencies/10
+Benchmarking dependency_propagation/many_updated_dependencies/10: Warming up for 1.0000 s
+Benchmarking dependency_propagation/many_updated_dependencies/10: Collecting 30 samples in estimated 3.0046 s (76k iterations)
+Benchmarking dependency_propagation/many_updated_dependencies/10: Analyzing
+dependency_propagation/many_updated_dependencies/10
+                        time:   [38.286 µs 38.488 µs 38.763 µs]
+                        change: [−50.002% −49.373% −48.731%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 30 measurements (13.33%)
+  3 (10.00%) high mild
+  1 (3.33%) high severe
+Benchmarking dependency_propagation/many_updated_dependencies/100
+Benchmarking dependency_propagation/many_updated_dependencies/100: Warming up for 1.0000 s
+Benchmarking dependency_propagation/many_updated_dependencies/100: Collecting 30 samples in estimated 3.0620 s (5580 iterations)
+Benchmarking dependency_propagation/many_updated_dependencies/100: Analyzing
+dependency_propagation/many_updated_dependencies/100
+                        time:   [545.92 µs 548.74 µs 552.49 µs]
+                        change: [−89.154% −89.023% −88.908%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 30 measurements (10.00%)
+  2 (6.67%) high mild
+  1 (3.33%) high severe
+

@@ -1,0 +1,26 @@
+move-release
+  run 1 generate/100/metadata_false: 1683.975 -> 1686.254 us (-0.14% faster), stdev 2.8%/4.4%
+  run 1 generate/100/metadata_true: 2295.755 -> 2309.312 us (-0.59% faster), stdev 2.1%/6.2%
+  run 1 generate/1000/metadata_false: 17094.612 -> 17325.539 us (-1.35% faster), stdev 5.3%/9.1%
+  run 1 generate/1000/metadata_true: 25109.088 -> 24346.892 us (3.04% faster), stdev 7.7%/8.4%
+  run 2 generate/100/metadata_false: 1790.607 -> 1656.587 us (7.48% faster), stdev 9.8%/1.0%
+  run 2 generate/100/metadata_true: 2322.173 -> 2237.134 us (3.66% faster), stdev 2.4%/1.5%
+  run 2 generate/1000/metadata_false: 19467.801 -> 15800.598 us (18.84% faster), stdev 15.0%/3.9%
+  run 2 generate/1000/metadata_true: 24622.711 -> 23933.846 us (2.80% faster), stdev 10.3%/3.8%
+  run 3 generate/100/metadata_false: 1674.537 -> 1701.124 us (-1.59% faster), stdev 1.4%/5.6%
+  run 3 generate/100/metadata_true: 2291.261 -> 2252.882 us (1.68% faster), stdev 1.1%/1.0%
+  run 3 generate/1000/metadata_false: 16390.624 -> 16257.653 us (0.81% faster), stdev 4.4%/7.2%
+  run 3 generate/1000/metadata_true: 23687.047 -> 23892.826 us (-0.87% faster), stdev 3.6%/14.0%
+move-commits
+  run 1 update/100/metadata_false: 2249.162 -> 2269.344 us (-0.90% faster), stdev 2.0%/10.3%
+  run 1 update/100/metadata_true: 3113.647 -> 3077.827 us (1.15% faster), stdev 1.7%/1.9%
+  run 1 update/1000/metadata_false: 22205.542 -> 21925.383 us (1.26% faster), stdev 2.0%/2.2%
+  run 1 update/1000/metadata_true: 32397.275 -> 31244.545 us (3.56% faster), stdev 5.9%/4.3%
+  run 2 update/100/metadata_false: 2284.688 -> 2262.257 us (0.98% faster), stdev 3.3%/3.5%
+  run 2 update/100/metadata_true: 3135.108 -> 3057.545 us (2.47% faster), stdev 2.1%/1.3%
+  run 2 update/1000/metadata_false: 21747.445 -> 21355.112 us (1.80% faster), stdev 4.0%/1.0%
+  run 2 update/1000/metadata_true: 31235.963 -> 32028.263 us (-2.54% faster), stdev 2.3%/4.7%
+  run 3 update/100/metadata_false: 2277.795 -> 2247.618 us (1.32% faster), stdev 3.2%/1.6%
+  run 3 update/100/metadata_true: 3127.992 -> 3044.724 us (2.66% faster), stdev 1.8%/1.5%
+  run 3 update/1000/metadata_false: 21882.766 -> 21465.638 us (1.91% faster), stdev 1.5%/1.7%
+  run 3 update/1000/metadata_true: 33504.209 -> 32096.717 us (4.20% faster), stdev 12.2%/5.1%

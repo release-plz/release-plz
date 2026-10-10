@@ -1,0 +1,74 @@
+[
+  {
+    "benchmark": "independent/10",
+    "statistic": "slope",
+    "before_ns": 7846.927653237692,
+    "after_ns": 7962.925883611645,
+    "time_reduction_percent": -1.478263028538196,
+    "speedup": 0.9854327125394088,
+    "before_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 7819.882436450591,
+      "upper_bound": 7879.9252226614635
+    },
+    "after_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 7886.098640961328,
+      "upper_bound": 8061.247699809279
+    }
+  },
+  {
+    "benchmark": "independent/100",
+    "statistic": "slope",
+    "before_ns": 11773.775349229392,
+    "after_ns": 11829.850636146002,
+    "time_reduction_percent": -0.4762727778756304,
+    "speedup": 0.9952598482735469,
+    "before_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 11722.969876759129,
+      "upper_bound": 11836.014873395521
+    },
+    "after_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 11782.700603391659,
+      "upper_bound": 11880.398507134389
+    }
+  },
+  {
+    "benchmark": "many_local_dependencies/10",
+    "statistic": "slope",
+    "before_ns": 61113.33105487144,
+    "after_ns": 46301.52919669429,
+    "time_reduction_percent": 24.236613521979635,
+    "speedup": 1.319898761772098,
+    "before_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 61067.033931935366,
+      "upper_bound": 61168.23506410312
+    },
+    "after_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 46156.3840905125,
+      "upper_bound": 46517.73655407677
+    }
+  },
+  {
+    "benchmark": "many_local_dependencies/100",
+    "statistic": "slope",
+    "before_ns": 501726.7233942155,
+    "after_ns": 304565.0169318783,
+    "time_reduction_percent": 39.29663246329093,
+    "speedup": 1.6473550654257714,
+    "before_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 498210.2759408131,
+      "upper_bound": 506663.3905801099
+    },
+    "after_95_percent_ci": {
+      "confidence_level": 0.95,
+      "lower_bound": 303309.91325527383,
+      "upper_bound": 306287.50150539883
+    }
+  }
+]

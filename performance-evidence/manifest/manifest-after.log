@@ -1,0 +1,49 @@
+   Compiling release_plz_core v0.38.7 (/workspace/perf-manifest/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-manifest/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 18.65s
+     Running benches/manifest_updates.rs (/workspace/perf-coordinator/target/release/deps/manifest_updates-2b3f1a091efcbabc)
+Gnuplot not found, using plotters backend
+Benchmarking manifest_updates/independent/10
+Benchmarking manifest_updates/independent/10: Warming up for 1.0000 s
+Benchmarking manifest_updates/independent/10: Collecting 100 samples in estimated 3.0116 s (379k iterations)
+Benchmarking manifest_updates/independent/10: Analyzing
+manifest_updates/independent/10
+                        time:   [8.2992 µs 8.4629 µs 8.6510 µs]
+                        change: [+5.0625% +7.2471% +9.4766%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 10 outliers among 100 measurements (10.00%)
+  5 (5.00%) high mild
+  5 (5.00%) high severe
+Benchmarking manifest_updates/independent/100
+Benchmarking manifest_updates/independent/100: Warming up for 1.0000 s
+Benchmarking manifest_updates/independent/100: Collecting 100 samples in estimated 3.0133 s (252k iterations)
+Benchmarking manifest_updates/independent/100: Analyzing
+manifest_updates/independent/100
+                        time:   [11.951 µs 12.059 µs 12.175 µs]
+                        change: [−0.7320% −0.0467% +0.6356%] (p = 0.90 > 0.05)
+                        No change in performance detected.
+Found 17 outliers among 100 measurements (17.00%)
+  9 (9.00%) high mild
+  8 (8.00%) high severe
+
+Benchmarking manifest_updates/many_local_dependencies/10
+Benchmarking manifest_updates/many_local_dependencies/10: Warming up for 1.0000 s
+Benchmarking manifest_updates/many_local_dependencies/10: Collecting 30 samples in estimated 3.0002 s (64k iterations)
+Benchmarking manifest_updates/many_local_dependencies/10: Analyzing
+manifest_updates/many_local_dependencies/10
+                        time:   [45.568 µs 46.106 µs 47.050 µs]
+                        change: [−26.174% −25.179% −23.555%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+Benchmarking manifest_updates/many_local_dependencies/100
+Benchmarking manifest_updates/many_local_dependencies/100: Warming up for 1.0000 s
+Benchmarking manifest_updates/many_local_dependencies/100: Collecting 30 samples in estimated 3.0191 s (9765 iterations)
+Benchmarking manifest_updates/many_local_dependencies/100: Analyzing
+manifest_updates/many_local_dependencies/100
+                        time:   [307.19 µs 308.09 µs 309.04 µs]
+                        change: [−39.850% −39.389% −38.962%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+

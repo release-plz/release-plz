@@ -1,0 +1,69 @@
+   Compiling next_version v0.3.2 (/workspace/perf-version/crates/next_version)
+    Finished `bench` profile [optimized] target(s) in 1.34s
+     Running benches/next_version.rs (/workspace/perf-coordinator/target/release/deps/next_version-8917b6c9247993ca)
+Gnuplot not found, using plotters backend
+Benchmarking next_version/fixes/10
+Benchmarking next_version/fixes/10: Warming up for 1.0000 s
+Benchmarking next_version/fixes/10: Collecting 40 samples in estimated 2.0004 s (954k iterations)
+Benchmarking next_version/fixes/10: Analyzing
+next_version/fixes/10   time:   [2.0473 µs 2.0529 µs 2.0601 µs]
+                        thrpt:  [4.8541 Melem/s 4.8711 Melem/s 4.8844 Melem/s]
+                 change:
+                        time:   [−2.4669% −1.0789% +0.0646%] (p = 0.11 > 0.05)
+                        thrpt:  [−0.0646% +1.0906% +2.5293%]
+                        No change in performance detected.
+Found 1 outliers among 40 measurements (2.50%)
+  1 (2.50%) high mild
+
+Benchmarking zero_major/breaking/10
+Benchmarking zero_major/breaking/10: Warming up for 1.0000 s
+Benchmarking zero_major/breaking/10: Collecting 40 samples in estimated 2.0001 s (11M iterations)
+Benchmarking zero_major/breaking/10: Analyzing
+zero_major/breaking/10  time:   [185.18 ns 186.31 ns 187.60 ns]
+                        change: [−89.122% −89.056% −88.972%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 40 measurements (2.50%)
+  1 (2.50%) high severe
+Benchmarking zero_major/features/10
+Benchmarking zero_major/features/10: Warming up for 1.0000 s
+Benchmarking zero_major/features/10: Collecting 40 samples in estimated 2.0001 s (8.4M iterations)
+Benchmarking zero_major/features/10: Analyzing
+zero_major/features/10  time:   [231.14 ns 233.04 ns 235.80 ns]
+                        change: [−88.554% −88.046% −87.510%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 40 measurements (12.50%)
+  1 (2.50%) high mild
+  4 (10.00%) high severe
+Benchmarking zero_major/breaking/100
+Benchmarking zero_major/breaking/100: Warming up for 1.0000 s
+Benchmarking zero_major/breaking/100: Collecting 40 samples in estimated 2.0001 s (11M iterations)
+Benchmarking zero_major/breaking/100: Analyzing
+zero_major/breaking/100 time:   [184.76 ns 185.67 ns 186.70 ns]
+                        change: [−98.944% −98.930% −98.918%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking zero_major/features/100
+Benchmarking zero_major/features/100: Warming up for 1.0000 s
+Benchmarking zero_major/features/100: Collecting 40 samples in estimated 2.0001 s (8.9M iterations)
+Benchmarking zero_major/features/100: Analyzing
+zero_major/features/100 time:   [226.96 ns 227.79 ns 228.91 ns]
+                        change: [−98.837% −98.831% −98.825%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 40 measurements (2.50%)
+  1 (2.50%) high mild
+Benchmarking zero_major/breaking/1000
+Benchmarking zero_major/breaking/1000: Warming up for 1.0000 s
+Benchmarking zero_major/breaking/1000: Collecting 40 samples in estimated 2.0001 s (10M iterations)
+Benchmarking zero_major/breaking/1000: Analyzing
+zero_major/breaking/1000
+                        time:   [189.02 ns 191.83 ns 195.30 ns]
+                        change: [−99.887% −99.885% −99.884%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking zero_major/features/1000
+Benchmarking zero_major/features/1000: Warming up for 1.0000 s
+Benchmarking zero_major/features/1000: Collecting 40 samples in estimated 2.0001 s (8.8M iterations)
+Benchmarking zero_major/features/1000: Analyzing
+zero_major/features/1000
+                        time:   [239.86 ns 244.50 ns 249.25 ns]
+                        change: [−99.880% −99.878% −99.875%] (p = 0.00 < 0.05)
+                        Performance has improved.
+

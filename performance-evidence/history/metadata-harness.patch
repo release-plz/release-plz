@@ -1,0 +1,72 @@
+diff --git a/crates/release_plz_core/src/package_compare.rs b/crates/release_plz_core/src/package_compare.rs
+--- a/crates/release_plz_core/src/package_compare.rs
++++ b/crates/release_plz_core/src/package_compare.rs
+@@ -596,3 +596,6 @@
+         package
+     }
+ }
++
++#[cfg(test)]
++mod metadata_benchmark;
+diff --git a/crates/release_plz_core/src/package_compare/metadata_benchmark.rs b/crates/release_plz_core/src/package_compare/metadata_benchmark.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/release_plz_core/src/package_compare/metadata_benchmark.rs
+@@ -0,0 +1,57 @@
++use super::*;
++use std::{hint::black_box, time::Instant};
++
++#[test]
++#[ignore]
++fn cached_package_comparison() {
++    for count in [32, 512] {
++        let first = fs_utils::Utf8TempDir::new().unwrap();
++        let second = fs_utils::Utf8TempDir::new().unwrap();
++        for package in [&first, &second] {
++            for manifest in [CARGO_TOML, CARGO_TOML_ORIG] {
++                fs_err::write(
++                    package.path().join(manifest),
++                    "[package]\nname = \"comparison\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[lib]\npath = \"src/file-0000.rs\"\n",
++                )
++                .unwrap();
++            }
++            fs_err::create_dir(package.path().join("src")).unwrap();
++            for index in 0..count {
++                fs_err::write(
++                    package.path().join(format!("src/file-{index:04}.rs")),
++                    "// Package source.\n".repeat(8),
++                )
++                .unwrap();
++            }
++        }
++        let first_files = PackageFiles::default();
++        let second_files = PackageFiles::default();
++        let compare = || {
++            assert!(black_box(are_packages_equal_cached(
++                black_box(first.path()),
++                black_box(second.path()),
++                black_box(&first_files),
++                black_box(&second_files),
++            ))
++            .unwrap());
++        };
++        for _ in 0..30 {
++            compare();
++        }
++        assert_eq!(first_files.get(first.path()).unwrap().len(), count + 2);
++        assert_eq!(second_files.get(second.path()).unwrap().len(), count + 2);
++        let iterations = 50;
++        let mut samples = Vec::new();
++        for _ in 0..31 {
++            let started = Instant::now();
++            for _ in 0..iterations {
++                compare();
++            }
++            samples.push(started.elapsed().as_secs_f64() / f64::from(iterations));
++        }
++        println!(
++            "PERF_JSON {}",
++            serde_json::json!({"file_count": count, "seconds_per_call": samples})
++        );
++    }
++}

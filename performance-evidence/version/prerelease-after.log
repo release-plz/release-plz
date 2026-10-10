@@ -1,0 +1,34 @@
+   Compiling next_version v0.3.2 (/workspace/perf-version/crates/next_version)
+    Finished `bench` profile [optimized] target(s) in 1.24s
+     Running benches/next_version.rs (/workspace/perf-coordinator/target/release/deps/next_version-8917b6c9247993ca)
+Gnuplot not found, using plotters backend
+Benchmarking next_version/fixes/10
+Benchmarking next_version/fixes/10: Warming up for 1.0000 s
+Benchmarking next_version/fixes/10: Collecting 40 samples in estimated 2.0000 s (967k iterations)
+Benchmarking next_version/fixes/10: Analyzing
+next_version/fixes/10   time:   [2.0444 µs 2.0857 µs 2.1517 µs]
+                        thrpt:  [4.6474 Melem/s 4.7945 Melem/s 4.8914 Melem/s]
+                 change:
+                        time:   [+0.1926% +5.7239% +11.981%] (p = 0.08 > 0.05)
+                        thrpt:  [−10.699% −5.4141% −0.1922%]
+                        No change in performance detected.
+Found 6 outliers among 40 measurements (15.00%)
+  6 (15.00%) high severe
+
+Benchmarking prerelease/short
+Benchmarking prerelease/short: Warming up for 1.0000 s
+Benchmarking prerelease/short: Collecting 40 samples in estimated 2.0000 s (38M iterations)
+Benchmarking prerelease/short: Analyzing
+prerelease/short        time:   [52.133 ns 52.219 ns 52.286 ns]
+                        change: [−80.863% −79.902% −79.283%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking prerelease/long_body
+Benchmarking prerelease/long_body: Warming up for 1.0000 s
+Benchmarking prerelease/long_body: Collecting 40 samples in estimated 2.0000 s (38M iterations)
+Benchmarking prerelease/long_body: Analyzing
+prerelease/long_body    time:   [51.473 ns 51.652 ns 51.901 ns]
+                        change: [−98.399% −98.389% −98.379%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 40 measurements (15.00%)
+  6 (15.00%) high severe
+

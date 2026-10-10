@@ -1,0 +1,22 @@
+
+running 8 tests
+test package_compare::tests::compare_files_reports_missing_files ... ok
+test package_compare::tests::compare_packaged_files_ignores_extraction_marker ... ok
+test package_compare::tests::compare_files_handles_empty_files_and_buffer_boundaries ... ok
+test package_compare::tests::compare_packaged_files_ignores_lockfile_presence_and_contents ... ok
+test package_compare::tests::unpacked_package_is_listed_without_running_cargo ... ok
+test package_compare::tests::package_without_original_manifest_uses_cargo_file_selection ... ok
+
+thread 'package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes' (56503) panicked at crates/release_plz_core/src/package_compare.rs:459:89:
+called `Result::unwrap()` on an `Err` value: Custom { kind: NotFound, error: Error { kind: OpenFile, source: Os { code: 2, kind: NotFound, message: "No such file or directory" }, path: "/tmp/.tmpYTbLFn/target/package/example-0.1.0.crate" } }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes ... FAILED
+test package_compare::tests::compare_source_packages_uses_cargo_file_selection ... ok
+
+failures:
+
+failures:
+    package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes
+
+test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 179 filtered out; finished in 0.14s
+

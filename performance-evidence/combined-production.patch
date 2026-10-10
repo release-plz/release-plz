@@ -1,0 +1,236 @@
+diff --git a/crates/next_version/src/version_increment.rs b/crates/next_version/src/version_increment.rs
+index 14ffbef6..3cd473c2 100644
+--- a/crates/next_version/src/version_increment.rs
++++ b/crates/next_version/src/version_increment.rs
+@@ -41,6 +41,10 @@ impl VersionIncrement {
+         I: IntoIterator,
+         I::Item: AsRef<str>,
+     {
++        if !current_version.pre.is_empty() && updater.no_increment_regex.is_none() {
++            return commits.into_iter().next().map(|_| Self::Prerelease);
++        }
++
+         let breaking_increment_major =
+             current_version.major != 0 || updater.breaking_always_increment_major;
+         let features_increment_minor =
+@@ -90,6 +94,14 @@ impl VersionIncrement {
+                     increment = Some(Self::Minor);
+                 }
+             }
++
++            if !breaking_increment_major
++                && updater.custom_major_increment_regex.is_none()
++                && increment == Some(Self::Minor)
++            {
++                // No other commit can request a larger increment.
++                return increment;
++            }
+         }
+ 
+         increment
+diff --git a/crates/next_version/tests/all/normal.rs b/crates/next_version/tests/all/normal.rs
+index 044cdea8..f8634834 100644
+--- a/crates/next_version/tests/all/normal.rs
++++ b/crates/next_version/tests/all/normal.rs
+@@ -75,6 +75,18 @@ fn commit_with_breaking_change_increments_major_version_when_major_is_zero() {
+     );
+ }
+ 
++#[test]
++fn feature_does_not_hide_later_major_increment_when_major_is_zero() {
++    let commits = ["feat: add behavior", "fix!: change behavior"];
++    assert_eq!(
++        VersionUpdater::new()
++            .with_features_always_increment_minor(true)
++            .with_breaking_always_increment_major(true)
++            .increment(&Version::new(0, 2, 3), commits),
++        Version::new(1, 0, 0)
++    );
++}
++
+ #[test]
+ fn commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero() {
+     let commits = ["feat!: break user"];
+diff --git a/crates/release_plz_core/src/changelog.rs b/crates/release_plz_core/src/changelog.rs
+index 9da1f59c..504d2b43 100644
+--- a/crates/release_plz_core/src/changelog.rs
++++ b/crates/release_plz_core/src/changelog.rs
+@@ -53,7 +53,7 @@ pub struct Remote {
+     pub contributors: Vec<RemoteContributor>,
+ }
+ 
+-impl Changelog<'_> {
++impl<'a> Changelog<'a> {
+     /// Generate the full changelog.
+     pub fn generate(mut self) -> anyhow::Result<String> {
+         let config = self.changelog_config(None);
+@@ -90,8 +90,8 @@ impl Changelog<'_> {
+         String::from_utf8(out).context("cannot convert bytes to string")
+     }
+ 
+-    fn get_changelog<'a>(&'a self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
+-        let mut changelog = GitCliffChangelog::new(vec![self.release.clone()], config, None)
++    fn get_changelog(self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
++        let mut changelog = GitCliffChangelog::new(vec![self.release], config, None)
+             .context("error while building changelog")?;
+         add_package_context(&mut changelog, &self.package)?;
+         add_release_link_context(&mut changelog, self.release_link.as_deref())?;
+diff --git a/crates/release_plz_core/src/command/update/mod.rs b/crates/release_plz_core/src/command/update/mod.rs
+index 17b61960..7ecfadf9 100644
+--- a/crates/release_plz_core/src/command/update/mod.rs
++++ b/crates/release_plz_core/src/command/update/mod.rs
+@@ -241,7 +241,16 @@ pub(super) fn update_dependencies(
+         let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
+         let deps_to_update = local_manifest
+             .get_dependency_tables_mut()
+-            .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
++            .flat_map(|t| {
++                t.iter_mut().filter_map(|(name, d)| {
++                    let d = d.as_table_like_mut()?;
++                    let dependency_name = d
++                        .get("package")
++                        .and_then(|p| p.as_str())
++                        .unwrap_or(name.get());
++                    (dependency_name == package_name).then_some(d)
++                })
++            })
+             .filter(|d| d.contains_key("version"))
+             .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
+ 
+diff --git a/crates/release_plz_core/src/command/update/package_dependencies.rs b/crates/release_plz_core/src/command/update/package_dependencies.rs
+index cf1dca74..3a183282 100644
+--- a/crates/release_plz_core/src/command/update/package_dependencies.rs
++++ b/crates/release_plz_core/src/command/update/package_dependencies.rs
+@@ -69,17 +69,21 @@ impl PackageDependencies for Package {
+                                         .unwrap_or(d);
+                                     // Return also the path of the Cargo.toml so that we can resolve the
+                                     // relative path of the dependency later.
+-                                    (kind, workspace_dir, dep)
++                                    (name, kind, workspace_dir, dep)
+                                 }
+-                                _ => (kind, package_dir, d),
++                                _ => (name, kind, package_dir, d),
+                             }
+                         })
+                     })
+                 })
+-                .filter(|(_, toml_base_path, d)| {
++                .filter(|(name, _, _, d)| {
++                    let dependency_name = d.get("package").and_then(|p| p.as_str()).unwrap_or(name);
++                    dependency_name == p.name.as_str()
++                })
++                .filter(|(_, _, toml_base_path, d)| {
+                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
+                 })
+-                .map(|(kind, _, dep)| (kind, dep));
++                .map(|(_, kind, _, dep)| (kind, dep));
+ 
+             for (kind, dep) in matching_deps {
+                 if should_update_dependency(dep, kind, next_ver, include_versionless)? {
+diff --git a/crates/release_plz_core/src/command/update/updater.rs b/crates/release_plz_core/src/command/update/updater.rs
+index 0aa08e9c..d52059aa 100644
+--- a/crates/release_plz_core/src/command/update/updater.rs
++++ b/crates/release_plz_core/src/command/update/updater.rs
+@@ -1154,11 +1154,13 @@ fn get_changelog(
+ ) -> anyhow::Result<(String, String)> {
+     let commits: Vec<git_cliff_core::commit::Commit> =
+         commits.iter().map(|c| c.to_cliff_commit()).collect();
+-    let mut changelog_builder = ChangelogBuilder::new(
+-        commits.clone(),
+-        next_version.to_string(),
+-        package.name.to_string(),
+-    );
++    let contributors = if changelog_req.is_some() && repo.is_some() {
++        get_contributors(&commits)
++    } else {
++        Vec::new()
++    };
++    let mut changelog_builder =
++        ChangelogBuilder::new(commits, next_version.to_string(), package.name.to_string());
+     if let Some(changelog_req) = changelog_req {
+         if let Some(release_date) = changelog_req.release_date {
+             changelog_builder = changelog_builder.with_release_date(release_date);
+@@ -1173,7 +1175,7 @@ fn get_changelog(
+                 owner: repo_url.owner.clone(),
+                 repo: repo_url.name.clone(),
+                 link: repo_url.full_host(),
+-                contributors: get_contributors(&commits),
++                contributors,
+             };
+             changelog_builder = changelog_builder.with_remote(remote);
+ 
+diff --git a/crates/release_plz_core/src/package_compare.rs b/crates/release_plz_core/src/package_compare.rs
+index 337506f6..5b57a865 100644
+--- a/crates/release_plz_core/src/package_compare.rs
++++ b/crates/release_plz_core/src/package_compare.rs
+@@ -120,16 +120,15 @@ pub(crate) fn are_packages_equal_cached(
+     let local_files = local_files
+         .map(|file| local_package.join(file))
+         .filter(|file| {
+-            !(file.is_symlink()
+-            // `cargo package --list` can return files that don't exist locally,
+-            // such as the `README.md` file if the `Cargo.toml` specified a different path.
+-            || !file.exists()
+-            // Ignore `Cargo.lock` because the local one is different from the published one in workspaces.
+-            || file.file_name() == Some("Cargo.lock")
+-            // Ignore `Cargo.toml` because we already checked it before.
+-            || file.file_name() == Some(CARGO_TOML)
+-            // Ignore `Cargo.toml.orig` because it's auto generated.
+-            || file.file_name() == Some(CARGO_TOML_ORIG))
++            // The manifest was checked above; lockfiles and original manifests
++            // are generated by Cargo and can differ in published packages.
++            !matches!(
++                file.file_name(),
++                Some("Cargo.lock" | CARGO_TOML | CARGO_TOML_ORIG)
++            )
++                // `cargo package --list` can return files that don't exist locally,
++                // such as `README.md` when Cargo.toml specifies a different path.
++                && file.symlink_metadata().is_ok_and(|metadata| !metadata.is_symlink())
+         });
+ 
+     for local_path in local_files {
+@@ -537,6 +536,44 @@ mod tests {
+         assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+     }
+ 
++    #[cfg(unix)]
++    #[test]
++    fn compare_packaged_files_skips_symlinks_and_missing_files() {
++        let local = test_package();
++        let registry = test_package();
++        for package in [&local, &registry] {
++            fs_err::copy(
++                package.path().join(CARGO_TOML),
++                package.path().join(CARGO_TOML_ORIG),
++            )
++            .unwrap();
++        }
++        let link = local.path().join("src/link.rs");
++        std::os::unix::fs::symlink("lib.rs", &link).unwrap();
++        fs_err::write(registry.path().join("src/link.rs"), "different content").unwrap();
++
++        let local_files = PackageFiles::default();
++        let registry_files = PackageFiles::default();
++        let equal = || {
++            are_packages_equal_cached(local.path(), registry.path(), &local_files, &registry_files)
++                .unwrap()
++        };
++        assert!(equal());
++
++        fs_err::remove_file(&link).unwrap();
++        std::os::unix::fs::symlink("missing.rs", &link).unwrap();
++        assert!(equal(), "broken symlinks are also skipped");
++
++        fs_err::remove_file(&link).unwrap();
++        assert!(
++            equal(),
++            "Cargo's file list may include files absent locally"
++        );
++
++        fs_err::write(&link, "local content").unwrap();
++        assert!(!equal(), "regular files are still compared");
++    }
++
+     #[test]
+     fn compare_source_packages_uses_cargo_file_selection() {
+         let local = test_package();

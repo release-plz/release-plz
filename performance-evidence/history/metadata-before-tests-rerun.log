@@ -1,0 +1,13 @@
+
+running 8 tests
+test package_compare::tests::compare_files_reports_missing_files ... ok
+test package_compare::tests::compare_files_handles_empty_files_and_buffer_boundaries ... ok
+test package_compare::tests::compare_packaged_files_ignores_extraction_marker ... ok
+test package_compare::tests::compare_packaged_files_ignores_lockfile_presence_and_contents ... ok
+test package_compare::tests::unpacked_package_is_listed_without_running_cargo ... ok
+test package_compare::tests::package_without_original_manifest_uses_cargo_file_selection ... ok
+test package_compare::tests::compare_source_packages_uses_cargo_file_selection ... ok
+test package_compare::tests::compare_downloaded_package_ignores_git_metadata_and_detects_changes ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 179 filtered out; finished in 0.15s
+

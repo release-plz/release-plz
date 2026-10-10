@@ -1,0 +1,23 @@
+
+running 2 tests
+test command::update::updater::perf_changelog_evidence::perf_changelog_generate ... OUTPUT generate/100/false: 1496 bytes, hash bfb522ebb7104268
+ALLOC generate/100/metadata_false allocations=36585 allocated_bytes=4720247 stable_samples=25
+OUTPUT generate/100/true: 1496 bytes, hash bfb522ebb7104268
+ALLOC generate/100/metadata_true allocations=51285 allocated_bytes=5532097 stable_samples=25
+OUTPUT generate/1000/false: 13196 bytes, hash 28fcedf81e78e156
+ALLOC generate/1000/metadata_false allocations=357894 allocated_bytes=45086463 stable_samples=25
+OUTPUT generate/1000/true: 13196 bytes, hash 28fcedf81e78e156
+ALLOC generate/1000/metadata_true allocations=504894 allocated_bytes=53204963 stable_samples=25
+ok
+test command::update::updater::perf_changelog_evidence::perf_changelog_update ... OUTPUT update/100/false: 1227 + 1213 bytes, hash eaa06c9bd64e5e1b
+ALLOC update/100/metadata_false allocations=42319 allocated_bytes=5317407 stable_samples=25
+OUTPUT update/100/true: 1227 + 1213 bytes, hash eaa06c9bd64e5e1b
+ALLOC update/100/metadata_true allocations=61919 allocated_bytes=6154557 stable_samples=25
+OUTPUT update/1000/false: 12927 + 12913 bytes, hash a3761928a32d6495
+ALLOC update/1000/metadata_false allocations=405937 allocated_bytes=49480695 stable_samples=25
+OUTPUT update/1000/true: 12927 + 12913 bytes, hash a3761928a32d6495
+ALLOC update/1000/metadata_true allocations=601937 allocated_bytes=57852195 stable_samples=25
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 4.00s
+

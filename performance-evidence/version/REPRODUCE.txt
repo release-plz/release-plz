@@ -1,0 +1,49 @@
+Reproducing the next_version measurements
+
+The benchmark-harness.patch contains PR #3146's Criterion harness, the lockfile,
+and the additional cases in next_version.rs. It is benchmark-only evidence;
+none of these files are part of either optimization PR.
+
+Starting with a clean checkout of release-plz at
+74b20485f891fec3a9591b17d0c38dd5d99e4d07, apply the patch:
+
+    git apply /path/to/benchmark-harness.patch
+
+Then run the baseline (Criterion 0.8.2, release profile, 40 samples, 1 second
+warm-up and 2 seconds measurement per case):
+
+    cargo bench --locked -p "path+file://$PWD/crates/next_version#0.3.2" --bench next_version -- --sample-size 40 --measurement-time 2 --warm-up-time 1 --noplot --save-baseline main
+
+Keep the benchmark-only changes in the working tree and switch to the
+prerelease optimization PR branch. Rebuild and compare:
+
+    touch crates/next_version/src/*.rs crates/next_version/Cargo.toml
+    cargo test --locked --release -p "path+file://$PWD/crates/next_version#0.3.2"
+    cargo bench --locked -p "path+file://$PWD/crates/next_version#0.3.2" --bench next_version -- 'prerelease|next_version/fixes/10$' --sample-size 40 --measurement-time 2 --warm-up-time 1 --noplot --baseline main
+
+Switch to the decisive-minor optimization PR branch, which is independently
+based on the same main commit, and compare:
+
+    touch crates/next_version/src/*.rs crates/next_version/Cargo.toml
+    cargo test --locked --release -p "path+file://$PWD/crates/next_version#0.3.2"
+    cargo bench --locked -p "path+file://$PWD/crates/next_version#0.3.2" --bench next_version -- 'zero_major|next_version/fixes/10$' --sample-size 40 --measurement-time 2 --warm-up-time 1 --noplot --baseline main
+
+Touching source timestamps guards against stale artifacts when sharing a
+Cargo target directory across clones. In this run, each variant's changed
+workspace crate was rebuilt, and the whole comparison suite held a shared
+exclusive lock to avoid concurrent builds or benchmarks.
+
+Fixtures:
+- Original next_version cases from PR #3146 are retained unchanged.
+- prerelease: version 1.0.0-alpha.1, 100 borrowed messages, either a short
+  fix message or a message with a 4,100-byte explanatory body. Only the
+  first message is needed; no no-increment regex is configured.
+- zero_major: version 0.2.3, 10/100/1,000 borrowed breaking messages under
+  defaults, or feature messages with features_always_increment_minor=true.
+  The first commit determines the maximum permitted minor increment.
+- Expected versions are asserted before every timed fixture.
+- The unchanged stable-version next_version/fixes/10 case is a control.
+
+Reported estimates are Criterion's slope point estimates when available,
+otherwise its mean point estimates. Percent reduction is 100*(1-after/before).
+These are version-calculation timings, not whole release-plz command timings.

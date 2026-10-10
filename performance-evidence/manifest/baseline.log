@@ -1,0 +1,61 @@
+   Compiling release_plz_core v0.38.7 (/workspace/perf-manifest/crates/release_plz_core)
+   Compiling release-plz v0.3.170 (/workspace/perf-manifest/crates/release_plz)
+    Finished `bench` profile [optimized] target(s) in 19.58s
+     Running benches/dependency_propagation.rs (/workspace/perf-coordinator/target/release/deps/dependency_propagation-e6d65b3bc72581f7)
+Gnuplot not found, using plotters backend
+Benchmarking dependency_propagation/many_updated_dependencies/10
+Benchmarking dependency_propagation/many_updated_dependencies/10: Warming up for 1.0000 s
+Benchmarking dependency_propagation/many_updated_dependencies/10: Collecting 30 samples in estimated 3.0278 s (38k iterations)
+Benchmarking dependency_propagation/many_updated_dependencies/10: Analyzing
+dependency_propagation/many_updated_dependencies/10
+                        time:   [76.704 µs 77.493 µs 78.462 µs]
+Found 3 outliers among 30 measurements (10.00%)
+  2 (6.67%) high mild
+  1 (3.33%) high severe
+Benchmarking dependency_propagation/many_updated_dependencies/100
+Benchmarking dependency_propagation/many_updated_dependencies/100: Warming up for 1.0000 s
+Benchmarking dependency_propagation/many_updated_dependencies/100: Collecting 30 samples in estimated 4.6622 s (930 iterations)
+Benchmarking dependency_propagation/many_updated_dependencies/100: Analyzing
+dependency_propagation/many_updated_dependencies/100
+                        time:   [4.9784 ms 5.0456 ms 5.1270 ms]
+Found 4 outliers among 30 measurements (13.33%)
+  3 (10.00%) high mild
+  1 (3.33%) high severe
+
+     Running benches/manifest_updates.rs (/workspace/perf-coordinator/target/release/deps/manifest_updates-2b3f1a091efcbabc)
+Gnuplot not found, using plotters backend
+Benchmarking manifest_updates/independent/10
+Benchmarking manifest_updates/independent/10: Warming up for 1.0000 s
+Benchmarking manifest_updates/independent/10: Collecting 100 samples in estimated 3.0321 s (374k iterations)
+Benchmarking manifest_updates/independent/10: Analyzing
+manifest_updates/independent/10
+                        time:   [7.8846 µs 7.9118 µs 7.9425 µs]
+Found 12 outliers among 100 measurements (12.00%)
+  10 (10.00%) high mild
+  2 (2.00%) high severe
+Benchmarking manifest_updates/independent/100
+Benchmarking manifest_updates/independent/100: Warming up for 1.0000 s
+Benchmarking manifest_updates/independent/100: Collecting 100 samples in estimated 3.0500 s (252k iterations)
+Benchmarking manifest_updates/independent/100: Analyzing
+manifest_updates/independent/100
+                        time:   [11.761 µs 11.784 µs 11.812 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  7 (7.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking manifest_updates/many_local_dependencies/10
+Benchmarking manifest_updates/many_local_dependencies/10: Warming up for 1.0000 s
+Benchmarking manifest_updates/many_local_dependencies/10: Collecting 30 samples in estimated 3.0049 s (48k iterations)
+Benchmarking manifest_updates/many_local_dependencies/10: Analyzing
+manifest_updates/many_local_dependencies/10
+                        time:   [61.885 µs 62.005 µs 62.143 µs]
+Found 3 outliers among 30 measurements (10.00%)
+  2 (6.67%) high mild
+  1 (3.33%) high severe
+Benchmarking manifest_updates/many_local_dependencies/100
+Benchmarking manifest_updates/many_local_dependencies/100: Warming up for 1.0000 s
+Benchmarking manifest_updates/many_local_dependencies/100: Collecting 30 samples in estimated 3.0945 s (6045 iterations)
+Benchmarking manifest_updates/many_local_dependencies/100: Analyzing
+manifest_updates/many_local_dependencies/100
+                        time:   [501.20 µs 502.89 µs 505.35 µs]
+

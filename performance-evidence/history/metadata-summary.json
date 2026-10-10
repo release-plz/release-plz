@@ -1,0 +1,16 @@
+[
+  {
+    "source_files": 32,
+    "before_us": 86.62462,
+    "after_us": 76.30166,
+    "reduction_pct": 11.916889216945481,
+    "speedup": 1.1352914209205933
+  },
+  {
+    "source_files": 512,
+    "before_us": 1374.76362,
+    "after_us": 1230.19204,
+    "reduction_pct": 10.51610457949127,
+    "speedup": 1.1175195215862395
+  }
+]
