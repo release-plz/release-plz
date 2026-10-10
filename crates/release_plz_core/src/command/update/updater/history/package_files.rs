@@ -24,7 +24,7 @@ use super::read_only_objects;
 pub(crate) struct HistoryPackageFiles<'a> {
     repository: &'a Repo,
     /// Reads the trees of the checked-out commits, opened at the first
-    /// checkout. `None` when the objects cannot be read: then Cargo lists the
+    /// checkout. `None` when those trees cannot be read: then Cargo lists the
     /// files of every checkout.
     repo: OnceCell<Option<git2::Repository>>,
     /// The tree of the last checkout, which `files` belongs to. `None` before
@@ -66,7 +66,7 @@ impl<'a> HistoryPackageFiles<'a> {
         let previous = self.tree.take();
         // Opening the objects runs Git, so skip it for packages without history.
         let repo = self.repo.get_or_init(|| {
-            read_only_objects(self.repository, commit)
+            checked_out_trees(self.repository, commit)
                 .inspect_err(|error| {
                     debug!("cannot reuse historical package file lists: {error:#}");
                 })
@@ -84,6 +84,18 @@ impl<'a> HistoryPackageFiles<'a> {
         };
         only_rust_sources_differ(repo, &repo.find_tree(previous)?, &tree)
     }
+}
+
+/// The [`read_only_objects`] of `repository`, provided that Git checks out the
+/// trees they store.
+fn checked_out_trees(repository: &Repo, commit: &str) -> anyhow::Result<git2::Repository> {
+    // libgit2 ignores replace refs, which checkouts follow: the tree it reads
+    // for a replaced commit is not the one on disk.
+    anyhow::ensure!(
+        repository.git(&["replace", "--list"])?.is_empty(),
+        "the repository has replace refs"
+    );
+    read_only_objects(repository, commit)
 }
 
 /// Whether the trees `old` and `new` differ only in the contents of Rust

@@ -269,6 +269,51 @@ fn workspace_with_source_changes(change: impl FnOnce(&Utf8Path)) -> (Utf8TempDir
 }
 
 #[test]
+fn update_lists_package_files_of_replaced_commits() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    // Converted line endings would make every snapshot differ from the release.
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let release = repo.current_commit_hash().unwrap();
+    repo.git(&["commit", "--allow-empty", "-m", "fix: add extra"])
+        .unwrap();
+    let replaced = repo.current_commit_hash().unwrap();
+    fs_err::write(
+        repo.directory().join("one/src/lib.rs"),
+        "// Second change\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: second change").unwrap();
+    // Checkouts of the empty commit follow its replacement, which adds a
+    // packaged file. The empty commit's own tree differs from HEAD's only in a
+    // Rust source.
+    repo.git(&["checkout", "--detach", &release]).unwrap();
+    fs_err::write(repo.directory().join("one/extra.txt"), "extra\n").unwrap();
+    repo.add_all_and_commit("fix: add extra").unwrap();
+    let replacement = repo.current_commit_hash().unwrap();
+    repo.git(&["checkout", "-"]).unwrap();
+    repo.git(&["replace", &replaced, &replacement]).unwrap();
+
+    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+    // Reusing HEAD's file list would miss the added file and make the replaced
+    // commit equal the release, stopping the walk there.
+    assert!(
+        !logs.contains("reusing historical package file list"),
+        "{logs}"
+    );
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    for message in ["add extra", "second change"] {
+        assert!(changelog.contains(message), "{changelog}");
+    }
+    assert!(!changelog.contains("add README"), "{changelog}");
+}
+
+#[test]
 fn update_refreshes_package_files_for_each_historical_snapshot() {
     let (temp_dir, repo) = init_workspace(
         &[("one", "version = \"1.0.0\"\n")],
