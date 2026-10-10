@@ -8,11 +8,10 @@ on:
       - "**.md"
       - "**.js"
       - "**.ts"
+  # Required checks must run for every PR and merge queue commit.
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "**.js"
-      - "**.ts"
+  merge_group:
+    types: [checks_requested]
 
 permissions: {}
 
