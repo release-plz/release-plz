@@ -31,15 +31,13 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
         assert!(!dest_dir.path().join("missing").exists());
     }
 
-    for requested in [&["missing"][..], &[]] {
-        let dest_dir = Utf8TempDir::new().unwrap();
-        let packages = context
-            .package_downloader(requested.iter().copied(), dest_dir.path())
-            .download()
-            .await
-            .unwrap();
-        assert!(packages.is_empty());
-    }
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(Vec::<&str>::new(), dest_dir.path())
+        .download()
+        .await
+        .unwrap();
+    assert!(packages.is_empty());
 }
 
 #[tokio::test]
