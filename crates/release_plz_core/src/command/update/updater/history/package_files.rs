@@ -5,12 +5,23 @@
 //! untracked and ignored files change only at checkouts that add or remove
 //! tracked paths. Cargo selects packaged files by their paths and types,
 //! manifests, ignore rules and configuration, never by the contents of Rust
-//! sources. Commits whose trees differ only in the contents of non-executable
-//! `.rs` files therefore package the same files, unless a symlinked manifest
-//! makes Cargo read a `.rs` file as TOML. Configuration outside the repository
-//! is assumed stable during a walk, just as for the released-package cache.
-//! Whenever the checked-out trees cannot be compared or contain a symlinked
-//! manifest, Cargo lists the files again.
+//! sources. Checkouts whose trees differ only in the contents of `.rs` files
+//! that are non-executable regular files in both therefore package the same
+//! files: symlinks and submodules stand for other files, and executable scripts
+//! can be Cargo or rustc wrappers. Such differences are transitive, so
+//! comparing each checkout with the previous one covers every checkout since
+//! Cargo listed the files.
+//!
+//! A symlinked file-selection input pointing to a `.rs` file makes its contents
+//! matter, though. Only symlinked manifests are detected: Cargo lists the files
+//! at each checkout with a symlink named `Cargo.toml` in any ASCII case, since
+//! case-insensitive filesystems resolve every casing. Source-only differences
+//! preserve their absence, so only checkouts that need a new list are inspected.
+//! Other symlinked inputs pointing to Rust sources, such as a `.gitignore` or a
+//! `.cargo/config.toml`, are assumed absent, and configuration outside the
+//! repository is assumed stable during a walk, as for the released-package
+//! cache. Whenever Git cannot compare the checkouts or look for symlinked
+//! manifests, Cargo lists the files again.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
@@ -18,13 +29,12 @@ use tracing::debug;
 
 use crate::package_compare::PackageFiles;
 
-/// The package files of a checkout, reused by the following checkouts while
-/// their trees differ from its tree only in the contents of Rust sources.
+/// The package files of the checkouts of a history walk.
 pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
     /// The last checked-out commit, whose files `files` lists. `None` before the
-    /// first checkout and when the tree of that commit contains, or cannot be
-    /// checked for, a symlinked manifest.
+    /// first checkout and when that commit has, or may have, a symlinked
+    /// manifest.
     commit: Option<String>,
     files: PackageFiles,
 }
@@ -39,11 +49,10 @@ impl<'a> CheckoutPackageFiles<'a> {
         }
     }
 
-    /// The package files at `commit`. Call this after checking `commit` out,
-    /// before inspecting the package.
+    /// The package files at `commit`, reusing the previous checkout's list when
+    /// possible. Call this after checking `commit` out, before inspecting the
+    /// package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
-        // Differing only in Rust sources is transitive, so comparing with the
-        // previous checkout covers every checkout since the list was computed.
         let reuses = self.commit.take().is_some_and(|previous| {
             only_rust_sources_differ(self.repository, &previous, commit).unwrap_or_else(|error| {
                 debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
@@ -55,8 +64,6 @@ impl<'a> CheckoutPackageFiles<'a> {
         } else if self.files.is_cached() {
             debug!("reusing historical package file list at {commit}");
         }
-        // A source-only diff also preserves the absence of symlinked manifests.
-        // Look for them only when starting a new cached list.
         let cacheable = reuses
             || has_symlinked_manifest(self.repository)
                 .inspect_err(|error| {
@@ -70,13 +77,11 @@ impl<'a> CheckoutPackageFiles<'a> {
     }
 }
 
-/// A manifest can point to a regular `.rs` file whose contents affect Cargo's
-/// file selection. Inspect nested packages too, including workspace members.
+/// Whether the checked-out commit has a symlink named `Cargo.toml`, in any
+/// ASCII case, in any directory.
 fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
     // After `git checkout <commit>` in the walk's clean copy, the index holds the
-    // tree of that commit. Unlike `ls-tree`, `ls-files` lets Git filter it with
-    // pathspec magic. Cargo.toml can resolve to another casing on
-    // case-insensitive filesystems.
+    // tree of that commit. Unlike `ls-tree`, `ls-files` accepts this pathspec magic.
     let manifests = repository.git(&[
         "ls-files",
         "--stage",
@@ -91,13 +96,11 @@ fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
 }
 
 /// Whether the trees of the commits `old` and `new` differ only in the contents
-/// of Rust sources that are non-executable regular files in both. Additions,
-/// deletions and renames, which a diff without rename detection reports as
-/// both, change the file list. Symlinks and submodules stand for other files,
-/// and executable scripts can be Cargo or rustc wrappers.
+/// of `.rs` files that are non-executable regular files in both.
 fn only_rust_sources_differ(repository: &Repo, old: &str, new: &str) -> anyhow::Result<bool> {
-    // `diff-tree` detects no renames, so it reads no blobs. Report submodule
-    // updates even if `submodule.<name>.ignore` hides them.
+    // `diff-tree` detects no renames, so it reads no blobs and reports a rename
+    // as a deletion and an addition. Report submodule updates even if
+    // `submodule.<name>.ignore` hides them.
     let diff = repository.git(&[
         "diff-tree",
         "-r",
