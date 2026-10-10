@@ -1,14 +1,15 @@
 //! Reuse a package's file list across the checkouts of a history walk.
 //!
 //! The walk checks commits out in a clean temporary copy of the repository, so
-//! the tracked files on disk are those of the checked-out commit, and untracked
-//! and ignored files stay the same across checkouts. Cargo selects packaged
-//! files by their paths, types and modes, manifests, ignore rules and
-//! configuration, never by the contents of Rust sources. Commits whose trees
-//! differ only in the contents of non-executable `.rs` files therefore package
-//! the same files. Configuration outside the repository is assumed stable
-//! during a walk, just as for the released-package cache. Whenever the trees
-//! cannot be compared, Cargo lists the files again.
+//! the tracked files on disk are those of the checked-out commit, and
+//! untracked and ignored files change only at checkouts that add or remove
+//! tracked paths. Cargo selects packaged files by their paths and types,
+//! manifests, ignore rules and configuration, never by the contents of Rust
+//! sources. Commits whose trees differ only in the contents of non-executable
+//! `.rs` files therefore package the same files. Configuration outside the
+//! repository is assumed stable during a walk, just as for the released-package
+//! cache. Whenever the checked-out trees cannot be compared, Cargo lists the
+//! files again.
 
 use std::{cell::OnceCell, path::Path};
 
@@ -62,7 +63,9 @@ impl<'a> HistoryPackageFiles<'a> {
     /// Whether the files listed at the previous checkout are those at `commit`,
     /// whose tree becomes the previous one.
     fn reuses_files_at(&mut self, commit: &str) -> anyhow::Result<bool> {
-        // Forget the previous tree unless `commit`'s tree replaces it.
+        // Clear the previous tree before reading `commit`'s: if that fails, the
+        // list Cargo computes at this checkout must not later be compared with
+        // the old tree.
         let previous = self.tree.take();
         // Opening the objects runs Git, so skip it for packages without history.
         let repo = self.repo.get_or_init(|| {

@@ -983,7 +983,7 @@ impl Updater<'_> {
         let get_files = || get_package_files(package_path, repository, package_files);
         let package_files_res = if package_files.is_cached() {
             // Cargo listed the files, restoring the lockfile afterwards, at this
-            // snapshot or at an earlier one that packages the same files.
+            // snapshot or at a previous checkout that packages the same files.
             // Reading the cached list cannot change Cargo.lock.
             get_files()
         } else {
