@@ -29,7 +29,7 @@ use crate::{
     diff::{Commit, Diff},
     fs_utils, lock_compare,
     next_ver::takes_part_in_release,
-    package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, HistoryPackageFiles, PackageFiles},
+    package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, PackageFiles},
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -744,7 +744,7 @@ impl Updater<'_> {
         )?;
         let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
-        let mut historical_package_files = HistoryPackageFiles::default();
+        let mut historical_package_files = history::HistoryPackageFiles::default();
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain

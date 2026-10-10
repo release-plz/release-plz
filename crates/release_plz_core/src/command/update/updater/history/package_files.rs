@@ -10,7 +10,7 @@ use anyhow::Context as _;
 use cargo_metadata::camino::Utf8Path;
 use std::{io::Read as _, path::Path};
 
-use super::PackageFiles;
+use crate::package_compare::PackageFiles;
 
 /// Keep the optimization bounded even in repositories with huge ignored trees
 /// or assets. Exceeding these limits only disables reuse, never the update.
