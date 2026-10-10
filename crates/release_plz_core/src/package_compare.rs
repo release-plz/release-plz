@@ -45,7 +45,7 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
 
 /// The packaged files of one package snapshot, computed at most once.
 /// Recreate this cache whenever file-selection inputs change. Historical
-/// checkouts use the updater's `HistoryPackageFiles` to establish when reuse
+/// checkouts use the updater's `CheckoutPackageFiles` to establish when reuse
 /// is safe.
 #[derive(Default)]
 pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);

@@ -22,7 +22,7 @@ use super::read_only_objects;
 
 /// The package files of a checkout, reused by the following checkouts while
 /// their trees differ from its tree only in the contents of Rust sources.
-pub(crate) struct HistoryPackageFiles<'a> {
+pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
     /// Reads the trees of the checked-out commits, opened at the first
     /// checkout. `None` when those trees cannot be read: then Cargo lists the
@@ -34,7 +34,7 @@ pub(crate) struct HistoryPackageFiles<'a> {
     files: PackageFiles,
 }
 
-impl<'a> HistoryPackageFiles<'a> {
+impl<'a> CheckoutPackageFiles<'a> {
     /// Prepare to walk the history of `repository`.
     pub(crate) fn new(repository: &'a Repo) -> Self {
         Self {
