@@ -39,10 +39,7 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
             );
             assert!(!package_dir.join(".cargo-ok").exists());
         }
-        assert_eq!(
-            dest_dir.path().join("missing").read_dir().unwrap().count(),
-            0
-        );
+        assert!(!dest_dir.path().join("missing").exists());
     }
 
     for requested in [&["missing"][..], &[]] {

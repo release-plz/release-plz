@@ -69,7 +69,6 @@ impl Cloner {
     }
 
     fn clone_package_into(&self, pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
-        // Check again after downloading: an earlier request may have used this destination.
         prepare_destination(dest_path)?;
         let name = pkg.name();
 
@@ -105,18 +104,17 @@ impl Cloner {
         let mut destinations = vec![];
 
         for crate_ in crates {
-            let mut dest_path = self.directory.clone();
-
-            dest_path.push(&crate_.name);
-
-            let summary = Self::query_package(crate_, &dest_path, src.as_ref())
+            let name = &crate_.name;
+            let vers = crate_.version.as_deref();
+            let summary = query_latest_package_summary(src.as_ref(), name, vers)
                 .await
-                .with_context(|| {
-                    format!("failed to clone package {} in {dest_path}", crate_.name)
-                })?;
+                .with_context(|| format!("failed to query package {name}"))?;
 
-            if let Some(summary) = summary {
-                destinations.push((summary.package_id(), dest_path));
+            match summary {
+                Some(summary) => {
+                    destinations.push((summary.package_id(), self.directory.join(name)));
+                }
+                None => warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*")),
             }
         }
 
@@ -164,22 +162,6 @@ impl Cloner {
 
         source.invalidate_cache();
         Ok(source)
-    }
-
-    async fn query_package(
-        crate_: &Crate,
-        dest_path: &Utf8Path,
-        src: &dyn Source,
-    ) -> CargoResult<Option<IndexSummary>> {
-        prepare_destination(dest_path)?;
-        let name = &crate_.name;
-        let vers = crate_.version.as_deref();
-        let latest = query_latest_package_summary(src, name, vers).await?;
-
-        if latest.is_none() {
-            warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*"));
-        }
-        Ok(latest)
     }
 }
 
