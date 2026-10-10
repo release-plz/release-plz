@@ -10,7 +10,7 @@ use cargo_metadata::{
 use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 use git_cmd::Repo;
 use release_plz_core::{
-    DEFAULT_BRANCH_PREFIX, GitClient, GitForge, GitPr, Gitea, Pr, RepoUrl,
+    DEFAULT_BRANCH_PREFIX, GitClient, GitForge, GitPr, Gitea, PackageDownloader, Pr, RepoUrl,
     fs_utils::{Utf8TempDir, canonicalize_utf8},
 };
 use secrecy::SecretString;
@@ -249,6 +249,10 @@ impl TestContext {
         canonicalize_utf8(self.repo.directory()).unwrap()
     }
 
+    pub fn cargo_index_url(&self) -> String {
+        cargo_index_url(self.gitea.user.username())
+    }
+
     pub async fn opened_release_prs(&self) -> Vec<GitPr> {
         self.git_client
             .opened_prs(DEFAULT_BRANCH_PREFIX)
@@ -273,11 +277,18 @@ impl TestContext {
         fs_err::read_to_string(changelog_path).unwrap()
     }
 
-    pub async fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
-        let crate_name = &self.gitea.repo;
-        release_plz_core::PackageDownloader::new([crate_name], dest_dir.as_str())
+    pub fn package_downloader(
+        &self,
+        packages: impl IntoIterator<Item = impl Into<String>>,
+        dest_dir: &Utf8Path,
+    ) -> PackageDownloader {
+        PackageDownloader::new(packages, dest_dir.as_str())
             .with_registry(TEST_REGISTRY.to_string())
             .with_cargo_cwd(self.repo_dir())
+    }
+
+    pub async fn download_package(&self, dest_dir: &Utf8Path) -> Vec<Package> {
+        self.package_downloader([&self.gitea.repo], dest_dir)
             .download()
             .await
             .unwrap()
@@ -332,19 +343,22 @@ fn cargo_config(username: &str) -> String {
     let cargo_registries = format!(
         "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = "
     );
-    // we use gitea as a cargo registry:
-    // https://docs.gitea.com/usage/packages/cargo
-    let gitea_index = format!(
-        "\"http://{}/{}/{CARGO_INDEX_REPO}.git\"",
-        gitea_address(),
-        username
-    );
+    let gitea_index = cargo_index_url(username);
 
     let config_end = r"
 [net]
 git-fetch-with-cli = true
     ";
-    format!("{cargo_registries}{gitea_index}{config_end}")
+    format!("{cargo_registries}\"{gitea_index}\"{config_end}")
+}
+
+fn cargo_index_url(username: &str) -> String {
+    // we use gitea as a cargo registry:
+    // https://docs.gitea.com/usage/packages/cargo
+    format!(
+        "http://{}/{username}/{CARGO_INDEX_REPO}.git",
+        gitea_address()
+    )
 }
 
 fn git_client(repo_url: &str, token: &str) -> GitClient {

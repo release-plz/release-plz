@@ -68,14 +68,17 @@ impl Cloner {
         ClonerBuilder::new()
     }
 
-    fn clone_from_summary_into(
-        &self,
-        summary: &IndexSummary,
-        dest_path: &Utf8Path,
-    ) -> CargoResult<Package> {
-        let name = summary.package_id().name();
+    fn clone_package_into(&self, pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
+        if !dest_path.exists() {
+            fs_err::create_dir_all(dest_path)?;
+        }
 
-        let pkg = self.download_package(summary)?;
+        // Cloning into an existing directory is only allowed if the directory is empty.
+        if dest_path.read_dir()?.next().is_some() {
+            bail!("destination path '{dest_path}' already exists and is not an empty directory.");
+        }
+
+        let name = pkg.name();
 
         if self.use_git {
             let repo = pkg
@@ -96,7 +99,7 @@ impl Cloner {
                 .context("failed to clone directory")?;
         }
 
-        Ok(pkg)
+        Ok(())
     }
 
     /// Clone the specified crates from registry or git repository.
@@ -106,23 +109,44 @@ impl Cloner {
     pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
-        let mut cloned_pkgs = vec![];
+        let mut destinations = vec![];
 
         for crate_ in crates {
-            let mut dest_path = self.directory.clone();
-
-            dest_path.push(&crate_.name);
-
-            let pkg = self
-                .clone_in(crate_, &dest_path, src.as_ref())
+            let name = &crate_.name;
+            let vers = crate_.version.as_deref();
+            let summary = query_latest_package_summary(src.as_ref(), name, vers)
                 .await
-                .with_context(|| {
-                    format!("failed to clone package {} in {dest_path}", crate_.name)
-                })?;
+                .with_context(|| format!("failed to query package {name}"))?;
 
-            if let Some(pkg) = pkg {
-                cloned_pkgs.push((pkg, dest_path));
+            match summary {
+                Some(summary) => {
+                    destinations.push((summary.package_id(), self.directory.join(name)));
+                }
+                None => warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*")),
             }
+        }
+
+        if destinations.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let package_ids: Vec<_> = destinations.iter().map(|(id, _)| *id).collect();
+        let mut sources = SourceMap::new();
+        sources.insert(src);
+        let package_set = PackageSet::new(&package_ids, sources, &self.config)?;
+        // Use the set's deduplicated IDs: Cargo panics if a batch downloads the same ID twice.
+        package_set
+            .get_many(package_set.package_ids())
+            .context("failed to download packages")?;
+
+        let mut cloned_pkgs = Vec::with_capacity(destinations.len());
+        // `get_many` returns packages in completion order.
+        // Look each one up by ID to keep request order.
+        for (id, dest_path) in destinations {
+            let pkg = package_set.get_one(id)?;
+            self.clone_package_into(pkg, &dest_path)
+                .with_context(|| format!("failed to clone package {} in {dest_path}", id.name()))?;
+            cloned_pkgs.push((pkg.clone(), dest_path));
         }
 
         Ok(cloned_pkgs)
@@ -146,57 +170,6 @@ impl Cloner {
 
         source.invalidate_cache();
         Ok(source)
-    }
-
-    fn download_package(&self, summary: &IndexSummary) -> CargoResult<Package> {
-        let package_id = summary.package_id();
-        let mut sources = SourceMap::new();
-        sources.insert(self.get_source()?);
-        let package_set = PackageSet::new(&[package_id], sources, &self.config)?;
-        package_set.get_one(package_id).cloned()
-    }
-
-    async fn clone_in(
-        &self,
-        crate_: &Crate,
-        dest_path: &Utf8Path,
-        src: &dyn Source,
-    ) -> CargoResult<Option<Package>> {
-        if !dest_path.exists() {
-            fs_err::create_dir_all(dest_path)?;
-        }
-
-        // Cloning into an existing directory is only allowed if the directory is empty.
-        let is_empty = dest_path.read_dir()?.next().is_none();
-        if !is_empty {
-            bail!("destination path '{dest_path}' already exists and is not an empty directory.");
-        }
-
-        self.clone_single(crate_, dest_path, src).await
-    }
-
-    /// Clone one crate.
-    async fn clone_single(
-        &self,
-        crate_: &Crate,
-        dest_path: &Utf8Path,
-        src: &dyn Source,
-    ) -> CargoResult<Option<Package>> {
-        let name = &crate_.name;
-        let vers = crate_.version.as_deref();
-        let latest = query_latest_package_summary(src, name, vers).await?;
-
-        let pkg = match latest {
-            Some(l) => {
-                let pkg = self.clone_from_summary_into(&l, dest_path)?;
-                Some(pkg)
-            }
-            None => {
-                warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*"));
-                None
-            }
-        };
-        Ok(pkg)
     }
 }
 
