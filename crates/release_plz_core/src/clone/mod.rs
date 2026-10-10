@@ -69,7 +69,15 @@ impl Cloner {
     }
 
     fn clone_package_into(&self, pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
-        prepare_destination(dest_path)?;
+        if !dest_path.exists() {
+            fs_err::create_dir_all(dest_path)?;
+        }
+
+        // Cloning into an existing directory is only allowed if the directory is empty.
+        if dest_path.read_dir()?.next().is_some() {
+            bail!("destination path '{dest_path}' already exists and is not an empty directory.");
+        }
+
         let name = pkg.name();
 
         if self.use_git {
@@ -163,18 +171,6 @@ impl Cloner {
         source.invalidate_cache();
         Ok(source)
     }
-}
-
-fn prepare_destination(dest_path: &Utf8Path) -> CargoResult<()> {
-    if !dest_path.exists() {
-        fs_err::create_dir_all(dest_path)?;
-    }
-
-    // Cloning into an existing directory is only allowed if the directory is empty.
-    if dest_path.read_dir()?.next().is_some() {
-        bail!("destination path '{dest_path}' already exists and is not an empty directory.");
-    }
-    Ok(())
 }
 
 async fn query_latest_package_summary(
