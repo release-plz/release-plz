@@ -922,10 +922,7 @@ fn change_package(repo: &Repo, name: &str, commit_message: &str) {
 }
 
 fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&str>) -> String {
-    let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
-    cmd.current_dir(repo.directory())
-        .args(["update", "--registry-manifest-path"])
-        .arg(temp_dir.path().join("registry/Cargo.toml"));
+    let mut cmd = workspace_update_command(temp_dir, repo);
     if let Some(url) = repo_url {
         cmd.args(["--repo-url", url]);
     }
@@ -933,12 +930,23 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
     String::from_utf8(output).unwrap()
 }
 
+/// Run [`workspace_update_command`] and return its debug logs.
 fn run_workspace_update_with_logs(temp_dir: &Utf8TempDir, repo: &Repo) -> String {
+    let output = workspace_update_command(temp_dir, repo)
+        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
+        .assert()
+        .success()
+        .get_output()
+        .stderr
+        .clone();
+    String::from_utf8(output).unwrap()
+}
+
+/// `release-plz update` for a workspace created by [`init_workspace`].
+fn workspace_update_command(temp_dir: &Utf8TempDir, repo: &Repo) -> assert_cmd::Command {
     let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
     cmd.current_dir(repo.directory())
-        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
         .args(["update", "--registry-manifest-path"])
         .arg(temp_dir.path().join("registry/Cargo.toml"));
-    let output = cmd.assert().success().get_output().stderr.clone();
-    String::from_utf8(output).unwrap()
+    cmd
 }
