@@ -1095,7 +1095,12 @@ async fn create_git_tag_and_release(
         // The default release body only contains the changelog, so skip contributor
         // API requests unless a custom template might use them.
         let contributors = if release_config.body_template.is_some() {
-            get_contributors(release_info, context).await
+            get_contributors(release_info, context)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!("failed to retrieve contributors: {e}");
+                    vec![]
+                })
         } else {
             vec![]
         };
@@ -1161,16 +1166,10 @@ fn log_dry_run_info(
 async fn get_contributors(
     release_info: &ReleaseInfo<'_>,
     context: &mut ReleaseContext<'_>,
-) -> Vec<RemoteContributor> {
+) -> anyhow::Result<Vec<RemoteContributor>> {
     let mut contributors: Vec<RemoteContributor> = vec![];
     for pr in release_info.prs {
-        let username = match context.pr_author(pr.number).await {
-            Ok(username) => username,
-            Err(e) => {
-                warn!("failed to retrieve contributors: {e}");
-                return vec![];
-            }
-        };
+        let username = context.pr_author(pr.number).await?;
         if !contributors
             .iter()
             .any(|c| c.username.as_deref() == Some(username))
@@ -1181,7 +1180,7 @@ async fn get_contributors(
             });
         }
     }
-    contributors
+    Ok(contributors)
 }
 
 fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
