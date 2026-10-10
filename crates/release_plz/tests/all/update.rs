@@ -238,25 +238,15 @@ fn assert_package_file_listings(
         reuses,
         "{case}: {logs}"
     );
-    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
-    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
-    for message in ["first change", "second change"] {
-        assert!(changelog.contains(message), "{case}: {changelog}");
-    }
-    assert!(!changelog.contains("add README"), "{case}: {changelog}");
+    assert_patch_release(&repo, case, &["first change", "second change"]);
 }
 
-/// Creates a workspace with [`init_workspace`] whose package `one` then changes
-/// its Rust source in the commits `fix: first change` and `fix: second change`.
-/// `change` edits the project directory before the second commit.
+/// Creates a workspace with [`single_package_workspace`] whose package `one`
+/// then changes its Rust source in the commits `fix: first change` and
+/// `fix: second change`. `change` edits the project directory before the
+/// second commit.
 fn workspace_with_source_changes(change: impl FnOnce(&Utf8Path)) -> (Utf8TempDir, Repo) {
-    let (temp_dir, repo) = init_workspace(
-        &[("one", "version = \"1.0.0\"\n")],
-        "",
-        "[workspace]\nsemver_check = false\n",
-    );
-    // Converted line endings would make every snapshot differ from the release.
-    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let (temp_dir, repo) = single_package_workspace();
     change_package(&repo, "one", "fix: first change");
     change(repo.directory());
     fs_err::write(
@@ -268,8 +258,8 @@ fn workspace_with_source_changes(change: impl FnOnce(&Utf8Path)) -> (Utf8TempDir
     (temp_dir, repo)
 }
 
-#[test]
-fn update_lists_package_files_of_replaced_commits() {
+/// Creates a workspace with [`init_workspace`] whose only package `one` is at 1.0.0.
+fn single_package_workspace() -> (Utf8TempDir, Repo) {
     let (temp_dir, repo) = init_workspace(
         &[("one", "version = \"1.0.0\"\n")],
         "",
@@ -277,6 +267,23 @@ fn update_lists_package_files_of_replaced_commits() {
     );
     // Converted line endings would make every snapshot differ from the release.
     repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    (temp_dir, repo)
+}
+
+/// Assert that the update released `one` as 1.0.1 with a changelog that lists
+/// `messages` but not the initial commit, "add README".
+fn assert_patch_release(repo: &Repo, case: &str, messages: &[&str]) {
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    for message in messages {
+        assert!(changelog.contains(message), "{case}: {changelog}");
+    }
+    assert!(!changelog.contains("add README"), "{case}: {changelog}");
+}
+
+#[test]
+fn update_lists_package_files_of_replaced_commits() {
+    let (temp_dir, repo) = single_package_workspace();
     let release = repo.current_commit_hash().unwrap();
     repo.git(&["commit", "--allow-empty", "-m", "fix: add extra"])
         .unwrap();
@@ -305,12 +312,7 @@ fn update_lists_package_files_of_replaced_commits() {
         !logs.contains("reusing historical package file list"),
         "{logs}"
     );
-    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
-    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
-    for message in ["add extra", "second change"] {
-        assert!(changelog.contains(message), "{changelog}");
-    }
-    assert!(!changelog.contains("add README"), "{changelog}");
+    assert_patch_release(&repo, "replaced commits", &["add extra", "second change"]);
 }
 
 #[test]
