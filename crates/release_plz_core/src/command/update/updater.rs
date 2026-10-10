@@ -192,8 +192,8 @@ impl Updater<'_> {
 
         for (pkg, diff) in packages_diffs {
             let pkg_config = self.req.get_package_config(&pkg.name);
-            let version_updater = pkg_config.generic.version_updater()?;
             if let Some(version_group) = pkg_config.version_group {
+                let version_updater = pkg_config.generic.version_updater()?;
                 let next_pkg_ver = pkg.version.next_from_diff(diff, version_updater);
                 match version_groups.entry(version_group.clone()) {
                     std::collections::hash_map::Entry::Occupied(v) => {
@@ -291,8 +291,14 @@ impl Updater<'_> {
             .collect();
 
         let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
+        // Snapshot only histories another package includes before adding commits to diffs.
+        let included_packages: HashSet<String> = packages_diffs
+            .iter()
+            .flat_map(|(p, _)| self.req.get_package_config(&p.name).changelog_include)
+            .collect();
         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
             .iter()
+            .filter(|(p, _)| included_packages.contains(p.name.as_str()))
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
@@ -370,11 +376,15 @@ impl Updater<'_> {
         mut packages_diffs: Vec<(&'a Package, Diff)>,
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
-        let git_client = self.req.git_client()?;
         let changelog_request: &ChangelogRequest = self.req.changelog_req();
         let mut all_commits: HashMap<String, &Commit> = HashMap::new();
         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
             let required_info = get_required_info(&changelog_config.changelog);
+            let git_client = if required_info.is_remote_required() {
+                self.req.git_client()?
+            } else {
+                None
+            };
             for (_package, diff) in &mut packages_diffs {
                 for commit in &mut diff.commits {
                     fill_commit(

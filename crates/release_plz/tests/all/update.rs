@@ -64,6 +64,50 @@ body = """
     }
 }
 
+#[test]
+fn changelog_include_uses_only_the_requested_packages_original_commits() {
+    let config = r#"
+[workspace]
+semver_check = false
+[[package]]
+name = "one"
+changelog_include = ["two", "two"]
+[[package]]
+name = "two"
+changelog_include = ["three"]
+"#;
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("one", "version = \"1.0.0\"\n"),
+            ("two", "version = \"1.0.0\"\n"),
+            ("three", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        config,
+    );
+    for name in ["one", "two", "three"] {
+        change_package(&repo, name, &format!("fix: update {name}"));
+    }
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    for (name, included) in [
+        ("one", vec!["one", "two"]),
+        ("two", vec!["two", "three"]),
+        ("three", vec!["three"]),
+    ] {
+        let changelog =
+            fs_err::read_to_string(repo.directory().join(name).join("CHANGELOG.md")).unwrap();
+        for source in ["one", "two", "three"] {
+            assert_eq!(
+                changelog.matches(&format!("update {source}")).count(),
+                usize::from(included.contains(&source)),
+                "{name}: {changelog}",
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn update_relocated_workspace_preserves_original_manifests() {
     let (temp_dir, repo) = released_workspace(
@@ -290,6 +334,41 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
     assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.1.0")]);
     let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
     assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+}
+
+#[test]
+fn dependency_updates_match_renamed_packages_among_unrelated_updates() {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            ("unrelated", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[target.'cfg(unix)'.build-dependencies]\nshared.workspace = true\n",
+            ),
+        ],
+        "[workspace.dependencies]\nshared = { package = \"support\", path = \"support\", version = \"=1.0.0\" }\n",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "support", "feat: update support");
+    change_package(&repo, "unrelated", "fix: update unrelated");
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            ("support", "1.1.0"),
+            ("unrelated", "1.0.1"),
+            ("consumer", "1.0.1"),
+        ],
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        changelog.contains("updated the following local packages: support"),
+        "{changelog}"
+    );
+    assert!(!changelog.contains("unrelated"), "{changelog}");
 }
 
 #[test]
