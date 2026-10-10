@@ -114,41 +114,43 @@ impl LocalManifest {
         &mut self,
     ) -> impl Iterator<Item = &mut dyn toml_edit::TableLike> + '_ {
         let root = self.data.as_table_mut();
-        root.iter_mut().flat_map(|(k, v)| {
+        let mut tables = Vec::new();
+        for (k, v) in root.iter_mut() {
             if dependency_table_kind(k.get()).is_some() {
-                v.as_table_like_mut().into_iter().collect::<Vec<_>>()
+                tables.extend(v.as_table_like_mut());
             } else if k == "workspace" {
-                v.as_table_like_mut()
-                    .unwrap()
-                    .iter_mut()
-                    .filter_map(|(k, v)| {
-                        if k.get() == "dependencies" {
-                            v.as_table_like_mut()
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
+                tables.extend(
+                    v.as_table_like_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .filter_map(|(k, v)| {
+                            if k.get() == "dependencies" {
+                                v.as_table_like_mut()
+                            } else {
+                                None
+                            }
+                        }),
+                );
             } else if k == "target" {
-                v.as_table_like_mut()
-                    .unwrap()
-                    .iter_mut()
-                    .flat_map(|(_, v)| {
-                        v.as_table_like_mut().into_iter().flat_map(|v| {
-                            v.iter_mut().filter_map(|(k, v)| {
-                                if dependency_table_kind(k.get()).is_some() {
-                                    v.as_table_like_mut()
-                                } else {
-                                    None
-                                }
+                tables.extend(
+                    v.as_table_like_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .flat_map(|(_, v)| {
+                            v.as_table_like_mut().into_iter().flat_map(|v| {
+                                v.iter_mut().filter_map(|(k, v)| {
+                                    if dependency_table_kind(k.get()).is_some() {
+                                        v.as_table_like_mut()
+                                    } else {
+                                        None
+                                    }
+                                })
                             })
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
+                        }),
+                );
             }
-        })
+        }
+        tables.into_iter()
     }
 
     /// Iterates mutably over the `[workspace.dependencies]`.
