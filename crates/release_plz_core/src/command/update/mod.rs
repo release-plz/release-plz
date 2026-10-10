@@ -241,7 +241,16 @@ pub(super) fn update_dependencies(
         let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
         let deps_to_update = local_manifest
             .get_dependency_tables_mut()
-            .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
+            .flat_map(|t| {
+                t.iter_mut().filter_map(|(name, d)| {
+                    let d = d.as_table_like_mut()?;
+                    let dependency_name = d
+                        .get("package")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(name.get());
+                    (dependency_name == package_name).then_some(d)
+                })
+            })
             .filter(|d| d.contains_key("version"))
             .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
 
