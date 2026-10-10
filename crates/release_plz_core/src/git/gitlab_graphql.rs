@@ -75,6 +75,7 @@ pub async fn commit_author_username(
     let response: CommitAuthorResponse = client
         .client
         .post(endpoint)
+        .with_extension(super::forge_request::ReadOnlyRequest)
         .json(&json!({
             "query": COMMIT_AUTHOR_QUERY,
             "variables": { "fullPath": full_path, "ref": commit },

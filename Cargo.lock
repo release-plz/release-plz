@@ -4469,6 +4469,7 @@ name = "release_plz_core"
 version = "0.39.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.23.1",
  "cargo",
  "cargo_metadata",
@@ -4483,6 +4484,8 @@ dependencies = [
  "git-conventional 1.1.0",
  "git2",
  "git_cmd",
+ "http",
+ "httpdate",
  "ignore",
  "next_version 0.3.3",
  "parse-changelog",

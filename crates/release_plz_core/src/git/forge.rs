@@ -8,7 +8,6 @@ use anyhow::Context;
 use reqwest::header::HeaderMap;
 use reqwest::{Response, StatusCode, Url};
 use reqwest_middleware::ClientBuilder;
-use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -289,10 +288,10 @@ impl GitClient {
                 .build()
                 .context("can't build Git client")?;
 
-            let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
             ClientBuilder::new(reqwest_client)
-                // Retry failed requests.
-                .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+                .with(super::forge_request::ForgeRequestMiddleware::new(
+                    forge.forge_type(),
+                ))
                 .build()
         };
 

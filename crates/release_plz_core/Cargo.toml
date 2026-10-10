@@ -22,6 +22,7 @@ git_cmd = { path = "../git_cmd", version = "0.9.0" }
 next_version = { path = "../next_version", version = "0.3" }
 
 anyhow.workspace = true
+async-trait.workspace = true
 cargo_metadata.workspace = true
 cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
@@ -31,6 +32,8 @@ git-cliff-core.workspace = true
 # Match the parser used by git-cliff-core.
 git-conventional = "1.0.0"
 ignore.workspace = true
+http.workspace = true
+httpdate.workspace = true
 parse-changelog.workspace = true
 regex.workspace = true
 # native-tls-alpn is needed for http2 support. https://doc.rust-lang.org/cargo/reference/registry-index.html#sparse-protocol
@@ -46,7 +49,7 @@ url = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["fs", "macros"] }
+tokio = { workspace = true, features = ["fs", "macros", "time"] }
 tera.workspace = true
 git2.workspace = true
 
@@ -58,5 +61,5 @@ fake_package = { path = "../fake_package" }
 expect-test.workspace = true
 flate2.workspace = true
 tar.workspace = true
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "test-util"] }
 wiremock.workspace = true
