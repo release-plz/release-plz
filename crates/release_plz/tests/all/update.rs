@@ -228,7 +228,7 @@ fn assert_invalidates_package_files(case: &str, change: impl FnOnce(&Utf8Path)) 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
     // HEAD and its parent must each ask Cargo. The parent and initial
-    // release differ only in Rust contents and may share the second list.
+    // release differ only in Rust contents and share the second list.
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
         3,
