@@ -47,19 +47,14 @@ impl<'a> HistoryPackageFiles<'a> {
     /// The package files at `commit`. Call this after checking `commit` out,
     /// before inspecting the package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
-        match self.reuses_files_at(commit) {
-            Ok(true) => {
-                if self.files.is_cached() {
-                    debug!("reusing historical package file list at {commit}");
-                }
-            }
-            Ok(false) => self.files = PackageFiles::default(),
-            Err(error) => {
-                debug!(
-                    "cannot compare the package files at {commit} with the cached list: {error:#}"
-                );
-                self.files = PackageFiles::default();
-            }
+        let reuses = self.reuses_files_at(commit).unwrap_or_else(|error| {
+            debug!("cannot compare the package files at {commit} with the cached list: {error:#}");
+            false
+        });
+        if !reuses {
+            self.files = PackageFiles::default();
+        } else if self.files.is_cached() {
+            debug!("reusing historical package file list at {commit}");
         }
         &self.files
     }
