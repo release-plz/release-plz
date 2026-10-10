@@ -69,17 +69,21 @@ impl PackageDependencies for Package {
                                         .unwrap_or(d);
                                     // Return also the path of the Cargo.toml so that we can resolve the
                                     // relative path of the dependency later.
-                                    (kind, workspace_dir, dep)
+                                    (name, kind, workspace_dir, dep)
                                 }
-                                _ => (kind, package_dir, d),
+                                _ => (name, kind, package_dir, d),
                             }
                         })
                     })
                 })
-                .filter(|(_, toml_base_path, d)| {
+                .filter(|(name, _, _, d)| {
+                    let dependency_name = d.get("package").and_then(|p| p.as_str()).unwrap_or(name);
+                    dependency_name == p.name.as_str()
+                })
+                .filter(|(_, _, toml_base_path, d)| {
                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
                 })
-                .map(|(kind, _, dep)| (kind, dep));
+                .map(|(_, kind, _, dep)| (kind, dep));
 
             for (kind, dep) in matching_deps {
                 if should_update_dependency(dep, kind, next_ver, include_versionless)? {
