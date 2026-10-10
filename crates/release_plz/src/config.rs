@@ -137,8 +137,7 @@ impl Config {
             if allow_dirty {
                 release_config.common.publish_allow_dirty = Some(true);
             }
-            release_request =
-                release_request.with_package_config(package, release_config.common.into());
+            release_request = release_request.with_package_config(package, release_config.into());
         }
         Ok(release_request)
     }
@@ -306,6 +305,11 @@ pub struct PackageSpecificConfig {
     /// # Version group
     /// The name of a group of packages that needs to have the same version.
     version_group: Option<String>,
+    /// # Distribute
+    /// Build binaries with cargo-dist and publish them through a draft GitHub release.
+    /// Defaults to `false`. Only available in `[[package]]`; it is not inherited from `[workspace]`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    distribute: bool,
 }
 
 impl PackageSpecificConfig {
@@ -315,6 +319,7 @@ impl PackageSpecificConfig {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
+            distribute: self.distribute,
         }
     }
 }
@@ -504,6 +509,12 @@ impl From<PackageSpecificConfig> for release_plz_core::PackageUpdateConfig {
     }
 }
 
+impl From<PackageSpecificConfig> for release_plz_core::ReleaseConfig {
+    fn from(config: PackageSpecificConfig) -> Self {
+        Self::from(config.common).with_distribute(config.distribute)
+    }
+}
+
 impl PackageConfig {
     /// Merge the package-specific configuration with the global configuration.
     pub fn merge(self, default: Self) -> Self {
@@ -580,6 +591,26 @@ impl From<ReleaseType> for release_plz_core::ReleaseType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distribute_is_opt_in_and_package_specific() {
+        let config: Config = toml::from_str(
+            "[[package]]\nname = 'app'\ndistribute = true\n[[package]]\nname = 'lib'\n",
+        )
+        .unwrap();
+        let request = config
+            .fill_release_config(
+                false,
+                false,
+                ReleaseRequest::new(fake_package::metadata::fake_metadata()),
+            )
+            .unwrap();
+        assert!(request.get_package_config("app").distribute());
+        assert!(!request.get_package_config("lib").distribute());
+        assert!(!request.get_package_config("other").distribute());
+        assert!(toml::from_str::<Config>("[workspace]\ndistribute = true").is_err());
+        assert!(toml::from_str::<Config>("[[package]]\nname = 'app'\ndistribute = 'yes'").is_err());
+    }
 
     #[test]
     fn generated_release_notes_respect_workspace_defaults_and_package_overrides() {
@@ -683,6 +714,7 @@ mod tests {
                 },
                 changelog_include: None,
                 version_group: None,
+                distribute: false,
             },
         }
     }
@@ -804,6 +836,7 @@ mod tests {
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
                     version_group: None,
+                    distribute: false,
                 },
             }]
             .into(),

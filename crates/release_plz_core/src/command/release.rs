@@ -79,6 +79,10 @@ impl ReleaseRequest {
         cargo_utils::workspace_manifest(&self.metadata)
     }
 
+    pub fn cargo_metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
     pub fn with_registry(mut self, registry: impl Into<String>) -> Self {
         self.registry = Some(registry.into());
         self
@@ -211,6 +215,48 @@ impl ReleaseRequest {
             // try to find the token in the Cargo credentials file or in the environment variables.
             .or(cargo_utils::registry_token(self.registry.as_deref())?);
         Ok(token)
+    }
+
+    fn validate_distribute_options(&self) -> anyhow::Result<()> {
+        for package in self.metadata.workspace_packages() {
+            let config = self.get_package_config(&package.name);
+            if !config.release || !config.distribute {
+                continue;
+            }
+            let Some(GitRelease {
+                forge: GitForge::Github(github),
+            }) = &self.git_release
+            else {
+                anyhow::bail!(
+                    "Package `{}`: `distribute` requires GitHub and a git token",
+                    package.name
+                );
+            };
+            // The pinned cargo-dist only understands github.com repository URLs.
+            anyhow::ensure!(
+                !github.is_enterprise(),
+                "Package `{}`: `distribute` requires GitHub.com; cargo-dist does not support GitHub Enterprise Server",
+                package.name
+            );
+            anyhow::ensure!(
+                config.git_release.enabled && config.git_tag.enabled,
+                "Package `{}`: `distribute` requires git_release_enable and git_tag_enable",
+                package.name
+            );
+            anyhow::ensure!(
+                package.targets.iter().any(|target| target.is_bin()),
+                "Package `{}`: `distribute` requires a binary target",
+                package.name
+            );
+            // A binary package is skipped by the release only when it is
+            // unpublishable and not git-only: nothing would be tagged or distributed.
+            anyhow::ensure!(
+                self.is_releasable(package),
+                "Package `{}`: `distribute` with `publish = false` requires `git_only = true`",
+                package.name
+            );
+        }
+        Ok(())
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
@@ -348,9 +394,20 @@ pub struct ReleaseConfig {
     /// A `publish = false` package is only released when this is `true`.
     /// Default: `false`.
     git_only: bool,
+    /// Build binary distributions before publishing the GitHub release.
+    distribute: bool,
 }
 
 impl ReleaseConfig {
+    pub fn with_distribute(mut self, distribute: bool) -> Self {
+        self.distribute = distribute;
+        self
+    }
+
+    pub fn distribute(&self) -> bool {
+        self.distribute
+    }
+
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
         self.publish = publish;
         self
@@ -429,6 +486,7 @@ impl Default for ReleaseConfig {
             changelog_path: None,
             changelog_update: true,
             git_only: false,
+            distribute: false,
         }
     }
 }
@@ -480,6 +538,14 @@ impl Default for GitReleaseConfig {
 }
 
 impl GitReleaseConfig {
+    pub fn draft(&self) -> bool {
+        self.draft
+    }
+
+    pub fn latest(&self) -> Option<bool> {
+        self.latest
+    }
+
     pub fn enabled(enabled: bool) -> Self {
         Self {
             enabled,
@@ -592,6 +658,7 @@ pub struct PackageRelease {
 #[instrument(skip(input))]
 pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> {
     // Reject unsupported configuration before checkout, registry publication or tag creation.
+    input.validate_distribute_options()?;
     input.validate_git_release_options()?;
     let overrides = input.packages_config.overridden_packages();
     let project = Project::new(
@@ -1041,6 +1108,9 @@ async fn release_package_git_only(
     }
 }
 
+/// The draft already exists when the dispatch fails, so the user can retry by hand.
+const DISPATCH_FAILED: &str = "draft created, but distribution dispatch failed; trigger the distribution workflow manually with this tag to retry";
+
 /// Create git tag and/or git release for a package.
 async fn create_git_tag_and_release(
     input: &ReleaseRequest,
@@ -1084,20 +1154,25 @@ async fn create_git_tag_and_release(
         };
         let release_body =
             release_body(input, release_info.package, release_info.changelog, &remote);
-        let release_config = input
-            .get_package_config(&release_info.package.name)
-            .git_release;
+        let package_config = input.get_package_config(&release_info.package.name);
+        let release_config = package_config.git_release;
         let is_pre_release = release_config.is_pre_release(&release_info.package.version);
         let git_release_info = GitReleaseInfo {
             git_tag: release_info.git_tag.to_string(),
             release_name: release_info.release_name.to_string(),
             release_body,
-            draft: release_config.draft,
+            draft: package_config.distribute || release_config.draft,
             latest: release_config.latest,
             pre_release: is_pre_release,
             generate_release_notes: release_config.generate_release_notes,
         };
         git_client.create_release(&git_release_info).await?;
+        if package_config.distribute {
+            git_client
+                .dispatch_dist(release_info.git_tag)
+                .await
+                .context(DISPATCH_FAILED)?;
+        }
     }
 
     Ok(())
@@ -1376,6 +1451,32 @@ mod tests {
         (temporary, repo, request)
     }
 
+    fn distribute_config() -> ReleaseConfig {
+        ReleaseConfig::default()
+            .with_git_only(true)
+            .with_distribute(true)
+    }
+
+    /// A committed binary package configured with [`distribute_config`].
+    /// `extra_toml` is appended to its `[package]` table.
+    fn distribute_fixture(
+        server: &MockServer,
+        extra_toml: &str,
+    ) -> (tempfile::TempDir, Repo, ReleaseRequest) {
+        let (temporary, repo, mut request) = release_fixture(server);
+        let manifest = repo.directory().join(cargo_utils::CARGO_TOML);
+        fs_err::write(
+            &manifest,
+            crate::test_utils::package_manifest("test-package", "0.1.0", extra_toml),
+        )
+        .unwrap();
+        fs_err::write(repo.directory().join("src/main.rs"), "fn main() {}\n").unwrap();
+        request.metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        repo.add_all_and_commit("add binary").unwrap();
+        let request = request.with_default_package_config(distribute_config());
+        (temporary, repo, request)
+    }
+
     async fn mock_release_pr(server: &MockServer, head: &str, pr_commit: Option<&str>) {
         let prs = match pr_commit {
             Some(commit) => json!([{
@@ -1435,6 +1536,130 @@ mod tests {
             .expect(follow_up_requests)
             .mount(server)
             .await;
+    }
+
+    #[tokio::test]
+    async fn distribute_creates_a_draft_and_dispatches_only_after_creation() {
+        for dry_run in [false, true] {
+            let server = MockServer::start().await;
+            let (_temporary, repo, request) = distribute_fixture(&server, "");
+            let request = request.with_dry_run(dry_run);
+            let head = repo.current_commit_hash().unwrap();
+            mock_release_pr(&server, &head, None).await;
+            if !dry_run {
+                mock_git_release(&server, &head, 201).await;
+            }
+            Mock::given(method("POST"))
+                .and(path("/repos/owner/repo/dispatches"))
+                .and(body_partial_json(
+                    json!({"event_type": "release-plz-dist", "client_payload": {"tag": "v0.1.0"}}),
+                ))
+                .respond_with(ResponseTemplate::new(204))
+                .expect(if dry_run { 0 } else { 1 })
+                .mount(&server)
+                .await;
+            release(&request).await.unwrap();
+            let requests = server.received_requests().await.unwrap();
+            if dry_run {
+                assert!(!requests.iter().any(|r| r.method == "POST"));
+            } else {
+                let create_index = requests
+                    .iter()
+                    .position(|r| r.method == "POST" && r.url.path().ends_with("/releases"))
+                    .unwrap();
+                let body: serde_json::Value =
+                    serde_json::from_slice(&requests[create_index].body).unwrap();
+                assert_eq!(body["draft"], true);
+                let dispatch_index = requests
+                    .iter()
+                    .position(|r| r.url.path().ends_with("/dispatches"))
+                    .unwrap();
+                assert!(dispatch_index > create_index);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn distribute_rejects_unsupported_configurations() {
+        let server = MockServer::start().await;
+        // A library package has nothing to distribute.
+        let (_temporary, _repo, request) = release_fixture(&server);
+        let error = request
+            .with_default_package_config(distribute_config())
+            .validate_distribute_options()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("binary target"), "{error}");
+        // Both the tag and the release must exist for cargo-dist to attach assets to.
+        for config in [
+            distribute_config().with_git_release(GitReleaseConfig::enabled(false)),
+            distribute_config().with_git_tag(GitTagConfig::enabled(false)),
+        ] {
+            let (_temporary, _repo, request) = distribute_fixture(&server, "");
+            let error = request
+                .with_default_package_config(config)
+                .validate_distribute_options()
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("requires git_release_enable and git_tag_enable"),
+                "{error}"
+            );
+        }
+        let (_temporary, _repo, mut request) = distribute_fixture(&server, "");
+        request.git_release = None;
+        let error = request
+            .validate_distribute_options()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("git token"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn distribute_requires_git_only_for_unpublishable_packages() {
+        let server = MockServer::start().await;
+        let (_temporary, _repo, request) = distribute_fixture(&server, "publish = false\n");
+        let request =
+            request.with_default_package_config(ReleaseConfig::default().with_distribute(true));
+        let error = request
+            .validate_distribute_options()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("requires `git_only = true`"), "{error}");
+        request
+            .with_default_package_config(distribute_config())
+            .validate_distribute_options()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn distribute_rejects_enterprise_before_release_side_effects() {
+        let server = MockServer::start().await;
+        let (_temporary, repo, request) = distribute_fixture(&server, "");
+        // Send any unexpected API calls to the mock.
+        let github = crate::GitHub::from_repo_url(
+            crate::RepoUrl::new("https://github.example.com/owner/repo").unwrap(),
+            SecretString::from("token"),
+        )
+        .unwrap()
+        .with_base_url(server.uri().parse().unwrap());
+        let request = request.with_git_release(GitRelease {
+            forge: GitForge::Github(github),
+        });
+        // Enterprise is fine as long as nothing is distributed.
+        let request =
+            request.with_default_package_config(ReleaseConfig::default().with_git_only(true));
+        request.validate_distribute_options().unwrap();
+        let request = request.with_default_package_config(distribute_config());
+        assert!(
+            release(&request)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("does not support GitHub Enterprise Server")
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+        assert!(repo.git(&["tag", "--list"]).unwrap().is_empty());
     }
 
     #[tokio::test]
