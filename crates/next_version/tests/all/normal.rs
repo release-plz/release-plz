@@ -3,8 +3,9 @@ use semver::Version;
 
 #[test]
 fn no_commits_leave_version_unchanged() {
-    let version = Version::new(1, 2, 3);
-    assert_eq!(version.next(std::iter::empty::<&str>()), version);
+    for version in [Version::new(0, 0, 3), Version::new(1, 2, 3)] {
+        assert_eq!(version.next(std::iter::empty::<&str>()), version);
+    }
 }
 
 #[test]
@@ -285,6 +286,26 @@ fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
             .increment(&version, commits),
         Version::new(1, 3, 0)
     );
+}
+
+#[test]
+fn no_increment_regex_filters_commits_when_major_and_minor_are_zero() {
+    let version = Version::new(0, 0, 3);
+    for (commits, expected) in [
+        (vec!["docs: update readme"], version.clone()),
+        (
+            vec!["docs: update readme", "fix: correct behavior"],
+            Version::new(0, 0, 4),
+        ),
+    ] {
+        assert_eq!(
+            VersionUpdater::new()
+                .with_no_increment_regex("^docs$")
+                .unwrap()
+                .increment(&version, commits),
+            expected
+        );
+    }
 }
 
 #[test]

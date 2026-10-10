@@ -27,9 +27,15 @@ fn pre_release_increment_uses_first_commit_not_ignored_by_regex() {
 #[test]
 fn commit_without_semver_prefix_increments_pre_release_version() {
     let commits = ["my change"];
-    let version = Version::parse("1.0.0-alpha.2").unwrap();
-    let expected = Version::parse("1.0.0-alpha.3").unwrap();
-    assert_eq!(version.next(commits), expected);
+    for (version, expected) in [
+        ("0.0.1-alpha.2", "0.0.1-alpha.3"),
+        ("1.0.0-alpha.2", "1.0.0-alpha.3"),
+    ] {
+        assert_eq!(
+            Version::parse(version).unwrap().next(commits),
+            Version::parse(expected).unwrap()
+        );
+    }
 }
 
 #[test]

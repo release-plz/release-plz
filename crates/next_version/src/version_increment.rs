@@ -41,6 +41,20 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
+        if current_version.major == 0
+            && current_version.minor == 0
+            && current_version.pre.is_empty()
+            && !updater.breaking_always_increment_major
+            && !updater.features_always_increment_minor
+            && updater.custom_major_increment_regex.is_none()
+            && updater.custom_minor_increment_regex.is_none()
+            && updater.no_increment_regex.is_none()
+        {
+            // With the default rules, every nonempty 0.0.x history only increments
+            // the patch. The messages cannot affect the result.
+            return commits.into_iter().next().map(|_| Self::Patch);
+        }
+
         let breaking_increment_major =
             current_version.major != 0 || updater.breaking_always_increment_major;
         let features_increment_minor =
