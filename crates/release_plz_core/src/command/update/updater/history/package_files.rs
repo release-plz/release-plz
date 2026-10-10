@@ -14,14 +14,10 @@
 //!
 //! A symlinked file-selection input pointing to a `.rs` file makes its contents
 //! matter, though. Only symlinked manifests are detected: Cargo lists the files
-//! at each checkout with a symlink named `Cargo.toml` in any ASCII case, since
-//! case-insensitive filesystems resolve every casing. Source-only differences
-//! preserve their absence, so only checkouts that need a new list are inspected.
-//! Other symlinked inputs pointing to Rust sources, such as a `.gitignore` or a
+//! at each checkout with a symlink named `Cargo.toml` in any ASCII case. Other
+//! symlinked inputs pointing to Rust sources, such as a `.gitignore` or a
 //! `.cargo/config.toml`, are assumed absent, and configuration outside the
-//! repository is assumed stable during a walk, as for the released-package
-//! cache. Whenever Git cannot compare the checkouts or look for symlinked
-//! manifests, Cargo lists the files again.
+//! repository is assumed stable during a walk.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
@@ -60,6 +56,8 @@ impl<'a> CheckoutPackageFiles<'a> {
             })
         });
         if reuses {
+            // The previous checkout had no symlinked manifest, and source-only
+            // differences cannot add one.
             if self.files.is_cached() {
                 debug!("reusing historical package file list at {commit}");
             }
@@ -84,6 +82,8 @@ impl<'a> CheckoutPackageFiles<'a> {
 fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
     // After `git checkout <commit>` in the walk's clean copy, the index holds the
     // tree of that commit. Unlike `ls-tree`, `ls-files` accepts this pathspec magic.
+    // `icase` matches every casing, since case-insensitive filesystems resolve
+    // any of them to the manifest.
     let manifests = repository.git(&[
         "ls-files",
         "--stage",
