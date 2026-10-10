@@ -157,7 +157,11 @@ fn update_reuses_package_files_after_source_content_changes() {
 }
 
 #[test]
-fn update_invalidates_package_files_after_selection_changes() {
+fn update_lists_package_files_again_after_changes_beyond_source_contents() {
+    // Only some cases change Cargo's file list. The others, such as the
+    // lockfile, the build configuration or the workspace license, show that
+    // any tree change beyond the contents of Rust sources makes Cargo list the
+    // files again.
     for (path, contents) in [
         (
             "one/Cargo.toml",
@@ -199,8 +203,8 @@ fn update_invalidates_package_files_after_selection_changes() {
 fn update_invalidates_package_files_after_mode_changes() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    // Executable scripts can be Cargo or rustc wrappers. As for selection
-    // changes, HEAD and its parent must each ask Cargo.
+    // Executable scripts can be Cargo or rustc wrappers. As for other changes
+    // beyond source contents, HEAD and its parent must each ask Cargo.
     assert_package_file_listings(
         "executable source",
         |dir| {
