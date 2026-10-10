@@ -36,9 +36,7 @@ use crate::{
     version::NextVersionFromDiff as _,
 };
 
-use super::{
-    PackagesUpdate, package_dependencies::PackageDependencies as _, update_request::UpdateRequest,
-};
+use super::{PackagesUpdate, update_request::UpdateRequest};
 
 mod history;
 
@@ -421,6 +419,7 @@ impl Updater<'_> {
             .map(|u| u.package.name.as_str())
             .collect();
 
+        let dependency_strategy = self.req.local_dependencies_update_strategy();
         loop {
             // A dependency-only release can raise the shared version after the
             // initial commit-based calculation. Only activate it if an inheriting
@@ -462,7 +461,8 @@ impl Updater<'_> {
                 let inherited_version = workspace_version
                     .as_ref()
                     .filter(|_| workspace_version_pkgs.contains(p.name.as_str()));
-                let Ok(deps) = p.dependencies_to_update(
+                let Ok(deps) = dependency_strategy.dependencies_to_update(
+                    p,
                     &changed_packages,
                     workspace_dependencies,
                     workspace_dir,
