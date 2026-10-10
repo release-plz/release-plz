@@ -1154,11 +1154,13 @@ fn get_changelog(
 ) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
-    let mut changelog_builder = ChangelogBuilder::new(
-        commits.clone(),
-        next_version.to_string(),
-        package.name.to_string(),
-    );
+    let contributors = if changelog_req.is_some() && repo.is_some() {
+        get_contributors(&commits)
+    } else {
+        Vec::new()
+    };
+    let mut changelog_builder =
+        ChangelogBuilder::new(commits, next_version.to_string(), package.name.to_string());
     if let Some(changelog_req) = changelog_req {
         if let Some(release_date) = changelog_req.release_date {
             changelog_builder = changelog_builder.with_release_date(release_date);
@@ -1173,7 +1175,7 @@ fn get_changelog(
                 owner: repo_url.owner.clone(),
                 repo: repo_url.name.clone(),
                 link: repo_url.full_host(),
-                contributors: get_contributors(&commits),
+                contributors,
             };
             changelog_builder = changelog_builder.with_remote(remote);
 
