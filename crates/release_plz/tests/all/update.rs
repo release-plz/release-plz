@@ -216,6 +216,27 @@ fn update_lists_package_files_again_after_mode_changes() {
     );
 }
 
+#[test]
+fn update_lists_package_files_again_after_changes_in_skipped_commits() {
+    let (temp_dir, repo) = single_package_workspace();
+    change_package(&repo, "one", "fix: first change");
+    let config = repo.directory().join(".cargo/config.toml");
+    fs_err::create_dir_all(config.parent().unwrap()).unwrap();
+    fs_err::write(config, "[build]\njobs = 1\n").unwrap();
+    repo.add_all_and_commit("chore: build config").unwrap();
+    change_package(&repo, "one", "fix: second change");
+
+    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+    // Both fixes change only Rust sources, but the path-limited walk skips the
+    // build configuration commit between them, so the first fix differs from
+    // HEAD, the previous checkout, beyond source contents. HEAD and the first
+    // fix each ask Cargo, and the release snapshot reuses the second list.
+    let case = "skipped commits";
+    assert_package_file_list_counts(&logs, case, 3, 1);
+    assert_patch_release(&repo, case, &["first change", "second change"]);
+}
+
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_with_a_symlinked_manifest() {
@@ -281,6 +302,13 @@ fn assert_package_file_listings(
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
+    assert_package_file_list_counts(&logs, case, cargo_runs, reuses);
+    assert_patch_release(&repo, case, &["first change", "second change"]);
+}
+
+/// Assert that the update `logs` show `cargo_runs` runs of
+/// `cargo package --list` and `reuses` reuses of a historical package file list.
+fn assert_package_file_list_counts(logs: &str, case: &str, cargo_runs: usize, reuses: usize) {
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
         cargo_runs,
@@ -291,7 +319,6 @@ fn assert_package_file_listings(
         reuses,
         "{case}: {logs}"
     );
-    assert_patch_release(&repo, case, &["first change", "second change"]);
 }
 
 /// Creates a workspace with [`init_workspace`] whose only package `one` is at 1.0.0.
