@@ -63,6 +63,10 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
       - name: Run tests
         run: cargo test --no-default-features --features all-static --workspace
+      - name: Smoke-test benchmarks
+        run: |
+          cargo test --no-default-features --features all-static -p release-plz --bench update -- --test
+          cargo test -p next_version --bench next_version -- --test
 
   rustfmt:
     name: Rustfmt
