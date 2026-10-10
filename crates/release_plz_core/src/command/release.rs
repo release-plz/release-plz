@@ -1076,6 +1076,8 @@ async fn create_git_tag_and_release(
         let release_config = input
             .get_package_config(&release_info.package.name)
             .git_release;
+        // The default release body only contains the changelog, so skip contributor
+        // API requests unless a custom template might use them.
         let contributors = if release_config.body_template.is_some() {
             get_contributors(release_info, git_client).await
         } else {
