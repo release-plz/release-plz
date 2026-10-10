@@ -8,7 +8,7 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use git_cmd::Repo;
 use tracing::debug;
 
-use crate::fs_utils;
+use super::read_only_objects;
 
 /// Replay changes onto other snapshots in an isolated libgit2 repository that
 /// reads the source objects without writing to the source repository.
@@ -430,33 +430,6 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
         .flatten()
 }
 
-/// A repository that reads the objects of `repository` through a read-only
-/// alternate. Any `commit` id shows the object format: only SHA-1 repositories
-/// are supported, since libgit2 cannot read SHA-256 objects.
-pub(super) fn read_only_objects(
-    repository: &Repo,
-    commit: &str,
-) -> anyhow::Result<git2::Repository> {
-    anyhow::ensure!(
-        git2::Oid::from_str(commit).is_ok(),
-        "SHA-256 repositories are not supported"
-    );
-    let objects = objects_directory(repository)?;
-    let odb = git2::Odb::new()?;
-    odb.add_disk_alternate(objects.as_str())?;
-    Ok(git2::Repository::from_odb(odb)?)
-}
-
-/// The absolute path of the object database of `repository`.
-///
-/// Let Git resolve it: libgit2 cannot open repositories with some valid
-/// extensions, such as `extensions.partialClone`. Git reports the path relative
-/// to the repository directory unless it is absolute, as in linked worktrees.
-fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
-    let objects = repository.git(&["rev-parse", "--git-path", "objects"])?;
-    fs_utils::canonicalize_utf8(&repository.directory().join(objects))
-}
-
 /// Whether all `modes` describe regular files, so that merging the contents as
 /// text is meaningful. Package equality ignores differences in executable bits.
 fn regular_file_modes<const N: usize>(modes: [u32; N]) -> bool {
@@ -559,6 +532,7 @@ fn encode_conflict<const N: usize>(blobs: [&[u8]; N]) -> anyhow::Result<Option<[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fs_utils;
 
     /// The repository-relative paths of the blobs of `tree`, in tree order.
     fn blob_paths(tree: &git2::Tree<'_>) -> Vec<String> {

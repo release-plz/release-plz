@@ -17,7 +17,7 @@ use tracing::debug;
 
 use crate::package_compare::PackageFiles;
 
-use super::replay::read_only_objects;
+use super::read_only_objects;
 
 /// The package files of a checkout, reused by the following checkouts while
 /// their trees differ from its tree only in the contents of Rust sources.
