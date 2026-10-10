@@ -2,6 +2,7 @@ name: CI # Continuous Integration
 
 on:
   push:
+    # Run same checks as the merge group. Used to populate the GitHub cache.
     branches:
       - main
     paths-ignore:
