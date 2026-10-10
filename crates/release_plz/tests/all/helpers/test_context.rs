@@ -249,6 +249,10 @@ impl TestContext {
         canonicalize_utf8(self.repo.directory()).unwrap()
     }
 
+    pub fn cargo_index_url(&self) -> String {
+        cargo_index_url(self.gitea.user.username())
+    }
+
     pub async fn opened_release_prs(&self) -> Vec<GitPr> {
         self.git_client
             .opened_prs(DEFAULT_BRANCH_PREFIX)
@@ -339,19 +343,22 @@ fn cargo_config(username: &str) -> String {
     let cargo_registries = format!(
         "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = "
     );
-    // we use gitea as a cargo registry:
-    // https://docs.gitea.com/usage/packages/cargo
-    let gitea_index = format!(
-        "\"http://{}/{}/{CARGO_INDEX_REPO}.git\"",
-        gitea_address(),
-        username
-    );
+    let gitea_index = cargo_index_url(username);
 
     let config_end = r"
 [net]
 git-fetch-with-cli = true
     ";
-    format!("{cargo_registries}{gitea_index}{config_end}")
+    format!("{cargo_registries}\"{gitea_index}\"{config_end}")
+}
+
+fn cargo_index_url(username: &str) -> String {
+    // we use gitea as a cargo registry:
+    // https://docs.gitea.com/usage/packages/cargo
+    format!(
+        "http://{}/{username}/{CARGO_INDEX_REPO}.git",
+        gitea_address()
+    )
 }
 
 fn git_client(repo_url: &str, token: &str) -> GitClient {
