@@ -41,6 +41,10 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
+        if !current_version.pre.is_empty() && updater.no_increment_regex.is_none() {
+            return commits.into_iter().next().map(|_| Self::Prerelease);
+        }
+
         let breaking_increment_major =
             current_version.major != 0 || updater.breaking_always_increment_major;
         let features_increment_minor =
