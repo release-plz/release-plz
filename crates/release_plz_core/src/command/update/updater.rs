@@ -842,18 +842,14 @@ impl Updater<'_> {
         (local_package_files, released_package_files): (&PackageFiles, &PackageFiles),
     ) -> anyhow::Result<bool> {
         let packages_equal = self
-            .with_cargo_lock_restored_unless_cached(
-                repository,
-                &[local_package_files, released_package_files],
-                || {
-                    crate::package_compare::are_packages_equal_cached(
-                        package_path,
-                        registry_package_path,
-                        local_package_files,
-                        released_package_files,
-                    )
-                },
-            )?
+            .with_cargo_lock_restored_unless_cached(repository, local_package_files, || {
+                crate::package_compare::are_packages_equal_cached(
+                    package_path,
+                    registry_package_path,
+                    local_package_files,
+                    released_package_files,
+                )
+            })?
             .context("cannot compare packages");
         // Most historical snapshots already differ in their packaged files.
         // Read README metadata only when that comparison cannot decide equality
@@ -950,15 +946,18 @@ impl Updater<'_> {
         Ok(result)
     }
 
-    /// Run `f`, which runs `cargo package` only to fill `package_files`, with
-    /// [`Self::with_cargo_lock_restored`] unless all of them are already cached.
+    /// Run `f` with [`Self::with_cargo_lock_restored`] unless `package_files`,
+    /// the file list of the current checkout of `repository`, is already cached.
+    ///
+    /// Released packages are listed outside `repository`, so `f` only needs the
+    /// restore when it lists the current checkout.
     fn with_cargo_lock_restored_unless_cached<T>(
         &self,
         repository: &Repo,
-        package_files: &[&PackageFiles],
+        package_files: &PackageFiles,
         f: impl FnOnce() -> T,
     ) -> anyhow::Result<T> {
-        if package_files.iter().all(|files| files.is_cached()) {
+        if package_files.is_cached() {
             Ok(f())
         } else {
             self.with_cargo_lock_restored(repository, f)
@@ -1008,7 +1007,7 @@ impl Updater<'_> {
         package_files: &PackageFiles,
     ) -> anyhow::Result<bool> {
         let package_files_res =
-            self.with_cargo_lock_restored_unless_cached(repository, &[package_files], || {
+            self.with_cargo_lock_restored_unless_cached(repository, package_files, || {
                 get_package_files(package_path, repository, package_files)
             })?;
         let Ok(package_files) = package_files_res.inspect_err(|e| {
