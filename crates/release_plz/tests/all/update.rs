@@ -200,7 +200,7 @@ fn update_lists_package_files_again_after_changes_beyond_source_contents() {
 
 #[cfg(unix)]
 #[test]
-fn update_invalidates_package_files_after_mode_changes() {
+fn update_lists_package_files_again_after_mode_changes() {
     use std::os::unix::fs::PermissionsExt as _;
 
     // Executable scripts can be Cargo or rustc wrappers. As for other changes
