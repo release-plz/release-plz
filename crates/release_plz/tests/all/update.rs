@@ -5,6 +5,23 @@ use release_plz_core::fs_utils::Utf8TempDir;
 use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
 
 #[test]
+fn update_workspace_without_publishable_packages() {
+    let (temp_dir, repo) = released_workspace(
+        &[("one", "version = \"1.0.0\"\npublish = false\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "one", "feat: update private package");
+    let original_commit = repo.current_commit_hash().unwrap();
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    repo.is_clean().unwrap();
+    assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
+    assert!(!repo.directory().join("one/CHANGELOG.md").exists());
+}
+
+#[test]
 fn update_changelog_includes_distinct_author_and_committer() {
     for (body, expected) in [
         (

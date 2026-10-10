@@ -269,18 +269,20 @@ impl Updater<'_> {
         // package at a time.
 
         let packages = self.packages_to_process();
-        // Each successful get_diff restores HEAD before returning, so the
-        // following packages can reuse the checkout left by the previous one.
-        if !packages.is_empty() {
-            repository
-                .checkout_head()
-                .context("can't checkout head to calculate diff")?;
+        if packages.is_empty() {
+            return Ok(Vec::new());
         }
+        // Each successful get_diff restores HEAD before returning, so the
+        // following packages can reuse that checkout and the same history tip.
+        repository
+            .checkout_head()
+            .context("can't checkout head to calculate diff")?;
+        let head = repository.current_commit_hash()?;
         let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = packages
             .iter()
             .map(|&p| {
                 let diff = self
-                    .get_diff(p, registry_packages, repository)
+                    .get_diff(p, registry_packages, repository, &head)
                     .with_context(|| {
                         format!("failed to retrieve difference of package {}", p.name)
                     })?;
@@ -648,14 +650,12 @@ impl Updater<'_> {
         package: &Package,
         registry_packages: &PackagesCollection,
         repository: &Repo,
+        head: &str,
     ) -> anyhow::Result<Diff> {
         info!(
             "determining next version for {} {}",
             package.name, package.version
         );
-        let package_path = get_package_path(package, repository, self.project.root())
-            .context("failed to determine package path")?;
-
         let registry_package = registry_packages.get_registry_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let git_tag = self
@@ -682,10 +682,10 @@ impl Updater<'_> {
             }
         }
         self.get_package_diff(
-            &package_path,
             package,
             registry_package,
             repository,
+            head,
             tag_commit.as_deref(),
             &mut diff,
         )?;
@@ -695,13 +695,16 @@ impl Updater<'_> {
 
     fn get_package_diff(
         &self,
-        package_path: &Utf8Path,
         package: &Package,
         registry_package: Option<&RegistryPackage>,
         repository: &Repo,
+        head: &str,
         tag_commit: Option<&str>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
+        let package_path = get_package_path(package, repository, self.project.root())
+            .context("failed to determine package path")?;
+        let package_path = package_path.as_path();
         let released_package_files = PackageFiles::default();
         // The released package, paired with the path of its extracted sources.
         let released = registry_package
@@ -731,18 +734,16 @@ impl Updater<'_> {
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
-        let head = repository.current_commit_hash()?;
         // Enumerate from the branch tip before checking out any historical snapshot.
         // The parents let RetainedChanges follow the lineages of this same walk.
         let graph = repository.parents_at_paths(
-            &head,
+            head,
             &release_boundaries,
             &paths.all(),
             max_analyze_commits,
         )?;
         let checked_out_history = !graph.is_empty();
-        let mut retained_changes =
-            history::RetainedChanges::new(repository, &head, &graph, &paths)?;
+        let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
