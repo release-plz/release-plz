@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/release-plz/release-plz/compare/next_version-v0.3.2...next_version-v0.3.3) - 2026-10-10
+
+### Fixed
+
+- honor custom major increment regex for 0.x versions ([#3169](https://github.com/release-plz/release-plz/pull/3169))
+
+### Performance
+
+- determine version increments in a single pass ([#3181](https://github.com/release-plz/release-plz/pull/3181))
+- stop parsing commits after a decisive breaking change ([#3160](https://github.com/release-plz/release-plz/pull/3160))
+- avoid copying commit messages when calculating versions ([#3154](https://github.com/release-plz/release-plz/pull/3154))
+- stop scanning commits once a prerelease bump is determined ([#3147](https://github.com/release-plz/release-plz/pull/3147))
+
 ## [0.3.2](https://github.com/release-plz/release-plz/compare/next_version-v0.3.1...next_version-v0.3.2) - 2026-05-10
 
 ### Added
