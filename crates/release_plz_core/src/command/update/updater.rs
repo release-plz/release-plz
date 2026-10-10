@@ -982,7 +982,8 @@ impl Updater<'_> {
     ) -> anyhow::Result<bool> {
         let get_files = || get_package_files(package_path, repository, package_files);
         let package_files_res = if package_files.is_cached() {
-            // Equality already listed this snapshot's files and restored the lockfile.
+            // Cargo listed the files, restoring the lockfile afterwards, at this
+            // snapshot or at an earlier one that packages the same files.
             // Reading the cached list cannot change Cargo.lock.
             get_files()
         } else {
