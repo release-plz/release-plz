@@ -684,7 +684,7 @@ struct ReleaseContext<'a> {
     git_client: &'a GitClient,
     /// PR author usernames by PR number.
     pr_authors: HashMap<u64, String>,
-    // The same trusted publishing token can be used for all packages.
+    /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
 }
 
