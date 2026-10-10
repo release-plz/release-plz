@@ -74,9 +74,9 @@ async fn download_rejects_duplicate_and_nonempty_destinations() {
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn download_respects_source_replacement() {
-    let context = TestContext::new_workspace(&["first", "second"]).await;
-    context.run_cargo_publish("first");
-    context.run_cargo_publish("second");
+    let context = TestContext::new().await;
+    let name = &context.gitea.repo;
+    context.run_cargo_publish(name);
 
     let config_path = context.repo_dir().join(".cargo/config.toml");
     let mut config = fs_err::read_to_string(&config_path).unwrap();
@@ -87,11 +87,11 @@ async fn download_respects_source_replacement() {
     fs_err::write(config_path, config).unwrap();
 
     let dest_dir = Utf8TempDir::new().unwrap();
-    let packages = PackageDownloader::new(["second", "first"], dest_dir.path().as_str())
+    let packages = PackageDownloader::new([name], dest_dir.path().as_str())
         .with_cargo_cwd(context.repo_dir())
         .download()
         .await
         .unwrap();
     let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(names, ["second", "first"]);
+    assert_eq!(names, [name]);
 }
