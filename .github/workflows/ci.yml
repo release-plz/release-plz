@@ -9,7 +9,6 @@ on:
       - "**.md"
       - "**.js"
       - "**.ts"
-  # Required checks must run for every PR and merge queue commit.
   pull_request:
   merge_group:
     types: [checks_requested]
