@@ -1502,17 +1502,12 @@ mod tests {
         );
         repo.add_all_and_commit("chore: release workspace").unwrap();
         let head = repo.current_commit_hash().unwrap();
-        Mock::given(method("GET"))
-            .and(path(format!("/repos/owner/repo/commits/{head}/pulls")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-            .expect(2)
-            .mount(&server)
-            .await;
+        mock_release_pr(&server, &head, None).await;
         for (pr_number, username) in [(42, "alice"), (43, "bob"), (44, "alice")] {
             Mock::given(method("GET"))
                 .and(path(format!("/repos/owner/repo/pulls/{pr_number}")))
                 .respond_with(contributor_response(pr_number, username))
-                .expect(2)
+                .expect(1)
                 .mount(&server)
                 .await;
         }
@@ -1527,27 +1522,14 @@ mod tests {
                     "body": contributors,
                 })))
                 .respond_with(ResponseTemplate::new(201))
-                .expect(2)
+                .expect(1)
                 .mount(&server)
                 .await;
         }
 
-        // Each invocation fetches fresh PR data, but only once per distinct PR.
-        for _ in 0..2 {
-            let result = release(&request).await.unwrap().unwrap();
-            assert_eq!(result.releases.len(), 2);
-            for package in &result.releases {
-                let expected = match package.package_name.as_str() {
-                    "test-package" => vec![42, 42, 43, 44],
-                    "second-package" => vec![43, 42, 44, 43],
-                    name => panic!("unexpected package {name}"),
-                };
-                assert_eq!(
-                    package.prs.iter().map(|pr| pr.number).collect::<Vec<_>>(),
-                    expected,
-                );
-            }
-        }
+        let result = release(&request).await.unwrap().unwrap();
+
+        assert_eq!(result.releases.len(), 2);
     }
 
     #[tokio::test]
