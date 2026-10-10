@@ -23,28 +23,19 @@ pub(super) struct ChangeReplay<'a> {
 }
 
 impl<'a> ChangeReplay<'a> {
-    /// Read the objects of `repository`, whose `head` commit id shows its object
-    /// format: only SHA-1 repositories are supported, since libgit2 cannot read
-    /// SHA-256 objects. Replays read only the repository-relative `paths`,
-    /// see [`Self::restrict`].
+    /// Read the objects of `repository` as [`read_only_objects`] does. Replays
+    /// read only the repository-relative `paths`, see [`Self::restrict`].
     pub(super) fn new(
         repository: &'a Repo,
         head: &str,
         paths: &[&Utf8Path],
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            git2::Oid::from_str(head).is_ok(),
-            "SHA-256 repositories are not supported"
-        );
-        let objects = objects_directory(repository)?;
-        // Alternates are read-only. Store synthetic attributes and replay results
-        // in memory so no objects are added to the source, including worktrees.
-        // The results of every replay stay in memory until this replay is
-        // dropped with the walk of its package.
-        let odb = git2::Odb::new()?;
-        odb.add_disk_alternate(objects.as_str())?;
-        odb.add_new_mempack_backend(1000)?;
-        let repo = git2::Repository::from_odb(odb)?;
+        let repo = read_only_objects(repository, head)?;
+        // Store synthetic attributes and replay results in memory so no objects
+        // are added to the source, including worktrees. The results of every
+        // replay stay in memory until this replay is dropped with the walk of
+        // its package.
+        repo.odb()?.add_new_mempack_backend(1000)?;
         // Remove user configuration and force the built-in text driver through
         // a synthetic index, overriding worktree, global and system attributes.
         repo.set_config(&git2::Config::new()?)?;
@@ -437,6 +428,23 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
     [delta.old_file().path_bytes(), delta.new_file().path_bytes()]
         .into_iter()
         .flatten()
+}
+
+/// A repository that reads the objects of `repository` through a read-only
+/// alternate. Any `commit` id shows the object format: only SHA-1 repositories
+/// are supported, since libgit2 cannot read SHA-256 objects.
+pub(super) fn read_only_objects(
+    repository: &Repo,
+    commit: &str,
+) -> anyhow::Result<git2::Repository> {
+    anyhow::ensure!(
+        git2::Oid::from_str(commit).is_ok(),
+        "SHA-256 repositories are not supported"
+    );
+    let objects = objects_directory(repository)?;
+    let odb = git2::Odb::new()?;
+    odb.add_disk_alternate(objects.as_str())?;
+    Ok(git2::Repository::from_odb(odb)?)
 }
 
 /// The absolute path of the object database of `repository`.

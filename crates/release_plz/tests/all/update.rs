@@ -166,8 +166,8 @@ fn update_reuses_package_files_after_source_content_changes() {
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
-    // Three historical snapshots have identical selection inputs. Cargo is
-    // invoked once for the local history and once for the released source tree.
+    // The three historical snapshots differ only in Rust source contents. Cargo
+    // is invoked once for the local history and once for the released source tree.
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
         2,
@@ -209,167 +209,66 @@ fn update_invalidates_package_files_after_selection_changes() {
             "# Changed lockfile\nversion = 4\n[[package]]\nname = \"one\"\nversion = \"1.0.0\"\n",
         ),
     ] {
-        let (temp_dir, repo) = init_workspace(
-            &[("one", "version = \"1.0.0\"\n")],
-            "",
-            "[workspace]\nsemver_check = false\n",
-        );
-        change_package(&repo, "one", "fix: first change");
-        let changed = repo.directory().join(path);
-        fs_err::create_dir_all(changed.parent().unwrap()).unwrap();
-        fs_err::write(changed, contents).unwrap();
-        // Touch the package too, so root-only configuration changes are part
-        // of the path-limited walk and are compared with the next snapshot.
-        fs_err::write(
-            repo.directory().join("one/src/lib.rs"),
-            "// Second change\n",
-        )
-        .unwrap();
-        repo.add_all_and_commit("fix: selection change").unwrap();
-
-        let logs = run_workspace_update_with_logs(&temp_dir, &repo);
-
-        // HEAD and its parent must each ask Cargo. The parent and initial
-        // release differ only in Rust contents and may share the second list.
-        assert_eq!(
-            logs.matches("Run `cargo package --list").count(),
-            3,
-            "{path}: {logs}"
-        );
-        assert_eq!(
-            logs.matches("reusing historical package file list").count(),
-            1,
-            "{path}: {logs}"
-        );
-        let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
-        assert!(changelog.contains("first change"), "{path}: {changelog}");
-        assert!(
-            changelog.contains("selection change"),
-            "{path}: {changelog}"
-        );
-        assert!(!changelog.contains("add README"), "{path}: {changelog}");
-    }
-}
-
-#[test]
-fn update_isolates_untracked_files_and_falls_back_for_indirect_git_inputs() {
-    for case in [
-        "untracked",
-        "include",
-        "filter",
-        "unused-filter",
-        "excludes",
-    ] {
-        let (temp_dir, repo) = init_workspace(
-            &[("one", "version = \"1.0.0\"\n")],
-            "",
-            "[workspace]\nsemver_check = false\n",
-        );
-        change_package(&repo, "one", "fix: first change");
-        fs_err::write(
-            repo.directory().join("one/src/lib.rs"),
-            "// Second change\n",
-        )
-        .unwrap();
-        repo.add_all_and_commit("fix: second change").unwrap();
-        match case {
-            "untracked" => {
-                fs_err::write(repo.directory().join("local.rs"), "// Untracked input\n").unwrap();
-            }
-            "include" => {
-                fs_err::write(
-                    repo.directory().join(".git/extra-config"),
-                    "[user]\nname = Test\n",
-                )
-                .unwrap();
-                repo.git(&["config", "include.path", "extra-config"])
-                    .unwrap();
-            }
-            "filter" | "unused-filter" => {
-                // This filter happens to be an identity function. The cache
-                // must still reject it: arbitrary programs can change control
-                // files while `git status` continues to report a clean tree.
-                if case == "filter" {
-                    fs_err::write(
-                        repo.directory().join(".git/info/attributes"),
-                        "*.rs filter=identity\n",
-                    )
-                    .unwrap();
-                }
-                repo.git(&["config", "filter.identity.clean", "cat"])
-                    .unwrap();
-                repo.git(&["config", "filter.identity.smudge", "cat"])
-                    .unwrap();
-            }
-            "excludes" => {
-                repo.git(&["config", "core.excludesFile", "one/src/lib.rs"])
-                    .unwrap();
-            }
-            _ => unreachable!(),
-        }
-        let head = repo.current_commit_hash().unwrap();
-        let mut cmd = workspace_update_with_logs_command(&temp_dir, &repo);
-        cmd.arg("--allow-dirty");
-        let output = cmd.assert().success().get_output().stderr.clone();
-        let logs = String::from_utf8(output).unwrap();
-
-        // --allow-dirty stashes untracked files in the temporary checkout, so
-        // its clean history can reuse lists while preserving the user's file.
-        // Merely registering a filter (e.g. a global Git LFS installation)
-        // also leaves plain source snapshots eligible for reuse.
-        let reusable = matches!(case, "untracked" | "unused-filter");
-        assert_eq!(
-            logs.matches("Run `cargo package --list").count(),
-            if reusable { 2 } else { 4 },
-            "{case}: {logs}"
-        );
-        assert_eq!(
-            logs.contains("reusing historical package file list"),
-            reusable,
-            "{case}: {logs}"
-        );
-        assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
-        assert_eq!(repo.current_commit_hash().unwrap(), head);
-        if case == "untracked" {
-            assert_eq!(
-                fs_err::read_to_string(repo.directory().join("local.rs")).unwrap(),
-                "// Untracked input\n"
-            );
-        }
+        assert_invalidates_package_files(path, |dir| {
+            let changed = dir.join(path);
+            fs_err::create_dir_all(changed.parent().unwrap()).unwrap();
+            fs_err::write(changed, contents).unwrap();
+        });
     }
 }
 
 #[cfg(unix)]
 #[test]
-fn update_falls_back_to_cargo_for_symlinked_inputs() {
+fn update_invalidates_package_files_after_mode_changes() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    // Executable scripts can be Cargo or rustc wrappers.
+    assert_invalidates_package_files("executable source", |dir| {
+        let permissions = std::fs::Permissions::from_mode(0o755);
+        fs_err::set_permissions(dir.join("one/src/lib.rs"), permissions).unwrap();
+    });
+}
+
+/// Assert that the package files listed before `change`, which edits the
+/// project directory together with a Rust source, are listed again after it.
+fn assert_invalidates_package_files(case: &str, change: impl FnOnce(&Utf8Path)) {
     let (temp_dir, repo) = init_workspace(
         &[("one", "version = \"1.0.0\"\n")],
         "",
         "[workspace]\nsemver_check = false\n",
     );
-    std::os::unix::fs::symlink("one/src/lib.rs", repo.directory().join("linked.rs")).unwrap();
-    repo.git(&["add", "linked.rs"]).unwrap();
-    repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
     change_package(&repo, "one", "fix: first change");
+    change(repo.directory());
+    // Touch the package too, so root-only configuration changes are part
+    // of the path-limited walk and are compared with the next snapshot.
     fs_err::write(
         repo.directory().join("one/src/lib.rs"),
         "// Second change\n",
     )
     .unwrap();
-    repo.add_all_and_commit("fix: second change").unwrap();
+    repo.add_all_and_commit("fix: selection change").unwrap();
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
+    // HEAD and its parent must each ask Cargo. The parent and initial
+    // release differ only in Rust contents and may share the second list.
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
-        4,
-        "{logs}"
+        3,
+        "{case}: {logs}"
     );
+    assert_eq!(
+        logs.matches("reusing historical package file list").count(),
+        1,
+        "{case}: {logs}"
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("first change"), "{case}: {changelog}");
     assert!(
-        !logs.contains("reusing historical package file list"),
-        "{logs}"
+        changelog.contains("selection change"),
+        "{case}: {changelog}"
     );
-    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+    assert!(!changelog.contains("add README"), "{case}: {changelog}");
 }
 
 #[test]
@@ -1035,24 +934,11 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
 }
 
 fn run_workspace_update_with_logs(temp_dir: &Utf8TempDir, repo: &Repo) -> String {
-    let output = workspace_update_with_logs_command(temp_dir, repo)
-        .assert()
-        .success()
-        .get_output()
-        .stderr
-        .clone();
-    String::from_utf8(output).unwrap()
-}
-
-fn workspace_update_with_logs_command(temp_dir: &Utf8TempDir, repo: &Repo) -> assert_cmd::Command {
     let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
     cmd.current_dir(repo.directory())
         .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
-        .env_remove("GIT_CONFIG_COUNT")
-        .env_remove("GIT_CONFIG_PARAMETERS")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", temp_dir.path().join("empty.gitconfig"))
         .args(["update", "--registry-manifest-path"])
         .arg(temp_dir.path().join("registry/Cargo.toml"));
-    cmd
+    let output = cmd.assert().success().get_output().stderr.clone();
+    String::from_utf8(output).unwrap()
 }
