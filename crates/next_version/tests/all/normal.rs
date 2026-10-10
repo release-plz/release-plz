@@ -76,6 +76,18 @@ fn commit_with_breaking_change_increments_major_version_when_major_is_zero() {
 }
 
 #[test]
+fn feature_does_not_hide_later_major_increment_when_major_is_zero() {
+    let commits = ["feat: add behavior", "fix!: change behavior"];
+    assert_eq!(
+        VersionUpdater::new()
+            .with_features_always_increment_minor(true)
+            .with_breaking_always_increment_major(true)
+            .increment(&Version::new(0, 2, 3), commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
 fn commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero() {
     let commits = ["feat!: break user"];
     let version = Version::new(0, 0, 3);

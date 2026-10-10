@@ -90,6 +90,14 @@ impl VersionIncrement {
                     increment = Some(Self::Minor);
                 }
             }
+
+            if !breaking_increment_major
+                && updater.custom_major_increment_regex.is_none()
+                && increment == Some(Self::Minor)
+            {
+                // No other commit can request a larger increment.
+                return increment;
+            }
         }
 
         increment
