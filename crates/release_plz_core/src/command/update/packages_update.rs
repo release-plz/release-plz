@@ -31,10 +31,6 @@ impl PackagesUpdate {
         &self.updates
     }
 
-    pub fn updates_clone(&self) -> PackagesToUpdate {
-        self.updates.clone()
-    }
-
     pub fn updates_mut(&mut self) -> &mut PackagesToUpdate {
         &mut self.updates
     }
