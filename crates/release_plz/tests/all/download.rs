@@ -16,9 +16,8 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
         ["first", "missing", "second"],
     ] {
         let dest_dir = Utf8TempDir::new().unwrap();
-        let packages = PackageDownloader::new(requested, dest_dir.path().as_str())
-            .with_registry(TEST_REGISTRY.to_string())
-            .with_cargo_cwd(context.repo_dir())
+        let packages = context
+            .package_downloader(requested, dest_dir.path())
             .download()
             .await
             .unwrap();
@@ -44,9 +43,8 @@ async fn registry_batches_preserve_request_order_and_skip_missing_packages() {
 
     for requested in [&["missing"][..], &[]] {
         let dest_dir = Utf8TempDir::new().unwrap();
-        let packages = PackageDownloader::new(requested.iter().copied(), dest_dir.path().as_str())
-            .with_registry(TEST_REGISTRY.to_string())
-            .with_cargo_cwd(context.repo_dir())
+        let packages = context
+            .package_downloader(requested.iter().copied(), dest_dir.path())
             .download()
             .await
             .unwrap();
@@ -61,9 +59,7 @@ async fn registry_batches_reject_duplicate_and_nonempty_destinations() {
     let name = &context.gitea.repo;
     context.run_cargo_publish(name);
     let dest_dir = Utf8TempDir::new().unwrap();
-    let downloader = PackageDownloader::new([name, name], dest_dir.path().as_str())
-        .with_registry(TEST_REGISTRY.to_string())
-        .with_cargo_cwd(context.repo_dir());
+    let downloader = context.package_downloader([name, name], dest_dir.path());
 
     let error = downloader.download().await.unwrap_err();
     assert!(format!("{error:#}").contains("already exists and is not an empty directory"));
