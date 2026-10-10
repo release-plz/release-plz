@@ -56,9 +56,9 @@ impl<'a> CheckoutPackageFiles<'a> {
             debug!("reusing historical package file list at {commit}");
         }
         // A source-only diff also preserves the absence of symlinked manifests.
-        // Scan the full tree only when starting a new cached list.
+        // Look for them only when starting a new cached list.
         let cacheable = reuses
-            || has_symlinked_manifest(self.repository, commit)
+            || has_symlinked_manifest(self.repository)
                 .inspect_err(|error| {
                     debug!("cannot find symlinked manifests at {commit}: {error:#}");
                 })
@@ -72,16 +72,22 @@ impl<'a> CheckoutPackageFiles<'a> {
 
 /// A manifest can point to a regular `.rs` file whose contents affect Cargo's
 /// file selection. Inspect nested packages too, including workspace members.
-fn has_symlinked_manifest(repository: &Repo, commit: &str) -> anyhow::Result<bool> {
-    let tree = repository.git(&["ls-tree", "-r", "-z", commit])?;
-    // Each entry is `<mode> <type> <id>\t<path>`, NUL-terminated.
-    Ok(tree.split_terminator('\0').any(|entry| {
-        entry.split_once('\t').is_some_and(|(info, path)| {
-            // Cargo.toml can resolve to another casing on case-insensitive filesystems.
-            let name = path.rsplit('/').next().unwrap_or(path);
-            info.starts_with("120000 ") && name.eq_ignore_ascii_case("Cargo.toml")
-        })
-    }))
+fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
+    // After `git checkout <commit>` in the walk's clean copy, the index holds the
+    // tree of that commit. Unlike `ls-tree`, `ls-files` lets Git filter it with
+    // pathspec magic. Cargo.toml can resolve to another casing on
+    // case-insensitive filesystems.
+    let manifests = repository.git(&[
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+        ":(glob,icase)**/Cargo.toml",
+    ])?;
+    // Each entry is `<mode> <id> <stage>\t<path>`, NUL-terminated.
+    Ok(manifests
+        .split_terminator('\0')
+        .any(|entry| entry.starts_with("120000 ")))
 }
 
 /// Whether the trees of the commits `old` and `new` differ only in the contents
