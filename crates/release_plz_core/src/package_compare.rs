@@ -14,6 +14,9 @@ use crate::{
 };
 use std::{cell::OnceCell, io::Read};
 
+mod history;
+pub(crate) use history::HistoryPackageFiles;
+
 /// Cargo stores the original manifest under this name when it packages a crate,
 /// so its presence tells an extracted registry package from a plain source tree.
 pub(crate) const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
@@ -44,7 +47,8 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
 }
 
 /// The packaged files of one package snapshot, computed at most once.
-/// Recreate this cache whenever the package is checked out at another commit.
+/// Recreate this cache whenever file-selection inputs change. Historical
+/// checkouts use [`HistoryPackageFiles`] to establish when reuse is safe.
 #[derive(Default)]
 pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 

@@ -29,7 +29,7 @@ use crate::{
     diff::{Commit, Diff},
     fs_utils, lock_compare,
     next_ver::takes_part_in_release,
-    package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, PackageFiles},
+    package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, HistoryPackageFiles, PackageFiles},
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -744,6 +744,7 @@ impl Updater<'_> {
         )?;
         let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
+        let mut historical_package_files = HistoryPackageFiles::default();
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -757,7 +758,8 @@ impl Updater<'_> {
             }
             checkout_commit(repository, &current_commit_hash)?;
             // Equality and changed-file checks inspect the same snapshot.
-            let local_package_files = PackageFiles::default();
+            let local_package_files =
+                historical_package_files.at_current_commit(repository.directory(), package_path);
             if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
@@ -765,7 +767,7 @@ impl Updater<'_> {
                     package_path,
                     released_package,
                     released_path,
-                    (&local_package_files, &released_package_files),
+                    (local_package_files, &released_package_files),
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     // Collect pruning candidates with full history: a "keep mine"
@@ -793,7 +795,7 @@ impl Updater<'_> {
                 package_path,
                 repository,
                 &current_commit_hash,
-                &local_package_files,
+                local_package_files,
             )? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
