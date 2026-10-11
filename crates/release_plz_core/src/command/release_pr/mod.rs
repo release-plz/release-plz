@@ -258,8 +258,8 @@ async fn opened_release_prs(
         .await
         .context("cannot get opened release-plz prs")?;
 
-    // Fall back to the old prefix only if no PR uses the configured prefix.
-    // TODO: Remove this check on release-plz v0.4.0.
+    // Release PRs opened by older release-plz versions use `OLD_BRANCH_PREFIX`.
+    // TODO: Remove this fallback on release-plz v0.4.0.
     let branch_prefix = if opened_prs
         .iter()
         .any(|pr| pr.branch().starts_with(branch_prefix))
