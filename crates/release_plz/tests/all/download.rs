@@ -67,18 +67,14 @@ async fn download_rejects_duplicate_packages() {
 #[tokio::test]
 async fn download_checks_destinations_before_downloading() {
     let crates = ["first", "occupied"];
-    let registry_dir = Utf8TempDir::new().unwrap();
-    let registry = git_cmd::Repo::init(registry_dir.path());
-    let registry_url = url::Url::from_directory_path(registry_dir.path()).unwrap();
-    // The index contains packages, but their archives are unavailable.
-    let registry_config = serde_json::json!({ "dl": format!("{registry_url}missing") });
-    fs_err::write(
-        registry_dir.path().join("config.json"),
-        registry_config.to_string(),
-    )
-    .unwrap();
+    let cargo_dir = Utf8TempDir::new().unwrap();
+    // The local registry index contains packages, but their `.crate` archives are missing.
     for name in crates {
-        let index_dir = registry_dir.path().join(&name[..2]).join(&name[2..4]);
+        let index_dir = cargo_dir
+            .path()
+            .join("registry/index")
+            .join(&name[..2])
+            .join(&name[2..4]);
         fs_err::create_dir_all(&index_dir).unwrap();
         let entry = serde_json::json!({
             "name": name, "vers": "0.1.0", "deps": [],
@@ -86,13 +82,10 @@ async fn download_checks_destinations_before_downloading() {
         });
         fs_err::write(index_dir.join(name), format!("{entry}\n")).unwrap();
     }
-    registry.add_all_and_commit("add package index").unwrap();
-
-    let cargo_dir = Utf8TempDir::new().unwrap();
     fs_err::create_dir(cargo_dir.path().join(".cargo")).unwrap();
     fs_err::write(
         cargo_dir.path().join(".cargo/config.toml"),
-        format!("[registries.local]\nindex = '{registry_url}'\n"),
+        "[source.crates-io]\nreplace-with = 'local'\n[source.local]\nlocal-registry = 'registry'\n",
     )
     .unwrap();
 
@@ -103,7 +96,6 @@ async fn download_checks_destinations_before_downloading() {
     fs_err::write(&marker, "keep").unwrap();
 
     let downloader = PackageDownloader::new(crates, dest_dir.path().as_str())
-        .with_registry("local".to_string())
         .with_cargo_cwd(cargo_dir.path().to_path_buf());
     let error = downloader.download().await.unwrap_err();
     let error = format!("{error:#}");
