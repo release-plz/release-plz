@@ -92,7 +92,8 @@ impl<'a> CheckoutPackageFiles<'a> {
 fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
     // Git reports each path on its own line, relative to the repository
-    // directory unless it is absolute. Even non-executable hooks disable reuse.
+    // directory unless it is absolute. Git for Windows ignores the executable
+    // bit of hooks, so test existence only.
     let hooks = repository.git(&[
         "rev-parse",
         "--git-path",
