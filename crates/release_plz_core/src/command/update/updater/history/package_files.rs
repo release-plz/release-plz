@@ -102,19 +102,18 @@ fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
 /// Whether the hooks directory has one of the [`CHECKOUT_HOOKS`].
 fn has_hook_file(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
-    // Git reports each path on its own line, relative to the repository
-    // directory unless it is absolute. Git for Windows ignores the executable
-    // bit of hooks, so test existence only, and also runs `<hook>.exe`.
-    let paths = CHECKOUT_HOOKS.map(|hook| format!("hooks/{hook}"));
-    let mut args = vec!["rev-parse"];
-    for path in &paths {
-        args.extend(["--git-path", path]);
-    }
-    let hooks = repository.git(&args)?;
-    for hook in hooks.lines() {
-        let hook = repository.directory().join(hook);
-        let exe = hook.with_extension("exe");
-        if fs_err::exists(&hook)? || (cfg!(windows) && fs_err::exists(exe)?) {
+    // Git reports the directory relative to the repository directory unless it
+    // is absolute. Git for Windows ignores the executable bit of hooks, so test
+    // existence only.
+    let hooks = repository.git(&["rev-parse", "--git-path", "hooks"])?;
+    let hooks = repository.directory().join(hooks);
+    for hook in CHECKOUT_HOOKS {
+        let hook = hooks.join(hook);
+        if fs_err::exists(&hook)? {
+            return Ok(true);
+        }
+        // Git for Windows also runs `<hook>.exe`.
+        if cfg!(windows) && fs_err::exists(hook.with_extension("exe"))? {
             return Ok(true);
         }
     }
