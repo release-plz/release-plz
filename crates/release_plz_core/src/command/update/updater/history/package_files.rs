@@ -31,7 +31,8 @@ use crate::package_compare::PackageFiles;
 pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
     /// The last checked-out commit, whose files `files` lists. `None` before the
-    /// first checkout or when its file list cannot be reused.
+    /// first checkout and when that commit has, or may have, a symlinked
+    /// manifest.
     commit: Option<String>,
     files: PackageFiles,
 }
@@ -50,16 +51,15 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// possible. Call this after checking `commit` out, before inspecting the
     /// package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
+        // A hook that ran at this checkout can have changed files without
+        // changing the trees. Check at every checkout: a tracked hook can be
+        // absent at HEAD but present in older snapshots.
         let has_hook = has_checkout_hook(self.repository).unwrap_or_else(|error| {
             debug!("cannot find checkout hooks at {commit}: {error:#}");
             true
         });
-        if has_hook {
-            self.commit = None;
-            self.files = PackageFiles::default();
-            return &self.files;
-        }
-        let reuses = self.commit.take().is_some_and(|previous| {
+        let previous = self.commit.take().filter(|_| !has_hook);
+        let reuses = previous.is_some_and(|previous| {
             only_rust_sources_differ(self.repository, &previous, commit).unwrap_or_else(|error| {
                 debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
                 false
@@ -92,9 +92,7 @@ impl<'a> CheckoutPackageFiles<'a> {
 fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
     // Git reports each path on its own line, relative to the repository
-    // directory unless it is absolute. Check after every checkout: a tracked
-    // hook can be absent at HEAD but present in older snapshots. Even
-    // non-executable hooks disable reuse.
+    // directory unless it is absolute. Even non-executable hooks disable reuse.
     let hooks = repository.git(&[
         "rev-parse",
         "--git-path",
