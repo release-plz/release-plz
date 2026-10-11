@@ -240,11 +240,11 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
 fn update_lists_package_files_when_checkout_hooks_change_files() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    for (hooks_dir, historical_only) in [(".git/hooks", false), (".hooks", false), (".hooks", true)]
-    {
-        let case = format!("{hooks_dir}, historical_only={historical_only}");
+    for tracked in [false, true] {
+        let case = format!("tracked={tracked}");
         let (temp_dir, repo) = single_package_workspace();
-        if hooks_dir != ".git/hooks" {
+        let hooks_dir = if tracked { ".hooks" } else { ".git/hooks" };
+        if tracked {
             repo.git(&["config", "core.hooksPath", hooks_dir]).unwrap();
         }
         let hook = repo.directory().join(hooks_dir).join("post-checkout");
@@ -264,7 +264,7 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
         repo.git(&["commit", "--amend", "-m", "feat!: initial API"])
             .unwrap();
         change_package(&repo, "one", "fix: first change");
-        if historical_only {
+        if tracked {
             // The hook is absent at HEAD but runs at older snapshots. Checking
             // for it only when the walk starts would still reuse a stale list.
             fs_err::remove_file(&hook).unwrap();
