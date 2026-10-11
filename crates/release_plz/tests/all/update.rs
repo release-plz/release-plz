@@ -365,9 +365,9 @@ fn assert_package_file_listings_with_change(
 }
 
 /// Assert that updating the [`single_package_workspace`] of `repo` runs
-/// `cargo package --list` `cargo_runs` times, once for the released source
-/// tree, and reuses a historical package file list `reuses` times, while the
-/// update still finds exactly the package changes `fix: first change` and
+/// `cargo package --list` `cargo_runs` times, including once for the released
+/// source tree, and reuses a historical package file list `reuses` times, while
+/// the update still finds exactly the package changes `fix: first change` and
 /// `fix: second change`.
 fn assert_package_file_listings(
     temp_dir: &Utf8TempDir,
