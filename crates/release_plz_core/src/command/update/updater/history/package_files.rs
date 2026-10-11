@@ -90,16 +90,12 @@ impl<'a> CheckoutPackageFiles<'a> {
 /// Whether a post-checkout hook may have changed this checkout's packaged files.
 fn has_post_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
-    // Check after every checkout: a tracked hook can be absent at HEAD but
-    // present in older snapshots. Even non-executable hooks disable reuse.
-    let hook = repository.git(&[
-        "rev-parse",
-        "--path-format=absolute",
-        "--git-path",
-        "hooks/post-checkout",
-    ])?;
-    std::path::Path::new(&hook)
-        .try_exists()
+    // Git reports the path relative to the repository directory unless it is
+    // absolute. Check after every checkout: a tracked hook can be absent at HEAD
+    // but present in older snapshots. Even non-executable hooks disable reuse.
+    let hook = repository.git(&["rev-parse", "--git-path", "hooks/post-checkout"])?;
+    let hook = repository.directory().join(hook);
+    hook.try_exists()
         .with_context(|| format!("cannot inspect post-checkout hook {hook:?}"))
 }
 
