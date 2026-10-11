@@ -261,8 +261,7 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
         .unwrap();
         fs_err::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         repo.git(&["add", "."]).unwrap();
-        repo.git(&["commit", "--amend", "-m", "feat!: initial API"])
-            .unwrap();
+        repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
         change_package(&repo, "one", "fix: first change");
         if tracked {
             // The hook is absent at HEAD but runs at older snapshots. Checking
@@ -271,24 +270,10 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
         }
         change_package(&repo, "one", "fix: second change");
 
-        let logs = run_workspace_update_with_logs(&temp_dir, &repo);
-
         // The hook removes the generated file at the released snapshot. A list
-        // reused from its successor would hide equality and release the initial
-        // breaking change again, producing 2.0.0 instead of 1.0.1.
-        assert_patch_release(&repo, &case, &["first change", "second change"]);
-        let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
-        assert!(!changelog.contains("initial API"), "{case}: {changelog}");
-        assert_eq!(
-            logs.matches("Run `cargo package --list").count(),
-            4,
-            "{case}: {logs}"
-        );
-        assert!(
-            !logs.contains("reusing historical package file list"),
-            "{case}: {logs}"
-        );
-        assert!(!repo.directory().join("one/generated.txt").exists());
+        // reused from its successor would hide the equal released snapshot and
+        // bring the initial commit into the changelog.
+        assert_update_package_file_listings(&temp_dir, &repo, &case, 4, 0);
     }
 }
 
@@ -336,15 +321,12 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
     );
 }
 
-/// Assert that updating a [`single_package_workspace`] after the commits
-/// `fix: first change` and `fix: second change` to the Rust source of `one`
-/// runs `cargo package --list` `cargo_runs` times, once for the released source
-/// tree, and reuses a historical package file list `reuses` times, while the
-/// update still finds exactly the two source changes. `change` runs before the
-/// second source change is committed. Changes it leaves uncommitted are
-/// committed with that source change, so they land in a walked commit, while a
-/// change it commits on its own outside the package directory is skipped by the
-/// path-limited walk.
+/// Run [`assert_update_package_file_listings`] on a [`single_package_workspace`]
+/// after the commits `fix: first change` and `fix: second change` to the Rust
+/// source of `one`. `change` runs before the second source change is committed.
+/// Changes it leaves uncommitted are committed with that source change, so they
+/// land in a walked commit, while a change it commits on its own outside the
+/// package directory is skipped by the path-limited walk.
 fn assert_package_file_listings(
     case: &str,
     change: impl FnOnce(&Repo),
@@ -355,8 +337,22 @@ fn assert_package_file_listings(
     change_package(&repo, "one", "fix: first change");
     change(&repo);
     change_package(&repo, "one", "fix: second change");
+    assert_update_package_file_listings(&temp_dir, &repo, case, cargo_runs, reuses);
+}
 
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+/// Assert that updating the [`single_package_workspace`] of `repo` runs
+/// `cargo package --list` `cargo_runs` times, once for the released source
+/// tree, and reuses a historical package file list `reuses` times, while the
+/// update still finds exactly the package changes `fix: first change` and
+/// `fix: second change`.
+fn assert_update_package_file_listings(
+    temp_dir: &Utf8TempDir,
+    repo: &Repo,
+    case: &str,
+    cargo_runs: usize,
+    reuses: usize,
+) {
+    let logs = run_workspace_update_with_logs(temp_dir, repo);
 
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
@@ -368,7 +364,7 @@ fn assert_package_file_listings(
         reuses,
         "{case}: {logs}"
     );
-    assert_patch_release(&repo, case, &["first change", "second change"]);
+    assert_patch_release(repo, case, &["first change", "second change"]);
 }
 
 /// Creates a workspace with [`init_workspace`] whose only package `one` is at 1.0.0.
