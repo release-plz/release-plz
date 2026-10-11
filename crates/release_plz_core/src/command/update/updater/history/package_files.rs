@@ -19,8 +19,8 @@
 //! hooks directory or in the Git configuration, or with a symlink named
 //! `Cargo.toml` in any ASCII case. Other symlinked inputs pointing to Rust
 //! sources, such as a `.gitignore` or a `.cargo/config.toml`, are assumed
-//! absent, and hooks and configuration outside the trees are assumed stable
-//! during a walk.
+//! absent, as is Git configuration included from a `.rs` file. Hooks and
+//! configuration outside the trees are assumed stable during a walk.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
