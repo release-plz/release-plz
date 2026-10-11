@@ -233,22 +233,34 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_when_checkout_hooks_change_files() {
-    for name in [
-        "post-checkout",
-        "post-index-change",
-        "reference-transaction",
+    for (event, configured) in [
+        ("post-checkout", false),
+        ("post-index-change", false),
+        ("reference-transaction", false),
+        ("post-checkout", true),
     ] {
+        let case = format!("{event}, configured={configured}");
         let (temp_dir, repo) = single_package_workspace();
         change_package(&repo, "one", "fix: first change");
         change_package(&repo, "one", "fix: second change");
         // Some checkout hooks also run when committing, so install the hook
         // after the setup commits.
-        install_checkout_hook(&repo.directory().join(".git/hooks").join(name));
+        if configured {
+            // Git 2.54 and later also run hooks defined in the configuration.
+            // Older Git ignores them, but they still disable reuse.
+            let script = ".git/generate-package-file";
+            install_checkout_hook(&repo.directory().join(script));
+            repo.git(&["config", "hook.generate.event", event]).unwrap();
+            repo.git(&["config", "hook.generate.command", script])
+                .unwrap();
+        } else {
+            install_checkout_hook(&repo.directory().join(".git/hooks").join(event));
+        }
 
         // The hook removes the generated file at the released snapshot. A list
         // reused from its successor would hide the equal released snapshot and
         // bring the initial commit into the changelog.
-        assert_package_file_listings(&temp_dir, &repo, name, 4, 0);
+        assert_package_file_listings(&temp_dir, &repo, &case, 4, 0);
     }
 }
 

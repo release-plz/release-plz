@@ -15,11 +15,12 @@
 //! Hooks that run at checkout can change files without changing the trees,
 //! though, and a symlinked file-selection input pointing to a `.rs` file makes
 //! its contents matter. Cargo lists the files at each checkout with a
-//! `post-checkout`, `post-index-change` or `reference-transaction` hook, or
-//! with a symlink named `Cargo.toml` in any ASCII case. Other symlinked inputs
-//! pointing to Rust sources, such as a `.gitignore` or a `.cargo/config.toml`,
-//! are assumed absent, and hooks and configuration outside the trees are
-//! assumed stable during a walk.
+//! `post-checkout`, `post-index-change` or `reference-transaction` hook, in the
+//! hooks directory or in the Git configuration, or with a symlink named
+//! `Cargo.toml` in any ASCII case. Other symlinked inputs pointing to Rust
+//! sources, such as a `.gitignore` or a `.cargo/config.toml`, are assumed
+//! absent, and hooks and configuration outside the trees are assumed stable
+//! during a walk.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
@@ -85,28 +86,54 @@ impl<'a> CheckoutPackageFiles<'a> {
     }
 }
 
+/// The hooks that `git checkout` runs.
+const CHECKOUT_HOOKS: [&str; 3] = [
+    "post-checkout",
+    "post-index-change",
+    "reference-transaction",
+];
+
 /// Whether a hook that `git checkout` runs may have changed this checkout's
 /// packaged files.
 fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
+    Ok(has_hook_file(repository)? || has_configured_hook(repository)?)
+}
+
+/// Whether the hooks directory has one of the [`CHECKOUT_HOOKS`].
+fn has_hook_file(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
     // Git reports each path on its own line, relative to the repository
     // directory unless it is absolute. Git for Windows ignores the executable
     // bit of hooks, so test existence only.
-    let hooks = repository.git(&[
-        "rev-parse",
-        "--git-path",
-        "hooks/post-checkout",
-        "--git-path",
-        "hooks/post-index-change",
-        "--git-path",
-        "hooks/reference-transaction",
-    ])?;
+    let paths = CHECKOUT_HOOKS.map(|hook| format!("hooks/{hook}"));
+    let mut args = vec!["rev-parse"];
+    for path in &paths {
+        args.extend(["--git-path", path]);
+    }
+    let hooks = repository.git(&args)?;
     for hook in hooks.lines() {
         if fs_err::exists(repository.directory().join(hook))? {
             return Ok(true);
         }
     }
     Ok(false)
+}
+
+/// Whether the Git configuration defines a hook for one of the
+/// [`CHECKOUT_HOOKS`], as Git 2.54 and later allow. Older Git ignores these
+/// definitions.
+fn has_configured_hook(repository: &Repo) -> anyhow::Result<bool> {
+    // Unlike `--get-regexp`, `--list` succeeds without matches. Each entry is
+    // `<key>\n<value>`, or `<key>` for a boolean without value, NUL-terminated.
+    // Git lowercases section and variable names, but not the hook name.
+    let config = repository.git(&["config", "--null", "--list"])?;
+    Ok(config.split_terminator('\0').any(|entry| {
+        entry.split_once('\n').is_some_and(|(key, event)| {
+            key.strip_prefix("hook.")
+                .is_some_and(|key| key.ends_with(".event"))
+                && CHECKOUT_HOOKS.contains(&event)
+        })
+    }))
 }
 
 /// Whether the checked-out commit has a symlink named `Cargo.toml`, in any
