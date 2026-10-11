@@ -543,20 +543,6 @@ mod tests {
         GitClient::new(GitForge::Github(github)).unwrap()
     }
 
-    #[test]
-    fn release_prs_prefer_configured_prefix_then_legacy() {
-        let prs = ["release-plz/old", "custom/new", "feature", "custom/newer"].map(opened_pr);
-        let branches = |branch_prefix| {
-            release_prs(prs.to_vec(), branch_prefix)
-                .iter()
-                .map(|pr| pr.branch().to_owned())
-                .collect::<Vec<_>>()
-        };
-
-        assert_eq!(branches("custom/"), ["custom/new", "custom/newer"]);
-        assert_eq!(branches(DEFAULT_BRANCH_PREFIX), ["release-plz/old"]);
-    }
-
     fn graphql_commit_created() -> ResponseTemplate {
         ResponseTemplate::new(200).set_body_json(json!({
             "data": {"createCommitOnBranch": {"commit": {"oid": "new-release-sha"}}}
@@ -655,6 +641,20 @@ mod tests {
             draft: false,
             labels: vec![],
         }
+    }
+
+    #[test]
+    fn release_prs_prefer_configured_prefix_then_legacy() {
+        let prs = ["release-plz/old", "custom/new", "feature", "custom/newer"].map(opened_pr);
+        let branches = |branch_prefix| {
+            release_prs(prs.to_vec(), branch_prefix)
+                .iter()
+                .map(|pr| pr.branch().to_owned())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(branches("custom/"), ["custom/new", "custom/newer"]);
+        assert_eq!(branches(DEFAULT_BRANCH_PREFIX), ["release-plz/old"]);
     }
 
     #[tokio::test]
