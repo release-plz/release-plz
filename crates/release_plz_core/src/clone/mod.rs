@@ -134,9 +134,7 @@ impl Cloner {
         sources.insert(src);
         let package_set = PackageSet::new(&package_ids, sources, &self.config)?;
         // Use the set's deduplicated IDs: Cargo panics if a batch downloads the same ID twice.
-        package_set
-            .get_many(package_set.package_ids())
-            .context("failed to download packages")?;
+        package_set.get_many(package_set.package_ids())?;
 
         // `get_many` returns packages in completion order.
         // Look each one up by ID to keep request order.

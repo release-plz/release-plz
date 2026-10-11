@@ -110,7 +110,7 @@ async fn download_checks_destinations_before_downloading() {
     // An empty destination passes the check and reaches the failed download.
     fs_err::remove_file(marker).unwrap();
     let error = downloader.download().await.unwrap_err();
-    assert!(format!("{error:#}").contains("failed to download packages"));
+    assert!(format!("{error:#}").contains("failed to download `"));
 }
 
 #[tokio::test]
