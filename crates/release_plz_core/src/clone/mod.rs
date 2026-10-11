@@ -73,10 +73,7 @@ impl Cloner {
             fs_err::create_dir_all(dest_path)?;
         }
 
-        // Cloning into an existing directory is only allowed if the directory is empty.
-        if dest_path.read_dir()?.next().is_some() {
-            bail!("destination path '{dest_path}' already exists and is not an empty directory.");
-        }
+        check_destination(dest_path)?;
 
         let name = pkg.name();
 
@@ -120,7 +117,11 @@ impl Cloner {
 
             match summary {
                 Some(summary) => {
-                    destinations.push((summary.package_id(), self.directory.join(name)));
+                    let dest_path = self.directory.join(name);
+                    check_destination(&dest_path).with_context(|| {
+                        format!("failed to clone package {name} in {dest_path}")
+                    })?;
+                    destinations.push((summary.package_id(), dest_path));
                 }
                 None => warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*")),
             }
@@ -171,6 +172,14 @@ impl Cloner {
         source.invalidate_cache();
         Ok(source)
     }
+}
+
+fn check_destination(dest_path: &Utf8Path) -> CargoResult<()> {
+    // Cloning into an existing directory is only allowed if the directory is empty.
+    if dest_path.exists() && dest_path.read_dir()?.next().is_some() {
+        bail!("destination path '{dest_path}' already exists and is not an empty directory.");
+    }
+    Ok(())
 }
 
 async fn query_latest_package_summary(
