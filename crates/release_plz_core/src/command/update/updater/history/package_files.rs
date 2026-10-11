@@ -1,11 +1,9 @@
 //! Reuse a package's file list across the checkouts of a history walk.
 //!
-//! The walk checks commits out in a clean temporary copy of the repository.
-//! Reuse is disabled when a hook that runs at checkout is present, since hooks
-//! can change packaged files without changing the commit trees. Otherwise, the
-//! tracked files on disk are those of the checked-out commit, and untracked
-//! and ignored files change only at checkouts that add or remove tracked paths.
-//! Cargo selects packaged files by their paths and types,
+//! The walk checks commits out in a clean temporary copy of the repository, so
+//! the tracked files on disk are those of the checked-out commit, and
+//! untracked and ignored files change only at checkouts that add or remove
+//! tracked paths. Cargo selects packaged files by their paths and types,
 //! manifests, ignore rules and configuration, never by the contents of Rust
 //! sources. Checkouts whose trees differ only in the contents of `.rs` files
 //! that are non-executable regular files in both therefore package the same
@@ -14,12 +12,14 @@
 //! comparing each checkout with the previous one covers every checkout since
 //! Cargo listed the files.
 //!
-//! A symlinked file-selection input pointing to a `.rs` file makes its contents
-//! matter, though. Only symlinked manifests are detected: Cargo lists the files
-//! at each checkout with a symlink named `Cargo.toml` in any ASCII case. Other
-//! symlinked inputs pointing to Rust sources, such as a `.gitignore` or a
-//! `.cargo/config.toml`, are assumed absent, and configuration outside the
-//! repository is assumed stable during a walk.
+//! Hooks that run at checkout can change files without changing the trees,
+//! though, and a symlinked file-selection input pointing to a `.rs` file makes
+//! its contents matter. Cargo lists the files at each checkout with a
+//! `post-checkout`, `post-index-change` or `reference-transaction` hook, or
+//! with a symlink named `Cargo.toml` in any ASCII case. Other symlinked inputs
+//! pointing to Rust sources, such as a `.gitignore` or a `.cargo/config.toml`,
+//! are assumed absent, and configuration outside the repository is assumed
+//! stable during a walk.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
