@@ -187,8 +187,8 @@ fn update_lists_package_files_again_after_changes_beyond_source_contents() {
         // release differ only in Rust contents and share the second list.
         assert_package_file_listings(
             path,
-            |dir| {
-                let changed = dir.join(path);
+            |repo| {
+                let changed = repo.directory().join(path);
                 fs_err::create_dir_all(changed.parent().unwrap()).unwrap();
                 fs_err::write(changed, contents).unwrap();
             },
@@ -207,9 +207,9 @@ fn update_lists_package_files_again_after_mode_changes() {
     // beyond source contents, HEAD and its parent must each ask Cargo.
     assert_package_file_listings(
         "executable source",
-        |dir| {
+        |repo| {
             let permissions = std::fs::Permissions::from_mode(0o755);
-            fs_err::set_permissions(dir.join("one/src/lib.rs"), permissions).unwrap();
+            fs_err::set_permissions(repo.directory().join("one/src/lib.rs"), permissions).unwrap();
         },
         3,
         1,
@@ -218,23 +218,21 @@ fn update_lists_package_files_again_after_mode_changes() {
 
 #[test]
 fn update_lists_package_files_again_after_changes_in_skipped_commits() {
-    let (temp_dir, repo) = single_package_workspace();
-    change_package(&repo, "one", "fix: first change");
-    let config = repo.directory().join(".cargo/config.toml");
-    fs_err::create_dir_all(config.parent().unwrap()).unwrap();
-    fs_err::write(config, "[build]\njobs = 1\n").unwrap();
-    repo.add_all_and_commit("chore: build config").unwrap();
-    change_package(&repo, "one", "fix: second change");
-
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
-
     // Both fixes change only Rust sources, but the path-limited walk skips the
     // build configuration commit between them, so the first fix differs from
     // HEAD, the previous checkout, beyond source contents. HEAD and the first
     // fix each ask Cargo, and the release snapshot reuses the second list.
-    let case = "skipped commits";
-    assert_package_file_list_counts(&logs, case, 3, 1);
-    assert_patch_release(&repo, case, &["first change", "second change"]);
+    assert_package_file_listings(
+        "skipped commits",
+        |repo| {
+            let config = repo.directory().join(".cargo/config.toml");
+            fs_err::create_dir_all(config.parent().unwrap()).unwrap();
+            fs_err::write(config, "[build]\njobs = 1\n").unwrap();
+            repo.add_all_and_commit("chore: build config").unwrap();
+        },
+        3,
+        1,
+    );
 }
 
 #[cfg(unix)]
@@ -285,30 +283,24 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
 /// `fix: first change` and `fix: second change` to the Rust source of `one`
 /// runs `cargo package --list` `cargo_runs` times, once for the released source
 /// tree, and reuses a historical package file list `reuses` times, while the
-/// update still finds exactly the two source changes. `change` edits the
-/// project directory before the second commit, so it is committed together
-/// with a Rust source change: every case walks the same snapshots, and changes
-/// outside the package directory land in a walked commit.
+/// update still finds exactly the two source changes. `change` runs before the
+/// second source change is committed. Changes it leaves uncommitted are
+/// committed with that source change, so they land in a walked commit, while a
+/// change it commits on its own outside the package directory is skipped by the
+/// path-limited walk.
 fn assert_package_file_listings(
     case: &str,
-    change: impl FnOnce(&Utf8Path),
+    change: impl FnOnce(&Repo),
     cargo_runs: usize,
     reuses: usize,
 ) {
     let (temp_dir, repo) = single_package_workspace();
     change_package(&repo, "one", "fix: first change");
-    change(repo.directory());
+    change(&repo);
     change_package(&repo, "one", "fix: second change");
 
     let logs = run_workspace_update_with_logs(&temp_dir, &repo);
 
-    assert_package_file_list_counts(&logs, case, cargo_runs, reuses);
-    assert_patch_release(&repo, case, &["first change", "second change"]);
-}
-
-/// Assert that the update `logs` show `cargo_runs` runs of
-/// `cargo package --list` and `reuses` reuses of a historical package file list.
-fn assert_package_file_list_counts(logs: &str, case: &str, cargo_runs: usize, reuses: usize) {
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
         cargo_runs,
@@ -319,6 +311,7 @@ fn assert_package_file_list_counts(logs: &str, case: &str, cargo_runs: usize, re
         reuses,
         "{case}: {logs}"
     );
+    assert_patch_release(&repo, case, &["first change", "second change"]);
 }
 
 /// Creates a workspace with [`init_workspace`] whose only package `one` is at 1.0.0.
