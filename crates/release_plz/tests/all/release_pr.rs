@@ -667,10 +667,9 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_pr_legacy_prefix_requires_explicit_configuration() {
     let legacy_prefix = "release-plz/";
+    let legacy_config = format!("[workspace]\npr_branch_prefix = \"{legacy_prefix}\"\n");
     let context = TestContext::new().await;
-    context.write_release_plz_toml(&format!(
-        "[workspace]\npr_branch_prefix = \"{legacy_prefix}\"\n"
-    ));
+    context.write_release_plz_toml(&legacy_config);
     context.run_release_pr().success();
     let legacy_prs = context.opened_prs(legacy_prefix).await;
     assert_eq!(legacy_prs.len(), 1);
@@ -699,7 +698,14 @@ async fn release_pr_legacy_prefix_requires_explicit_configuration() {
     let legacy_prs = context.opened_prs(legacy_prefix).await;
     assert_eq!(legacy_prs.len(), 1);
     assert_eq!(legacy_prs[0].number, legacy_pr.number);
-    assert_eq!(legacy_prs[0].head.sha, updated_pr.head.sha);
+    // The legacy branch wasn't updated from main, which now has the default config.
+    assert_eq!(
+        context
+            .gitea
+            .get_file_content(legacy_pr.branch(), "release-plz.toml")
+            .await,
+        legacy_config
+    );
 }
 
 #[tokio::test]
