@@ -7,7 +7,7 @@ use cargo_metadata::{
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
-    process::{Command, ExitStatus},
+    process::{Command, ExitStatus, Output},
     time::{Duration, Instant},
 };
 use tracing::{debug, info};
@@ -65,6 +65,26 @@ pub fn run_cargo_with_env(
     args: &[&str],
     envs: &[(String, SecretString)],
 ) -> anyhow::Result<CmdOutput> {
+    let output = cargo_command(root, args, envs)
+        .output()
+        .context("cannot run cargo")?;
+    parse_output(output)
+}
+
+pub async fn run_cargo_with_env_async(
+    root: &Utf8Path,
+    args: &[&str],
+    envs: &[(String, SecretString)],
+) -> anyhow::Result<CmdOutput> {
+    let output = tokio::process::Command::from(cargo_command(root, args, envs))
+        .kill_on_drop(true)
+        .output()
+        .await
+        .context("cannot run cargo")?;
+    parse_output(output)
+}
+
+fn cargo_command(root: &Utf8Path, args: &[&str], envs: &[(String, SecretString)]) -> Command {
     debug!("Run `cargo {}` in {root}", args.join(" "));
 
     let mut command = cargo_cmd();
@@ -73,8 +93,10 @@ pub fn run_cargo_with_env(
         command.env(key, value.expose_secret());
     }
 
-    let output = command.output().context("cannot run cargo")?;
+    command
+}
 
+fn parse_output(output: Output) -> anyhow::Result<CmdOutput> {
     let output_stdout = String::from_utf8(output.stdout)?;
     let output_stderr = String::from_utf8(output.stderr)?;
 
@@ -112,6 +134,7 @@ pub async fn is_published(
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
         let output = run_cargo_info(workspace_root, package, registry, index_url, token)
+            .await
             .context("cannot run cargo info")?;
         if output.status.success() {
             Ok(true)
@@ -149,7 +172,7 @@ fn cargo_info_reports_missing(output: &CmdOutput) -> bool {
     stdout_and_stderr.contains("could not find")
 }
 
-fn run_cargo_info(
+async fn run_cargo_info(
     workspace_root: &Utf8Path,
     package: &Package,
     registry: Option<&str>,
@@ -170,11 +193,6 @@ fn run_cargo_info(
         args.push(registry_name.to_string());
     }
 
-    debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
-
-    let mut cmd = cargo_cmd();
-    cmd.current_dir(workspace_root).args(&args);
-
     let mut envs = vec![];
 
     if let Some(token) = token {
@@ -183,7 +201,7 @@ fn run_cargo_info(
     }
 
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_cargo_with_env(workspace_root, &args_refs, &envs)
+    run_cargo_with_env_async(workspace_root, &args_refs, &envs).await
 }
 
 pub async fn wait_until_published(

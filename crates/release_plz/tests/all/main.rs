@@ -5,6 +5,8 @@ mod helpers;
 #[cfg(feature = "docker-tests")]
 mod history;
 mod release;
+#[cfg(unix)]
+mod release_pipeline;
 mod release_pr;
 mod set_version;
 mod update;
