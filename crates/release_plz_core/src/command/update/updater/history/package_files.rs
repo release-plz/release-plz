@@ -1,9 +1,11 @@
 //! Reuse a package's file list across the checkouts of a history walk.
 //!
-//! The walk checks commits out in a clean temporary copy of the repository, so
-//! the tracked files on disk are those of the checked-out commit, and
-//! untracked and ignored files change only at checkouts that add or remove
-//! tracked paths. Cargo selects packaged files by their paths and types,
+//! The walk checks commits out in a clean temporary copy of the repository.
+//! Reuse is disabled when a post-checkout hook is present, since hooks can
+//! change packaged files without changing the commit trees. Otherwise, the
+//! tracked files on disk are those of the checked-out commit, and untracked
+//! and ignored files change only at checkouts that add or remove tracked paths.
+//! Cargo selects packaged files by their paths and types,
 //! manifests, ignore rules and configuration, never by the contents of Rust
 //! sources. Checkouts whose trees differ only in the contents of `.rs` files
 //! that are non-executable regular files in both therefore package the same
@@ -29,8 +31,7 @@ use crate::package_compare::PackageFiles;
 pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
     /// The last checked-out commit, whose files `files` lists. `None` before the
-    /// first checkout and when that commit has, or may have, a symlinked
-    /// manifest.
+    /// first checkout or when its file list cannot be reused.
     commit: Option<String>,
     files: PackageFiles,
 }
@@ -49,6 +50,15 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// possible. Call this after checking `commit` out, before inspecting the
     /// package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
+        let has_hook = has_post_checkout_hook(self.repository).unwrap_or_else(|error| {
+            debug!("cannot find post-checkout hook at {commit}: {error:#}");
+            true
+        });
+        if has_hook {
+            self.commit = None;
+            self.files = PackageFiles::default();
+            return &self.files;
+        }
         let reuses = self.commit.take().is_some_and(|previous| {
             only_rust_sources_differ(self.repository, &previous, commit).unwrap_or_else(|error| {
                 debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
@@ -75,6 +85,22 @@ impl<'a> CheckoutPackageFiles<'a> {
         self.commit = Some(commit.to_owned());
         &self.files
     }
+}
+
+/// Whether a post-checkout hook may have changed this checkout's packaged files.
+fn has_post_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
+    // Let Git resolve core.hooksPath, including paths relative to the worktree.
+    // Check after every checkout: a tracked hook can be absent at HEAD but
+    // present in older snapshots. Even non-executable hooks disable reuse.
+    let hook = repository.git(&[
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-path",
+        "hooks/post-checkout",
+    ])?;
+    std::path::Path::new(&hook)
+        .try_exists()
+        .with_context(|| format!("cannot inspect post-checkout hook {hook:?}"))
 }
 
 /// Whether the checked-out commit has a symlink named `Cargo.toml`, in any

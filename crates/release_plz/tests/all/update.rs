@@ -237,6 +237,63 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
 
 #[cfg(unix)]
 #[test]
+fn update_lists_package_files_when_checkout_hooks_change_files() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    for (hooks_dir, historical_only) in [(".git/hooks", false), (".hooks", false), (".hooks", true)]
+    {
+        let case = format!("{hooks_dir}, historical_only={historical_only}");
+        let (temp_dir, repo) = single_package_workspace();
+        if hooks_dir != ".git/hooks" {
+            repo.git(&["config", "core.hooksPath", hooks_dir]).unwrap();
+        }
+        let hook = repo.directory().join(hooks_dir).join("post-checkout");
+        fs_err::create_dir_all(hook.parent().unwrap()).unwrap();
+        fs_err::write(
+            &hook,
+            "#!/bin/sh\n\
+             if grep -q 'Initial release' one/src/lib.rs; then\n\
+                 rm -f one/generated.txt\n\
+             else\n\
+                 echo 'generated data' > one/generated.txt\n\
+             fi\n",
+        )
+        .unwrap();
+        fs_err::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        repo.git(&["add", "."]).unwrap();
+        repo.git(&["commit", "--amend", "-m", "feat!: initial API"])
+            .unwrap();
+        change_package(&repo, "one", "fix: first change");
+        if historical_only {
+            // The hook is absent at HEAD but runs at older snapshots. Checking
+            // for it only when the walk starts would still reuse a stale list.
+            fs_err::remove_file(&hook).unwrap();
+        }
+        change_package(&repo, "one", "fix: second change");
+
+        let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+
+        // The hook removes the generated file at the released snapshot. A list
+        // reused from its successor would hide equality and release the initial
+        // breaking change again, producing 2.0.0 instead of 1.0.1.
+        assert_patch_release(&repo, &case, &["first change", "second change"]);
+        let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+        assert!(!changelog.contains("initial API"), "{case}: {changelog}");
+        assert_eq!(
+            logs.matches("Run `cargo package --list").count(),
+            4,
+            "{case}: {logs}"
+        );
+        assert!(
+            !logs.contains("reusing historical package file list"),
+            "{case}: {logs}"
+        );
+        assert!(!repo.directory().join("one/generated.txt").exists());
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn update_lists_package_files_with_a_symlinked_manifest() {
     let (temp_dir, repo) = init_workspace(
         &[("one", "version = \"1.0.0\"\ninclude = [\"src/**\"]\n")],
