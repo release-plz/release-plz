@@ -153,7 +153,7 @@ async fn update_relocated_workspace_preserves_original_manifests() {
 fn update_reuses_package_files_after_source_content_changes() {
     // The three historical snapshots differ only in Rust source contents. Cargo
     // is invoked once for the local history and once for the released source tree.
-    assert_package_file_listings("source contents", |_| {}, 2, 2);
+    assert_package_file_listings_with_change("source contents", |_| {}, 2, 2);
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn update_lists_package_files_again_after_changes_beyond_source_contents() {
     ] {
         // HEAD and its parent must each ask Cargo. The parent and initial
         // release differ only in Rust contents and share the second list.
-        assert_package_file_listings(
+        assert_package_file_listings_with_change(
             path,
             |repo| {
                 let changed = repo.directory().join(path);
@@ -203,7 +203,7 @@ fn update_lists_package_files_again_after_changes_beyond_source_contents() {
 fn update_lists_package_files_again_after_mode_changes() {
     // Executable scripts can be Cargo or rustc wrappers. As for other changes
     // beyond source contents, HEAD and its parent must each ask Cargo.
-    assert_package_file_listings(
+    assert_package_file_listings_with_change(
         "executable source",
         |repo| crate::helpers::make_executable(&repo.directory().join("one/src/lib.rs")),
         3,
@@ -217,7 +217,7 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
     // build configuration commit between them, so the first fix differs from
     // HEAD, the previous checkout, beyond source contents. HEAD and the first
     // fix each ask Cargo, and the release snapshot reuses the second list.
-    assert_package_file_listings(
+    assert_package_file_listings_with_change(
         "skipped commits",
         |repo| {
             let config = repo.directory().join(".cargo/config.toml");
@@ -248,7 +248,7 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
         // The hook removes the generated file at the released snapshot. A list
         // reused from its successor would hide the equal released snapshot and
         // bring the initial commit into the changelog.
-        assert_update_package_file_listings(&temp_dir, &repo, name, 4, 0);
+        assert_package_file_listings(&temp_dir, &repo, name, 4, 0);
     }
 }
 
@@ -267,7 +267,7 @@ fn update_lists_package_files_when_older_snapshots_track_a_checkout_hook() {
     fs_err::remove_file(&hook).unwrap();
     change_package(&repo, "one", "fix: second change");
 
-    assert_update_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 0);
+    assert_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 0);
 }
 
 /// Install at `hook` an executable script that removes the untracked file
@@ -333,13 +333,13 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
     );
 }
 
-/// Run [`assert_update_package_file_listings`] on a [`single_package_workspace`]
+/// Run [`assert_package_file_listings`] on a [`single_package_workspace`]
 /// after the commits `fix: first change` and `fix: second change` to the Rust
 /// source of `one`. `change` runs before the second source change is committed.
 /// Changes it leaves uncommitted are committed with that source change, so they
 /// land in a walked commit, while a change it commits on its own outside the
 /// package directory is skipped by the path-limited walk.
-fn assert_package_file_listings(
+fn assert_package_file_listings_with_change(
     case: &str,
     change: impl FnOnce(&Repo),
     cargo_runs: usize,
@@ -349,7 +349,7 @@ fn assert_package_file_listings(
     change_package(&repo, "one", "fix: first change");
     change(&repo);
     change_package(&repo, "one", "fix: second change");
-    assert_update_package_file_listings(&temp_dir, &repo, case, cargo_runs, reuses);
+    assert_package_file_listings(&temp_dir, &repo, case, cargo_runs, reuses);
 }
 
 /// Assert that updating the [`single_package_workspace`] of `repo` runs
@@ -357,7 +357,7 @@ fn assert_package_file_listings(
 /// tree, and reuses a historical package file list `reuses` times, while the
 /// update still finds exactly the package changes `fix: first change` and
 /// `fix: second change`.
-fn assert_update_package_file_listings(
+fn assert_package_file_listings(
     temp_dir: &Utf8TempDir,
     repo: &Repo,
     case: &str,
