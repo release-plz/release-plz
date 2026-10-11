@@ -233,17 +233,10 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_when_checkout_hooks_change_files() {
-    for tracked in [false, true] {
-        let case = format!("tracked={tracked}");
-        let (temp_dir, repo) = single_package_workspace();
-        let hooks_dir = if tracked { ".hooks" } else { ".git/hooks" };
-        if tracked {
-            repo.git(&["config", "core.hooksPath", hooks_dir]).unwrap();
-        }
-        let hook = repo.directory().join(hooks_dir).join("post-checkout");
+    let install_hook = |hook: &Utf8Path| {
         fs_err::create_dir_all(hook.parent().unwrap()).unwrap();
         fs_err::write(
-            &hook,
+            hook,
             "#!/bin/sh\n\
              if grep -q 'Initial release' one/src/lib.rs; then\n\
                  rm -f one/generated.txt\n\
@@ -252,9 +245,24 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
              fi\n",
         )
         .unwrap();
-        crate::helpers::make_executable(&hook);
-        repo.git(&["add", "."]).unwrap();
-        repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
+        crate::helpers::make_executable(hook);
+    };
+    for (name, tracked) in [
+        ("post-checkout", false),
+        ("post-index-change", false),
+        ("reference-transaction", false),
+        ("post-checkout", true),
+    ] {
+        let case = format!("{name}, tracked={tracked}");
+        let (temp_dir, repo) = single_package_workspace();
+        let hooks_dir = if tracked { ".hooks" } else { ".git/hooks" };
+        let hook = repo.directory().join(hooks_dir).join(name);
+        if tracked {
+            repo.git(&["config", "core.hooksPath", hooks_dir]).unwrap();
+            install_hook(&hook);
+            repo.git(&["add", "."]).unwrap();
+            repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
+        }
         change_package(&repo, "one", "fix: first change");
         if tracked {
             // The hook is absent at HEAD but runs at older snapshots. Checking
@@ -262,6 +270,11 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
             fs_err::remove_file(&hook).unwrap();
         }
         change_package(&repo, "one", "fix: second change");
+        if !tracked {
+            // Some checkout hooks also run when committing, so install the
+            // hook after the setup commits.
+            install_hook(&hook);
+        }
 
         // The hook removes the generated file at the released snapshot. A list
         // reused from its successor would hide the equal released snapshot and

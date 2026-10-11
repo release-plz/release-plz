@@ -1,8 +1,8 @@
 //! Reuse a package's file list across the checkouts of a history walk.
 //!
 //! The walk checks commits out in a clean temporary copy of the repository.
-//! Reuse is disabled when a post-checkout hook is present, since hooks can
-//! change packaged files without changing the commit trees. Otherwise, the
+//! Reuse is disabled when a hook that runs at checkout is present, since hooks
+//! can change packaged files without changing the commit trees. Otherwise, the
 //! tracked files on disk are those of the checked-out commit, and untracked
 //! and ignored files change only at checkouts that add or remove tracked paths.
 //! Cargo selects packaged files by their paths and types,
@@ -50,8 +50,8 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// possible. Call this after checking `commit` out, before inspecting the
     /// package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
-        let has_hook = has_post_checkout_hook(self.repository).unwrap_or_else(|error| {
-            debug!("cannot find post-checkout hook at {commit}: {error:#}");
+        let has_hook = has_checkout_hook(self.repository).unwrap_or_else(|error| {
+            debug!("cannot find checkout hooks at {commit}: {error:#}");
             true
         });
         if has_hook {
@@ -87,14 +87,29 @@ impl<'a> CheckoutPackageFiles<'a> {
     }
 }
 
-/// Whether a post-checkout hook may have changed this checkout's packaged files.
-fn has_post_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
+/// Whether a hook that `git checkout` runs may have changed this checkout's
+/// packaged files.
+fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
-    // Git reports the path relative to the repository directory unless it is
-    // absolute. Check after every checkout: a tracked hook can be absent at HEAD
-    // but present in older snapshots. Even non-executable hooks disable reuse.
-    let hook = repository.git(&["rev-parse", "--git-path", "hooks/post-checkout"])?;
-    Ok(fs_err::exists(repository.directory().join(hook))?)
+    // Git reports each path on its own line, relative to the repository
+    // directory unless it is absolute. Check after every checkout: a tracked
+    // hook can be absent at HEAD but present in older snapshots. Even
+    // non-executable hooks disable reuse.
+    let hooks = repository.git(&[
+        "rev-parse",
+        "--git-path",
+        "hooks/post-checkout",
+        "--git-path",
+        "hooks/post-index-change",
+        "--git-path",
+        "hooks/reference-transaction",
+    ])?;
+    for hook in hooks.lines() {
+        if fs_err::exists(repository.directory().join(hook))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Whether the checked-out commit has a symlink named `Cargo.toml`, in any
