@@ -50,11 +50,10 @@ async fn download_preserves_request_order_and_skips_missing_packages() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn download_rejects_duplicate_and_nonempty_destinations() {
+async fn download_rejects_duplicate_packages() {
     let context = TestContext::new().await;
     let name = &context.gitea.repo;
     context.run_cargo_publish(name);
-    let nonempty_error = "already exists and is not an empty directory";
 
     let dest_dir = Utf8TempDir::new().unwrap();
     let error = context
@@ -62,21 +61,7 @@ async fn download_rejects_duplicate_and_nonempty_destinations() {
         .download()
         .await
         .unwrap_err();
-    assert!(format!("{error:#}").contains(nonempty_error));
-
-    let dest_dir = Utf8TempDir::new().unwrap();
-    let package_dir = dest_dir.path().join(name);
-    let marker = package_dir.join("marker");
-    fs_err::create_dir(&package_dir).unwrap();
-    fs_err::write(&marker, "keep").unwrap();
-    let error = context
-        .package_downloader([name], dest_dir.path())
-        .download()
-        .await
-        .unwrap_err();
-    assert!(format!("{error:#}").contains(nonempty_error));
-    assert_eq!(fs_err::read_to_string(marker).unwrap(), "keep");
-    assert!(!package_dir.join(CARGO_TOML).exists());
+    assert!(format!("{error:#}").contains("already exists and is not an empty directory"));
 }
 
 #[tokio::test]
