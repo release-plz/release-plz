@@ -666,50 +666,40 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_pr_legacy_prefix_requires_explicit_configuration() {
+    let legacy_prefix = "release-plz/";
     let context = TestContext::new().await;
-    let config = "[workspace]\ngit_only = true\npublish = false\nsemver_check = false\n";
-    context.write_release_plz_toml(&format!("{config}pr_branch_prefix = \"release-plz/\"\n"));
-    context.repo.tag_lightweight("v0.1.0").unwrap();
-    let readme = context.repo_dir().join("README.md");
-    fs_err::write(&readme, "# First change\n").unwrap();
-    context.push_all_changes("fix: first change");
-
-    let output = context.run_release_pr().success();
-    let legacy_pr: serde_json::Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
-    let legacy_branch = legacy_pr["prs"][0]["head_branch"].as_str().unwrap();
-    assert!(legacy_branch.starts_with("release-plz/"));
-    let legacy_number = legacy_pr["prs"][0]["number"].as_u64().unwrap();
+    context.write_release_plz_toml(&format!(
+        "[workspace]\npr_branch_prefix = \"{legacy_prefix}\"\n"
+    ));
+    context.run_release_pr().success();
+    let legacy_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(legacy_prs.len(), 1);
+    let legacy_pr = &legacy_prs[0];
 
     // An explicitly configured legacy prefix still updates the existing PR.
-    fs_err::write(&readme, "# Second change\n").unwrap();
-    context.push_all_changes("fix: second change");
-    let output = context.run_release_pr().success();
-    let updated_pr: serde_json::Value =
-        serde_json::from_slice(&output.get_output().stdout).unwrap();
-    assert_eq!(updated_pr["prs"][0]["number"], legacy_number);
+    fs_err::write(context.repo_dir().join("README.md"), "# Updated\n").unwrap();
+    context.push_all_changes("fix: update readme");
+    context.run_release_pr().success();
+    let updated_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(updated_prs.len(), 1);
+    let updated_pr = &updated_prs[0];
+    assert_eq!(updated_pr.number, legacy_pr.number);
     assert_eq!(
         context
             .gitea
-            .get_file_content(legacy_branch, "README.md")
+            .get_file_content(updated_pr.branch(), "README.md")
             .await,
-        "# Second change\n"
+        "# Updated\n"
     );
 
-    // With the default prefix, leave the legacy branch alone and open a new PR.
-    context.write_release_plz_toml(config);
-    fs_err::write(&readme, "# Third change\n").unwrap();
-    context.push_all_changes("fix: third change");
+    // With the default prefix, leave the legacy PR alone and open a new one.
+    context.write_release_plz_toml("[workspace]\n");
     context.run_release_pr().success();
-    let opened_prs = context.opened_release_prs().await;
-    assert_eq!(opened_prs.len(), 1);
-    assert_ne!(opened_prs[0].number, legacy_number);
-    assert_eq!(
-        context
-            .gitea
-            .get_file_content(legacy_branch, "README.md")
-            .await,
-        "# Second change\n"
-    );
+    assert_eq!(context.opened_release_prs().await.len(), 1);
+    let legacy_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(legacy_prs.len(), 1);
+    assert_eq!(legacy_prs[0].number, legacy_pr.number);
+    assert_eq!(legacy_prs[0].head.sha, updated_pr.head.sha);
 }
 
 #[tokio::test]
