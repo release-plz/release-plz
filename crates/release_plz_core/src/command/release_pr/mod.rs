@@ -196,8 +196,11 @@ async fn open_or_update_release_pr(
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
 ) -> anyhow::Result<ReleasePr> {
-    let opened_release_prs =
-        opened_release_prs(git_client, &release_pr_options.pr_branch_prefix).await?;
+    let opened_prs = git_client
+        .opened_prs()
+        .await
+        .context("cannot get opened release-plz prs")?;
+    let opened_release_prs = release_prs(opened_prs, &release_pr_options.pr_branch_prefix);
 
     // Close all release-plz prs, except one.
     let old_release_prs = opened_release_prs.iter().skip(1);
@@ -249,27 +252,17 @@ async fn open_or_update_release_pr(
     Ok(release_pr)
 }
 
-async fn opened_release_prs(
-    git_client: &GitClient,
-    branch_prefix: &str,
-) -> anyhow::Result<Vec<GitPr>> {
-    let mut opened_prs = git_client
-        .opened_prs()
-        .await
-        .context("cannot get opened release-plz prs")?;
-
+/// Keep only the release PRs among `prs`, preserving their order.
+fn release_prs(mut prs: Vec<GitPr>, branch_prefix: &str) -> Vec<GitPr> {
     // Release PRs opened by older release-plz versions use `OLD_BRANCH_PREFIX`.
     // TODO: Remove this fallback on release-plz v0.4.0.
-    let release_branch_prefix = if opened_prs
-        .iter()
-        .any(|pr| pr.branch().starts_with(branch_prefix))
-    {
+    let release_branch_prefix = if prs.iter().any(|pr| pr.branch().starts_with(branch_prefix)) {
         branch_prefix
     } else {
         OLD_BRANCH_PREFIX
     };
-    opened_prs.retain(|pr| pr.branch().starts_with(release_branch_prefix));
-    Ok(opened_prs)
+    prs.retain(|pr| pr.branch().starts_with(release_branch_prefix));
+    prs
 }
 
 async fn handle_opened_pr(
@@ -550,42 +543,18 @@ mod tests {
         GitClient::new(GitForge::Github(github)).unwrap()
     }
 
-    #[tokio::test]
-    async fn opened_release_prs_prefer_configured_prefix_then_legacy_without_refetching() {
-        test_logs::init();
-        let server = MockServer::start().await;
-        let pr = |number: u64, branch: &str| {
-            json!({
-                "user": {"id": 1, "login": "release-plz[bot]"},
-                "number": number,
-                "html_url": format!("https://github.com/owner/repo/pull/{number}"),
-                "head": {"ref": branch, "sha": "release-sha"},
-                "title": "chore: release",
-                "labels": []
-            })
+    #[test]
+    fn release_prs_prefer_configured_prefix_then_legacy() {
+        let prs = ["release-plz/old", "custom/new", "feature", "custom/newer"].map(opened_pr);
+        let branches = |branch_prefix| {
+            release_prs(prs.to_vec(), branch_prefix)
+                .iter()
+                .map(|pr| pr.branch().to_owned())
+                .collect::<Vec<_>>()
         };
-        Mock::given(method("GET"))
-            .and(path("/repos/owner/repo/pulls"))
-            .respond_with(ResponseTemplate::new(200).set_body_json([
-                pr(1, "release-plz/old"),
-                pr(2, "custom/new"),
-                pr(3, "feature"),
-                pr(4, "custom/newer"),
-            ]))
-            // One listing per call, also when falling back to the old prefix.
-            .expect(2)
-            .mount(&server)
-            .await;
-        let client = github_client(&server);
-        let numbers = |prs: Vec<GitPr>| prs.iter().map(|pr| pr.number).collect::<Vec<_>>();
 
-        let prs = opened_release_prs(&client, "custom/").await.unwrap();
-        assert_eq!(numbers(prs), [2, 4]);
-        let prs = opened_release_prs(&client, DEFAULT_BRANCH_PREFIX)
-            .await
-            .unwrap();
-        assert_eq!(numbers(prs), [1]);
-        server.verify().await;
+        assert_eq!(branches("custom/"), ["custom/new", "custom/newer"]);
+        assert_eq!(branches(DEFAULT_BRANCH_PREFIX), ["release-plz/old"]);
     }
 
     fn graphql_commit_created() -> ResponseTemplate {
