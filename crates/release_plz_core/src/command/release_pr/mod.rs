@@ -260,7 +260,7 @@ async fn opened_release_prs(
 
     // Release PRs opened by older release-plz versions use `OLD_BRANCH_PREFIX`.
     // TODO: Remove this fallback on release-plz v0.4.0.
-    let branch_prefix = if opened_prs
+    let release_branch_prefix = if opened_prs
         .iter()
         .any(|pr| pr.branch().starts_with(branch_prefix))
     {
@@ -268,7 +268,7 @@ async fn opened_release_prs(
     } else {
         OLD_BRANCH_PREFIX
     };
-    opened_prs.retain(|pr| pr.branch().starts_with(branch_prefix));
+    opened_prs.retain(|pr| pr.branch().starts_with(release_branch_prefix));
     Ok(opened_prs)
 }
 
