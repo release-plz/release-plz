@@ -1073,7 +1073,16 @@ async fn create_git_tag_and_release(
     }
 
     if should_create_git_release {
-        let contributors = get_contributors(release_info, git_client).await;
+        let release_config = input
+            .get_package_config(&release_info.package.name)
+            .git_release;
+        // The default release body only contains the changelog, so skip contributor
+        // API requests unless a custom template might use them.
+        let contributors = if release_config.body_template.is_some() {
+            get_contributors(release_info, git_client).await
+        } else {
+            vec![]
+        };
 
         // TODO fill the rest
         let remote = Remote {
@@ -1084,9 +1093,6 @@ async fn create_git_tag_and_release(
         };
         let release_body =
             release_body(input, release_info.package, release_info.changelog, &remote);
-        let release_config = input
-            .get_package_config(&release_info.package.name)
-            .git_release;
         let is_pre_release = release_config.is_pre_release(&release_info.package.version);
         let git_release_info = GitReleaseInfo {
             git_tag: release_info.git_tag.to_string(),
@@ -1435,6 +1441,66 @@ mod tests {
             .expect(follow_up_requests)
             .mount(server)
             .await;
+    }
+
+    #[tokio::test]
+    async fn release_fetches_contributors_only_for_custom_body() {
+        for custom_body in [false, true] {
+            let server = MockServer::start().await;
+            let (_temporary, repo, mut request) = release_fixture(&server);
+            let changelog = "- Fix ([#42](https://github.com/owner/repo/pull/42))";
+            fs_err::write(
+                repo.directory().join(CHANGELOG_FILENAME),
+                format!("# Changelog\n\n## [0.1.0]\n\n{changelog}\n"),
+            )
+            .unwrap();
+            repo.add_all_and_commit("chore: release").unwrap();
+            if custom_body {
+                request = request.with_package_config(
+                    "test-package",
+                    ReleaseConfig::default()
+                        .with_git_only(true)
+                        .with_git_release(
+                            GitReleaseConfig::default().set_body_template(Some(
+                                "Thanks @{{ remote.contributors[0].username }}!\n{{ changelog }}"
+                                    .into(),
+                            )),
+                        ),
+                );
+            }
+            let head = repo.current_commit_hash().unwrap();
+            mock_release_pr(&server, &head, None).await;
+            mock_git_release(&server, &head, 201).await;
+            Mock::given(method("GET"))
+                .and(path("/repos/owner/repo/pulls/42"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "number": 42,
+                    "user": {"id": 1, "login": "contributor"},
+                    "html_url": "https://github.com/owner/repo/pull/42",
+                    "head": {"ref": "fix", "sha": "commit"},
+                    "title": "fix: bug",
+                    "labels": [],
+                })))
+                .expect(u64::from(custom_body))
+                .mount(&server)
+                .await;
+
+            let result = release(&request).await.unwrap().unwrap();
+
+            assert_eq!(result.releases[0].prs, prs_from_text(changelog));
+            let requests = server.received_requests().await.unwrap();
+            let release_request = requests
+                .iter()
+                .find(|request| request.url.path() == "/repos/owner/repo/releases")
+                .unwrap();
+            let body = release_request.body_json::<serde_json::Value>().unwrap();
+            let expected = if custom_body {
+                format!("Thanks @contributor!\n{changelog}")
+            } else {
+                changelog.to_owned()
+            };
+            assert_eq!(body["body"], expected);
+        }
     }
 
     #[tokio::test]
