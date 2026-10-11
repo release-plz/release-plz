@@ -1,8 +1,4 @@
-
-
 https://github.com/user-attachments/assets/f82b63cb-b27c-4b3e-a928-c462908e1e0c
-
-
 
 [![Crates.io](https://img.shields.io/crates/v/release-plz.svg)](https://crates.io/crates/release-plz)
 [![CI](https://github.com/release-plz/release-plz/workflows/CI/badge.svg)](https://github.com/release-plz/release-plz/actions)
