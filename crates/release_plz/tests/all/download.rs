@@ -1,7 +1,7 @@
 use cargo_utils::CARGO_TOML;
 use release_plz_core::{PackageDownloader, fs_utils::Utf8TempDir};
 
-use crate::helpers::test_context::TestContext;
+use crate::helpers::{TEST_REGISTRY, test_context::TestContext};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -130,9 +130,8 @@ async fn download_respects_source_replacement() {
 
     let config_path = context.repo_dir().join(".cargo/config.toml");
     let mut config = fs_err::read_to_string(&config_path).unwrap();
-    let index = context.cargo_index_url();
     config.push_str(&format!(
-        "\n[source.crates-io]\nreplace-with = 'local'\n[source.local]\nregistry = \"{index}\"\n"
+        "\n[source.crates-io]\nreplace-with = '{TEST_REGISTRY}'\n"
     ));
     fs_err::write(config_path, config).unwrap();
 
