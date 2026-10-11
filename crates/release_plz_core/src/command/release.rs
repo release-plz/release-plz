@@ -183,7 +183,20 @@ impl ReleaseRequest {
     }
 
     pub fn get_package_config(&self, package: &str) -> ReleaseConfig {
-        self.packages_config.get(package)
+        let mut config = self.packages_config.get(package);
+        config.distribute = self
+            .packages_config
+            .overrides
+            .get(package)
+            .and_then(|config| config.distribute)
+            .or_else(|| {
+                self.packages_config.default.distribute.filter(|_| {
+                    self.metadata.workspace_packages().iter().any(|p| {
+                        p.name == package && p.targets.iter().any(|target| target.is_bin())
+                    })
+                })
+            });
+        config
     }
 
     pub fn allow_dirty(&self, package: &str) -> bool {
@@ -221,7 +234,7 @@ impl ReleaseRequest {
     fn validate_distribute_options(&self) -> anyhow::Result<()> {
         for package in self.metadata.workspace_packages() {
             let config = self.get_package_config(&package.name);
-            if !config.release || !config.distribute {
+            if !config.release || !config.distribute() {
                 continue;
             }
             let Some(GitRelease {
@@ -396,17 +409,18 @@ pub struct ReleaseConfig {
     /// Default: `false`.
     git_only: bool,
     /// Build binary distributions before publishing the GitHub release.
-    distribute: bool,
+    /// If unset, binary packages inherit the default package configuration.
+    distribute: Option<bool>,
 }
 
 impl ReleaseConfig {
     pub fn with_distribute(mut self, distribute: bool) -> Self {
-        self.distribute = distribute;
+        self.distribute = Some(distribute);
         self
     }
 
     pub fn distribute(&self) -> bool {
-        self.distribute
+        self.distribute.unwrap_or(false)
     }
 
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
@@ -487,7 +501,7 @@ impl Default for ReleaseConfig {
             changelog_path: None,
             changelog_update: true,
             git_only: false,
-            distribute: false,
+            distribute: None,
         }
     }
 }
@@ -1160,7 +1174,7 @@ async fn create_git_tag_and_release(
 
     if should_create_git_release {
         let package_config = input.get_package_config(&release_info.package.name);
-        let release_config = package_config.git_release;
+        let release_config = &package_config.git_release;
         // The default release body only contains the changelog, so skip contributor
         // API requests unless a custom template might use them.
         let contributors = if release_config.body_template.is_some() {
@@ -1188,13 +1202,13 @@ async fn create_git_tag_and_release(
             git_tag: release_info.git_tag.to_string(),
             release_name: release_info.release_name.to_string(),
             release_body,
-            draft: package_config.distribute || release_config.draft,
+            draft: package_config.distribute() || release_config.draft,
             latest: release_config.latest,
             pre_release: is_pre_release,
             generate_release_notes: release_config.generate_release_notes,
         };
         context.git_client.create_release(&git_release_info).await?;
-        if package_config.distribute {
+        if package_config.distribute() {
             context
                 .git_client
                 .dispatch_dist(release_info.git_tag)
@@ -1735,8 +1749,11 @@ mod tests {
         let server = MockServer::start().await;
         // A library package has nothing to distribute.
         let (_temporary, _repo, request) = release_fixture(&server);
+        let request = request.with_default_package_config(distribute_config());
+        request.validate_distribute_options().unwrap();
+        // Only an explicit package opt-in is an error for a library.
         let error = request
-            .with_default_package_config(distribute_config())
+            .with_package_config("test-package", distribute_config())
             .validate_distribute_options()
             .unwrap_err()
             .to_string();

@@ -121,6 +121,8 @@ impl Config {
         for (package, config) in self.packages() {
             let mut release_config = config.clone();
             release_config = release_config.merge(self.workspace.packages_defaults.clone());
+            // The release request applies the workspace default only to binary packages.
+            release_config.common.distribute = config.common.distribute;
 
             // Effective git_only includes workspace-level setting
             let effective_git_only = release_config
@@ -305,11 +307,6 @@ pub struct PackageSpecificConfig {
     /// # Version group
     /// The name of a group of packages that needs to have the same version.
     version_group: Option<String>,
-    /// # Distribute
-    /// Build binaries with cargo-dist and publish them through a draft GitHub release.
-    /// Defaults to `false`. Only available in `[[package]]`; it is not inherited from `[workspace]`.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    distribute: bool,
 }
 
 impl PackageSpecificConfig {
@@ -319,7 +316,6 @@ impl PackageSpecificConfig {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
-            distribute: self.distribute,
         }
     }
 }
@@ -367,6 +363,9 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
         if let Some(git_only) = value.git_only {
             cfg = cfg.with_git_only(git_only);
         }
+        if let Some(distribute) = value.distribute {
+            cfg = cfg.with_distribute(distribute);
+        }
         cfg
     }
 }
@@ -410,6 +409,11 @@ pub struct PackageConfig {
     /// Whether to create/update changelog or not.
     /// If unspecified, the changelog is updated.
     pub changelog_update: Option<bool>,
+    /// # Distribute
+    /// Build binaries with cargo-dist and publish them through a draft GitHub release.
+    /// Defaults to `false`. In `[workspace]`, applies to all packages with binary targets.
+    /// Individual packages can override it with `distribute = true` or `distribute = false`.
+    pub distribute: Option<bool>,
     /// # Features Always Increment Minor Version
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
@@ -511,7 +515,7 @@ impl From<PackageSpecificConfig> for release_plz_core::PackageUpdateConfig {
 
 impl From<PackageSpecificConfig> for release_plz_core::ReleaseConfig {
     fn from(config: PackageSpecificConfig) -> Self {
-        Self::from(config.common).with_distribute(config.distribute)
+        Self::from(config.common)
     }
 }
 
@@ -522,6 +526,7 @@ impl PackageConfig {
             semver_check: self.semver_check.or(default.semver_check),
             changelog_path: self.changelog_path.or(default.changelog_path),
             changelog_update: self.changelog_update.or(default.changelog_update),
+            distribute: self.distribute.or(default.distribute),
             features_always_increment_minor: self
                 .features_always_increment_minor
                 .or(default.features_always_increment_minor),
@@ -593,22 +598,88 @@ mod tests {
     use super::*;
 
     #[test]
-    fn distribute_is_opt_in_and_package_specific() {
-        let config: Config = toml::from_str(
-            "[[package]]\nname = 'app'\ndistribute = true\n[[package]]\nname = 'lib'\n",
-        )
-        .unwrap();
-        let request = config
-            .fill_release_config(
-                false,
-                false,
-                ReleaseRequest::new(fake_package::metadata::fake_metadata()),
-            )
+    fn distribute_respects_workspace_defaults_and_package_overrides() {
+        let mut metadata = fake_package::metadata::fake_metadata();
+        metadata.packages = [
+            ("unconfigured", vec!["bin"]),
+            ("inherited", vec!["bin"]),
+            ("disabled", vec!["bin"]),
+            ("enabled", vec!["bin"]),
+            ("library", vec!["lib"]),
+            ("configured-library", vec!["lib"]),
+            ("explicit-library", vec!["lib"]),
+            ("example", vec!["lib", "example"]),
+            ("mixed", vec!["lib", "bin"]),
+        ]
+        .into_iter()
+        .map(|(name, targets)| {
+            fake_package::FakePackage::new(name)
+                .with_targets(&targets)
+                .into()
+        })
+        .collect();
+        metadata.workspace_members = metadata.packages.iter().map(|p| p.id.clone()).collect();
+        // A dependency with the same name must not make a library member distributable.
+        let mut dependency: cargo_metadata::Package = fake_package::FakePackage::new("library")
+            .with_targets(&["bin"])
+            .into();
+        dependency.id.repr =
+            "registry+https://github.com/rust-lang/crates.io-index#library@0.1.0".into();
+        metadata.packages.insert(0, dependency);
+
+        for (workspace, inherited) in [
+            ("", false),
+            ("distribute = false", false),
+            ("distribute = true", true),
+        ] {
+            let config: Config = toml::from_str(&format!(
+                r#"
+                [workspace]
+                {workspace}
+
+                [[package]]
+                name = "inherited"
+                [[package]]
+                name = "disabled"
+                distribute = false
+                [[package]]
+                name = "enabled"
+                distribute = true
+                [[package]]
+                name = "configured-library"
+                [[package]]
+                name = "explicit-library"
+                distribute = true
+                "#,
+            ))
             .unwrap();
-        assert!(request.get_package_config("app").distribute());
-        assert!(!request.get_package_config("lib").distribute());
-        assert!(!request.get_package_config("other").distribute());
-        assert!(toml::from_str::<Config>("[workspace]\ndistribute = true").is_err());
+            let request = config
+                .fill_release_config(false, false, ReleaseRequest::new(metadata.clone()))
+                .unwrap();
+            for (name, expected) in [
+                ("unconfigured", inherited),
+                ("inherited", inherited),
+                ("disabled", false),
+                ("enabled", true),
+                ("library", false),
+                ("configured-library", false),
+                // Explicitly enabling a library remains a validation error during release.
+                ("explicit-library", true),
+                ("example", false),
+                ("mixed", inherited),
+            ] {
+                assert_eq!(
+                    request.get_package_config(name).distribute(),
+                    expected,
+                    "{workspace}: {name}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn distribute_requires_a_boolean() {
+        assert!(toml::from_str::<Config>("[workspace]\ndistribute = 'yes'").is_err());
         assert!(toml::from_str::<Config>("[[package]]\nname = 'app'\ndistribute = 'yes'").is_err());
     }
 
@@ -714,7 +785,6 @@ mod tests {
                 },
                 changelog_include: None,
                 version_group: None,
-                distribute: false,
             },
         }
     }
@@ -836,7 +906,6 @@ mod tests {
                     },
                     changelog_include: Some(vec!["pkg1".to_string()]),
                     version_group: None,
-                    distribute: false,
                 },
             }]
             .into(),

@@ -616,7 +616,23 @@ async fn dist_request_requires_one_tagged_binary_package_on_github() {
         "{error}"
     );
 
+    // A library sharing the tag does not inherit the workspace distribution default.
+    fs_err::rename(
+        repo.directory().join("b/src/main.rs"),
+        repo.directory().join("b/src/lib.rs"),
+    )
+    .unwrap();
+    repo.git(&["tag", "-d", "v1.0.0"]).unwrap();
+    let shared_tag = GitTagConfig::enabled(true).set_name_template(Some("v{{ version }}".into()));
+    let request = tag_dist_repo(&repo, distribute_config().with_git_tag(shared_tag));
+    let request = DistRequest::new(request, "v1.0.0".into(), github(&server)).unwrap();
+    assert_eq!(request.package.name.as_str(), "a");
+
     let (_temporary, _repo, request) = dist_fixture("src/lib.rs");
+    let package_name = request.cargo_metadata().workspace_packages()[0]
+        .name
+        .to_string();
+    let request = request.with_package_config(package_name, distribute_config());
     let error = new_dist_request_error(request, github(&server));
     assert!(error.contains("dist requires a binary target"), "{error}");
 }

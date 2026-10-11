@@ -1,6 +1,19 @@
 # Releasing binaries
 
-Set `distribute = true` for each binary package you want release-plz to distribute:
+Set `distribute = true` in `[workspace]` to distribute all packages with binary targets:
+
+```toml
+[workspace]
+distribute = true
+
+[[package]]
+name = "internal-cli"
+distribute = false
+```
+
+Library-only packages do not inherit this setting. Individual packages can override
+the workspace default, as shown above. To enable distribution for a single package,
+set `distribute = true` in its `[[package]]` section:
 
 ```toml
 [[package]]

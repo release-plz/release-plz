@@ -41,6 +41,7 @@
         "custom_major_increment_regex": null,
         "custom_minor_increment_regex": null,
         "dependencies_update": null,
+        "distribute": null,
         "features_always_increment_minor": null,
         "git_only": null,
         "git_release_body": null,
@@ -322,8 +323,11 @@
         },
         "distribute": {
           "title": "Distribute",
-          "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.\nDefaults to `false`. Only available in `[[package]]`; it is not inherited from `[workspace]`.",
-          "type": "boolean"
+          "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.\nDefaults to `false`. In `[workspace]`, applies to all packages with binary targets.\nIndividual packages can override it with `distribute = true` or `distribute = false`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "features_always_increment_minor": {
           "title": "Features Always Increment Minor Version",
@@ -603,6 +607,14 @@
         "dependencies_update": {
           "title": "Dependencies Update",
           "description": "- If `true`, update all the dependencies in the Cargo.lock file by running `cargo update`.\n- If `false` or [`Option::None`], only update the workspace packages by running `cargo update --workspace`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "distribute": {
+          "title": "Distribute",
+          "description": "Build binaries with cargo-dist and publish them through a draft GitHub release.\nDefaults to `false`. In `[workspace]`, applies to all packages with binary targets.\nIndividual packages can override it with `distribute = true` or `distribute = false`.",
           "type": [
             "boolean",
             "null"
