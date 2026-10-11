@@ -37,10 +37,12 @@ async fn download_preserves_request_order_and_skips_missing_packages() {
         }
         assert!(!dest_dir.path().join("missing").exists());
     }
+}
 
+#[tokio::test]
+async fn download_returns_nothing_for_empty_requests() {
     let dest_dir = Utf8TempDir::new().unwrap();
-    let packages = context
-        .package_downloader(Vec::<&str>::new(), dest_dir.path())
+    let packages = PackageDownloader::new(Vec::<&str>::new(), dest_dir.path().as_str())
         .download()
         .await
         .unwrap();
