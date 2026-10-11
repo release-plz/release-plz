@@ -18,8 +18,8 @@
 //! `post-checkout`, `post-index-change` or `reference-transaction` hook, or
 //! with a symlink named `Cargo.toml` in any ASCII case. Other symlinked inputs
 //! pointing to Rust sources, such as a `.gitignore` or a `.cargo/config.toml`,
-//! are assumed absent, and configuration outside the repository is assumed
-//! stable during a walk.
+//! are assumed absent, and hooks and configuration outside the trees are
+//! assumed stable during a walk.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
@@ -31,8 +31,8 @@ use crate::package_compare::PackageFiles;
 pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
     /// The last checked-out commit, whose files `files` lists. `None` before the
-    /// first checkout and when that commit has, or may have, a symlinked
-    /// manifest.
+    /// first checkout and when that checkout has, or may have, a checkout hook
+    /// or a symlinked manifest.
     commit: Option<String>,
     files: PackageFiles,
 }
@@ -51,34 +51,32 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// possible. Call this after checking `commit` out, before inspecting the
     /// package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
-        // A hook that ran at this checkout can have changed files without
-        // changing the trees. Check at every checkout: a tracked hook can be
-        // absent at HEAD but present in older snapshots.
-        let has_hook = has_checkout_hook(self.repository).unwrap_or_else(|error| {
-            debug!("cannot check for checkout hooks at {commit}: {error:#}");
-            true
-        });
-        let previous = self.commit.take().filter(|_| !has_hook);
-        let reuses = previous.is_some_and(|previous| {
+        let reuses = self.commit.take().is_some_and(|previous| {
             only_rust_sources_differ(self.repository, &previous, commit).unwrap_or_else(|error| {
                 debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
                 false
             })
         });
         if reuses {
-            // The previous checkout had no symlinked manifest, and source-only
-            // differences cannot add one.
+            // The previous checkout had no checkout hook and no symlinked
+            // manifest, and source-only differences cannot add either.
             if self.files.is_cached() {
                 debug!("reusing historical package file list at {commit}");
             }
         } else {
             self.files = PackageFiles::default();
+            // A hook can change files at each checkout without changing the
+            // trees, so no later checkout may reuse this list.
+            let has_hook = has_checkout_hook(self.repository).unwrap_or_else(|error| {
+                debug!("cannot check for checkout hooks at {commit}: {error:#}");
+                true
+            });
             let has_symlinked_manifest =
                 has_symlinked_manifest(self.repository).unwrap_or_else(|error| {
                     debug!("cannot check for symlinked manifests at {commit}: {error:#}");
                     true
                 });
-            if has_symlinked_manifest {
+            if has_hook || has_symlinked_manifest {
                 return &self.files;
             }
         }
