@@ -388,6 +388,10 @@ fn single_package_workspace() -> (Utf8TempDir, Repo) {
     );
     // Converted line endings would make every snapshot differ from the release.
     repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    // Ignore a global hooks path: its hooks would disable package file list
+    // reuse, and it would hide the hooks that tests install in .git/hooks.
+    repo.git(&["config", "core.hooksPath", ".git/hooks"])
+        .unwrap();
     (temp_dir, repo)
 }
 
