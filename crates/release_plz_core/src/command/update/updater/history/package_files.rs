@@ -94,9 +94,7 @@ fn has_post_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
     // absolute. Check after every checkout: a tracked hook can be absent at HEAD
     // but present in older snapshots. Even non-executable hooks disable reuse.
     let hook = repository.git(&["rev-parse", "--git-path", "hooks/post-checkout"])?;
-    let hook = repository.directory().join(hook);
-    hook.try_exists()
-        .with_context(|| format!("cannot inspect post-checkout hook {hook:?}"))
+    Ok(fs_err::exists(repository.directory().join(hook))?)
 }
 
 /// Whether the checked-out commit has a symlink named `Cargo.toml`, in any
