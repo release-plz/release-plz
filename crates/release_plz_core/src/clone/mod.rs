@@ -69,11 +69,9 @@ impl Cloner {
     }
 
     fn clone_package_into(&self, pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
-        if !dest_path.exists() {
-            fs_err::create_dir_all(dest_path)?;
-        }
-
+        // Duplicate requests share a destination that an earlier copy already filled.
         check_destination(dest_path)?;
+        fs_err::create_dir_all(dest_path)?;
 
         let name = pkg.name();
 
