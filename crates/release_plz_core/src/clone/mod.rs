@@ -101,9 +101,9 @@ impl Cloner {
 
     /// Clone the specified crates from registry or git repository.
     /// Each crate is cloned in a subdirectory named as the crate name.
-    /// Returns the cloned crates and the path where they are cloned.
-    /// If a crate doesn't exist, is not returned.
-    pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
+    /// Returns the paths where the crates are cloned.
+    /// If a crate doesn't exist, its path is not returned.
+    pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<Utf8PathBuf>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
         let mut destinations = vec![];
@@ -140,17 +140,18 @@ impl Cloner {
             .get_many(package_set.package_ids())
             .context("failed to download packages")?;
 
-        let mut cloned_pkgs = Vec::with_capacity(destinations.len());
         // `get_many` returns packages in completion order.
         // Look each one up by ID to keep request order.
-        for (id, dest_path) in destinations {
-            let pkg = package_set.get_one(id)?;
-            self.clone_package_into(pkg, &dest_path)
-                .with_context(|| format!("failed to clone package {} in {dest_path}", id.name()))?;
-            cloned_pkgs.push((pkg.clone(), dest_path));
-        }
-
-        Ok(cloned_pkgs)
+        destinations
+            .into_iter()
+            .map(|(id, dest_path)| {
+                let pkg = package_set.get_one(id)?;
+                self.clone_package_into(pkg, &dest_path).with_context(|| {
+                    format!("failed to clone package {} in {dest_path}", id.name())
+                })?;
+                Ok(dest_path)
+            })
+            .collect()
     }
 
     fn acquire_cargo_package_cache_lock(

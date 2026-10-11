@@ -65,17 +65,14 @@ impl PackageDownloader {
         if let Some(cwd) = &self.cargo_cwd {
             cloner_builder = cloner_builder.with_cargo_cwd(cwd.clone());
         }
-        let downloaded_packages = cloner_builder
+        let package_dirs = cloner_builder
             .build()
             .context("can't build cloner")?
             .clone(&crates)
             .await
             .context("error while downloading packages")?;
 
-        downloaded_packages
-            .iter()
-            .map(|(_package, path)| read_package(path))
-            .collect()
+        package_dirs.iter().map(read_package).collect()
     }
 }
 
