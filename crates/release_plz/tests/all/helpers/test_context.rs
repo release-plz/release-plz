@@ -145,7 +145,7 @@ impl TestContext {
     }
 
     pub async fn merge_all_prs(&self) {
-        let opened_prs = self.git_client.opened_prs("").await.unwrap();
+        let opened_prs = self.opened_prs("").await;
         for pr in opened_prs {
             self.gitea.merge_pr_retrying(pr.number).await;
         }
