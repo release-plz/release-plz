@@ -43,13 +43,13 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
     package.join(CARGO_TOML_ORIG).is_file()
 }
 
-/// The packaged files of one package snapshot, computed at most once.
-/// Recreate this cache whenever file-selection inputs change.
+/// The packaged files of a package, computed at most once. Recreate this cache
+/// whenever the package's file paths or Cargo's file selection may change.
 #[derive(Default)]
 pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 
 impl PackageFiles {
-    /// Whether this snapshot's file list has already been computed.
+    /// Whether the file list has already been computed.
     pub(crate) fn is_cached(&self) -> bool {
         self.0.get().is_some()
     }
