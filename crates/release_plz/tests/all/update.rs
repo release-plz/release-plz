@@ -283,8 +283,8 @@ fn update_lists_package_files_when_older_snapshots_track_a_checkout_hook() {
 }
 
 /// Install at `hook` an executable script that removes the untracked file
-/// `one/generated.txt` where the source of `one` is the released one of
-/// [`init_workspace`], and creates it everywhere else.
+/// `one/generated.txt` when `one/src/lib.rs` still has the contents written by
+/// [`init_workspace`], and creates it otherwise.
 #[cfg(unix)]
 fn install_checkout_hook(hook: &Utf8Path) {
     fs_err::create_dir_all(hook.parent().unwrap()).unwrap();
