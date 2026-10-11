@@ -878,15 +878,6 @@ impl GitClient {
         self.pr_from_response(response).await
     }
 
-    pub async fn get_prs_info(&self, pr_numbers: &[u64]) -> anyhow::Result<Vec<GitPr>> {
-        let mut prs = vec![];
-        for pr_number in pr_numbers {
-            let pr = self.get_pr_info(*pr_number).await?;
-            prs.push(pr);
-        }
-        Ok(prs)
-    }
-
     /// Get information about the given commit from the forge.
     ///
     /// `username` is `None` if the commit isn't in the remote repository

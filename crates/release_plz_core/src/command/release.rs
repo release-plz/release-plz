@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
     time::Duration,
 };
 
@@ -11,6 +11,7 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
+use git_cliff_core::contributor::RemoteContributor;
 use git_cmd::Repo;
 use secrecy::SecretString;
 use serde::Serialize;
@@ -656,23 +657,19 @@ async fn release_packages(
     }
 
     let mut package_releases: Vec<PackageRelease> = vec![];
-    // The same trusted publishing token can be used for all packages.
-    let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
+    let mut context = ReleaseContext {
+        git_client,
+        pr_authors: HashMap::new(),
+        trusted_publishing_client: None,
+    };
     for package in packages {
-        if let Some(pkg_release) = release_package_if_needed(
-            input,
-            project,
-            package,
-            repo,
-            git_client,
-            &mut trusted_publishing_client,
-        )
-        .await?
+        if let Some(pkg_release) =
+            release_package_if_needed(input, project, package, repo, &mut context).await?
         {
             package_releases.push(pkg_release);
         }
     }
-    if let Some(tp) = trusted_publishing_client.as_ref()
+    if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
     {
         warn!("Failed to revoke trusted publishing token: {e:?}");
@@ -683,13 +680,33 @@ async fn release_packages(
     Ok(release)
 }
 
+/// State shared by packages within a single release invocation.
+struct ReleaseContext<'a> {
+    git_client: &'a GitClient,
+    /// PR author usernames by PR number.
+    pr_authors: HashMap<u64, String>,
+    /// The same trusted publishing token can be used for all packages.
+    trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+}
+
+impl ReleaseContext<'_> {
+    async fn pr_author(&mut self, pr_number: u64) -> anyhow::Result<&str> {
+        let author = match self.pr_authors.entry(pr_number) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                entry.insert(self.git_client.get_pr_info(pr_number).await?.user.login)
+            }
+        };
+        Ok(author)
+    }
+}
+
 async fn release_package_if_needed(
     input: &ReleaseRequest,
     project: &Project,
     package: &Package,
     repo: &Repo,
-    git_client: &GitClient,
-    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
+    context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
@@ -738,11 +755,10 @@ async fn release_package_if_needed(
             let package_was_released_at_index = release_package(
                 input,
                 repo,
-                git_client,
+                context,
                 &release_info,
                 token.as_ref(),
                 name.as_deref(),
-                trusted_publishing_client,
                 name.as_deref(),
                 index_url.as_ref(),
             )
@@ -757,7 +773,7 @@ async fn release_package_if_needed(
         // When publishing is disabled (e.g., git_only mode), skip registry checks entirely
         // and only perform git tag/release operations.
         let package_was_released_result =
-            release_package_git_only(input, repo, git_client, &release_info)
+            release_package_git_only(input, repo, context, &release_info)
                 .await
                 .context("failed to release package (git-only)")?;
 
@@ -872,11 +888,10 @@ struct ReleaseInfo<'a> {
 async fn release_package(
     input: &ReleaseRequest,
     repo: &Repo,
-    git_client: &GitClient,
+    context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
     token: Option<&SecretString>,
     registry_name: Option<&str>,
-    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
     registry: Option<&str>,
     index_url: Option<&Url>,
 ) -> anyhow::Result<bool> {
@@ -898,13 +913,13 @@ async fn release_package(
             && is_github_actions
     };
     if should_use_trusted_publishing {
-        if let Some(tp) = trusted_publishing_client.as_ref() {
+        if let Some(tp) = context.trusted_publishing_client.as_ref() {
             publish_token = Some(tp.token().clone());
         } else {
             match trusted_publishing::TrustedPublisher::crates_io().await {
                 Ok(tp) => {
                     publish_token = Some(tp.token().clone());
-                    *trusted_publishing_client = Some(tp);
+                    context.trusted_publishing_client = Some(tp);
                 }
                 Err(e) => {
                     warn!("Failed to use trusted publishing: {e:#}. Proceeding without it.");
@@ -967,7 +982,7 @@ async fn release_package(
         create_git_tag_and_release(
             input,
             repo,
-            git_client,
+            context,
             release_info,
             should_create_git_tag,
             should_create_git_release,
@@ -1008,7 +1023,7 @@ fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> b
 async fn release_package_git_only(
     input: &ReleaseRequest,
     repo: &Repo,
-    git_client: &GitClient,
+    context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
 ) -> anyhow::Result<bool> {
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
@@ -1026,7 +1041,7 @@ async fn release_package_git_only(
         create_git_tag_and_release(
             input,
             repo,
-            git_client,
+            context,
             release_info,
             should_create_git_tag,
             should_create_git_release,
@@ -1045,7 +1060,7 @@ async fn release_package_git_only(
 async fn create_git_tag_and_release(
     input: &ReleaseRequest,
     repo: &Repo,
-    git_client: &GitClient,
+    context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
     should_create_git_tag: bool,
     should_create_git_release: bool,
@@ -1065,7 +1080,8 @@ async fn create_git_tag_and_release(
             repo.push(release_info.git_tag)?;
         } else {
             let sha = repo.current_commit_hash()?;
-            git_client
+            context
+                .git_client
                 .create_tag(release_info.git_tag, &message, &sha)
                 .await
                 .with_context(|| format!("failed to create tag `{}`", release_info.git_tag))?;
@@ -1079,7 +1095,12 @@ async fn create_git_tag_and_release(
         // The default release body only contains the changelog, so skip contributor
         // API requests unless a custom template might use them.
         let contributors = if release_config.body_template.is_some() {
-            get_contributors(release_info, git_client).await
+            get_contributors(release_info, context)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!("failed to retrieve contributors: {e}");
+                    vec![]
+                })
         } else {
             vec![]
         };
@@ -1103,7 +1124,7 @@ async fn create_git_tag_and_release(
             pre_release: is_pre_release,
             generate_release_notes: release_config.generate_release_notes,
         };
-        git_client.create_release(&git_release_info).await?;
+        context.git_client.create_release(&git_release_info).await?;
     }
 
     Ok(())
@@ -1144,33 +1165,22 @@ fn log_dry_run_info(
 
 async fn get_contributors(
     release_info: &ReleaseInfo<'_>,
-    git_client: &GitClient,
-) -> Vec<git_cliff_core::contributor::RemoteContributor> {
-    let prs_number = release_info
-        .prs
-        .iter()
-        .map(|pr| pr.number)
-        .collect::<Vec<_>>();
-
-    let mut unique_usernames = std::collections::HashSet::new();
-
-    git_client
-        .get_prs_info(&prs_number)
-        .await
-        .inspect_err(|e| tracing::warn!("failed to retrieve contributors: {e}"))
-        .unwrap_or(vec![])
-        .iter()
-        .filter_map(|pr| {
-            let username = &pr.user.login;
-            // Only include this contributor if we haven't seen their username before
-            unique_usernames.insert(username).then(|| {
-                git_cliff_core::contributor::RemoteContributor {
-                    username: Some(username.clone()),
-                    ..Default::default()
-                }
-            })
-        })
-        .collect()
+    context: &mut ReleaseContext<'_>,
+) -> anyhow::Result<Vec<RemoteContributor>> {
+    let mut contributors: Vec<RemoteContributor> = vec![];
+    for pr in release_info.prs {
+        let username = context.pr_author(pr.number).await?;
+        if !contributors
+            .iter()
+            .any(|c| c.username.as_deref() == Some(username))
+        {
+            contributors.push(RemoteContributor {
+                username: Some(username.to_owned()),
+                ..Default::default()
+            });
+        }
+    }
+    Ok(contributors)
 }
 
 fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
@@ -1443,6 +1453,87 @@ mod tests {
             .await;
     }
 
+    fn contributor_response(pr_number: u64, username: &str) -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({
+            "number": pr_number,
+            "user": {"id": 1, "login": username},
+            "html_url": format!("https://github.com/owner/repo/pull/{pr_number}"),
+            "head": {"ref": "fix", "sha": "commit"},
+            "title": "fix: bug",
+            "labels": [],
+        }))
+    }
+
+    #[tokio::test]
+    async fn release_reuses_contributor_requests_across_packages() {
+        let server = MockServer::start().await;
+        let (_temporary, repo, mut request) = release_fixture(&server);
+        crate::test_utils::write_package(
+            repo.directory(),
+            "test-package",
+            "0.1.0",
+            "[workspace]\nmembers = [\"second\"]",
+        );
+        crate::test_utils::write_package(
+            &repo.directory().join("second"),
+            "second-package",
+            "0.1.0",
+            "",
+        );
+        for (directory, pr_numbers) in [("", [42, 42, 43, 44]), ("second", [43, 42, 44, 43])] {
+            let changelog = pr_numbers
+                .map(|number| format!("- Fix (https://github.com/owner/repo/pull/{number})"))
+                .join("\n");
+            fs_err::write(
+                repo.directory().join(directory).join(CHANGELOG_FILENAME),
+                format!("# Changelog\n\n## [0.1.0]\n\n{changelog}\n"),
+            )
+            .unwrap();
+        }
+        request.metadata =
+            cargo_utils::get_manifest_metadata(&repo.directory().join(cargo_utils::CARGO_TOML))
+                .unwrap();
+        request = request.with_default_package_config(
+            ReleaseConfig::default()
+                .with_git_only(true)
+                .with_git_tag(GitTagConfig::enabled(false))
+                .with_git_release(GitReleaseConfig::default().set_body_template(Some(
+                    "{% for contributor in remote.contributors %}@{{ contributor.username }} {% endfor %}"
+                        .into(),
+                ))),
+        );
+        repo.add_all_and_commit("chore: release workspace").unwrap();
+        let head = repo.current_commit_hash().unwrap();
+        mock_release_pr(&server, &head, None).await;
+        for (pr_number, username) in [(42, "alice"), (43, "bob"), (44, "alice")] {
+            Mock::given(method("GET"))
+                .and(path(format!("/repos/owner/repo/pulls/{pr_number}")))
+                .respond_with(contributor_response(pr_number, username))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        for (package, contributors) in [
+            ("test-package", "@alice @bob "),
+            ("second-package", "@bob @alice "),
+        ] {
+            Mock::given(method("POST"))
+                .and(path("/repos/owner/repo/releases"))
+                .and(body_partial_json(json!({
+                    "tag_name": format!("{package}-v0.1.0"),
+                    "body": contributors,
+                })))
+                .respond_with(ResponseTemplate::new(201))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+
+        let result = release(&request).await.unwrap().unwrap();
+
+        assert_eq!(result.releases.len(), 2);
+    }
+
     #[tokio::test]
     async fn release_fetches_contributors_only_for_custom_body() {
         for custom_body in [false, true] {
@@ -1473,14 +1564,7 @@ mod tests {
             mock_git_release(&server, &head, 201).await;
             Mock::given(method("GET"))
                 .and(path("/repos/owner/repo/pulls/42"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                    "number": 42,
-                    "user": {"id": 1, "login": "contributor"},
-                    "html_url": "https://github.com/owner/repo/pull/42",
-                    "head": {"ref": "fix", "sha": "commit"},
-                    "title": "fix: bug",
-                    "labels": [],
-                })))
+                .respond_with(contributor_response(42, "contributor"))
                 .expect(u64::from(custom_body))
                 .mount(&server)
                 .await;
