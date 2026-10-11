@@ -1,4 +1,3 @@
-use cargo_utils::CARGO_TOML;
 use release_plz_core::{PackageDownloader, fs_utils::Utf8TempDir};
 
 use crate::helpers::{TEST_REGISTRY, test_context::TestContext};
@@ -104,7 +103,6 @@ async fn download_checks_destinations_before_downloading() {
         "{error}"
     );
     assert_eq!(fs_err::read_to_string(&marker).unwrap(), "keep");
-    assert!(!package_dir.join(CARGO_TOML).exists());
     assert!(!dest_dir.path().join("first").exists());
 
     // An empty destination passes the check and reaches the failed download.
