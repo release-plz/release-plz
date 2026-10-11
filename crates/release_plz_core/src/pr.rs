@@ -5,7 +5,6 @@ use crate::{
 use chrono::SecondsFormat;
 
 pub const DEFAULT_BRANCH_PREFIX: &str = "release-plz-";
-pub const OLD_BRANCH_PREFIX: &str = "release-plz/";
 pub const DEFAULT_PR_BODY_TEMPLATE: &str = r#"
 {% set changes %}
 {%- for release in releases %}

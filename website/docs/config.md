@@ -559,6 +559,12 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 Prefix for the release PR branch. By default, it's set to: `release-plz-`
 
+Only PRs whose branches start with the configured prefix are managed. The legacy
+`release-plz/` prefix used before v0.3.29 is no longer detected automatically.
+To keep updating an existing legacy PR, set `pr_branch_prefix = "release-plz/"`
+in `[workspace]`. Otherwise, close it before running `release-pr`, which can open
+a new PR using the default prefix.
+
 :::warning
 Before changing the release-plz branch you should close the old release PR.
 :::
