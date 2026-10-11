@@ -233,54 +233,60 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_when_checkout_hooks_change_files() {
-    let install_hook = |hook: &Utf8Path| {
-        fs_err::create_dir_all(hook.parent().unwrap()).unwrap();
-        fs_err::write(
-            hook,
-            "#!/bin/sh\n\
-             if grep -q 'Initial release' one/src/lib.rs; then\n\
-                 rm -f one/generated.txt\n\
-             else\n\
-                 echo 'generated data' > one/generated.txt\n\
-             fi\n",
-        )
-        .unwrap();
-        crate::helpers::make_executable(hook);
-    };
-    for (name, tracked) in [
-        ("post-checkout", false),
-        ("post-index-change", false),
-        ("reference-transaction", false),
-        ("post-checkout", true),
+    for name in [
+        "post-checkout",
+        "post-index-change",
+        "reference-transaction",
     ] {
-        let case = format!("{name}, tracked={tracked}");
         let (temp_dir, repo) = single_package_workspace();
-        let hooks_dir = if tracked { ".hooks" } else { ".git/hooks" };
-        let hook = repo.directory().join(hooks_dir).join(name);
-        if tracked {
-            repo.git(&["config", "core.hooksPath", hooks_dir]).unwrap();
-            install_hook(&hook);
-            repo.git(&["add", "."]).unwrap();
-            repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
-        }
         change_package(&repo, "one", "fix: first change");
-        if tracked {
-            // The hook is absent at HEAD but runs at older snapshots. Checking
-            // for it only when the walk starts would still reuse a stale list.
-            fs_err::remove_file(&hook).unwrap();
-        }
         change_package(&repo, "one", "fix: second change");
-        if !tracked {
-            // Some checkout hooks also run when committing, so install the
-            // hook after the setup commits.
-            install_hook(&hook);
-        }
+        // Some checkout hooks also run when committing, so install the hook
+        // after the setup commits.
+        install_checkout_hook(&repo.directory().join(".git/hooks").join(name));
 
         // The hook removes the generated file at the released snapshot. A list
         // reused from its successor would hide the equal released snapshot and
         // bring the initial commit into the changelog.
-        assert_update_package_file_listings(&temp_dir, &repo, &case, 4, 0);
+        assert_update_package_file_listings(&temp_dir, &repo, name, 4, 0);
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn update_lists_package_files_when_older_snapshots_track_a_checkout_hook() {
+    let (temp_dir, repo) = single_package_workspace();
+    repo.git(&["config", "core.hooksPath", ".hooks"]).unwrap();
+    let hook = repo.directory().join(".hooks/post-checkout");
+    install_checkout_hook(&hook);
+    repo.git(&["add", "."]).unwrap();
+    repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
+    change_package(&repo, "one", "fix: first change");
+    // The hook is absent at HEAD but runs at older snapshots. Checking for it
+    // only when the walk starts would still reuse a stale list.
+    fs_err::remove_file(&hook).unwrap();
+    change_package(&repo, "one", "fix: second change");
+
+    assert_update_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 0);
+}
+
+/// Install at `hook` an executable script that removes the untracked file
+/// `one/generated.txt` where the source of `one` is the released one of
+/// [`init_workspace`], and creates it everywhere else.
+#[cfg(unix)]
+fn install_checkout_hook(hook: &Utf8Path) {
+    fs_err::create_dir_all(hook.parent().unwrap()).unwrap();
+    fs_err::write(
+        hook,
+        "#!/bin/sh\n\
+         if grep -q 'Initial release' one/src/lib.rs; then\n\
+             rm -f one/generated.txt\n\
+         else\n\
+             echo 'generated data' > one/generated.txt\n\
+         fi\n",
+    )
+    .unwrap();
+    crate::helpers::make_executable(hook);
 }
 
 #[cfg(unix)]
