@@ -23,6 +23,14 @@ pub fn assert_locked_versions(project_dir: &Utf8Path, expected_versions: &[(&str
     }
 }
 
+/// Set the mode of the file at `path` to `0o755`, making it executable.
+#[cfg(unix)]
+pub fn make_executable(path: &Utf8Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fs_err::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 pub fn locked_metadata(project_dir: &Utf8Path) -> Metadata {
     cargo_metadata::MetadataCommand::new()
         .current_dir(project_dir)

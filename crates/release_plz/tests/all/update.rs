@@ -201,16 +201,11 @@ fn update_lists_package_files_again_after_changes_beyond_source_contents() {
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_again_after_mode_changes() {
-    use std::os::unix::fs::PermissionsExt as _;
-
     // Executable scripts can be Cargo or rustc wrappers. As for other changes
     // beyond source contents, HEAD and its parent must each ask Cargo.
     assert_package_file_listings(
         "executable source",
-        |repo| {
-            let permissions = std::fs::Permissions::from_mode(0o755);
-            fs_err::set_permissions(repo.directory().join("one/src/lib.rs"), permissions).unwrap();
-        },
+        |repo| crate::helpers::make_executable(&repo.directory().join("one/src/lib.rs")),
         3,
         1,
     );
@@ -238,8 +233,6 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_when_checkout_hooks_change_files() {
-    use std::os::unix::fs::PermissionsExt as _;
-
     for tracked in [false, true] {
         let case = format!("tracked={tracked}");
         let (temp_dir, repo) = single_package_workspace();
@@ -259,7 +252,7 @@ fn update_lists_package_files_when_checkout_hooks_change_files() {
              fi\n",
         )
         .unwrap();
-        fs_err::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::helpers::make_executable(&hook);
         repo.git(&["add", "."]).unwrap();
         repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
         change_package(&repo, "one", "fix: first change");
