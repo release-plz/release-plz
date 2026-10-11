@@ -96,7 +96,7 @@ const CHECKOUT_HOOKS: [&str; 3] = [
 /// Whether a hook that `git checkout` runs may have changed this checkout's
 /// packaged files.
 fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
-    Ok(has_hook_file(repository)? || has_configured_hook(repository)?)
+    Ok(has_hook_file(repository)? || has_configured_hook(repository))
 }
 
 /// Whether the hooks directory has one of the [`CHECKOUT_HOOKS`].
@@ -123,18 +123,15 @@ fn has_hook_file(repository: &Repo) -> anyhow::Result<bool> {
 /// Whether the Git configuration defines a hook for one of the
 /// [`CHECKOUT_HOOKS`], as Git 2.54 and later allow. Older Git ignores these
 /// definitions.
-fn has_configured_hook(repository: &Repo) -> anyhow::Result<bool> {
-    // Unlike `--get-regexp`, `--list` succeeds without matches. Each entry is
-    // `<key>\n<value>`, or `<key>` for a boolean without value, NUL-terminated.
-    // Git lowercases section and variable names, but not the hook name.
-    let config = repository.git(&["config", "--null", "--list"])?;
-    Ok(config.split_terminator('\0').any(|entry| {
-        entry.split_once('\n').is_some_and(|(key, event)| {
-            key.strip_prefix("hook.")
-                .is_some_and(|key| key.ends_with(".event"))
-                && CHECKOUT_HOOKS.contains(&event)
-        })
-    }))
+fn has_configured_hook(repository: &Repo) -> bool {
+    // The command fails without a match. The checkout that just ran read the
+    // same configuration, so other failures are not expected. Querying only the
+    // matching entries keeps the rest of the configuration, which can hold
+    // credentials, out of trace logs.
+    let events = format!("^({})$", CHECKOUT_HOOKS.join("|"));
+    repository
+        .git(&["config", "--get-regexp", r"^hook\..*\.event$", &events])
+        .is_ok()
 }
 
 /// Whether the checked-out commit has a symlink named `Cargo.toml`, in any
