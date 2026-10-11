@@ -570,6 +570,7 @@ mod tests {
                 pr(1, "release-plz/old"),
                 pr(2, "custom/new"),
                 pr(3, "feature"),
+                pr(4, "custom/newer"),
             ]))
             // One listing per call, also when falling back to the old prefix.
             .expect(2)
@@ -579,7 +580,7 @@ mod tests {
         let numbers = |prs: Vec<GitPr>| prs.iter().map(|pr| pr.number).collect::<Vec<_>>();
 
         let prs = opened_release_prs(&client, "custom/").await.unwrap();
-        assert_eq!(numbers(prs), [2]);
+        assert_eq!(numbers(prs), [2, 4]);
         let prs = opened_release_prs(&client, DEFAULT_BRANCH_PREFIX)
             .await
             .unwrap();
