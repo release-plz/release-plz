@@ -16,12 +16,12 @@ pub fn parse_header(changelog: &str) -> Option<String> {
         Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*?)(\n## )").unwrap()
     });
 
-    if let Some(captures) = FIRST_RE.captures(changelog) {
-        return Some(captures[0].to_string());
+    if let Some(header) = FIRST_RE.find(changelog) {
+        return Some(header.as_str().to_string());
     }
 
-    if let Some(captures) = SECOND_RE.captures(changelog) {
-        return Some(format!("{}{}", &captures[1], &captures[2]));
+    if let Some(header) = SECOND_RE.find(changelog) {
+        return Some(changelog[..header.end() - "\n## ".len()].to_string());
     }
 
     parse_header_fallback_strategy(changelog)

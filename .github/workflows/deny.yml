@@ -4,13 +4,9 @@ on:
   schedule:
     # Runs at 00:00 UTC everyday
     - cron: "0 0 * * *"
-  push:
-    branches:
-      - main
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
   pull_request:
+  merge_group:
+    types: [checks_requested]
 
 permissions: {}
 

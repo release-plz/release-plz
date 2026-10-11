@@ -122,6 +122,13 @@ fn copy_tracked_files(
             .split_once('\t')
             .context("tracked entry has no path separator")?;
         let relative = Utf8Path::new(relative);
+        let destination = to.join(relative);
+        // Most tracked files were already copied by the walker. Gitlinks still
+        // need their own index checked for ignored tracked files in submodules.
+        if !index_metadata.starts_with("160000 ") && fs_err::symlink_metadata(&destination).is_ok()
+        {
+            continue;
+        }
         // An ancestor replaced by a symlink makes this indexed path deleted.
         // symlink_metadata only avoids following symlinks at the final component.
         if relative
@@ -146,7 +153,6 @@ fn copy_tracked_files(
             }
             Err(error) => return Err(error.into()),
         };
-        let destination = to.join(relative);
         if metadata.is_dir() {
             // A tracked file replaced by a directory is deleted; its ignored,
             // untracked contents must not be copied by this fallback.

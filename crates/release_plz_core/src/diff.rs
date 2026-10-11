@@ -42,8 +42,7 @@ impl Commit {
     }
 
     pub fn is_conventional(&self) -> bool {
-        let cliff = self.to_cliff_commit();
-        cliff.into_conventional().is_ok()
+        git_conventional::Commit::parse(&self.message).is_ok()
     }
 
     pub fn to_cliff_commit(&self) -> git_cliff_core::commit::Commit<'_> {
@@ -120,6 +119,22 @@ mod tests {
             "feature release".to_string(),
         )]);
         diff
+    }
+
+    #[test]
+    fn conventional_commit_check_uses_the_message() {
+        for (message, expected) in [
+            ("feat: add feature", true),
+            ("fix(scope): correct behavior", true),
+            ("feat!: change behavior", true),
+            ("feat: add feature\n\nBREAKING CHANGE: new API", true),
+            ("update readme", false),
+            ("", false),
+            ("update readme\n\nfeat: this is only the body", false),
+        ] {
+            let commit = Commit::new("1e6903d".to_string(), message.to_string());
+            assert_eq!(commit.is_conventional(), expected, "{message:?}");
+        }
     }
 
     #[test]

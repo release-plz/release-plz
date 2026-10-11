@@ -5,6 +5,209 @@ use release_plz_core::fs_utils::Utf8TempDir;
 use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
 
 #[test]
+fn update_workspace_without_publishable_packages() {
+    let (temp_dir, repo) = released_workspace(
+        &[("one", "version = \"1.0.0\"\npublish = false\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "one", "feat: update private package");
+    let original_commit = repo.current_commit_hash().unwrap();
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    repo.is_clean().unwrap();
+    assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
+    assert!(!repo.directory().join("one/CHANGELOG.md").exists());
+}
+
+#[test]
+fn update_changelog_includes_distinct_author_and_committer() {
+    for (body, expected) in [
+        (
+            "{{ commit.author.name }} <{{ commit.author.email }}> committed by {{ commit.committer.name }} <{{ commit.committer.email }}>",
+            "Author Person <author@example.com> committed by Committer Person <committer@example.com>",
+        ),
+        ("{{ commit.author.email }}", "author@example.com"),
+    ] {
+        let config = format!(
+            r#"
+[workspace]
+semver_check = false
+[changelog]
+body = """
+{{% for commit in commits %}}
+{body}
+{{% endfor %}}
+"""
+"#
+        );
+        let (temp_dir, repo) = released_workspace(&[("one", "version = \"1.0.0\"\n")], "", &config);
+        fs_err::write(repo.directory().join("one/src/lib.rs"), "// Updated\n").unwrap();
+        repo.git(&["add", "."]).unwrap();
+        repo.git(&[
+            "-c",
+            "user.name=Committer Person",
+            "-c",
+            "user.email=committer@example.com",
+            "commit",
+            "--author=Author Person <author@example.com>",
+            "-m",
+            "fix: update package",
+        ])
+        .unwrap();
+
+        run_workspace_update(&temp_dir, &repo, None);
+
+        let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+        assert!(changelog.contains(expected), "{changelog}");
+    }
+}
+
+#[test]
+fn changelog_include_uses_only_the_requested_packages_original_commits() {
+    let config = r#"
+[workspace]
+semver_check = false
+[[package]]
+name = "one"
+changelog_include = ["two", "two"]
+[[package]]
+name = "two"
+changelog_include = ["three"]
+"#;
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("one", "version = \"1.0.0\"\n"),
+            ("two", "version = \"1.0.0\"\n"),
+            ("three", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        config,
+    );
+    for name in ["one", "two", "three"] {
+        change_package(&repo, name, &format!("fix: update {name}"));
+    }
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    for (name, included) in [
+        ("one", vec!["one", "two"]),
+        ("two", vec!["two", "three"]),
+        ("three", vec!["three"]),
+    ] {
+        let changelog =
+            fs_err::read_to_string(repo.directory().join(name).join("CHANGELOG.md")).unwrap();
+        for source in ["one", "two", "three"] {
+            assert_eq!(
+                changelog.matches(&format!("update {source}")).count(),
+                usize::from(included.contains(&source)),
+                "{name}: {changelog}",
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn update_relocated_workspace_preserves_original_manifests() {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "support", "feat: update support");
+    let metadata = locked_metadata(repo.directory());
+    let copied = release_plz_core::copy_to_temp_dir(repo.directory()).unwrap();
+    let copied_project = copied.path().join("project");
+    let request = release_plz_core::update_request::UpdateRequest::new(metadata)
+        .unwrap()
+        .set_local_manifest(copied_project.join("Cargo.toml"))
+        .unwrap()
+        .with_registry_manifest_path(&temp_dir.path().join("registry/Cargo.toml"))
+        .unwrap()
+        .with_default_package_config(
+            release_plz_core::UpdateConfig::default().with_semver_check(false),
+        );
+
+    release_plz_core::update(&request).await.unwrap();
+
+    // release-pr retains the original metadata while updating the copied checkout.
+    assert_locked_versions(
+        &copied_project,
+        &[("support", "1.1.0"), ("consumer", "1.0.1")],
+    );
+    repo.is_clean().unwrap();
+    assert_locked_versions(
+        repo.directory(),
+        &[("support", "1.0.0"), ("consumer", "1.0.0")],
+    );
+}
+
+#[test]
+fn update_refreshes_package_files_for_each_historical_snapshot() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    let package = repo.directory().join("one");
+    fs_err::write(package.join("src/old.rs"), "pub fn added() {}\n").unwrap();
+    repo.add_all_and_commit("feat: add module").unwrap();
+    fs_err::rename(package.join("src/old.rs"), package.join("src/new.rs")).unwrap();
+    repo.add_all_and_commit("fix: rename module").unwrap();
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(repo.directory(), &[("one", "1.1.0")]);
+    let changelog = fs_err::read_to_string(package.join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("add module"), "{changelog}");
+    assert!(changelog.contains("rename module"), "{changelog}");
+    // There is no release tag: the initial snapshot bounds the walk by package
+    // equality. Reusing HEAD's file list would miss that boundary and include
+    // the initial commit, whose message Repo::init sets to "add README".
+    assert!(!changelog.contains("add README"), "{changelog}");
+}
+
+#[test]
+fn update_detects_readme_changes_outside_the_package() {
+    let (temp_dir, repo) = init_workspace(
+        &[("one", "version = \"1.0.0\"\nreadme = \"../README.md\"\n")],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    fs_err::copy(
+        repo.directory().join("README.md"),
+        temp_dir.path().join("registry/README.md"),
+    )
+    .unwrap();
+    run_workspace_update(&temp_dir, &repo, None);
+    repo.is_clean().unwrap();
+
+    // Cargo lists the external README under a generated package-relative name.
+    // Package contents can compare equal, so the separate README check matters.
+    fs_err::write(
+        repo.directory().join("README.md"),
+        "# Updated documentation\n",
+    )
+    .unwrap();
+    repo.add_all_and_commit("fix: improve documentation")
+        .unwrap();
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+    let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("improve documentation"), "{changelog}");
+    assert!(!changelog.contains("add README"), "{changelog}");
+}
+
+#[test]
 fn update_workspace_with_detached_head() {
     update_detached_workspace(None);
 }
@@ -131,6 +334,41 @@ fn release_commits_keeps_workspace_bump_for_dependency_updates() {
     assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.1.0")]);
     let changelog = fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
     assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+}
+
+#[test]
+fn dependency_updates_match_renamed_packages_among_unrelated_updates() {
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            ("unrelated", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version = \"1.0.0\"\n[target.'cfg(unix)'.build-dependencies]\nshared.workspace = true\n",
+            ),
+        ],
+        "[workspace.dependencies]\nshared = { package = \"support\", path = \"support\", version = \"=1.0.0\" }\n",
+        "[workspace]\nsemver_check = false\n",
+    );
+    change_package(&repo, "support", "feat: update support");
+    change_package(&repo, "unrelated", "fix: update unrelated");
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            ("support", "1.1.0"),
+            ("unrelated", "1.0.1"),
+            ("consumer", "1.0.1"),
+        ],
+    );
+    let changelog = fs_err::read_to_string(repo.directory().join("consumer/CHANGELOG.md")).unwrap();
+    assert!(
+        changelog.contains("updated the following local packages: support"),
+        "{changelog}"
+    );
+    assert!(!changelog.contains("unrelated"), "{changelog}");
 }
 
 #[test]

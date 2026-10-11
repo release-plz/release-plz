@@ -21,6 +21,15 @@ pub struct Repo {
     original_remote: String,
 }
 
+/// The author and committer recorded in a commit.
+#[derive(Debug)]
+pub struct CommitSignatures {
+    pub author_name: String,
+    pub author_email: String,
+    pub committer_name: String,
+    pub committer_email: String,
+}
+
 impl Repo {
     /// Returns an error if the directory doesn't contain any commit
     #[instrument(skip_all)]
@@ -370,24 +379,26 @@ impl Repo {
         self.git(&["log", "-1", "--pretty=format:%B"])
     }
 
-    pub fn get_author_name(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%an", commit_hash)
-    }
-
-    pub fn get_author_email(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%ae", commit_hash)
-    }
-
-    pub fn get_committer_name(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%cn", commit_hash)
-    }
-
-    pub fn get_committer_email(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%ce", commit_hash)
-    }
-
-    fn get_commit_info(&self, info: &str, commit_hash: &str) -> anyhow::Result<String> {
-        self.git(&["log", "-1", &format!("--pretty=format:{info}"), commit_hash])
+    pub fn get_commit_signatures(&self, commit_hash: &str) -> anyhow::Result<CommitSignatures> {
+        let output = self.git(&[
+            "log",
+            "-1",
+            "--pretty=format:%an%x00%ae%x00%cn%x00%ce",
+            commit_hash,
+        ])?;
+        let mut fields = output.split('\0');
+        let mut next = || {
+            fields
+                .next()
+                .map(|field| field.trim().to_owned())
+                .context("missing commit signature field")
+        };
+        Ok(CommitSignatures {
+            author_name: next()?,
+            author_email: next()?,
+            committer_name: next()?,
+            committer_email: next()?,
+        })
     }
 
     /// Get the SHA1 of the current HEAD.

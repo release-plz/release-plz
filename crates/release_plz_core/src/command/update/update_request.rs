@@ -289,7 +289,7 @@ impl PackagesConfig {
         self.overrides
             .get(package_name)
             .cloned()
-            .unwrap_or(self.default.clone().into())
+            .unwrap_or_else(|| self.default.clone().into())
     }
 
     fn set_default(&mut self, config: UpdateConfig) {

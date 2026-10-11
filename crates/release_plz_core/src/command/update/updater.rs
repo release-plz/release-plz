@@ -29,7 +29,7 @@ use crate::{
     diff::{Commit, Diff},
     fs_utils, lock_compare,
     next_ver::takes_part_in_release,
-    package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, ReleasedPackageFiles},
+    package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, PackageFiles},
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
@@ -83,10 +83,22 @@ impl Updater<'_> {
             self.req.cargo_metadata(),
             crate::manifest_dir(local_manifest_path)?,
         )?;
+        let (workspace_version, is_workspace_root) = {
+            let manifest = LocalManifest::try_new(local_manifest_path)?;
+            (
+                manifest.get_workspace_version(),
+                manifest.data.contains_key("workspace"),
+            )
+        };
         let mut inheriting_packages = Vec::new();
-        for package in &workspace_packages {
-            if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
-                inheriting_packages.push(package);
+        // Skip version-inheritance checks only for a workspace root without
+        // workspace.package.version. A member manifest may inherit a version
+        // defined in the root, so keep scanning when given a member manifest.
+        if workspace_version.is_some() || !is_workspace_root {
+            for package in &workspace_packages {
+                if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
+                    inheriting_packages.push(package);
+                }
             }
         }
         let workspace_version_pkgs: HashSet<String> = inheriting_packages
@@ -95,7 +107,7 @@ impl Updater<'_> {
             .collect();
 
         let new_workspace_version = self.new_workspace_version(
-            local_manifest_path,
+            workspace_version.as_ref(),
             &packages_diffs,
             &workspace_version_pkgs,
         )?;
@@ -192,8 +204,8 @@ impl Updater<'_> {
 
         for (pkg, diff) in packages_diffs {
             let pkg_config = self.req.get_package_config(&pkg.name);
-            let version_updater = pkg_config.generic.version_updater()?;
             if let Some(version_group) = pkg_config.version_group {
+                let version_updater = pkg_config.generic.version_updater()?;
                 let next_pkg_ver = pkg.version.next_from_diff(diff, version_updater);
                 match version_groups.entry(version_group.clone()) {
                     std::collections::hash_map::Entry::Occupied(v) => {
@@ -233,26 +245,23 @@ impl Updater<'_> {
 
     fn new_workspace_version(
         &self,
-        local_manifest_path: &Utf8Path,
+        workspace_version: Option<&Version>,
         packages_diffs: &[(&Package, Diff)],
         workspace_version_pkgs: &HashSet<String>,
     ) -> anyhow::Result<Option<Version>> {
-        let workspace_version = {
-            let local_manifest = LocalManifest::try_new(local_manifest_path)?;
-            local_manifest.get_workspace_version()
-        };
+        if workspace_version_pkgs.is_empty() {
+            return Ok(None);
+        }
         let mut new_versions = Vec::new();
-        for workspace_package in workspace_version_pkgs {
-            for (p, diff) in packages_diffs {
-                if *workspace_package == *p.name {
-                    let pkg_config = self.req.get_package_config(&p.name);
-                    let version_updater = pkg_config.generic.version_updater()?;
-                    let next = p.version.next_from_diff(diff, version_updater);
-                    if let Some(workspace_version) = &workspace_version
-                        && &next >= workspace_version
-                    {
-                        new_versions.push(next);
-                    }
+        for (p, diff) in packages_diffs {
+            if workspace_version_pkgs.contains(p.name.as_str()) {
+                let pkg_config = self.req.get_package_config(&p.name);
+                let version_updater = pkg_config.generic.version_updater()?;
+                let next = p.version.next_from_diff(diff, version_updater);
+                if let Some(workspace_version) = workspace_version
+                    && &next >= workspace_version
+                {
+                    new_versions.push(next);
                 }
             }
         }
@@ -267,12 +276,21 @@ impl Updater<'_> {
         // Store diff for each package. This operation is not thread safe, so we do it in one
         // package at a time.
 
-        let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = self
-            .packages_to_process()
+        let packages = self.packages_to_process();
+        if packages.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Each successful get_diff restores HEAD before returning, so the
+        // following packages can reuse that checkout and the same history tip.
+        repository
+            .checkout_head()
+            .context("can't checkout head to calculate diff")?;
+        let head = repository.current_commit_hash()?;
+        let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = packages
             .iter()
             .map(|&p| {
                 let diff = self
-                    .get_diff(p, registry_packages, repository)
+                    .get_diff(p, registry_packages, repository, &head)
                     .with_context(|| {
                         format!("failed to retrieve difference of package {}", p.name)
                     })?;
@@ -280,9 +298,15 @@ impl Updater<'_> {
             })
             .collect();
 
-        let mut packages_diffs = self.fill_commits(&packages_diffs_res?, repository).await?;
+        let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
+        // Snapshot only histories another package includes before adding commits to diffs.
+        let included_packages: HashSet<String> = packages_diffs
+            .iter()
+            .flat_map(|(p, _)| self.req.get_package_config(&p.name).changelog_include)
+            .collect();
         let packages_commits: HashMap<String, Vec<Commit>> = packages_diffs
             .iter()
+            .filter(|(p, _)| included_packages.contains(p.name.as_str()))
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
@@ -297,8 +321,8 @@ impl Updater<'_> {
                         diff.add_commits(commits);
                     }
                 }
-                if should_check_semver(p, registry_package, package_config.semver_check())
-                    && diff.should_update_version()
+                if diff.should_update_version()
+                    && should_check_semver(p, registry_package, package_config.semver_check())
                 {
                     let registry_package_path = registry_package
                         .package_path()
@@ -357,15 +381,18 @@ impl Updater<'_> {
 
     async fn fill_commits<'a>(
         &self,
-        packages_diffs: &[(&'a Package, Diff)],
+        mut packages_diffs: Vec<(&'a Package, Diff)>,
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
-        let git_client = self.req.git_client()?;
         let changelog_request: &ChangelogRequest = self.req.changelog_req();
         let mut all_commits: HashMap<String, &Commit> = HashMap::new();
-        let mut packages_diffs = packages_diffs.to_owned();
         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
             let required_info = get_required_info(&changelog_config.changelog);
+            let git_client = if required_info.is_remote_required() {
+                self.req.git_client()?
+            } else {
+                None
+            };
             for (_package, diff) in &mut packages_diffs {
                 for commit in &mut diff.commits {
                     fill_commit(
@@ -631,17 +658,12 @@ impl Updater<'_> {
         package: &Package,
         registry_packages: &PackagesCollection,
         repository: &Repo,
+        head: &str,
     ) -> anyhow::Result<Diff> {
         info!(
             "determining next version for {} {}",
             package.name, package.version
         );
-        let package_path = get_package_path(package, repository, self.project.root())
-            .context("failed to determine package path")?;
-
-        repository
-            .checkout_head()
-            .context("can't checkout head to calculate diff")?;
         let registry_package = registry_packages.get_registry_package(&package.name);
         let mut diff = Diff::new(registry_package.is_some());
         let git_tag = self
@@ -668,10 +690,10 @@ impl Updater<'_> {
             }
         }
         self.get_package_diff(
-            &package_path,
             package,
             registry_package,
             repository,
+            head,
             tag_commit.as_deref(),
             &mut diff,
         )?;
@@ -681,14 +703,17 @@ impl Updater<'_> {
 
     fn get_package_diff(
         &self,
-        package_path: &Utf8Path,
         package: &Package,
         registry_package: Option<&RegistryPackage>,
         repository: &Repo,
+        head: &str,
         tag_commit: Option<&str>,
         diff: &mut Diff,
     ) -> anyhow::Result<()> {
-        let released_package_files = ReleasedPackageFiles::default();
+        let package_path = get_package_path(package, repository, self.project.root())
+            .context("failed to determine package path")?;
+        let package_path = package_path.as_path();
+        let released_package_files = PackageFiles::default();
         // The released package, paired with the path of its extracted sources.
         let released = registry_package
             .map(|p| p.package.package_path().map(|path| (p, path)))
@@ -717,17 +742,16 @@ impl Updater<'_> {
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
-        let head = repository.current_commit_hash()?;
         // Enumerate from the branch tip before checking out any historical snapshot.
         // The parents let RetainedChanges follow the lineages of this same walk.
         let graph = repository.parents_at_paths(
-            &head,
+            head,
             &release_boundaries,
             &paths.all(),
             max_analyze_commits,
         )?;
-        let mut retained_changes =
-            history::RetainedChanges::new(repository, &head, &graph, &paths)?;
+        let checked_out_history = !graph.is_empty();
+        let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         for (current_commit_hash, _) in graph {
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -740,6 +764,8 @@ impl Updater<'_> {
                 continue;
             }
             checkout_commit(repository, &current_commit_hash)?;
+            // Equality and changed-file checks inspect the same snapshot.
+            let local_package_files = PackageFiles::default();
             if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
@@ -747,7 +773,7 @@ impl Updater<'_> {
                     package_path,
                     released_package,
                     released_path,
-                    &released_package_files,
+                    (&local_package_files, &released_package_files),
                 ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
                 if are_packages_equal {
                     // Collect pruning candidates with full history: a "keep mine"
@@ -771,16 +797,23 @@ impl Updater<'_> {
             }
             // A package can contain another package in a subdirectory, so only count
             // commits that touch files Cargo would package for this package.
-            if self.are_changed_files_in_package(package_path, repository, &current_commit_hash)? {
+            if self.are_changed_files_in_package(
+                package_path,
+                repository,
+                &current_commit_hash,
+                &local_package_files,
+            )? {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
                     repository.current_commit_message()?,
                 ));
             }
         }
-        repository
-            .checkout_head()
-            .context("can't checkout head to compare dependencies")?;
+        if checked_out_history {
+            repository
+                .checkout_head()
+                .context("can't checkout head to compare dependencies")?;
+        }
         // A simplified walk can visit an ancestor before the equal snapshot that
         // prunes it. Make the final decision with every discovered boundary,
         // keeping only ancestors whose changes survive through another lineage.
@@ -805,8 +838,24 @@ impl Updater<'_> {
         package_path: &Utf8Path,
         registry_package: &RegistryPackage,
         registry_package_path: &Utf8Path,
-        released_package_files: &ReleasedPackageFiles,
+        (local_package_files, released_package_files): (&PackageFiles, &PackageFiles),
     ) -> anyhow::Result<bool> {
+        let packages_equal = self
+            .with_cargo_lock_restored(repository, || {
+                crate::package_compare::are_packages_equal_cached(
+                    package_path,
+                    registry_package_path,
+                    local_package_files,
+                    released_package_files,
+                )
+            })?
+            .context("cannot compare packages");
+        // Most historical snapshots already differ in their packaged files.
+        // Read README metadata only when that comparison cannot decide equality
+        // (because `cargo metadata` is slower).
+        if matches!(packages_equal, Ok(false)) {
+            return Ok(false);
+        }
         if crate::package_compare::is_readme_updated_with_released_package(
             &package.name,
             package_path,
@@ -815,14 +864,8 @@ impl Updater<'_> {
             debug!("{}: README updated", package.name);
             return Ok(false);
         }
-        self.with_cargo_lock_restored(repository, || {
-            crate::package_compare::are_packages_equal_cached(
-                package_path,
-                registry_package_path,
-                released_package_files,
-            )
-        })?
-        .context("cannot compare packages")
+        // A README change establishes inequality even if package listing failed.
+        packages_equal
     }
 
     /// If the dependencies changed, add a commit to the diff.
@@ -942,9 +985,16 @@ impl Updater<'_> {
         package_path: &Utf8Path,
         repository: &Repo,
         hash: &str,
+        package_files: &PackageFiles,
     ) -> anyhow::Result<bool> {
-        let package_files_res = self
-            .with_cargo_lock_restored(repository, || get_package_files(package_path, repository))?;
+        let get_files = || get_package_files(package_path, repository, package_files);
+        let package_files_res = if package_files.is_cached() {
+            // Equality already listed this snapshot's files and restored the lockfile.
+            // Reading the cached list cannot change Cargo.lock.
+            get_files()
+        } else {
+            self.with_cargo_lock_restored(repository, get_files)?
+        };
         let Ok(package_files) = package_files_res.inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
         }) else {
@@ -1039,15 +1089,17 @@ fn target_kinds(package: &Package) -> impl Iterator<Item = &TargetKind> {
 fn get_package_files(
     package_path: &Utf8Path,
     repository: &Repo,
+    package_files: &PackageFiles,
 ) -> anyhow::Result<HashSet<Utf8PathBuf>> {
     // Get relative path of the crate with respect to the repository because we need to compare
     // files with the git output.
     let repository_dir = repository.directory();
 
-    crate::get_cargo_package_files(package_path)?
-        .into_iter()
+    package_files
+        .get(package_path)?
+        .iter()
         // filter file generated by `cargo package` that isn't in git.
-        .filter(|file| file != CARGO_TOML_ORIG && file != CARGO_VCS_INFO)
+        .filter(|file| file.as_str() != CARGO_TOML_ORIG && file.as_str() != CARGO_VCS_INFO)
         .map(|file| {
             // Normalize path to handle symbolic links correctly.
             let file_path = package_path.join(file);
@@ -1110,11 +1162,13 @@ fn get_changelog(
 ) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
-    let mut changelog_builder = ChangelogBuilder::new(
-        commits.clone(),
-        next_version.to_string(),
-        package.name.to_string(),
-    );
+    let contributors = if changelog_req.is_some() && repo.is_some() {
+        get_contributors(&commits)
+    } else {
+        Vec::new()
+    };
+    let mut changelog_builder =
+        ChangelogBuilder::new(commits, next_version.to_string(), package.name.to_string());
     if let Some(changelog_req) = changelog_req {
         if let Some(release_date) = changelog_req.release_date {
             changelog_builder = changelog_builder.with_release_date(release_date);
@@ -1129,7 +1183,7 @@ fn get_changelog(
                 owner: repo_url.owner.clone(),
                 repo: repo_url.name.clone(),
                 link: repo_url.full_host(),
-                contributors: get_contributors(&commits),
+                contributors,
             };
             changelog_builder = changelog_builder.with_remote(remote);
 
@@ -1196,11 +1250,12 @@ fn get_contributors(commits: &[git_cliff_core::commit::Commit]) -> Vec<RemoteCon
     let mut unique_contributors = HashSet::new();
     commits
         .iter()
-        .filter_map(|c| c.remote.clone())
+        .filter_map(|c| c.remote.as_ref())
         .filter(|remote| remote.username.is_some())
         // Filter out duplicate contributors.
         // `insert` returns false if the contributor is already in the set.
-        .filter(|remote| unique_contributors.insert(remote.username.clone()))
+        .filter(|remote| unique_contributors.insert(remote.username.as_deref()))
+        .cloned()
         .collect()
 }
 
