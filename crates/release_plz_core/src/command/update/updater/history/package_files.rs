@@ -55,7 +55,7 @@ impl<'a> CheckoutPackageFiles<'a> {
         // changing the trees. Check at every checkout: a tracked hook can be
         // absent at HEAD but present in older snapshots.
         let has_hook = has_checkout_hook(self.repository).unwrap_or_else(|error| {
-            debug!("cannot find checkout hooks at {commit}: {error:#}");
+            debug!("cannot check for checkout hooks at {commit}: {error:#}");
             true
         });
         let previous = self.commit.take().filter(|_| !has_hook);
@@ -75,7 +75,7 @@ impl<'a> CheckoutPackageFiles<'a> {
             self.files = PackageFiles::default();
             let has_symlinked_manifest =
                 has_symlinked_manifest(self.repository).unwrap_or_else(|error| {
-                    debug!("cannot find symlinked manifests at {commit}: {error:#}");
+                    debug!("cannot check for symlinked manifests at {commit}: {error:#}");
                     true
                 });
             if has_symlinked_manifest {
