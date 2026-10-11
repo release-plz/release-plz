@@ -7,13 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-
-- Automatic detection of release PRs using the legacy `release-plz/` branch prefix,
-  replaced by `release-plz-` in v0.3.29. Close any old release PR before upgrading
-  to avoid having a new PR opened alongside it, or explicitly set
-  `pr_branch_prefix = "release-plz/"` in `[workspace]` to keep updating it.
-
 ## [0.3.171](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.170...release-plz-v0.3.171) - 2026-10-10
 
 ### Fixed
