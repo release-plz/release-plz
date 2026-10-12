@@ -13,8 +13,10 @@ use crate::{
 
 use super::PackagePaths;
 
+mod package_files;
 mod replay;
 
+pub(super) use package_files::CheckoutPackageFiles;
 use replay::{ChangeReplay, TokenConflicts};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
