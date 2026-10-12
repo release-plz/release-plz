@@ -665,6 +665,51 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_legacy_prefix_requires_explicit_configuration() {
+    let legacy_prefix = "release-plz/";
+    let legacy_config = format!("[workspace]\npr_branch_prefix = \"{legacy_prefix}\"\n");
+    let context = TestContext::new().await;
+    context.write_release_plz_toml(&legacy_config);
+    context.run_release_pr().success();
+    let legacy_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(legacy_prs.len(), 1);
+    let legacy_pr = &legacy_prs[0];
+
+    // An explicitly configured legacy prefix still updates the existing PR.
+    fs_err::write(context.repo_dir().join("README.md"), "# Updated\n").unwrap();
+    context.push_all_changes("fix: update readme");
+    context.run_release_pr().success();
+    let updated_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(updated_prs.len(), 1);
+    let updated_pr = &updated_prs[0];
+    assert_eq!(updated_pr.number, legacy_pr.number);
+    assert_eq!(
+        context
+            .gitea
+            .get_file_content(updated_pr.branch(), "README.md")
+            .await,
+        "# Updated\n"
+    );
+
+    // With the default prefix, leave the legacy PR alone and open a new one.
+    context.write_release_plz_toml("[workspace]\n");
+    context.run_release_pr().success();
+    assert_eq!(context.opened_release_prs().await.len(), 1);
+    let legacy_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(legacy_prs.len(), 1);
+    assert_eq!(legacy_prs[0].number, legacy_pr.number);
+    // The legacy branch wasn't updated from main, which now has the default config.
+    assert_eq!(
+        context
+            .gitea
+            .get_file_content(legacy_pr.branch(), "release-plz.toml")
+            .await,
+        legacy_config
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_should_set_custom_pr_details() {
     let context = TestContext::new().await;
 

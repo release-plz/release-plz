@@ -559,8 +559,11 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 Prefix for the release PR branch. By default, it's set to: `release-plz-`
 
+release-plz only manages release PRs whose branch starts with this prefix.
+
 :::warning
-Before changing the release-plz branch you should close the old release PR.
+Before changing the prefix, close the old release PR:
+release-plz won't detect it anymore and will open a new one.
 :::
 
 #### The `pr_draft` field

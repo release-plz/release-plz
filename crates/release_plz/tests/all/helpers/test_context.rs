@@ -145,7 +145,7 @@ impl TestContext {
     }
 
     pub async fn merge_all_prs(&self) {
-        let opened_prs = self.git_client.opened_prs("").await.unwrap();
+        let opened_prs = self.opened_prs("").await;
         for pr in opened_prs {
             self.gitea.merge_pr_retrying(pr.number).await;
         }
@@ -250,10 +250,11 @@ impl TestContext {
     }
 
     pub async fn opened_release_prs(&self) -> Vec<GitPr> {
-        self.git_client
-            .opened_prs(DEFAULT_BRANCH_PREFIX)
-            .await
-            .unwrap()
+        self.opened_prs(DEFAULT_BRANCH_PREFIX).await
+    }
+
+    pub async fn opened_prs(&self, branch_prefix: &str) -> Vec<GitPr> {
+        self.git_client.opened_prs(branch_prefix).await.unwrap()
     }
 
     pub fn write_release_plz_toml(&self, content: &str) {

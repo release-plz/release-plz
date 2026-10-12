@@ -15,7 +15,7 @@ use crate::git::forge::{
     ForgeType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
 };
 use crate::git::github_graphql;
-use crate::pr::{DEFAULT_BRANCH_PREFIX, OLD_BRANCH_PREFIX, Pr};
+use crate::pr::{DEFAULT_BRANCH_PREFIX, Pr};
 use crate::{
     PackagesUpdate, copy_to_temp_dir, new_manifest_dir_path, new_project_root,
     publishable_packages_from_manifest, root_repo_path_from_manifest_dir, update,
@@ -196,20 +196,10 @@ async fn open_or_update_release_pr(
     repo: &Repo,
     release_pr_options: ReleasePrOptions,
 ) -> anyhow::Result<ReleasePr> {
-    let mut opened_release_prs = git_client
+    let opened_release_prs = git_client
         .opened_prs(&release_pr_options.pr_branch_prefix)
         .await
         .context("cannot get opened release-plz prs")?;
-
-    // Check if there are opened release-plz prs with the old prefix.
-    // This ensures retro-compatibility with the release-plz versions.
-    // TODO: Remove this check on release-plz v0.4.0.
-    if opened_release_prs.is_empty() {
-        opened_release_prs = git_client
-            .opened_prs(OLD_BRANCH_PREFIX)
-            .await
-            .context("cannot get opened release-plz prs")?;
-    }
 
     // Close all release-plz prs, except one.
     let old_release_prs = opened_release_prs.iter().skip(1);
@@ -338,8 +328,7 @@ async fn update_pr(
     // sanity check to avoid doing bad things on non-release-plz branches
     anyhow::ensure!(
         opened_pr.branch().starts_with(branch_prefix)
-            || opened_pr.branch().starts_with(DEFAULT_BRANCH_PREFIX)
-            || opened_pr.branch().starts_with(OLD_BRANCH_PREFIX),
+            || opened_pr.branch().starts_with(DEFAULT_BRANCH_PREFIX),
         "wrong branch name"
     );
 
