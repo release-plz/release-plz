@@ -389,8 +389,8 @@ Where:
 
 If multiple packages resolve to the same tag, one of them is published to a cargo registry,
 and another one has git tags or git releases enabled,
-`release-plz release` fails before publishing, because the first package's tag would cause
-the other packages to be skipped as already released.
+`release-plz release` fails before publishing, because once the other package creates the tag,
+release-plz would skip the published package as already released.
 To create a single tag for your workspace, see the [single git tag guide](./extra/single-tag.md).
 
 #### The `git_release_generate_notes` field
