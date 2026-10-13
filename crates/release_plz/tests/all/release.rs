@@ -19,7 +19,7 @@ git_tag_name = "v{{ version }}"
     assert!(error.contains(TAG_COLLISION_ERROR), "{error}");
 
     context.repo.git(&["fetch", "--tags"]).unwrap();
-    assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
+    assert!(context.repo.get_all_tags().is_empty());
     let dest_dir = Utf8TempDir::new().unwrap();
     let packages = context
         .package_downloader(["one", "two"], dest_dir.path())
@@ -88,10 +88,7 @@ git_release_enable = true
 
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
-    assert_eq!(
-        context.repo.git(&["tag", "--list"]).unwrap().trim(),
-        "v0.1.0"
-    );
+    assert_eq!(context.repo.get_all_tags(), ["v0.1.0"]);
     let dest_dir = Utf8TempDir::new().unwrap();
     let packages = context
         .package_downloader(["one", "two"], dest_dir.path())
@@ -116,10 +113,7 @@ git_tag_name = "v{{ version }}"
 
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
-    assert_eq!(
-        context.repo.git(&["tag", "--list"]).unwrap().trim(),
-        "v0.1.0\nv0.2.0"
-    );
+    assert_eq!(context.repo.get_all_tags(), ["v0.1.0", "v0.2.0"]);
 }
 
 #[tokio::test]
@@ -137,7 +131,7 @@ git_release_enable = false
 
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
-    assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
+    assert!(context.repo.get_all_tags().is_empty());
     let dest_dir = Utf8TempDir::new().unwrap();
     let packages = context
         .package_downloader(["one", "two"], dest_dir.path())
@@ -168,10 +162,7 @@ git_release_enable = true
 
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
-    assert_eq!(
-        context.repo.git(&["tag", "--list"]).unwrap().trim(),
-        "v0.1.0"
-    );
+    assert_eq!(context.repo.get_all_tags(), ["v0.1.0"]);
 
     // The shared tag already exists, so both packages are skipped.
     let outcome = context.run_release().success();
