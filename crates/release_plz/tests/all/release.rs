@@ -143,7 +143,7 @@ git_release_enable = false
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_allows_git_only_packages_to_share_a_tag() {
+async fn release_allows_git_only_packages_to_share_the_tag_of_a_published_package() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
     context.write_release_plz_toml(
         r#"
@@ -155,6 +155,7 @@ git_release_enable = false
 
 [[package]]
 name = "one"
+git_only = false
 git_tag_enable = true
 git_release_enable = true
 "#,
@@ -163,6 +164,13 @@ git_release_enable = true
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
     assert_eq!(context.repo.get_all_tags(), ["v0.1.0"]);
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(["one"], dest_dir.path())
+        .download()
+        .await
+        .unwrap();
+    assert_eq!(packages.len(), 1);
 
     // The shared tag already exists, so both packages are skipped.
     let outcome = context.run_release().success();

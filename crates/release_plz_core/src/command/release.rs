@@ -248,29 +248,31 @@ impl ReleaseRequest {
 
     /// Packages are skipped when their git tag already exists, so a shared tag created by
     /// one package (directly or via a git release) skips the others, even in later runs.
-    /// Packages not published to a registry may share a tag
-    /// (e.g. git-only workspaces released under a single tag).
+    /// Two packages can't share a tag if one of them is published to a registry and the other
+    /// one creates the tag. Other packages may share a tag
+    /// (e.g. git-only packages sharing the tag created by a published package).
     fn validate_git_tag_names(&self, project: &Project) -> anyhow::Result<()> {
-        let mut tags = HashMap::new();
+        let mut packages_by_tag: BTreeMap<String, Vec<&Package>> = BTreeMap::new();
         for package in self.releasable_packages(project) {
             let tag = project.git_tag(&package.name, &package.version.to_string())?;
-            let publishes = self.is_publish_enabled(&package.name);
-            let creates_tag = self.is_git_tag_enabled(&package.name)
-                || self.is_git_release_enabled(&package.name);
-            match tags.entry(tag.clone()) {
-                Entry::Vacant(entry) => {
-                    entry.insert((package.name.as_str(), publishes, creates_tag));
-                }
-                Entry::Occupied(entry) => {
-                    let (first_package, any_publishes, any_creates_tag) = entry.into_mut();
-                    *any_publishes |= publishes;
-                    *any_creates_tag |= creates_tag;
-                    if *any_publishes && *any_creates_tag {
+            packages_by_tag.entry(tag).or_default().push(package);
+        }
+        let publishes = |package: &Package| self.is_publish_enabled(&package.name);
+        let creates_tag = |package: &Package| {
+            self.is_git_tag_enabled(&package.name) || self.is_git_release_enabled(&package.name)
+        };
+        for (tag, packages) in &packages_by_tag {
+            for (i, first) in packages.iter().enumerate() {
+                for second in &packages[i + 1..] {
+                    if (publishes(first) && creates_tag(second))
+                        || (publishes(second) && creates_tag(first))
+                    {
                         anyhow::bail!(
-                            "Packages `{first_package}` and `{}` resolve to the same git tag `{tag}`. \
+                            "Packages `{}` and `{}` resolve to the same git tag `{tag}`. \
                              Configure unique `git_tag_name` values (e.g. `{{{{ package }}}}-v{{{{ version }}}}`) \
                              or follow https://release-plz.dev/docs/extra/single-tag to create a single tag for the workspace.",
-                            package.name
+                            first.name,
+                            second.name
                         );
                     }
                 }
