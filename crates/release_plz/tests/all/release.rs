@@ -40,23 +40,25 @@ git_tag_name = "v{{ version }}"
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_rejects_rendered_tag_collisions_in_dry_run() {
+    const NO_TAG_OR_RELEASE: &str = "git_tag_enable = false\ngit_release_enable = false";
     let context = TestContext::new_workspace(&["one", "two"]).await;
-    for extra_config in [
-        "",
-        "git_tag_enable = false\ngit_release_enable = false",
-        "git_tag_enable = false",
-        "git_only = true",
+    // In each case, one package is published and the other one creates the tag.
+    for (one_config, two_config) in [
+        ("", NO_TAG_OR_RELEASE),
+        ("git_tag_enable = false", NO_TAG_OR_RELEASE),
+        (NO_TAG_OR_RELEASE, "git_only = true"),
     ] {
         context.write_release_plz_toml(&format!(
             r#"
 [[package]]
 name = "one"
 git_tag_name = "v{{{{ version }}}}"
-{extra_config}
+{one_config}
 
 [[package]]
 name = "two"
 git_tag_name = "v0.1.0"
+{two_config}
 "#,
         ));
         let outcome = context
