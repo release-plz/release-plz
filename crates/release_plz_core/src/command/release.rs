@@ -168,6 +168,13 @@ impl ReleaseRequest {
         takes_part_in_release(package, self.is_git_only(&package.name))
     }
 
+    fn releasable_packages<'p>(&self, project: &'p Project) -> impl Iterator<Item = &'p Package> {
+        project
+            .workspace_packages()
+            .into_iter()
+            .filter(|package| self.is_releasable(package))
+    }
+
     fn is_git_release_enabled(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
         config.git_release.enabled
@@ -241,10 +248,7 @@ impl ReleaseRequest {
 
     fn validate_git_tag_names(&self, project: &Project) -> anyhow::Result<()> {
         let mut tags = HashMap::new();
-        for package in project.workspace_packages() {
-            if !self.is_releasable(package) {
-                continue;
-            }
+        for package in self.releasable_packages(project) {
             let tag = project.git_tag(&package.name, &package.version.to_string())?;
             let creates_tag = self.is_git_tag_enabled(&package.name)
                 || self.is_git_release_enabled(&package.name);
@@ -673,11 +677,7 @@ async fn release_packages(
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
     // Packages are already ordered by release order.
-    let packages: Vec<_> = project
-        .workspace_packages()
-        .into_iter()
-        .filter(|package| input.is_releasable(package))
-        .collect();
+    let packages: Vec<_> = input.releasable_packages(project).collect();
     if packages.is_empty() {
         info!("nothing to release");
     }
