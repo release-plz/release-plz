@@ -156,6 +156,37 @@ git_release_enable = false
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_allows_git_only_packages_to_share_a_tag() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+git_tag_name = "v{{ version }}"
+git_tag_enable = false
+git_release_enable = false
+
+[[package]]
+name = "one"
+git_tag_enable = true
+git_release_enable = true
+"#,
+    );
+
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert_eq!(
+        context.repo.git(&["tag", "--list"]).unwrap().trim(),
+        "v0.1.0"
+    );
+
+    // The shared tag already exists, so both packages are skipped.
+    let outcome = context.run_release().success();
+    outcome.stdout("{\"releases\":[]}\n");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_ignores_tag_collisions_with_unreleased_packages() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("one"),
