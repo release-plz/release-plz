@@ -35,6 +35,12 @@ git_tag_name = "v{{ version }}"
         .await
         .unwrap();
     assert!(packages.is_empty());
+
+    // A previous partial release must not turn the invalid configuration into a no-op.
+    context.repo.tag("v0.1.0", "Partial release").unwrap();
+    let outcome = context.run_release().failure();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
 }
 
 #[tokio::test]
@@ -69,12 +75,6 @@ git_tag_name = "v0.1.0"
         let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
         assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
     }
-
-    // A previous partial release must not turn the invalid configuration into a no-op.
-    context.repo.tag("v0.1.0", "Partial release").unwrap();
-    let outcome = context.run_release().failure();
-    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
-    assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
 }
 
 #[tokio::test]
