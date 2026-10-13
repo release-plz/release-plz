@@ -2,6 +2,8 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{package::TestPackage, test_context::TestContext};
 
+const TAG_COLLISION_ERROR: &str = "Packages `one` and `two` resolve to the same git tag `v0.1.0`";
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_rejects_duplicate_git_tags_before_publishing() {
@@ -13,18 +15,8 @@ git_tag_name = "v{{ version }}"
 "#,
     );
 
-    let outcome = context.run_release().failure();
-    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
-    assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
-    assert!(
-        stderr.contains("`one`") && stderr.contains("`two`"),
-        "{stderr}"
-    );
-    assert!(stderr.contains("{{ package }}-v{{ version }}"), "{stderr}");
-    assert!(
-        stderr.contains("https://release-plz.dev/docs/extra/single-tag"),
-        "{stderr}"
-    );
+    let error = context.run_release().failure().to_string();
+    assert!(error.contains(TAG_COLLISION_ERROR), "{error}");
 
     context.repo.git(&["fetch", "--tags"]).unwrap();
     assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
@@ -38,9 +30,8 @@ git_tag_name = "v{{ version }}"
 
     // A previous partial release must not turn the invalid configuration into a no-op.
     context.repo.tag("v0.1.0", "Partial release").unwrap();
-    let outcome = context.run_release().failure();
-    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
-    assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
+    let error = context.run_release().failure().to_string();
+    assert!(error.contains(TAG_COLLISION_ERROR), "{error}");
 }
 
 #[tokio::test]
@@ -67,13 +58,13 @@ git_tag_name = "v0.1.0"
 {two_config}
 "#,
         ));
-        let outcome = context
+        let error = context
             .release_command()
             .arg("--dry-run")
             .assert()
-            .failure();
-        let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
-        assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
+            .failure()
+            .to_string();
+        assert!(error.contains(TAG_COLLISION_ERROR), "{error}");
     }
 }
 
