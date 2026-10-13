@@ -190,9 +190,18 @@ release = false
     );
 
     let outcome = context.run_release().success();
-    let output: serde_json::Value = serde_json::from_slice(&outcome.get_output().stdout).unwrap();
-    assert_eq!(output["releases"].as_array().unwrap().len(), 1);
-    assert_eq!(output["releases"][0]["package_name"], "one");
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": "one",
+                "prs": [],
+                "tag": "v0.1.0",
+                "version": "0.1.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
 }
 
 #[tokio::test]
