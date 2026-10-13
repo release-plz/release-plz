@@ -387,6 +387,13 @@ Where:
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
 
+Use unique tag names for each package in a multi-crate workspace, for example
+`"{{ package }}-v{{ version }}"`.
+If multiple packages resolve to the same tag and git tags or releases are enabled for any of them,
+`release` fails before publishing: otherwise, the first package's tag could cause
+the remaining packages to be skipped as already released.
+To create only one tag for your workspace, follow the [single git tag guide](extra/single-tag.md).
+
 #### The `git_release_generate_notes` field
 
 - If `true`, release notes will be generated server-side.

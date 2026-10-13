@@ -239,6 +239,31 @@ impl ReleaseRequest {
         Ok(())
     }
 
+    fn validate_git_tag_names(&self, project: &Project) -> anyhow::Result<()> {
+        let mut tags = HashMap::new();
+        for package in project.workspace_packages() {
+            if !self.is_releasable(package) {
+                continue;
+            }
+            let tag = project.git_tag(&package.name, &package.version.to_string())?;
+            let creates_tag = self.is_git_tag_enabled(&package.name)
+                || self.is_git_release_enabled(&package.name);
+            // Even packages with tagging disabled check for an existing tag before publishing.
+            if let Some((other_package, other_creates_tag)) =
+                tags.insert(tag.clone(), (package.name.as_str(), creates_tag))
+                && (creates_tag || other_creates_tag)
+            {
+                anyhow::bail!(
+                    "Packages `{other_package}` and `{}` resolve to the same git tag `{tag}`. \
+                     Configure unique `git_tag_name` values (e.g. `{{{{ package }}}}-v{{{{ version }}}}`) \
+                     or follow https://release-plz.dev/docs/extra/single-tag to create a single tag for the workspace.",
+                    package.name
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Checks for inconsistency in the `publish` fields in the workspace metadata and release-plz config.
     ///
     /// If there is no inconsistency, returns Ok(())
@@ -602,6 +627,7 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         &input.metadata,
         input,
     )?;
+    input.validate_git_tag_names(&project)?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;

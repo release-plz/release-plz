@@ -1,6 +1,184 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::test_context::TestContext;
+use crate::helpers::{package::TestPackage, test_context::TestContext};
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_rejects_duplicate_git_tags_before_publishing() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_tag_name = "v{{ version }}"
+"#,
+    );
+
+    let outcome = context.run_release().failure();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
+    assert!(
+        stderr.contains("`one`") && stderr.contains("`two`"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("{{ package }}-v{{ version }}"), "{stderr}");
+    assert!(
+        stderr.contains("https://release-plz.dev/docs/extra/single-tag"),
+        "{stderr}"
+    );
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(["one", "two"], dest_dir.path())
+        .download()
+        .await
+        .unwrap();
+    assert!(packages.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_rejects_rendered_tag_collisions_in_dry_run() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    for extra_config in [
+        "",
+        "git_tag_enable = false\ngit_release_enable = false",
+        "git_tag_enable = false",
+        "git_only = true",
+    ] {
+        context.write_release_plz_toml(&format!(
+            r#"
+[[package]]
+name = "one"
+git_tag_name = "v{{{{ version }}}}"
+{extra_config}
+
+[[package]]
+name = "two"
+git_tag_name = "v0.1.0"
+"#,
+        ));
+        let outcome = context
+            .release_command()
+            .arg("--dry-run")
+            .assert()
+            .failure();
+        let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+        assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
+    }
+
+    // A previous partial release must not turn the invalid configuration into a no-op.
+    context.repo.tag("v0.1.0", "Partial release").unwrap();
+    let outcome = context.run_release().failure();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    assert!(stderr.contains("same git tag `v0.1.0`"), "{stderr}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_supports_the_documented_single_tag_configuration() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "one"
+git_tag_name = "v{{ version }}"
+git_tag_enable = true
+git_release_enable = true
+"#,
+    );
+
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert_eq!(
+        context.repo.git(&["tag", "--list"]).unwrap().trim(),
+        "v0.1.0"
+    );
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(["one", "two"], dest_dir.path())
+        .download()
+        .await
+        .unwrap();
+    assert_eq!(packages.len(), 2);
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_allows_tag_templates_that_resolve_to_different_names() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    context.set_package_version("two", &cargo_metadata::semver::Version::new(0, 2, 0));
+    context.run_cargo_check();
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_tag_name = "v{{ version }}"
+"#,
+    );
+
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert_eq!(
+        context.repo.git(&["tag", "--list"]).unwrap().trim(),
+        "v0.1.0\nv0.2.0"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_allows_duplicate_tag_names_when_no_tags_or_releases_are_created() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_tag_name = "v{{ version }}"
+git_tag_enable = false
+git_release_enable = false
+"#,
+    );
+
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(["one", "two"], dest_dir.path())
+        .download()
+        .await
+        .unwrap();
+    assert_eq!(packages.len(), 2);
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_ignores_tag_collisions_with_unreleased_packages() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("one"),
+        TestPackage::new("two"),
+        TestPackage::new("private").with_publish(false),
+    ])
+    .await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_tag_name = "v{{ version }}"
+
+[[package]]
+name = "two"
+release = false
+"#,
+    );
+
+    let outcome = context.run_release().success();
+    let output: serde_json::Value = serde_json::from_slice(&outcome.get_output().stdout).unwrap();
+    assert_eq!(output["releases"].as_array().unwrap().len(), 1);
+    assert_eq!(output["releases"][0]["package_name"], "one");
+}
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
