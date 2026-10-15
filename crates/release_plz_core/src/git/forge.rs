@@ -941,7 +941,15 @@ impl GitClient {
         let status = response.status();
         response.successful_status().await.with_context(|| {
             let mut message = format!("failed to create ref {ref_name} with sha {sha}");
-            if status == StatusCode::UNPROCESSABLE_ENTITY {
+            if status == StatusCode::FORBIDDEN {
+                message.push_str(
+                    ". Check the token's write permissions and repository rulesets. \
+GitHub can also reject an older commit whose .github/workflows files differ from \
+current branch tips when the token cannot write workflows. \
+Run release-plz on the latest target branch commit instead of rerunning an old workflow. \
+See https://release-plz.dev/docs/troubleshooting#github-rejects-branch-creation-with-403-resource-not-accessible-by-integration.",
+                );
+            } else if status == StatusCode::UNPROCESSABLE_ENTITY {
                 message.push_str(
                     ". GitHub rejected the reference creation. \
 Check that the commit has been pushed to the remote repository, \

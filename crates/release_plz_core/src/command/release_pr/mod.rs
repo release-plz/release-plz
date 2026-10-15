@@ -278,6 +278,20 @@ async fn handle_opened_pr(
         {
             Ok(()) => ReleasePr::new(opened_pr, new_pr.base_branch.clone()),
             Err(e) => {
+                if matches!(
+                    e.downcast_ref::<reqwest::Error>()
+                        .and_then(reqwest::Error::status),
+                    Some(reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN)
+                ) {
+                    // Keep the existing PR when a write is denied, rather than
+                    // risk losing it if creating a replacement is denied too.
+                    return Err(e).with_context(|| {
+                        format!(
+                            "cannot update release pr {}; leaving it open because authorization failed",
+                            opened_pr.number
+                        )
+                    });
+                }
                 tracing::error!(
                     "cannot update release pr {}: {:?}. I'm closing the old release pr and opening a new one",
                     opened_pr.number,
@@ -734,6 +748,80 @@ mod tests {
             "new feature"
         );
         server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn github_keeps_existing_pr_when_authorization_fails() {
+        test_logs::init();
+        for (status, fail_force_push) in [(401, false), (403, false), (403, true)] {
+            let temporary = tempdir().unwrap();
+            let repo = Repo::init(temporary.path());
+            let base_sha = repo.current_commit_hash().unwrap();
+            prepare_release_changes(&repo);
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/repos/owner/repo/pulls/42/commits"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                    {"sha": "old-release-sha", "author": {"id": 1, "login": "release-plz[bot]"}}
+                ])))
+                .expect(1)
+                .mount(&server)
+                .await;
+            if fail_force_push {
+                mock_github_push(&server, &base_sha, graphql_commit_created(), Some(status)).await;
+            } else {
+                Mock::given(method("POST"))
+                    .and(path("/repos/owner/repo/git/refs"))
+                    .and(body_partial_json(json!({"sha": base_sha})))
+                    .respond_with(ResponseTemplate::new(status).set_body_json(json!({
+                        "message": "Resource not accessible by integration"
+                    })))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+            }
+            // An authorization failure must not close the PR or attempt a replacement.
+            Mock::given(method("PATCH"))
+                .and(path("/repos/owner/repo/pulls/42"))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(0)
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/repos/owner/repo/pulls"))
+                .respond_with(ResponseTemplate::new(201))
+                .expect(0)
+                .mount(&server)
+                .await;
+
+            let error = handle_opened_pr(
+                &github_client(&server),
+                &opened_pr("release-plz-test"),
+                &repo,
+                &new_pr(&repo),
+                DEFAULT_BRANCH_PREFIX,
+            )
+            .await
+            .unwrap_err();
+
+            assert_eq!(
+                error.downcast_ref::<reqwest::Error>().unwrap().status(),
+                Some(reqwest::StatusCode::from_u16(status).unwrap())
+            );
+            let error = format!("{error:#}");
+            assert!(error.contains("leaving it open"), "{error}");
+            if !fail_force_push {
+                assert!(
+                    error.contains("Resource not accessible by integration"),
+                    "{error}"
+                );
+                if status == 403 {
+                    assert!(error.contains(".github/workflows"), "{error}");
+                }
+            }
+            assert_eq!(repo.current_commit_hash().unwrap(), base_sha);
+            server.verify().await;
+        }
     }
 
     #[tokio::test]
