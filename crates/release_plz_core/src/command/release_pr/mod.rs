@@ -14,7 +14,7 @@ pub(crate) mod git;
 use crate::git::forge::{
     ForgeType, GitClient, GitPr, PrEdit, contributors_from_commits, validate_labels,
 };
-use crate::git::github_graphql;
+use crate::git::{error::GitError, github_graphql};
 use crate::pr::{DEFAULT_BRANCH_PREFIX, Pr};
 use crate::{
     PackagesUpdate, copy_to_temp_dir, new_manifest_dir_path, new_project_root,
@@ -277,21 +277,17 @@ async fn handle_opened_pr(
         .await
         {
             Ok(()) => ReleasePr::new(opened_pr, new_pr.base_branch.clone()),
+            Err(e @ GitError::Authorization(_)) => {
+                // Keep the existing PR when a write is denied, rather than
+                // risk losing it if creating a replacement is denied too.
+                return Err(e).with_context(|| {
+                    format!(
+                        "cannot update release pr {}; leaving it open because authorization failed",
+                        opened_pr.number
+                    )
+                });
+            }
             Err(e) => {
-                if matches!(
-                    e.downcast_ref::<reqwest::Error>()
-                        .and_then(reqwest::Error::status),
-                    Some(reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN)
-                ) {
-                    // Keep the existing PR when a write is denied, rather than
-                    // risk losing it if creating a replacement is denied too.
-                    return Err(e).with_context(|| {
-                        format!(
-                            "cannot update release pr {}; leaving it open because authorization failed",
-                            opened_pr.number
-                        )
-                    });
-                }
                 tracing::error!(
                     "cannot update release pr {}: {:?}. I'm closing the old release pr and opening a new one",
                     opened_pr.number,
@@ -338,13 +334,13 @@ async fn update_pr(
     repository: &Repo,
     new_pr: &Pr,
     branch_prefix: &str,
-) -> anyhow::Result<()> {
+) -> Result<(), GitError> {
     // sanity check to avoid doing bad things on non-release-plz branches
-    anyhow::ensure!(
-        opened_pr.branch().starts_with(branch_prefix)
-            || opened_pr.branch().starts_with(DEFAULT_BRANCH_PREFIX),
-        "wrong branch name"
-    );
+    if !(opened_pr.branch().starts_with(branch_prefix)
+        || opened_pr.branch().starts_with(DEFAULT_BRANCH_PREFIX))
+    {
+        return Err(anyhow::anyhow!("wrong branch name").into());
+    }
 
     // The commit message comes from the new PR, while the branch comes from the opened one:
     // `opened_pr.title` still contains the version calculated by the previous release-plz run,
@@ -438,7 +434,7 @@ async fn github_force_push(
     branch: &str,
     commit_message: &str,
     repository: &Repo,
-) -> anyhow::Result<()> {
+) -> Result<(), GitError> {
     // Use a randomized suffix to avoid collisions with existing remote branches.
     let suffix = RandomState::new().hash_one(branch);
     let tmp_release_branch = format!("{branch}-tmp-{suffix}");
@@ -446,7 +442,9 @@ async fn github_force_push(
     client
         .create_branch(&tmp_release_branch, &base_sha)
         .await
-        .with_context(|| format!("failed to create branch `{tmp_release_branch}`"))?;
+        .map_err(|error| {
+            error.context(format!("failed to create branch `{tmp_release_branch}`"))
+        })?;
 
     // Push the "Verified" commit in the temporary branch using
     // the GitHub API.
@@ -456,13 +454,13 @@ async fn github_force_push(
     // - If we revert the last commit of the release PR branch, GitHub will close the release PR
     //   because the branch is the same as the default branch. So we can't revert the latest release-plz commit and push the new one.
     // To learn more, see https://github.com/release-plz/release-plz/issues/1487
-    let force_push_result: anyhow::Result<()> = async {
+    let force_push_result: Result<(), GitError> = async {
         let sha =
             github_commit_changes(client, repository, &tmp_release_branch, commit_message).await?;
         client
             .patch_github_ref(&format!("heads/{branch}"), &sha)
             .await
-            .context("failed to force push PR branch")
+            .map_err(|error| error.context("failed to force push PR branch"))
     }
     .await;
     // Delete the temporary branch even if the commit or the force push failed.
@@ -753,7 +751,18 @@ mod tests {
     #[tokio::test]
     async fn github_keeps_existing_pr_when_authorization_fails() {
         test_logs::init();
-        for (status, fail_force_push) in [(401, false), (403, false), (403, true)] {
+        #[derive(PartialEq)]
+        enum Operation {
+            CreateBranch,
+            ForcePush,
+            AddLabels,
+        }
+        for (status, operation) in [
+            (401, Operation::CreateBranch),
+            (403, Operation::CreateBranch),
+            (403, Operation::ForcePush),
+            (403, Operation::AddLabels),
+        ] {
             let temporary = tempdir().unwrap();
             let repo = Repo::init(temporary.path());
             let base_sha = repo.current_commit_hash().unwrap();
@@ -767,9 +776,27 @@ mod tests {
                 .expect(1)
                 .mount(&server)
                 .await;
-            if fail_force_push {
-                mock_github_push(&server, &base_sha, graphql_commit_created(), Some(status)).await;
-            } else {
+            let mut new_pr = new_pr(&repo);
+            if operation == Operation::AddLabels {
+                new_pr.labels = vec!["release".into()];
+                Mock::given(method("PATCH"))
+                    .and(path("/repos/owner/repo/pulls/42"))
+                    .and(body_json(json!({"title": new_pr.title})))
+                    .respond_with(ResponseTemplate::new(200))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+                Mock::given(method("POST"))
+                    .and(path("/repos/owner/repo/issues/42/labels"))
+                    .and(body_json(json!({"labels": ["release"]})))
+                    .respond_with(ResponseTemplate::new(status).set_body_json(json!({
+                        "message": "Resource not accessible by integration"
+                    })))
+                    .expect(1)
+                    .mount(&server)
+                    .await;
+            }
+            if operation == Operation::CreateBranch {
                 Mock::given(method("POST"))
                     .and(path("/repos/owner/repo/git/refs"))
                     .and(body_partial_json(json!({"sha": base_sha})))
@@ -779,10 +806,24 @@ mod tests {
                     .expect(1)
                     .mount(&server)
                     .await;
+            } else {
+                let patch_status = if operation == Operation::ForcePush {
+                    status
+                } else {
+                    200
+                };
+                mock_github_push(
+                    &server,
+                    &base_sha,
+                    graphql_commit_created(),
+                    Some(patch_status),
+                )
+                .await;
             }
             // An authorization failure must not close the PR or attempt a replacement.
             Mock::given(method("PATCH"))
                 .and(path("/repos/owner/repo/pulls/42"))
+                .and(body_partial_json(json!({"state": "closed"})))
                 .respond_with(ResponseTemplate::new(200))
                 .expect(0)
                 .mount(&server)
@@ -798,24 +839,21 @@ mod tests {
                 &github_client(&server),
                 &opened_pr("release-plz-test"),
                 &repo,
-                &new_pr(&repo),
+                &new_pr,
                 DEFAULT_BRANCH_PREFIX,
             )
             .await
             .unwrap_err();
 
-            assert_eq!(
-                error.downcast_ref::<reqwest::Error>().unwrap().status(),
-                Some(reqwest::StatusCode::from_u16(status).unwrap())
-            );
             let error = format!("{error:#}");
+            assert!(error.contains(&format!("({status} ")), "{error}");
             assert!(error.contains("leaving it open"), "{error}");
-            if !fail_force_push {
+            if operation != Operation::ForcePush {
                 assert!(
                     error.contains("Resource not accessible by integration"),
                     "{error}"
                 );
-                if status == 403 {
+                if status == 403 && operation == Operation::CreateBranch {
                     assert!(error.contains(".github/workflows"), "{error}");
                 }
             }
@@ -842,6 +880,7 @@ mod tests {
         )
         .await
         .unwrap_err();
+        assert!(matches!(error, GitError::Authorization(_)), "{error:#}");
         let error = format!("{error:#}");
         assert!(error.contains("failed to force push PR branch"), "{error}");
         assert!(
@@ -872,6 +911,7 @@ mod tests {
         )
         .await
         .unwrap_err();
+        assert!(matches!(error, GitError::Other(_)), "{error:#}");
         let error = format!("{error:#}");
         assert!(
             error.contains("failed to create commit via graphql"),
