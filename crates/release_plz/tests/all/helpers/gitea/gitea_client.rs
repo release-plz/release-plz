@@ -20,6 +20,19 @@ impl GiteaContext {
         repo == repo_name
     }
 
+    pub async fn make_repo_private(&self) {
+        self.client
+            .patch(self.repo_url())
+            .basic_auth(&self.user.username, Some(&self.user.password))
+            .json(&serde_json::json!({ "private": true }))
+            .send()
+            .await
+            .unwrap()
+            .ok_if_2xx()
+            .await
+            .unwrap();
+    }
+
     fn pull_url(&self, pr_number: u64) -> String {
         format!("{}/pulls/{}", self.repo_url(), pr_number)
     }
