@@ -61,6 +61,10 @@ toml_edit.workspace = true
 name = "update"
 harness = false
 
+[[bench]]
+name = "manifest_updates"
+harness = false
+
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/release-plz-v{ version }/{ name }-{ target }{ archive-suffix }"
 pkg-fmt = "tgz"
