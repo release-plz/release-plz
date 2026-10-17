@@ -69,6 +69,7 @@ export default function Home() {
       </main>
       <QuickStartSection />
       <TweetsSection />
+      <SponsorsSection />
     </Layout>
   );
 }
@@ -92,6 +93,25 @@ function TweetsSection() {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SponsorsSection() {
+  return (
+    <div className={styles.section}>
+      <div className="container text--center">
+        <Heading as="h2" className="margin-bottom--lg">
+          Sponsored by 🤝
+        </Heading>
+        <a href="https://encore.dev">
+          <img className={styles.sponsorLogo} alt="Encore" src="img/sponsors/encore.svg" />
+        </a>
+        <p className="margin-top--lg margin-bottom--none">
+          Want to support Release-plz too?{" "}
+          <a href="https://github.com/sponsors/release-plz">Become a sponsor</a>. ❤️
+        </p>
       </div>
     </div>
   );
