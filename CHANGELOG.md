@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.173](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.172...release-plz-v0.3.173) - 2026-10-17
+
+### Other
+
+- add UTM params to Encore sponsor links ([#3237](https://github.com/release-plz/release-plz/pull/3237))
+- add sponsors to readme ([#3235](https://github.com/release-plz/release-plz/pull/3235))
+
 ## [0.3.172](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.171...release-plz-v0.3.172) - 2026-10-12
 
 ### Other
