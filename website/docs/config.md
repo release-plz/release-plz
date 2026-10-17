@@ -387,10 +387,10 @@ Where:
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
 
-If multiple packages resolve to the same tag, one of them is published to a cargo registry,
-and another one has git tags or git releases enabled,
-`release-plz release` fails before publishing, because once the other package creates the tag,
-release-plz would skip the published package as already released.
+Release-plz skips packages whose git tag already exists.
+If a package published to a cargo registry has the same tag name as a package
+that creates a git tag or release, release-plz might skip publishing it.
+To prevent this, `release-plz release` fails before publishing anything.
 To create a single tag for your workspace, see the [single git tag guide](./extra/single-tag.md).
 
 #### The `git_release_generate_notes` field
