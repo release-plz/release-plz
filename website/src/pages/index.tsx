@@ -81,7 +81,7 @@ function SponsorsSection() {
         <Heading as="h2" className="margin-bottom--lg">
           Sponsored by 🤝
         </Heading>
-        <a href="https://encore.dev">
+        <a href="https://encore.dev/?utm_source=release-plz&utm_medium=sponsorship&utm_content=website">
           <img className={styles.sponsorLogo} alt="Encore" src="img/sponsors/encore.svg" />
         </a>
         <p className="margin-top--lg margin-bottom--none">
