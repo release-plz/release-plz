@@ -16,8 +16,6 @@ exclude = [
   # Don't check pull request links to avoid being rate limited
   'https://github.com/release-plz/release-plz/pull/*',
   'https://github.com/release-plz/release-plz/issues/*',
-  # Files added in a pull request aren't on main until it's merged
-  'https://raw.githubusercontent.com/release-plz/release-plz/main/*',
   # GitHub search returns 502 intermittently
   'https://github.com/search*',
   'https://wiki.alpinelinux.org/*'

@@ -45,12 +45,7 @@ There are two ways to run release-plz:
 
 Release-plz is supported by:
 
-<a href="https://encore.dev">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/release-plz/release-plz/main/website/static/img/sponsors/encore-dark.svg">
-    <img src="https://raw.githubusercontent.com/release-plz/release-plz/main/website/static/img/sponsors/encore-light.svg" alt="Encore" height="40">
-  </picture>
-</a>
+<a href="https://encore.dev"><img src="website/static/img/sponsors/encore.svg" alt="Encore" height="40"></a>
 
 Want to support release-plz too? [Become a sponsor](https://github.com/sponsors/release-plz). ❤️
 
