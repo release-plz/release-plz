@@ -1,12 +1,13 @@
 use std::process::{Command, Output};
 
 use anyhow::Context;
-use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
+use cargo_metadata::{
+    Metadata,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use cargo_utils::CARGO_TOML;
 
-fn target_dir(path: &Utf8Path) -> Utf8PathBuf {
-    path.join("target")
-}
+use crate::fs_utils::Utf8TempDir;
 
 fn cargo_lock(path: &Utf8Path) -> Utf8PathBuf {
     path.join("Cargo.lock")
@@ -41,9 +42,39 @@ impl SemverCheck {
     }
 }
 
+/// Where cargo-semver-checks builds the rustdoc JSON of the package versions it compares.
+#[derive(Debug, Clone, Copy)]
+pub enum TargetDir {
+    /// Use the target directory configured by the user (e.g. with `CARGO_TARGET_DIR`).
+    /// All cargo-semver-checks builds already share it, also across release-plz runs,
+    /// so we keep it to reuse the user's build cache.
+    Configured,
+    /// Use a new temporary target directory for each checked package.
+    /// Otherwise, cargo-semver-checks builds the current and the baseline version of a
+    /// package in two placeholder projects, each with its own target directory inside the
+    /// temporary copy of the package, so it compiles every dependency twice.
+    /// With a shared directory, the baseline reuses the dependencies compiled for the
+    /// current version.
+    /// Packages don't share a directory because cargo runs one build at a time per
+    /// target directory, so the checks running in parallel would wait for each other.
+    PerPackage,
+}
+
+impl TargetDir {
+    pub fn new(metadata: &Metadata) -> Self {
+        // Without configuration, cargo uses the `target` directory of the workspace root.
+        if metadata.target_directory == metadata.workspace_root.join("target") {
+            Self::PerPackage
+        } else {
+            Self::Configured
+        }
+    }
+}
+
 pub fn run_semver_check(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
+    target_dir: TargetDir,
 ) -> anyhow::Result<SemverCheck> {
     let local_manifest = local_package.join(CARGO_TOML);
     let manifest: cargo_utils::Manifest = fs_err::read_to_string(&local_manifest)?.parse()?;
@@ -55,15 +86,21 @@ pub fn run_semver_check(
         .context("cannot find the package name to check for API compatibility")?;
     let local_cargo_lock = cargo_lock(local_package);
     let registry_cargo_lock = cargo_lock(registry_package);
-    let local_target_dir = target_dir(local_package);
-    let registry_target_dir = target_dir(registry_package);
 
     let local_package_contained_cargo_lock = local_cargo_lock.exists();
     let registry_package_contained_cargo_lock = registry_cargo_lock.exists();
-    let local_package_contained_target = local_target_dir.exists();
-    let registry_package_contained_target = registry_target_dir.exists();
 
-    let output = Command::new("cargo-semver-checks")
+    let mut command = Command::new("cargo-semver-checks");
+    // Kept alive until the check is over: dropping it deletes the directory.
+    let _package_target_dir = match target_dir {
+        TargetDir::Configured => None,
+        TargetDir::PerPackage => {
+            let dir = Utf8TempDir::new()?;
+            command.env("CARGO_TARGET_DIR", dir.path());
+            Some(dir)
+        }
+    };
+    let output = command
         .args(["semver-checks", "check-release"])
         .args(["--color", "never"])
         // Only changes requiring a major bump are incompatible. Assume a minor
@@ -86,13 +123,6 @@ pub fn run_semver_check(
     }
     if !registry_package_contained_cargo_lock && registry_cargo_lock.exists() {
         fs_err::remove_file(registry_cargo_lock)?;
-    }
-    // Delete target dir if cargo-semver-checks created it.
-    if !local_package_contained_target && local_target_dir.exists() {
-        fs_err::remove_dir_all(local_target_dir)?;
-    }
-    if !registry_package_contained_target && registry_target_dir.exists() {
-        fs_err::remove_dir_all(registry_target_dir)?;
     }
 
     parse_semver_check_output(&output)
@@ -164,7 +194,7 @@ mod tests {
         let baseline = baseline.join("wrapper");
         let current = current.join("wrapper");
         assert!(matches!(
-            run_semver_check(&current, &baseline).unwrap(),
+            run_semver_check(&current, &baseline, TargetDir::PerPackage).unwrap(),
             SemverCheck::Compatible
         ));
 
@@ -173,7 +203,7 @@ mod tests {
             "pub fn answer() -> u32 { support::answer() }\n",
         )
         .unwrap();
-        let result = run_semver_check(&current, &baseline).unwrap();
+        let result = run_semver_check(&current, &baseline, TargetDir::PerPackage).unwrap();
         assert!(
             matches!(result, SemverCheck::Incompatible(ref report) if report.contains("function_missing")),
             "expected a removed-function report for the private library, got {result:?}"
@@ -192,7 +222,7 @@ mod tests {
 
         let assert_incompatible = |source: &str, incompatible| {
             fs_err::write(current.join("src/lib.rs"), source).unwrap();
-            let result = run_semver_check(&current, &baseline).unwrap();
+            let result = run_semver_check(&current, &baseline, TargetDir::PerPackage).unwrap();
             assert_eq!(
                 matches!(result, SemverCheck::Incompatible(_)),
                 incompatible,
@@ -203,6 +233,9 @@ mod tests {
         // Adding #[must_use] requires only a minor bump in cargo-semver-checks.
         assert_incompatible("#[must_use]\npub fn answer() -> u32 { 42 }", false);
         // Removing the existing public function requires a major bump.
+        // Both versions have the same name and version, so in their shared target dir they
+        // produce the same rustdoc JSON file. This change is only detected if the baseline
+        // doesn't overwrite the current rustdoc before they are compared.
         assert_incompatible("pub fn other() -> u32 { 42 }", true);
     }
 }
