@@ -253,26 +253,21 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
     let downloader = PackageDownloader::new(["first", "second"], dest_dir.path().as_str())
         .with_registry("mock".to_string())
         .with_cargo_cwd(cargo_dir.path().to_path_buf());
-    // Isolate a blocking Cargo destructor so the test can release the pending response
-    // and fail cleanly if the downloader regresses.
-    let (finished, result) = oneshot::channel();
-    let download = std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        drop(finished.send(runtime.block_on(downloader.download())));
+    // If the downloader regresses to waiting for Cargo's HTTP cleanup, `download()` blocks
+    // until the pending response is released. Run it on a blocking thread so this task can
+    // still release the response and fail the test instead of hanging.
+    let download = tokio::task::spawn_blocking(move || {
+        tokio::runtime::Handle::current().block_on(downloader.download())
     });
     // Other tests can hold Cargo's package-cache lock. Only time the error return
     // after our queries have acquired it and reached the server.
     queries_ready.await.unwrap();
-    let result = timeout(Duration::from_secs(10), result).await;
+    let result = timeout(Duration::from_secs(10), download).await;
     release_pending.send(()).unwrap();
     timeout(Duration::from_secs(10), server)
         .await
         .unwrap()
         .unwrap();
-    download.join().unwrap();
     let error = result
         .expect("query errors must return before unrelated index requests finish")
         .unwrap()
