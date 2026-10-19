@@ -63,7 +63,11 @@ pub enum TargetDir {
 impl TargetDir {
     pub fn new(metadata: &Metadata) -> Self {
         // Without configuration, cargo uses the `target` directory of the workspace root.
-        if metadata.target_directory == metadata.workspace_root.join("target") {
+        // An explicit environment setting can point to that same directory.
+        if std::env::var_os("CARGO_TARGET_DIR").is_none()
+            && std::env::var_os("CARGO_BUILD_TARGET_DIR").is_none()
+            && metadata.target_directory == metadata.workspace_root.join("target")
+        {
             Self::PerPackage
         } else {
             Self::Configured

@@ -5,6 +5,30 @@ use release_plz_core::fs_utils::Utf8TempDir;
 use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
 
 #[test]
+fn semver_check_preserves_explicit_default_target_directory() {
+    for variable in ["CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR"] {
+        let (temp_dir, repo) = released_workspace(
+            &[("one", "version = \"1.0.0\"\n")],
+            "",
+            "[workspace]\nsemver_check = true\n",
+        );
+        change_package(&repo, "one", "fix: update library");
+        let target_dir = repo.directory().join("target");
+
+        workspace_update_command(&temp_dir, &repo)
+            .env_remove("CARGO_TARGET_DIR")
+            .env_remove("CARGO_BUILD_TARGET_DIR")
+            .env(variable, &target_dir)
+            .assert()
+            .success();
+
+        // Even when it matches Cargo's default, an explicit target directory
+        // must retain the rustdoc build artifacts for reuse on the next run.
+        assert!(target_dir.join("doc/one.json").exists(), "{variable}");
+    }
+}
+
+#[test]
 fn update_workspace_without_publishable_packages() {
     let (temp_dir, repo) = released_workspace(
         &[("one", "version = \"1.0.0\"\npublish = false\n")],
