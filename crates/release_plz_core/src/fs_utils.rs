@@ -75,7 +75,7 @@ impl Drop for Utf8TempDir {
     }
 }
 
-// The test creates symlinks, which need privileges on Windows.
+// The tests create symlinks, which need privileges on Windows.
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
