@@ -228,6 +228,9 @@ enum FileCopy {
     /// deletes the files it no longer needs. So, like `git clone --local`, the
     /// copy can share them with the original repository instead of copying the
     /// whole history.
+    /// When Git writes an object that already exists, it only refreshes the
+    /// modification time of the existing file. That's shared with the original
+    /// repository too, but at most delays its pruning of unreachable objects.
     HardLinkOrCopy,
 }
 
