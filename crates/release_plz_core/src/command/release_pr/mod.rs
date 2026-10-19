@@ -7,7 +7,7 @@ use git_cmd::Repo;
 
 use anyhow::Context;
 use serde::Serialize;
-use tokio::task::JoinHandle;
+use tokio_util::task::AbortOnDropHandle;
 use tracing::{Instrument as _, debug, info, instrument};
 use url::Url;
 pub(crate) mod git;
@@ -137,7 +137,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     // The open PRs don't depend on the version analysis, and listing them can take seconds:
     // GitHub serves pages of 30 PRs in about 1 s each. So list them while the packages are updated.
     // If there's nothing to release, the listing is aborted and its errors are ignored.
-    let opened_release_prs = AbortOnDrop(tokio::spawn({
+    let opened_release_prs = AbortOnDropHandle::new(tokio::spawn({
         let git_client = git_client.clone();
         let branch_prefix = input.branch_prefix.clone();
         async move { git_client.opened_prs(&branch_prefix).await }.in_current_span()
@@ -170,7 +170,6 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
         if there_are_commits_to_push {
             let opened_release_prs = opened_release_prs
-                .join()
                 .await?
                 .context("cannot get opened release-plz prs")?;
             let pr = open_or_update_release_pr(
@@ -193,22 +192,6 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     }
 
     Ok(None)
-}
-
-/// Handle of a background task that is aborted when dropped,
-/// so that early returns don't leave the task running.
-struct AbortOnDrop<T>(JoinHandle<T>);
-
-impl<T> AbortOnDrop<T> {
-    async fn join(mut self) -> anyhow::Result<T> {
-        (&mut self.0).await.context("background task failed")
-    }
-}
-
-impl<T> Drop for AbortOnDrop<T> {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
 }
 
 struct ReleasePrOptions {
