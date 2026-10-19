@@ -238,3 +238,25 @@ pub async fn wait_until_published(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crates_io_sparse_index_does_not_require_a_mirror_wait() {
+        // Use a temporary Cargo home, so that the Cargo configuration of the machine
+        // running the test (e.g. a crates.io mirror) doesn't apply.
+        let temporary = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let dir = temporary.path().as_std_path();
+        #[expect(
+            clippy::default_trait_access,
+            reason = "Cargo doesn't export the shell type"
+        )]
+        let config = GlobalContext::new(Default::default(), dir.to_owned(), dir.to_owned());
+        for name in [None, Some("crates-io".to_string())] {
+            let registry = CargoRegistry::new(&config, name).unwrap();
+            assert!(!registry.source_replaced);
+        }
+    }
+}

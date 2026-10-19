@@ -1842,23 +1842,6 @@ mod tests {
     }
 
     #[test]
-    fn crates_io_sparse_index_does_not_require_a_mirror_wait() {
-        let temporary = crate::fs_utils::Utf8TempDir::new().unwrap();
-        let cargo_dir = temporary.path().join(".cargo");
-        fs_err::create_dir(&cargo_dir).unwrap();
-        fs_err::write(
-            cargo_dir.join("config.toml"),
-            "[registries.crates-io]\nprotocol = \"sparse\"\n",
-        )
-        .unwrap();
-        let config = new_cargo_config(Some(temporary.path().to_owned())).unwrap();
-        for name in [None, Some("crates-io".to_string())] {
-            let registry = CargoRegistry::new(&config, name).unwrap();
-            assert!(!registry.source_replaced);
-        }
-    }
-
-    #[test]
     fn release_config_git_only_reaches_release_rule() {
         // The full rule is covered by `packages_taking_part_in_a_release` in `next_ver.rs`;
         // this only checks that the release config's `git_only` flag reaches it.
