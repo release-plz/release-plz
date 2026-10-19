@@ -271,13 +271,33 @@ async fn release_plz_can_do_backports() {
 /// Cargo wrapper that records the subcommands run by release-plz.
 /// With `HIDE_PUBLISHED=true`, it removes the `Published` status from the output of
 /// `cargo publish`, like a Cargo whose wait for the package timed out.
+/// With `MIRROR_DIR` set, the mirror catches up after the first failed check
+/// following publication, exercising the retry even when Cargo confirms success.
 #[cfg(unix)]
 const CARGO_WRAPPER: &str = r#"#!/bin/sh
 echo "$1" >> "$WRAPPER_DIR/calls"
-if [ "$1" = publish ] && [ "$HIDE_PUBLISHED" = true ]; then
+if [ "$1" = info ] && [ -n "$MIRROR_DIR" ] && [ -f "$WRAPPER_DIR/published" ] && [ ! -f "$WRAPPER_DIR/mirror_updated" ]; then
+    "$REAL_CARGO" "$@"
+    status=$?
+    if [ "$status" = 0 ]; then
+        echo 'mirror unexpectedly contains the new package' >&2
+        exit 1
+    fi
+    git -C "$MIRROR_DIR" pull --ff-only >&2 || exit 1
+    touch "$WRAPPER_DIR/mirror_updated"
+    exit "$status"
+fi
+if [ "$1" = publish ]; then
     "$REAL_CARGO" "$@" 2> "$WRAPPER_DIR/publish_stderr"
     status=$?
-    grep -v Published "$WRAPPER_DIR/publish_stderr" >&2
+    if [ "$HIDE_PUBLISHED" = true ]; then
+        grep -v Published "$WRAPPER_DIR/publish_stderr" >&2
+    else
+        cat "$WRAPPER_DIR/publish_stderr" >&2
+    fi
+    if [ "$status" = 0 ]; then
+        touch "$WRAPPER_DIR/published"
+    fi
     exit $status
 fi
 exec "$REAL_CARGO" "$@"
@@ -286,12 +306,35 @@ exec "$REAL_CARGO" "$@"
 /// Release a new project through [`CARGO_WRAPPER`] and return the `cargo info`
 /// and `cargo publish` subcommands run by release-plz, in order.
 #[cfg(unix)]
-async fn release_cargo_calls(hide_published: bool) -> Vec<String> {
+async fn release_cargo_calls(hide_published: bool, use_mirror: bool) -> Vec<String> {
     let context = TestContext::new().await;
     let wrapper_dir = Utf8TempDir::new().unwrap();
     let cargo = wrapper_dir.path().join("cargo");
     fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
     crate::helpers::make_executable(&cargo);
+
+    let mirror = wrapper_dir.path().join("mirror");
+    if use_mirror {
+        let config_path = context.repo_dir().join(".cargo/config.toml");
+        let mut config = fs_err::read_to_string(&config_path).unwrap();
+        let parsed: toml::Value = toml::from_str(&config).unwrap();
+        let index = parsed["registries"][crate::helpers::TEST_REGISTRY]["index"]
+            .as_str()
+            .unwrap();
+        assert_cmd::Command::new("git")
+            .args(["clone", index, mirror.as_str()])
+            .assert()
+            .success();
+        // The source name deliberately differs from the registry name: Cargo
+        // matches replacements by index URL, not by registry name.
+        config.push_str(&format!(
+            "\n[source.origin]\nregistry = {index:?}\nreplace-with = \"mirror\"\n\
+             [source.mirror]\nregistry = {:?}\n",
+            url::Url::from_directory_path(&mirror).unwrap().as_str(),
+        ));
+        fs_err::write(config_path, config).unwrap();
+        context.push_all_changes("configure registry mirror");
+    }
 
     context
         .release_command()
@@ -299,9 +342,14 @@ async fn release_cargo_calls(hide_published: bool) -> Vec<String> {
         .env("REAL_CARGO", env!("CARGO"))
         .env("WRAPPER_DIR", wrapper_dir.path())
         .env("HIDE_PUBLISHED", hide_published.to_string())
+        .env("MIRROR_DIR", if use_mirror { mirror.as_str() } else { "" })
         .assert()
         .success();
 
+    if !hide_published {
+        let stderr = fs_err::read_to_string(wrapper_dir.path().join("publish_stderr")).unwrap();
+        assert!(stderr.contains("Published"), "{stderr}");
+    }
     let calls = fs_err::read_to_string(wrapper_dir.path().join("calls")).unwrap();
     calls
         .lines()
@@ -315,12 +363,25 @@ async fn release_cargo_calls(hide_published: bool) -> Vec<String> {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_trusts_cargo_publish_confirmation() {
     // The first `cargo info` checks whether the package was already published.
-    assert_eq!(release_cargo_calls(false).await, ["info", "publish"]);
+    assert_eq!(release_cargo_calls(false, false).await, ["info", "publish"]);
 }
 
 #[cfg(unix)]
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
-    assert_eq!(release_cargo_calls(true).await, ["info", "publish", "info"]);
+    assert_eq!(
+        release_cargo_calls(true, false).await,
+        ["info", "publish", "info"]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_waits_for_mirror_after_cargo_publish_confirms() {
+    assert_eq!(
+        release_cargo_calls(false, true).await,
+        ["info", "publish", "info", "info"]
+    );
 }

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use cargo::{GlobalContext, util::homedir};
+use cargo::{GlobalContext, sources::SourceConfigMap, util::homedir, workspace::SourceId};
 use cargo_metadata::{
     Package,
     camino::{Utf8Path, Utf8PathBuf},
@@ -47,6 +47,33 @@ pub struct CargoRegistry {
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
     pub index_url: Option<Url>,
+    /// Whether dependency resolution uses a different source from publishing.
+    pub source_replaced: bool,
+}
+
+impl CargoRegistry {
+    pub fn new(config: &GlobalContext, name: Option<String>) -> anyhow::Result<Self> {
+        let source_id = match name.as_deref() {
+            None | Some("crates-io") => SourceId::crates_io(config)?,
+            Some(name) => SourceId::alt_registry(config, name)?,
+        };
+        // Compare with Cargo's built-in replacement (e.g. the crates.io sparse index),
+        // so only user-configured source replacement requires an additional wait.
+        let publish_source = SourceConfigMap::empty(config)?
+            .load(source_id)?
+            .replaced_source_id();
+        let dependency_source = SourceConfigMap::new(config)?
+            .load(source_id)?
+            .replaced_source_id();
+        let source_replaced = dependency_source != publish_source;
+        let index_url =
+            (name.is_some() || source_replaced).then(|| dependency_source.url().clone());
+        Ok(Self {
+            name,
+            index_url,
+            source_replaced,
+        })
+    }
 }
 
 fn cargo_cmd() -> Command {
