@@ -10,6 +10,7 @@ use cargo::util::cache_lock::CacheLockMode;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::camino::Utf8PathBuf;
 pub use cloner_builder::*;
+use futures::future::join_all;
 pub use source::*;
 use tracing::warn;
 
@@ -104,14 +105,21 @@ impl Cloner {
     pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<Utf8PathBuf>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
-        let mut destinations = vec![];
 
-        for crate_ in crates {
+        // `get_source` invalidated the index cache, so every query revalidates its
+        // index file over the network. Cargo's HTTP client runs requests in parallel,
+        // so polling the queries together costs about one round trip instead of one
+        // per crate.
+        let summaries = join_all(crates.iter().map(|crate_| {
+            query_latest_package_summary(src.as_ref(), &crate_.name, crate_.version.as_deref())
+        }))
+        .await;
+
+        let mut destinations = vec![];
+        for (crate_, summary) in crates.iter().zip(summaries) {
             let name = &crate_.name;
             let vers = crate_.version.as_deref();
-            let summary = query_latest_package_summary(src.as_ref(), name, vers)
-                .await
-                .with_context(|| format!("failed to query package {name}"))?;
+            let summary = summary.with_context(|| format!("failed to query package {name}"))?;
 
             match summary {
                 Some(summary) => {

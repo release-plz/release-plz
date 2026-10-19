@@ -1,6 +1,6 @@
 use release_plz_core::{PackageDownloader, fs_utils::Utf8TempDir};
 
-use crate::helpers::{TEST_REGISTRY, test_context::TestContext};
+use crate::helpers::{TEST_REGISTRY, gitea::gitea_address, test_context::TestContext};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -11,31 +11,47 @@ async fn download_preserves_request_order_and_skips_missing_packages() {
         context.run_cargo_publish(name);
     }
 
-    // Repeat in a fresh destination to cover both downloads and Cargo's local cache.
-    for (requested, expected) in [
-        (
-            ["third", "missing", "first", "second"],
-            ["third", "first", "second"],
-        ),
-        (
-            ["second", "first", "missing", "third"],
-            ["second", "first", "third"],
-        ),
-    ] {
-        let dest_dir = Utf8TempDir::new().unwrap();
-        let packages = context
-            .package_downloader(requested, dest_dir.path())
-            .download()
-            .await
-            .unwrap();
+    // Gitea also serves the registry over the sparse protocol, where every index file
+    // is a separate HTTP request: the queries run concurrently and can complete in any
+    // order. The git index is fetched once and then read locally.
+    let sparse_registry = "test-registry-sparse";
+    let config_path = context.repo_dir().join(".cargo/config.toml");
+    let mut config = fs_err::read_to_string(&config_path).unwrap();
+    config.push_str(&format!(
+        "\n[registries.{sparse_registry}]\nindex = \"sparse+http://{}/api/packages/{}/cargo/\"\n",
+        gitea_address(),
+        context.gitea.user.username()
+    ));
+    fs_err::write(config_path, config).unwrap();
 
-        let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, expected);
-        for package in packages {
-            let package_dir = dest_dir.path().join(package.name.as_str());
-            assert!(!package_dir.join(".cargo-ok").exists());
+    for registry in [TEST_REGISTRY, sparse_registry] {
+        // Repeat in a fresh destination to cover both downloads and Cargo's local cache.
+        for (requested, expected) in [
+            (
+                ["third", "missing", "first", "second"],
+                ["third", "first", "second"],
+            ),
+            (
+                ["second", "first", "missing", "third"],
+                ["second", "first", "third"],
+            ),
+        ] {
+            let dest_dir = Utf8TempDir::new().unwrap();
+            let packages = PackageDownloader::new(requested, dest_dir.path().as_str())
+                .with_registry(registry.to_string())
+                .with_cargo_cwd(context.repo_dir())
+                .download()
+                .await
+                .unwrap();
+
+            let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+            assert_eq!(names, expected, "registry: {registry}");
+            for package in packages {
+                let package_dir = dest_dir.path().join(package.name.as_str());
+                assert!(!package_dir.join(".cargo-ok").exists());
+            }
+            assert!(!dest_dir.path().join("missing").exists());
         }
-        assert!(!dest_dir.path().join("missing").exists());
     }
 }
 
