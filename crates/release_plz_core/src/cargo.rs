@@ -52,10 +52,7 @@ pub struct CargoRegistry {
 
 impl CargoRegistry {
     pub fn new(config: &GlobalContext, name: Option<String>) -> anyhow::Result<Self> {
-        let source_id = match name.as_deref() {
-            None | Some("crates-io") => SourceId::crates_io(config)?,
-            Some(name) => SourceId::alt_registry(config, name)?,
-        };
+        let source_id = SourceId::alt_registry(config, registry_or_crates_io(name.as_deref()))?;
         // `cargo publish` confirms the package on the publish registry, which follows only
         // Cargo's built-in replacement (e.g. the crates.io sparse index).
         let publish_source = SourceConfigMap::empty(config)?
@@ -161,7 +158,7 @@ pub async fn is_published(
     .with_context(|| format!("timeout while checking if `{}` is published", package.name))
 }
 
-fn cargo_info_registry_name(registry: Option<&str>) -> &str {
+fn registry_or_crates_io(registry: Option<&str>) -> &str {
     match registry {
         None | Some("crates-io") => "crates-io",
         Some(name) => name,
@@ -181,7 +178,7 @@ fn run_cargo_info(
     registry: Option<&str>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<CmdOutput> {
-    let registry_name = cargo_info_registry_name(registry);
+    let registry_name = registry_or_crates_io(registry);
     let args = vec![
         "info".to_string(),
         format!("{}@{}", package.name, package.version),
