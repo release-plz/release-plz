@@ -828,10 +828,6 @@ mod tests {
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
         let path = Utf8Path::new("file");
-        // Commit messages from a file outside the repository: `Repo::git` trims
-        // its arguments.
-        let message_file = tempfile::NamedTempFile::new().unwrap();
-        let message_path = message_file.path().to_str().unwrap();
         for message in [
             // A line that looks like the header of another commit.
             "feat: first\n\ncommit 0000000000000000000000000000000000000000\n",
@@ -840,15 +836,18 @@ mod tests {
             "",
         ] {
             fs_err::write(directory.path().join(path), message).unwrap();
-            fs_err::write(message_path, message).unwrap();
             repo.git(&["add", "."]).unwrap();
-            repo.git(&[
-                "commit",
-                "--cleanup=verbatim",
-                "--allow-empty-message",
-                "-F",
-                message_path,
-            ])
+            // Commit the message from stdin: `Repo::git` trims its arguments.
+            repo.git_with_input(
+                &[
+                    "commit",
+                    "--cleanup=verbatim",
+                    "--allow-empty-message",
+                    "-F",
+                    "-",
+                ],
+                message,
+            )
             .unwrap();
         }
 
