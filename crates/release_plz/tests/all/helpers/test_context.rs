@@ -344,15 +344,17 @@ fn create_cargo_config(repo_dir: &Utf8Path, index_url: &str) {
 
 fn cargo_config(index_url: &str) -> String {
     // matches the docker compose file
-    let cargo_registries = format!(
-        "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = \"{index_url}\""
-    );
+    format!(
+        r#"[registry]
+default = "{TEST_REGISTRY}"
 
-    let config_end = r"
+[registries.{TEST_REGISTRY}]
+index = "{index_url}"
+
 [net]
 git-fetch-with-cli = true
-    ";
-    format!("{cargo_registries}{config_end}")
+"#
+    )
 }
 
 fn git_client(repo_url: &str, token: &str) -> GitClient {
