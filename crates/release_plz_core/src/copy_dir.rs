@@ -771,6 +771,10 @@ mod tests {
         let repo_dir = source.path().join("repo");
         fs_err::create_dir(&repo_dir).unwrap();
         let repo = git_cmd::Repo::init(&repo_dir);
+        // Commits can start a detached auto maintenance, which adds and removes
+        // files such as `objects/maintenance.lock` while the objects are listed.
+        repo.git(&["config", "maintenance.auto", "false"]).unwrap();
+        repo.git(&["config", "gc.auto", "0"]).unwrap();
         // Cover both object formats: a pack and loose objects.
         repo.git(&["gc"]).unwrap();
         fs_err::write(repo_dir.join("loose"), "loose").unwrap();
