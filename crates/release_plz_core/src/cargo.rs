@@ -45,7 +45,8 @@ pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    /// Whether dependency resolution uses a different source from publishing.
+    /// Whether Cargo resolves dependencies from a remote registry other than the one
+    /// where `cargo publish` confirms the package, e.g. a mirror, which may lag behind.
     pub source_replaced: bool,
 }
 
@@ -55,15 +56,19 @@ impl CargoRegistry {
             None | Some("crates-io") => SourceId::crates_io(config)?,
             Some(name) => SourceId::alt_registry(config, name)?,
         };
-        // Compare with Cargo's built-in replacement (e.g. the crates.io sparse index),
-        // so only user-configured source replacement requires an additional wait.
+        // `cargo publish` confirms the package on the publish registry, which follows only
+        // Cargo's built-in replacement (e.g. the crates.io sparse index).
         let publish_source = SourceConfigMap::empty(config)?
             .load(source_id)?
             .replaced_source_id();
+        // Dependency resolution follows the configured replacement instead, which may be
+        // a remote mirror that lags behind. Local replacements (`directory` and
+        // `local-registry`) never receive the published package, so don't wait for them.
         let dependency_source = SourceConfigMap::new(config)?
             .load(source_id)?
             .replaced_source_id();
-        let source_replaced = dependency_source != publish_source;
+        let source_replaced =
+            dependency_source.is_remote_registry() && dependency_source != publish_source;
         Ok(Self {
             name,
             source_replaced,

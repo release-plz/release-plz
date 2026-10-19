@@ -281,6 +281,9 @@ enum Scenario {
     /// mirror of the registry, which catches up only after the first failed check
     /// following publication.
     LaggingMirror,
+    /// `cargo publish` confirms the package, and Cargo resolves dependencies from a
+    /// local directory, which never receives the published package.
+    VendoredSource,
 }
 
 /// Cargo wrapper that records the subcommands run by release-plz
@@ -322,21 +325,35 @@ async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
     fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
     crate::helpers::make_executable(&cargo);
 
-    if let Scenario::LaggingMirror = scenario {
-        let mirror = wrapper_dir.path().join("mirror");
-        let index = context.gitea.cargo_index_url();
-        assert_cmd::Command::new("git")
-            .args(["clone", &index, mirror.as_str()])
-            .assert()
-            .success();
+    let index = context.gitea.cargo_index_url();
+    let replacement = match scenario {
+        Scenario::Confirmed | Scenario::Unconfirmed => None,
+        Scenario::LaggingMirror => {
+            let mirror = wrapper_dir.path().join("mirror");
+            assert_cmd::Command::new("git")
+                .args(["clone", &index, mirror.as_str()])
+                .assert()
+                .success();
+            let mirror_url = url::Url::from_directory_path(&mirror).unwrap();
+            Some(format!("registry = {:?}", mirror_url.as_str()))
+        }
+        Scenario::VendoredSource => {
+            let vendor = wrapper_dir.path().join("vendor");
+            fs_err::create_dir(&vendor).unwrap();
+            // If release-plz waited for the package to appear in the directory,
+            // fail after a few seconds instead of the default 30 minutes.
+            context.write_release_plz_toml("[workspace]\npublish_timeout = \"10s\"\n");
+            Some(format!("directory = {:?}", vendor.as_str()))
+        }
+    };
+    if let Some(replacement) = replacement {
         // The source name deliberately differs from the registry name: Cargo
         // matches replacements by index URL, not by registry name.
         context.append_cargo_config(&format!(
-            "\n[source.origin]\nregistry = {index:?}\nreplace-with = \"mirror\"\n\
-             [source.mirror]\nregistry = {:?}\n",
-            url::Url::from_directory_path(&mirror).unwrap().as_str(),
+            "\n[source.origin]\nregistry = {index:?}\nreplace-with = \"replacement\"\n\
+             [source.replacement]\n{replacement}\n"
         ));
-        context.push_all_changes("configure registry mirror");
+        context.push_all_changes("replace registry source");
     }
 
     context
@@ -388,5 +405,16 @@ async fn release_waits_for_mirror_after_cargo_publish_confirms() {
     assert_eq!(
         release_cargo_calls(Scenario::LaggingMirror).await,
         ["info", "publish", "info", "info"]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_trusts_cargo_publish_confirmation_with_vendored_sources() {
+    // The directory never receives the package, so release-plz must not wait for it.
+    assert_eq!(
+        release_cargo_calls(Scenario::VendoredSource).await,
+        ["info", "publish"]
     );
 }
