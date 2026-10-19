@@ -753,7 +753,7 @@ impl Updater<'_> {
         let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
-        for commit in &graph {
+        for (index, commit) in graph.iter().enumerate() {
             let current_commit_hash = commit.id.as_str();
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
@@ -767,7 +767,7 @@ impl Updater<'_> {
             }
             checkout_commit(repository, current_commit_hash)?;
             // Equality and changed-file checks inspect the same snapshot.
-            let local_package_files = checkout_package_files.files_at(current_commit_hash);
+            let local_package_files = checkout_package_files.files_at(index);
             if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
