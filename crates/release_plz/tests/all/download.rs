@@ -130,11 +130,11 @@ async fn download_checks_destinations_before_downloading() {
 #[tokio::test]
 async fn download_stops_querying_after_failed_registry_config() {
     let server = MockServer::start().await;
-    // Cargo doesn't keep a failed `config.json` in memory, and the index cache (keyed by
-    // registry URL) has no copy on disk because the server listens on a random port.
-    // So each query still running after the first failure would fetch `config.json`
-    // again, one after another.
-    Mock::given(path("/config.json"))
+    // Cargo doesn't keep a failed `config.json` in memory, and there's no copy in the
+    // index cache, which is keyed by registry URL: only this test uses this URL path,
+    // and it never gets a `config.json`. So each query still running after the first
+    // failure would fetch `config.json` again, one after another.
+    Mock::given(path("/config-failure/config.json"))
         .respond_with(ResponseTemplate::new(503))
         .expect(1)
         .mount(&server)
@@ -145,7 +145,7 @@ async fn download_stops_querying_after_failed_registry_config() {
     fs_err::write(
         cargo_dir.path().join(".cargo/config.toml"),
         format!(
-            "[registries.mock]\nindex = 'sparse+{}/'\n[net]\nretry = 0\n",
+            "[registries.mock]\nindex = 'sparse+{}/config-failure/'\n[net]\nretry = 0\n",
             server.uri()
         ),
     )
