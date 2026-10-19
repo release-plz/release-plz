@@ -826,6 +826,11 @@ mod tests {
         }
 
         let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        // Commit in the copy, like `release-pr` does. Git appends to the reflogs
+        // in place, so this would alter the original if more than its objects
+        // were hard linked.
+        fs_err::write(copied_dir.join("loose"), "changed").unwrap();
+        copied_repo.add_all_and_commit("change loose").unwrap();
         // Git deletes the shared object files of the copy when it repacks them.
         copied_repo.git(&["gc", "--prune=now"]).unwrap();
         assert!(
