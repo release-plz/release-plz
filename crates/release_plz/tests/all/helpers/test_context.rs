@@ -204,25 +204,32 @@ impl TestContext {
     }
 
     pub fn run_release_pr(&self) -> Assert {
-        self.run_release_pr_with_log(&log_level())
+        self.release_pr_command(&self.gitea.token).assert()
     }
 
     pub fn run_release_pr_with_log(&self, log: &str) -> Assert {
-        super::cmd::release_plz_cmd(&self.cargo_target_dir())
-            .current_dir(self.repo_dir())
+        self.release_pr_command(&self.gitea.token)
             .env(RELEASE_PLZ_LOG, log)
+            .assert()
+    }
+
+    pub fn release_pr_command(&self, git_token: &str) -> assert_cmd::Command {
+        let mut command = super::cmd::release_plz_cmd(&self.cargo_target_dir());
+        command
+            .current_dir(self.repo_dir())
+            .env(RELEASE_PLZ_LOG, log_level())
             .arg("release-pr")
             .arg("--verbose")
             .arg("--git-token")
-            .arg(&self.gitea.token)
+            .arg(git_token)
             .arg("--forge")
             .arg("gitea")
             .arg("--registry")
             .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
-            .timeout(Duration::from_secs(300))
-            .assert()
+            .timeout(Duration::from_secs(300));
+        command
     }
 
     pub fn run_release(&self) -> Assert {
