@@ -928,7 +928,7 @@ async fn release_package(
         }
     }
 
-    let is_publish_confirmed = if should_publish {
+    if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
             release_info.package,
@@ -956,22 +956,8 @@ async fn release_package(
                 );
             }
         }
-        is_publish_confirmed_by_cargo(&output, release_info.package)
-    } else {
-        false
-    };
-
-    if input.dry_run {
-        log_dry_run_info(
-            release_info,
-            should_publish,
-            should_create_git_tag,
-            should_create_git_release,
-        );
-        Ok(false)
-    } else {
         // Querying the registry again would only repeat the check `cargo publish` just did.
-        if should_publish && !is_publish_confirmed {
+        if !input.dry_run && !is_publish_confirmed_by_cargo(&output, release_info.package) {
             wait_until_published(
                 workspace_root,
                 release_info.package,
@@ -982,7 +968,17 @@ async fn release_package(
             )
             .await?;
         }
+    }
 
+    if input.dry_run {
+        log_dry_run_info(
+            release_info,
+            should_publish,
+            should_create_git_tag,
+            should_create_git_release,
+        );
+        Ok(false)
+    } else {
         create_git_tag_and_release(
             input,
             repo,
