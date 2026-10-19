@@ -24,7 +24,6 @@
 
 use std::iter::Peekable;
 
-use anyhow::Context as _;
 use git_cmd::{HistoryCommit, Repo};
 use tracing::debug;
 
@@ -92,25 +91,26 @@ impl<'a> CheckoutPackageFiles<'a> {
     }
 
     /// Whether the trees of the checkouts at the positions `previous` and
-    /// `index` of the walk differ only in Rust sources, see
-    /// [`only_rust_sources_differ`].
+    /// `index` of the walk differ only in Rust sources, see [`compare_trees`].
     fn only_sources_differ(&mut self, previous: usize, index: usize) -> bool {
         // Most checkouts follow the commit before them in the walk: compare all
         // of those pairs with one Git call. Compare the others on their own:
         // the walk may skip commits, and Git may not report on a pair.
-        let consecutive_changes = self
-            .consecutive_changes
-            .get_or_insert_with(|| compare_consecutive_trees(self.repository, self.walk));
+        let walk = self.walk;
+        let consecutive_changes = self.consecutive_changes.get_or_insert_with(|| {
+            let pairs: Vec<_> = walk
+                .windows(2)
+                .map(|pair| (pair[0].id.as_str(), pair[1].id.as_str()))
+                .collect();
+            compare_trees(self.repository, &pairs)
+        });
         if previous + 1 == index
             && let Some(only_sources) = consecutive_changes[previous]
         {
             return only_sources;
         }
-        let (old, new) = (&self.walk[previous].id, &self.walk[index].id);
-        only_rust_sources_differ(self.repository, old, new).unwrap_or_else(|error| {
-            debug!("cannot compare the trees of {old} and {new}: {error:#}");
-            false
-        })
+        let pair = (walk[previous].id.as_str(), walk[index].id.as_str());
+        compare_trees(self.repository, &[pair])[0].unwrap_or(false)
     }
 }
 
@@ -196,53 +196,43 @@ fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
         .any(|entry| entry.starts_with("120000 ")))
 }
 
-/// `git diff-tree` with the options that [`only_rust_sources_differ`] needs.
-/// `diff-tree` detects no renames, so it reads no blobs and reports a rename
-/// as a deletion and an addition. Report submodule updates even if
-/// `submodule.<name>.ignore` hides them.
-const DIFF_TREE: [&str; 4] = ["diff-tree", "-r", "-z", "--ignore-submodules=none"];
-
-/// Whether the trees of the commits `old` and `new` differ only in the contents
-/// of `.rs` files that are non-executable regular files in both.
-fn only_rust_sources_differ(repository: &Repo, old: &str, new: &str) -> anyhow::Result<bool> {
-    let diff = repository.git(&[DIFF_TREE.as_slice(), &[old, new]].concat())?;
-    let mut fields = diff.split_terminator('\0');
-    while let Some(change) = fields.next() {
-        let path = fields
-            .next()
-            .with_context(|| format!("no path follows the change `{change}`"))?;
-        if !is_rust_source_change(change, path) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-/// [`only_rust_sources_differ`] for each commit of `walk` and the next one, by
-/// position of the former in `walk`. `None` for the pairs Git doesn't report on.
-fn compare_consecutive_trees(repository: &Repo, walk: &[HistoryCommit]) -> Vec<Option<bool>> {
-    let mut changes = vec![None; walk.len().saturating_sub(1)];
+/// Whether the trees of each pair of commits `(old, new)` differ only in the
+/// contents of `.rs` files that are non-executable regular files in both.
+/// `None` for the pairs Git doesn't report on. Git's output identifies each
+/// pair by its `new` commit, so consecutive pairs need different ones.
+fn compare_trees(repository: &Repo, pairs: &[(&str, &str)]) -> Vec<Option<bool>> {
+    let mut changes = vec![None; pairs.len()];
     // With `--stdin`, `diff-tree` compares the commits of each input line
-    // `<commit> <parent>` as if `parent` were the parent of `commit`, and
-    // prints `commit` before their changes, even without changes thanks to
-    // `--always`. It prints nothing for a line it can't process, though, and
-    // still succeeds: only the commits it prints in input order are known.
-    let input: String = walk
-        .windows(2)
-        .map(|pair| format!("{} {}\n", pair[1].id, pair[0].id))
+    // `<new> <old>` as if `old` were the parent of `new`, and prints `new`
+    // before their changes, even without changes thanks to `--always`. It
+    // prints nothing for a line it can't process, though, and still succeeds:
+    // only the commits it prints in input order are known.
+    let input: String = pairs
+        .iter()
+        .map(|(old, new)| format!("{new} {old}\n"))
         .collect();
-    let args = [DIFF_TREE.as_slice(), &["--always", "--stdin"]].concat();
+    // `diff-tree` detects no renames, so it reads no blobs and reports a rename
+    // as a deletion and an addition. Report submodule updates even if
+    // `submodule.<name>.ignore` hides them.
+    let args = [
+        "diff-tree",
+        "-r",
+        "-z",
+        "--ignore-submodules=none",
+        "--always",
+        "--stdin",
+    ];
     let diff = match repository.git_with_input(&args, &input) {
         Ok(diff) => diff,
         Err(error) => {
-            debug!("cannot compare the trees of consecutive commits: {error:#}");
+            debug!("cannot compare the trees of commit pairs: {error:#}");
             return changes;
         }
     };
     let mut fields = diff.split_terminator('\0').peekable();
-    for (pair, only_sources) in walk.windows(2).zip(&mut changes) {
-        let Some(compared) = next_comparison(&mut fields, &pair[1].id) else {
-            debug!("diff-tree didn't report on {} as expected", pair[1].id);
+    for ((_, new), only_sources) in pairs.iter().zip(&mut changes) {
+        let Some(compared) = next_comparison(&mut fields, new) else {
+            debug!("diff-tree didn't report on {new} as expected");
             break;
         };
         *only_sources = Some(compared);
