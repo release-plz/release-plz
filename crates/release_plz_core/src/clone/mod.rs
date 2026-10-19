@@ -144,7 +144,8 @@ impl Cloner {
         // index file with the server. Cargo runs these requests in parallel, so poll the
         // queries together instead of paying one round trip per crate.
         // Stop at the first error in request order: Cargo doesn't keep a failed sparse
-        // `config.json`, so every pending query would fetch it again, one after another.
+        // `config.json`, so without a copy on disk every pending query would fetch it
+        // again, one after another.
         let mut summaries: FuturesOrdered<_> = crates
             .iter()
             .map(async |crate_| {
