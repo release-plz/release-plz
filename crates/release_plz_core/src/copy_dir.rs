@@ -825,10 +825,8 @@ mod tests {
             );
         }
 
-        // Git deletes the shared object files of the copy when it repacks them.
         let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
-        fs_err::write(copied_dir.join("loose"), "changed").unwrap();
-        copied_repo.add_all_and_commit("change loose").unwrap();
+        // Git deletes the shared object files of the copy when it repacks them.
         copied_repo.git(&["gc", "--prune=now"]).unwrap();
         assert!(
             objects
