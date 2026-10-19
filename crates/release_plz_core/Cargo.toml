@@ -57,6 +57,7 @@ fake_package = { path = "../fake_package" }
 
 expect-test.workspace = true
 flate2.workspace = true
+same-file.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 wiremock.workspace = true

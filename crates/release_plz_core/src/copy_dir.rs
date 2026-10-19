@@ -816,17 +816,11 @@ mod tests {
         copy_dir(&repo_dir, destination.path()).unwrap();
         let copied_dir = destination.path().join("repo");
         let copied_objects_dir = copied_dir.join(".git/objects");
-        #[cfg(unix)]
         for object in &objects {
-            use std::os::unix::fs::MetadataExt as _;
-            let inode = |path: Utf8PathBuf| {
-                let metadata = fs_err::metadata(path).unwrap();
-                (metadata.dev(), metadata.ino())
-            };
             // The temporary directories are on the same file system.
-            assert_eq!(
-                inode(objects_dir.join(object)),
-                inode(copied_objects_dir.join(object)),
+            assert!(
+                same_file::is_same_file(objects_dir.join(object), copied_objects_dir.join(object))
+                    .unwrap(),
                 "{object:?} isn't hard linked"
             );
         }
