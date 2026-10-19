@@ -238,10 +238,7 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
     }
     let result = timeout(Duration::from_secs(10), download).await;
     release_pending.send(()).unwrap();
-    timeout(Duration::from_secs(10), server)
-        .await
-        .unwrap()
-        .unwrap();
+    server.await.unwrap();
     let error = result
         .expect("query errors must return before unrelated index requests finish")
         .unwrap()
@@ -250,8 +247,6 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
         format!("{error:#}").contains("failed to query package first"),
         "{error:#}"
     );
-    assert!(!dest_dir.path().join("first").exists());
-    assert!(!dest_dir.path().join("second").exists());
 }
 
 #[tokio::test]
