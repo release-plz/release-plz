@@ -240,15 +240,19 @@ mod tests {
 
     #[test]
     fn crates_io_sparse_index_does_not_require_a_mirror_wait() {
-        // Use a temporary Cargo home, so that the Cargo configuration of the machine
-        // running the test (e.g. a crates.io mirror) doesn't apply.
+        // Cargo reads the configuration of the Cargo home and of the `.cargo` directories
+        // of the working directory and its ancestors. Use a temporary Cargo home and the
+        // filesystem root as working directory, so that the Cargo configuration of the
+        // machine running the test (e.g. a crates.io mirror) doesn't apply, even if the
+        // temporary directory is inside the home directory.
         let temporary = crate::fs_utils::Utf8TempDir::new().unwrap();
-        let dir = temporary.path().as_std_path();
+        let cargo_home = temporary.path().as_std_path();
+        let root = cargo_home.ancestors().last().unwrap();
         #[expect(
             clippy::default_trait_access,
             reason = "Cargo doesn't export the shell type"
         )]
-        let config = GlobalContext::new(Default::default(), dir.to_owned(), dir.to_owned());
+        let config = GlobalContext::new(Default::default(), root.to_owned(), cargo_home.to_owned());
         for name in [None, Some("crates-io".to_string())] {
             let registry = CargoRegistry::new(&config, name).unwrap();
             assert!(!registry.has_remote_mirror);
