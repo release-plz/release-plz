@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn checks_private_library_with_versionless_dependency() {
-        let temp = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let temp = Utf8TempDir::new().unwrap();
         let baseline = temp.path().join("baseline");
         let current = temp.path().join("current");
         for workspace in [&baseline, &current] {
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn only_major_changes_are_incompatible() {
-        let temp = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let temp = Utf8TempDir::new().unwrap();
         let baseline = temp.path().join("baseline");
         let current = temp.path().join("current");
         for package in [&baseline, &current] {
