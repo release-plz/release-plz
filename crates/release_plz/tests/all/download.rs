@@ -26,9 +26,9 @@ async fn download_preserves_request_order_and_skips_missing_packages() {
             ),
         ] {
             let dest_dir = Utf8TempDir::new().unwrap();
-            let packages = PackageDownloader::new(requested, dest_dir.path().as_str())
+            let packages = context
+                .package_downloader(requested, dest_dir.path())
                 .with_registry(registry.to_string())
-                .with_cargo_cwd(context.repo_dir())
                 .download()
                 .await
                 .unwrap();
