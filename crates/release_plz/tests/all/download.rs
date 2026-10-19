@@ -82,7 +82,9 @@ async fn download_rejects_duplicate_packages() {
 #[tokio::test]
 async fn download_checks_destinations_before_downloading() {
     let crates = ["first", "occupied"];
-    let cargo_dir = Utf8TempDir::new().unwrap();
+    let cargo_dir = cargo_dir_with_config(
+        "[source.crates-io]\nreplace-with = 'local'\n[source.local]\nlocal-registry = 'registry'\n",
+    );
     // The local registry index contains packages, but their `.crate` archives are missing.
     for name in crates {
         let index_dir = cargo_dir
@@ -97,12 +99,6 @@ async fn download_checks_destinations_before_downloading() {
         });
         fs_err::write(index_dir.join(name), format!("{entry}\n")).unwrap();
     }
-    fs_err::create_dir(cargo_dir.path().join(".cargo")).unwrap();
-    fs_err::write(
-        cargo_dir.path().join(".cargo/config.toml"),
-        "[source.crates-io]\nreplace-with = 'local'\n[source.local]\nlocal-registry = 'registry'\n",
-    )
-    .unwrap();
 
     let dest_dir = Utf8TempDir::new().unwrap();
     let package_dir = dest_dir.path().join("occupied");
@@ -139,17 +135,11 @@ async fn download_stops_querying_after_failed_registry_config() {
         .expect(1)
         .mount(&server)
         .await;
-    let cargo_dir = Utf8TempDir::new().unwrap();
-    fs_err::create_dir(cargo_dir.path().join(".cargo")).unwrap();
     // Without retries, every attempt to load `config.json` is a single request.
-    fs_err::write(
-        cargo_dir.path().join(".cargo/config.toml"),
-        format!(
-            "[registries.mock]\nindex = 'sparse+{}/config-failure/'\n[net]\nretry = 0\n",
-            server.uri()
-        ),
-    )
-    .unwrap();
+    let cargo_dir = cargo_dir_with_config(&format!(
+        "[registries.mock]\nindex = 'sparse+{}/config-failure/'\n[net]\nretry = 0\n",
+        server.uri()
+    ));
 
     let dest_dir = Utf8TempDir::new().unwrap();
     let error = PackageDownloader::new(["first", "second", "third"], dest_dir.path().as_str())
@@ -220,16 +210,10 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
         respond(second, "404 Not Found", "").await;
     });
 
-    let cargo_dir = Utf8TempDir::new().unwrap();
-    fs_err::create_dir(cargo_dir.path().join(".cargo")).unwrap();
     // Disable HTTP/2 pipe waiting so both HTTP/1.1 requests can start before either responds.
-    fs_err::write(
-        cargo_dir.path().join(".cargo/config.toml"),
-        format!(
-            "[registries.mock]\nindex = 'sparse+http://{address}/'\n[net]\nretry = 0\n[http]\nmultiplexing = false\n"
-        ),
-    )
-    .unwrap();
+    let cargo_dir = cargo_dir_with_config(&format!(
+        "[registries.mock]\nindex = 'sparse+http://{address}/'\n[net]\nretry = 0\n[http]\nmultiplexing = false\n"
+    ));
     let dest_dir = Utf8TempDir::new().unwrap();
     let downloader = PackageDownloader::new(["first", "second"], dest_dir.path().as_str())
         .with_registry("mock".to_string())
@@ -289,4 +273,12 @@ async fn download_respects_source_replacement() {
         .unwrap();
     let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names, [name]);
+}
+
+/// Create a directory where Cargo runs with `config` as its configuration.
+fn cargo_dir_with_config(config: &str) -> Utf8TempDir {
+    let dir = Utf8TempDir::new().unwrap();
+    fs_err::create_dir(dir.path().join(".cargo")).unwrap();
+    fs_err::write(dir.path().join(".cargo/config.toml"), config).unwrap();
+    dir
 }
