@@ -25,7 +25,8 @@ pub fn canonicalize_utf8(path: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
 
 #[derive(Debug)]
 pub struct Utf8TempDir {
-    // temporary directory that will be deleted in the `Drop` method
+    // Removes the directory and everything left in it when dropped, after
+    // `Utf8TempDir::drop` deleted the files.
     _temp_dir: tempfile::TempDir,
     path: Utf8PathBuf,
 }
