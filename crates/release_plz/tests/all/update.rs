@@ -2,10 +2,14 @@ use cargo_metadata::camino::Utf8Path;
 use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
+use crate::helpers::{
+    assert_cargo_semver_checks_is_installed, assert_locked_versions, cmd::release_plz_cmd,
+    locked_metadata,
+};
 
 #[test]
 fn semver_check_preserves_explicit_default_target_directory() {
+    assert_cargo_semver_checks_is_installed();
     for variable in ["CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR"] {
         let (temp_dir, repo) = released_workspace(
             &[("one", "version = \"1.0.0\"\n")],
