@@ -1,6 +1,6 @@
 //! Download packages from cargo registry, similar to the `git clone` behavior.
 
-use std::path::Path;
+use std::{path::Path, thread};
 
 use anyhow::{Context, anyhow};
 use cargo_metadata::{Package, camino::Utf8PathBuf};
@@ -72,8 +72,38 @@ impl PackageDownloader {
             .await
             .context("error while downloading packages")?;
 
-        package_dirs.iter().map(read_package).collect()
+        read_packages(&package_dirs)
     }
+}
+
+/// Read the packages in `directories`, preserving their order.
+///
+/// Reading a package runs `cargo metadata`, so spread the reads across threads
+/// instead of waiting for each subprocess in turn.
+fn read_packages(directories: &[Utf8PathBuf]) -> anyhow::Result<Vec<Package>> {
+    let parallelism = thread::available_parallelism().map_or(1, usize::from);
+    // `chunks` rejects a size of 0, which an empty list would produce.
+    let chunk_size = directories.len().div_ceil(parallelism).max(1);
+    thread::scope(|scope| {
+        let workers: Vec<_> = directories
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(|| {
+                    chunk
+                        .iter()
+                        .map(read_package)
+                        .collect::<anyhow::Result<Vec<_>>>()
+                })
+            })
+            .collect();
+        let mut packages = Vec::with_capacity(directories.len());
+        // Joining in order returns the error of the first package that can't be
+        // read, like reading the packages sequentially.
+        for worker in workers {
+            packages.extend(worker.join().expect("package reading thread panicked")?);
+        }
+        Ok(packages)
+    })
 }
 
 /// Read a package from file system
