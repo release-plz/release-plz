@@ -1,6 +1,5 @@
 use std::{process::Command, time::Duration};
 
-use crate::helpers::gitea::CARGO_INDEX_REPO;
 use assert_cmd::assert::Assert;
 use cargo_metadata::{
     Package,
@@ -17,11 +16,7 @@ use secrecy::SecretString;
 
 use tracing::info;
 
-use super::{
-    TEST_REGISTRY, fake_utils,
-    gitea::{GiteaContext, gitea_address},
-    package::TestPackage,
-};
+use super::{TEST_REGISTRY, fake_utils, gitea::GiteaContext, package::TestPackage};
 
 const CRATES_DIR: &str = "crates";
 const RELEASE_PLZ_LOG: &str = "RELEASE_PLZ_LOG";
@@ -268,6 +263,13 @@ impl TestContext {
         self.push_all_changes("add config file");
     }
 
+    pub fn append_cargo_config(&self, content: &str) {
+        let config_path = self.repo_dir().join(".cargo/config.toml");
+        let mut config = fs_err::read_to_string(&config_path).unwrap();
+        config.push_str(content);
+        fs_err::write(config_path, config).unwrap();
+    }
+
     pub fn write_changelog(&self, content: &str) {
         let changelog_path = self.repo_dir().join("CHANGELOG.md");
         fs_err::write(changelog_path, content).unwrap();
@@ -327,37 +329,30 @@ fn configure_repo(repo_dir: &Utf8Path, gitea: &GiteaContext) -> Repo {
         .unwrap();
     repo.disable_gpg_signing().unwrap();
 
-    create_cargo_config(repo_dir, username);
+    create_cargo_config(repo_dir, &gitea.cargo_index_url());
 
     repo
 }
 
-fn create_cargo_config(repo_dir: &Utf8Path, username: &str) {
+fn create_cargo_config(repo_dir: &Utf8Path, index_url: &str) {
     let config_dir = repo_dir.join(".cargo");
     fs_err::create_dir(&config_dir).unwrap();
     let config_file = config_dir.join("config.toml");
-    let cargo_config = cargo_config(username);
+    let cargo_config = cargo_config(index_url);
     fs_err::write(config_file, cargo_config).unwrap();
 }
 
-fn cargo_config(username: &str) -> String {
+fn cargo_config(index_url: &str) -> String {
     // matches the docker compose file
     let cargo_registries = format!(
-        "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = "
-    );
-    // we use gitea as a cargo registry:
-    // https://docs.gitea.com/usage/packages/cargo
-    let gitea_index = format!(
-        "\"http://{}/{}/{CARGO_INDEX_REPO}.git\"",
-        gitea_address(),
-        username
+        "[registry]\ndefault = \"{TEST_REGISTRY}\"\n\n[registries.{TEST_REGISTRY}]\nindex = \"{index_url}\""
     );
 
     let config_end = r"
 [net]
 git-fetch-with-cli = true
     ";
-    format!("{cargo_registries}{gitea_index}{config_end}")
+    format!("{cargo_registries}{config_end}")
 }
 
 fn git_client(repo_url: &str, token: &str) -> GitClient {

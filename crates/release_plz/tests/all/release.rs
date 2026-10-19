@@ -324,24 +324,18 @@ async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
 
     if let Scenario::LaggingMirror = scenario {
         let mirror = wrapper_dir.path().join("mirror");
-        let config_path = context.repo_dir().join(".cargo/config.toml");
-        let mut config = fs_err::read_to_string(&config_path).unwrap();
-        let parsed: toml::Value = toml::from_str(&config).unwrap();
-        let index = parsed["registries"][crate::helpers::TEST_REGISTRY]["index"]
-            .as_str()
-            .unwrap();
+        let index = context.gitea.cargo_index_url();
         assert_cmd::Command::new("git")
-            .args(["clone", index, mirror.as_str()])
+            .args(["clone", &index, mirror.as_str()])
             .assert()
             .success();
         // The source name deliberately differs from the registry name: Cargo
         // matches replacements by index URL, not by registry name.
-        config.push_str(&format!(
+        context.append_cargo_config(&format!(
             "\n[source.origin]\nregistry = {index:?}\nreplace-with = \"mirror\"\n\
              [source.mirror]\nregistry = {:?}\n",
             url::Url::from_directory_path(&mirror).unwrap().as_str(),
         ));
-        fs_err::write(config_path, config).unwrap();
         context.push_all_changes("configure registry mirror");
     }
 
