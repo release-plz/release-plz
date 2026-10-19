@@ -9,56 +9,61 @@ use crate::helpers::{
 
 #[test]
 fn semver_check_preserves_explicit_default_target_directory() {
-    assert_cargo_semver_checks_is_installed();
     for variable in ["CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR"] {
-        let (temp_dir, repo) = released_workspace(
-            &[("one", "version = \"1.0.0\"\n")],
-            "",
-            "[workspace]\nsemver_check = true\n",
-        );
-        change_package(&repo, "one", "fix: update library");
-        let target_dir = repo.directory().join("target");
-
-        workspace_update_command(&temp_dir, &repo)
-            .env_remove("CARGO_TARGET_DIR")
-            .env_remove("CARGO_BUILD_TARGET_DIR")
-            .env(variable, &target_dir)
-            .assert()
-            .success();
+        let (_temp_dir, repo) = update_with_removed_function(|repo, cmd| {
+            cmd.env(variable, repo.directory().join("target"));
+        });
 
         // Even when it matches Cargo's default, an explicit target directory
         // must retain the rustdoc build artifacts for reuse on the next run.
-        assert!(target_dir.join("doc/one.json").exists(), "{variable}");
+        assert!(
+            repo.directory().join("target/doc/one.json").exists(),
+            "{variable}"
+        );
     }
 }
 
 #[test]
 fn semver_check_builds_in_a_temporary_target_directory_by_default() {
+    // Without a configured target directory, release-plz picks one per package.
+    let (temp_dir, _repo) = update_with_removed_function(|_, _| {});
+
+    // Without a temporary target directory, cargo-semver-checks would build the
+    // baseline in `registry/target`, the default target directory of its workspace.
+    assert!(!temp_dir.path().join("registry/target").exists());
+}
+
+/// Runs `release-plz update` with semver checks after a `fix:` commit to `one`,
+/// whose published version has a public function that the commit removes.
+/// `configure` sets the target directory, as the `CARGO_TARGET_DIR` set by
+/// [`release_plz_cmd`] is removed.
+fn update_with_removed_function(
+    configure: impl FnOnce(&Repo, &mut assert_cmd::Command),
+) -> (Utf8TempDir, Repo) {
     assert_cargo_semver_checks_is_installed();
     let (temp_dir, repo) = released_workspace(
         &[("one", "version = \"1.0.0\"\n")],
         "",
         "[workspace]\nsemver_check = true\n",
     );
-    let registry_dir = temp_dir.path().join("registry");
-    // The project change removes this public function of the published version.
-    fs_err::write(registry_dir.join("one/src/lib.rs"), "pub fn removed() {}\n").unwrap();
+    fs_err::write(
+        temp_dir.path().join("registry/one/src/lib.rs"),
+        "pub fn removed() {}\n",
+    )
+    .unwrap();
+    let mut cmd = workspace_update_command(&temp_dir, &repo);
+    cmd.env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR");
+    configure(&repo, &mut cmd);
     change_package(&repo, "one", "fix: update library");
 
-    // Without a configured target directory, release-plz picks one per package.
-    workspace_update_command(&temp_dir, &repo)
-        .env_remove("CARGO_TARGET_DIR")
-        .env_remove("CARGO_BUILD_TARGET_DIR")
-        .assert()
-        .success();
+    cmd.assert().success();
 
     // The current and the baseline version have the same name and version, so they
     // write the same rustdoc JSON file in the shared target directory. The `fix`
     // commit bumps the major version only if the removed function is still detected.
     assert_locked_versions(repo.directory(), &[("one", "2.0.0")]);
-    // Without a temporary target directory, cargo-semver-checks would build the
-    // baseline in `registry/target`, the default target directory of its workspace.
-    assert!(!registry_dir.join("target").exists());
+    (temp_dir, repo)
 }
 
 #[test]
