@@ -842,7 +842,9 @@ mod tests {
                 .iter()
                 .any(|object| !copied_objects_dir.join(object).exists())
         );
-        // The original repository still has all its objects, unchanged.
+        // The original repository still has all its objects, unchanged, also
+        // after the copy is deleted.
+        drop(destination);
         repo.git(&["fsck", "--full", "--strict"]).unwrap();
         for object in &objects {
             assert!(objects_dir.join(object).is_file(), "{object:?} was deleted");
