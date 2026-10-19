@@ -270,7 +270,7 @@ async fn release_plz_can_do_backports() {
 
 /// Cargo wrapper that records the subcommands run by release-plz.
 /// With `HIDE_PUBLISHED=true`, it removes the `Published` status from the output of
-/// `cargo publish`, like a Cargo that didn't wait for the package to be available.
+/// `cargo publish`, like a Cargo whose wait for the package timed out.
 #[cfg(unix)]
 const CARGO_WRAPPER: &str = r#"#!/bin/sh
 echo "$1" >> "$WRAPPER_DIR/calls"

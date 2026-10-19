@@ -1001,8 +1001,8 @@ async fn release_package(
 ///
 /// After the upload, Cargo waits until the new version appears in the registry index
 /// and then prints `Published <package> v<version> at <registry>`.
-/// The message is missing if Cargo is older than 1.70 or if its wait times out.
-/// In these cases, release-plz must wait.
+/// If the wait times out (after 60 s on stable Cargo), Cargo prints a warning instead,
+/// and release-plz must wait.
 fn is_publish_confirmed_by_cargo(output: &CmdOutput, package: &Package) -> bool {
     // The status is colored, so look for the status and the package on the same line.
     let published_package = format!("{} v{} at ", package.name, package.version);
