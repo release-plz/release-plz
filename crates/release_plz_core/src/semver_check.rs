@@ -42,28 +42,21 @@ impl SemverCheck {
     }
 }
 
-/// Where cargo-semver-checks builds the rustdoc JSON of the package versions it compares.
+/// Where cargo-semver-checks builds the rustdoc JSON of the compared versions.
 #[derive(Debug, Clone, Copy)]
 pub enum TargetDir {
-    /// Use the target directory configured by the user (e.g. with `CARGO_TARGET_DIR`).
-    /// All cargo-semver-checks builds already share it, also across release-plz runs,
-    /// so we keep it to reuse the user's build cache.
+    /// Inherit the target directory set by the user, to reuse their build cache.
     Configured,
-    /// Use a new temporary target directory for each checked package.
-    /// Otherwise, cargo-semver-checks builds the current and the baseline version of a
-    /// package in two placeholder projects, each with its own target directory inside the
-    /// temporary copy of the package, so it compiles every dependency twice.
-    /// With a shared directory, the baseline reuses the dependencies compiled for the
-    /// current version.
-    /// Packages don't share a directory because cargo runs one build at a time per
-    /// target directory, so the checks running in parallel would wait for each other.
+    /// Use a temporary target directory per package, so the baseline reuses the
+    /// dependencies built for the current version. Packages don't share it because
+    /// cargo runs one build at a time per target directory.
     PerPackage,
 }
 
 impl TargetDir {
     pub fn new(metadata: &Metadata) -> Self {
-        // Without configuration, cargo uses the `target` directory of the workspace root.
-        // An explicit environment setting can point to that same directory.
+        // `cargo metadata` already reflects these variables, but they can explicitly
+        // point to the default `target` directory (e.g. to cache it in CI): keep that cache.
         if std::env::var_os("CARGO_TARGET_DIR").is_none()
             && std::env::var_os("CARGO_BUILD_TARGET_DIR").is_none()
             && metadata.target_directory == metadata.workspace_root.join("target")
