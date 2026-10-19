@@ -46,7 +46,7 @@ pub enum ForgeType {
     Gitlab,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitClient {
     pub forge: ForgeType,
     pub remote: Remote,
