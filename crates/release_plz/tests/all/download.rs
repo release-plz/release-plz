@@ -120,12 +120,9 @@ async fn download_respects_source_replacement() {
     let name = &context.gitea.repo;
     context.run_cargo_publish(name);
 
-    let config_path = context.repo_dir().join(".cargo/config.toml");
-    let mut config = fs_err::read_to_string(&config_path).unwrap();
-    config.push_str(&format!(
+    context.append_cargo_config(&format!(
         "\n[source.crates-io]\nreplace-with = '{TEST_REGISTRY}'\n"
     ));
-    fs_err::write(config_path, config).unwrap();
 
     let dest_dir = Utf8TempDir::new().unwrap();
     let packages = PackageDownloader::new([name], dest_dir.path().as_str())
