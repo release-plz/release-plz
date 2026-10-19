@@ -6,7 +6,7 @@ pub mod test_fixture;
 
 use std::{
     collections::HashSet,
-    io::Write as _,
+    io::{ErrorKind, Write as _},
     path::Path,
     process::{Command, Output, Stdio},
 };
@@ -641,9 +641,14 @@ fn output_with_input(command: &mut Command, input: &[u8]) -> std::io::Result<Out
         let writer = scope.spawn(move || stdin.write_all(input));
         let output = child.wait_with_output()?;
         let written = writer.join().expect("writing to the child panicked");
-        // A child that fails stops reading: its own error explains more.
-        if output.status.success() {
-            written?;
+        // A child that fails stops reading: its own error explains more. A
+        // child that succeeds can exit without reading the input it doesn't
+        // need, which breaks the pipe.
+        if output.status.success()
+            && let Err(error) = written
+            && error.kind() != ErrorKind::BrokenPipe
+        {
+            return Err(error);
         }
         Ok(output)
     })
@@ -856,6 +861,18 @@ mod tests {
                 repo.current_commit_message().unwrap()
             );
         }
+    }
+
+    /// Git can exit successfully without reading all of its input, breaking the
+    /// pipe for any input it didn't read.
+    #[test]
+    fn input_that_git_does_not_read_is_not_an_error() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        // More than a pipe holds, so writing it can't finish before git exits.
+        let input = "x\n".repeat(1 << 20);
+        repo.git_with_input(&["rev-parse", "HEAD"], &input).unwrap();
     }
 
     #[test]
