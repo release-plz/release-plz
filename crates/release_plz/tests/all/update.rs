@@ -278,8 +278,13 @@ fn update_lists_package_files_when_older_snapshots_track_a_checkout_hook() {
     // only when the walk starts would still reuse a stale list.
     fs_err::remove_file(&hook).unwrap();
     change_package(&repo, "one", "fix: second change");
+    // Neither HEAD nor the second change has the hook, so the second change
+    // reuses HEAD's list. The hook's removal makes the first change ask Cargo,
+    // and the release snapshot must check for the hook again rather than keep
+    // the answer for the newer checkouts.
+    change_package(&repo, "one", "fix: third change");
 
-    assert_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 0);
+    assert_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 1);
 }
 
 /// Install at `hook` an executable script that removes the untracked file
@@ -367,8 +372,8 @@ fn assert_package_file_listings_with_change(
 /// Assert that updating the [`single_package_workspace`] of `repo` runs
 /// `cargo package --list` `cargo_runs` times, including once for the released
 /// source tree, and reuses a historical package file list `reuses` times, while
-/// the update still finds exactly the package changes `fix: first change` and
-/// `fix: second change`.
+/// the update still finds the package changes `fix: first change` and
+/// `fix: second change` but not the initial commit.
 fn assert_package_file_listings(
     temp_dir: &Utf8TempDir,
     repo: &Repo,
