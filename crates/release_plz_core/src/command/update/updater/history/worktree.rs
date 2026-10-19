@@ -4,9 +4,8 @@
 //! The walked repository is a temporary copy of the project, with any
 //! uncommitted changes stashed. A new worktree at the same commit shares the
 //! objects, refs, configuration and hooks of the copy, and usually has the same
-//! files. The copy can also have ignored files, but Cargo never packages the
-//! ignored files of a Git repository. [`supports_worktrees`] rules out the
-//! differences that Cargo can see.
+//! files. Cargo can also package ignored files through a manifest's include
+//! list. [`supports_worktrees`] rules out the differences that Cargo can see.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
@@ -52,17 +51,11 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
     // mode 160000 for submodules. The tag is `H` unless the file has the
     // skip-worktree bit, such as files a sparse checkout leaves out, or the
     // assume-unchanged bit. Modified files, type changes included, are listed
-    // again as `C`, and the untracked files that aren't ignored, such as
-    // nested repositories `git stash` keeps, as `?`.
-    let files = repository.git(&[
-        "ls-files",
-        "--stage",
-        "--modified",
-        "--others",
-        "--exclude-standard",
-        "-v",
-        "-z",
-    ])?;
+    // again as `C`, and every untracked file as `?`. Include ignored files:
+    // Cargo's explicit include list can package them. The copy already excludes
+    // ordinary ignored files (such as target), but retains globally ignored
+    // files and can contain files created by checkout hooks.
+    let files = repository.git(&["ls-files", "--stage", "--modified", "--others", "-v", "-z"])?;
     let has_other_files = files.split_terminator('\0').any(|entry| {
         entry
             .strip_prefix("H ")
