@@ -30,7 +30,8 @@ use tracing::debug;
 use crate::package_compare::PackageFiles;
 
 /// The number of pairs of consecutive commits that the first batch of a walk
-/// compares. Each batch compares twice as many as the previous one.
+/// compares. Each later batch compares twice as many pairs as Git reported on
+/// in the previous one, and at least as many as the first.
 const FIRST_BATCH_SIZE: usize = 8;
 
 /// The package files of the checkouts of a history walk.
@@ -38,15 +39,12 @@ pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
     /// The commits of the walk, in the order it checks out those it doesn't skip.
     walk: &'a [HistoryCommit],
-    /// Whether only Rust sources differ between each commit of `walk` and the
-    /// next one, by position of the former in `walk`. `None` for the pairs not
-    /// compared and for those Git didn't report on.
-    consecutive_changes: Vec<Option<bool>>,
-    /// The position after the last pair of the last batch. The walk is past the
-    /// earlier pairs that no batch compared.
-    batch_end: usize,
-    /// The number of pairs that the next batch compares.
-    batch_size: usize,
+    /// The comparisons of the last batch: whether only Rust sources differ
+    /// between each commit of `walk` from position `batch_start` on and the
+    /// next one, up to the first pair Git didn't report on.
+    batch: Vec<bool>,
+    /// The position in `walk` of the first commit of the last batch.
+    batch_start: usize,
     /// The position in `walk` of the last checkout, whose files `files` lists.
     /// `None` before the first checkout.
     previous: Option<usize>,
@@ -63,9 +61,8 @@ impl<'a> CheckoutPackageFiles<'a> {
         Self {
             repository,
             walk,
-            consecutive_changes: vec![None; walk.len().saturating_sub(1)],
-            batch_end: 0,
-            batch_size: FIRST_BATCH_SIZE,
+            batch: Vec::new(),
+            batch_start: 0,
             previous: None,
             prevents_reuse: None,
             files: PackageFiles::default(),
@@ -74,7 +71,7 @@ impl<'a> CheckoutPackageFiles<'a> {
 
     /// The package files at the commit at position `index` of the walk,
     /// reusing the previous checkout's list when possible. Call this after
-    /// checking that commit out, before inspecting the package.
+    /// checking that commit out, in walk order, before inspecting the package.
     pub(crate) fn files_at(&mut self, index: usize) -> &PackageFiles {
         let previous = self.previous.replace(index);
         if !previous.is_some_and(|previous| self.only_sources_differ(previous, index)) {
@@ -104,37 +101,29 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// Whether the trees of the checkouts at the positions `previous` and
     /// `index` of the walk differ only in Rust sources, see [`compare_trees`].
     fn only_sources_differ(&mut self, previous: usize, index: usize) -> bool {
+        let walk = self.walk;
+        if previous + 1 != index {
+            // The walk skipped the commits in between.
+            let commits = [walk[previous].id.as_str(), walk[index].id.as_str()];
+            return compare_trees(self.repository, &commits) == [true];
+        }
         // Most checkouts follow the commit before them in the walk: compare
         // those pairs in batches, from the current checkout on. The walk can
         // stop at any checkout, so the batches start small and double in size:
         // a batch compares about as many pairs as the walk covered before it,
-        // and a long walk takes few Git calls. Compare the other pairs on their
-        // own: the walk may skip commits, and Git may not report on a pair.
-        if previous + 1 == index {
-            if previous >= self.batch_end {
-                self.compare_batch(previous);
-            }
-            if let Some(only_sources) = self.consecutive_changes[previous] {
-                return only_sources;
-            }
+        // and a long walk takes few Git calls. Git compares each pair on its
+        // own, so a pair it didn't report on just starts the next batch.
+        if previous - self.batch_start >= self.batch.len() {
+            let size = FIRST_BATCH_SIZE.max(2 * self.batch.len());
+            let end = walk.len().min(index + size);
+            let commits: Vec<_> = walk[previous..end]
+                .iter()
+                .map(|commit| commit.id.as_str())
+                .collect();
+            self.batch = compare_trees(self.repository, &commits);
+            self.batch_start = previous;
         }
-        let walk = self.walk;
-        let pair = (walk[previous].id.as_str(), walk[index].id.as_str());
-        compare_trees(self.repository, &[pair])[0].unwrap_or(false)
-    }
-
-    /// Compare the next batch of consecutive pairs, from the pair at position
-    /// `start` of the walk.
-    fn compare_batch(&mut self, start: usize) {
-        let end = self.consecutive_changes.len().min(start + self.batch_size);
-        let pairs: Vec<_> = self.walk[start..=end]
-            .windows(2)
-            .map(|pair| (pair[0].id.as_str(), pair[1].id.as_str()))
-            .collect();
-        let changes = compare_trees(self.repository, &pairs);
-        self.consecutive_changes[start..end].copy_from_slice(&changes);
-        self.batch_end = end;
-        self.batch_size *= 2;
+        self.batch.get(previous - self.batch_start) == Some(&true)
     }
 }
 
@@ -220,20 +209,18 @@ fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
         .any(|entry| entry.starts_with("120000 ")))
 }
 
-/// Whether the trees of each pair of commits `(old, new)` differ only in the
-/// contents of `.rs` files that are non-executable regular files in both.
-/// `None` for the pairs Git doesn't report on. Git's output identifies each
-/// pair by its `new` commit, so consecutive pairs need different ones.
-fn compare_trees(repository: &Repo, pairs: &[(&str, &str)]) -> Vec<Option<bool>> {
-    let mut changes = vec![None; pairs.len()];
+/// Whether the trees of each commit of `commits` and the next one differ only
+/// in the contents of `.rs` files that are non-executable regular files in
+/// both, up to the first pair Git doesn't report on.
+fn compare_trees(repository: &Repo, commits: &[&str]) -> Vec<bool> {
     // With `--stdin`, `diff-tree` compares the commits of each input line
     // `<new> <old>` as if `old` were the parent of `new`, and prints `new`
     // before their changes, even without changes thanks to `--always`. It
     // prints nothing for a line it can't process, though, and still succeeds:
     // only the commits it prints in input order are known.
-    let input: String = pairs
-        .iter()
-        .map(|(old, new)| format!("{new} {old}\n"))
+    let input: String = commits
+        .windows(2)
+        .map(|pair| format!("{} {}\n", pair[1], pair[0]))
         .collect();
     // `diff-tree` detects no renames, so it reads no blobs and reports a rename
     // as a deletion and an addition. Report submodule updates even if
@@ -250,17 +237,18 @@ fn compare_trees(repository: &Repo, pairs: &[(&str, &str)]) -> Vec<Option<bool>>
         Ok(diff) => diff,
         Err(error) => {
             debug!("cannot compare the trees of commit pairs: {error:#}");
-            return changes;
+            return Vec::new();
         }
     };
     // With `-z`, Git prints paths verbatim, so they can be invalid UTF-8.
     let mut fields = diff.split(|byte| *byte == b'\0').peekable();
-    for ((_, new), only_sources) in pairs.iter().zip(&mut changes) {
-        let Some(compared) = next_comparison(&mut fields, new.as_bytes()) else {
-            debug!("diff-tree didn't report on {new} as expected");
-            break;
-        };
-        *only_sources = Some(compared);
+    let changes: Vec<bool> = commits
+        .iter()
+        .skip(1)
+        .map_while(|new| next_comparison(&mut fields, new.as_bytes()))
+        .collect();
+    if let Some(new) = commits.get(changes.len() + 1) {
+        debug!("diff-tree didn't report on {new} as expected");
     }
     changes
 }
