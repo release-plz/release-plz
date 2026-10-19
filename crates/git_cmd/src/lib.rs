@@ -71,7 +71,8 @@ impl HistoryCommit {
     /// The message, as [`Repo::current_commit_message`] reads it with this
     /// commit checked out.
     pub fn message(&self) -> anyhow::Result<String> {
-        let message = std::str::from_utf8(&self.message).context("non-UTF-8 commit message")?;
+        let message = std::str::from_utf8(&self.message)
+            .with_context(|| format!("non-UTF-8 message in commit {}", self.id))?;
         Ok(message.trim().to_owned())
     }
 }
