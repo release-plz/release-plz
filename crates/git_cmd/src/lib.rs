@@ -422,12 +422,10 @@ impl Repo {
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<u8>> {
-        let exclusions: Vec<String> = exclude
-            .iter()
-            .filter(|commit| self.commit_exists(commit))
-            .map(|commit| format!("^{commit}"))
-            .collect();
-        let mut rev_list = vec!["rev-list"];
+        let exclusions: Vec<String> = exclude.iter().map(|commit| format!("^{commit}")).collect();
+        // Drop the exclusions that don't exist in this repository. A missing
+        // tip would be dropped too, listing no commits.
+        let mut rev_list = vec!["rev-list", "--ignore-missing"];
         rev_list.extend(args);
         rev_list.extend(exclusions.iter().map(String::as_str));
         rev_list.push("--");
@@ -512,17 +510,6 @@ impl Repo {
             "--is-ancestor",
             maybe_ancestor_commit,
             descendant_commit,
-        ])
-        .is_ok()
-    }
-
-    /// Whether `object` resolves to a commit in this repository.
-    fn commit_exists(&self, object: &str) -> bool {
-        self.git(&[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{object}^{{commit}}"),
         ])
         .is_ok()
     }

@@ -738,13 +738,10 @@ impl Updater<'_> {
         // Exclude already released history using both the release tag and the
         // registry's published commit, when available. The walk skips these
         // commits and their ancestors.
-        let mut release_boundaries: Vec<&str> = tag_commit
+        let release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
-        // The tag usually points at the published commit. Checking that a
-        // boundary exists costs a Git call, so check it once.
-        release_boundaries.dedup();
         // Enumerate from the branch tip before checking out any historical snapshot.
         // The parents let RetainedChanges follow the lineages of this same walk.
         let graph = repository.parents_at_paths(
