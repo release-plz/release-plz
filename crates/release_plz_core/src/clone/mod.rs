@@ -117,10 +117,7 @@ impl Cloner {
         let mut destinations = vec![];
         for (crate_, summary) in crates.iter().zip(summaries) {
             let name = &crate_.name;
-            let vers = crate_.version.as_deref();
-            let summary = summary.with_context(|| format!("failed to query package {name}"))?;
-
-            match summary {
+            match summary.with_context(|| format!("failed to query package {name}"))? {
                 Some(summary) => {
                     let dest_path = self.directory.join(name);
                     check_destination(&dest_path).with_context(|| {
@@ -128,7 +125,10 @@ impl Cloner {
                     })?;
                     destinations.push((summary.package_id(), dest_path));
                 }
-                None => warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*")),
+                None => warn!(
+                    "Package `{name}@{}` not found",
+                    crate_.version.as_deref().unwrap_or("*.*.*")
+                ),
             }
         }
 
