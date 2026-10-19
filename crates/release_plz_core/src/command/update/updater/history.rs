@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use git_cmd::Repo;
+use git_cmd::{HistoryCommit, Repo};
 use tracing::warn;
 
 use crate::{
@@ -57,7 +57,7 @@ impl<'a> RetainedChanges<'a> {
     pub(super) fn new(
         repository: &'a Repo,
         head: &str,
-        graph: &[(String, Vec<String>)],
+        graph: &[HistoryCommit],
         paths: &PackagePaths,
     ) -> anyhow::Result<Self> {
         // The walked repository can be a temporary copy at a non-canonical path,
@@ -82,8 +82,11 @@ impl<'a> RetainedChanges<'a> {
             },
             released: None,
             package_files: None,
-            root: graph.first().map(|(commit, _)| commit.clone()),
-            parents: graph.iter().cloned().collect(),
+            root: graph.first().map(|commit| commit.id.clone()),
+            parents: graph
+                .iter()
+                .map(|commit| (commit.id.clone(), commit.parents.clone()))
+                .collect(),
             reachable: HashSet::new(),
             released_ancestors: HashSet::new(),
         })

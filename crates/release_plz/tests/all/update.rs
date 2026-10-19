@@ -309,6 +309,26 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
     );
 }
 
+#[test]
+fn update_lists_package_files_again_after_changes_beyond_the_first_batch() {
+    // The walk has more snapshots than the first `diff-tree` batch compares,
+    // and a commit in a later batch adds a Rust source. HEAD and the parent of
+    // that commit each ask Cargo, and every other snapshot reuses a list.
+    assert_package_file_listings_with_change(
+        "later batch",
+        |repo| {
+            for i in 0..20 {
+                if i == 10 {
+                    fs_err::write(repo.directory().join("one/src/extra.rs"), "").unwrap();
+                }
+                change_package(repo, "one", &format!("fix: change {i}"));
+            }
+        },
+        3,
+        21,
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_when_checkout_hooks_change_files() {
@@ -357,8 +377,13 @@ fn update_lists_package_files_when_older_snapshots_track_a_checkout_hook() {
     // only when the walk starts would still reuse a stale list.
     fs_err::remove_file(&hook).unwrap();
     change_package(&repo, "one", "fix: second change");
+    // Neither HEAD nor the second change has the hook, so the second change
+    // reuses HEAD's list. The hook's removal makes the first change ask Cargo,
+    // and the release snapshot must check for the hook again rather than keep
+    // the answer for the newer checkouts.
+    change_package(&repo, "one", "fix: third change");
 
-    assert_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 0);
+    assert_package_file_listings(&temp_dir, &repo, "tracked hook", 4, 1);
 }
 
 /// Install at `hook` an executable script that removes the untracked file
@@ -446,8 +471,8 @@ fn assert_package_file_listings_with_change(
 /// Assert that updating the [`single_package_workspace`] of `repo` runs
 /// `cargo package --list` `cargo_runs` times, including once for the released
 /// source tree, and reuses a historical package file list `reuses` times, while
-/// the update still finds exactly the package changes `fix: first change` and
-/// `fix: second change`.
+/// the update still finds the package changes `fix: first change` and
+/// `fix: second change` but not the initial commit.
 fn assert_package_file_listings(
     temp_dir: &Utf8TempDir,
     repo: &Repo,
