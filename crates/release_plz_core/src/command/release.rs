@@ -928,7 +928,7 @@ async fn release_package(
         }
     }
 
-    if should_publish {
+    let is_publish_confirmed = if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
             release_info.package,
@@ -956,7 +956,10 @@ async fn release_package(
                 );
             }
         }
-    }
+        is_publish_confirmed_by_cargo(&output, release_info.package)
+    } else {
+        false
+    };
 
     if input.dry_run {
         log_dry_run_info(
@@ -967,7 +970,8 @@ async fn release_package(
         );
         Ok(false)
     } else {
-        if should_publish {
+        // Querying the registry again would only repeat the check `cargo publish` just did.
+        if should_publish && !is_publish_confirmed {
             wait_until_published(
                 workspace_root,
                 release_info.package,
@@ -995,6 +999,21 @@ async fn release_package(
         );
         Ok(true)
     }
+}
+
+/// Return `true` if `cargo publish` reported that the package is available in the registry.
+///
+/// After the upload, Cargo waits until the new version appears in the registry index
+/// and then prints `Published <package> v<version> at <registry>`.
+/// The message is missing if Cargo doesn't wait (old Cargo versions) or if
+/// Cargo's `publish.timeout` elapses first. In these cases, release-plz must wait.
+fn is_publish_confirmed_by_cargo(output: &CmdOutput, package: &Package) -> bool {
+    // The status is colored, so look for the status and the package on the same line.
+    let published_package = format!("{} v{} at ", package.name, package.version);
+    output
+        .stderr
+        .lines()
+        .any(|line| line.contains("Published") && line.contains(&published_package))
 }
 
 fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {

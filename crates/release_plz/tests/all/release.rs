@@ -267,3 +267,74 @@ async fn release_plz_can_do_backports() {
     .to_string();
     outcome.stdout(format!("{expected_stdout}\n"));
 }
+
+/// Cargo wrapper that records the subcommands run by release-plz.
+/// With `HIDE_PUBLISHED=true`, it removes the `Published` status from the output of
+/// `cargo publish`, like a Cargo that didn't wait for the package to be available.
+#[cfg(unix)]
+const CARGO_WRAPPER: &str = r#"#!/bin/sh
+echo "$1" >> "$WRAPPER_DIR/calls"
+if [ "$1" = publish ] && [ "$HIDE_PUBLISHED" = true ]; then
+    "$REAL_CARGO" "$@" 2> "$WRAPPER_DIR/publish_stderr"
+    status=$?
+    grep -v Published "$WRAPPER_DIR/publish_stderr" >&2
+    exit $status
+fi
+exec "$REAL_CARGO" "$@"
+"#;
+
+/// Release a new project through [`CARGO_WRAPPER`] and return how many times
+/// release-plz ran `cargo info`.
+#[cfg(unix)]
+async fn release_counting_cargo_info(hide_published: bool) -> usize {
+    let context = TestContext::new().await;
+    let wrapper_dir = Utf8TempDir::new().unwrap();
+    let cargo = wrapper_dir.path().join("cargo");
+    fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
+    crate::helpers::make_executable(&cargo);
+
+    let outcome = context
+        .release_command()
+        .env("CARGO", &cargo)
+        .env("REAL_CARGO", env!("CARGO"))
+        .env("WRAPPER_DIR", wrapper_dir.path())
+        .env("HIDE_PUBLISHED", hide_published.to_string())
+        .assert()
+        .success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": &context.gitea.repo,
+                "prs": [],
+                "tag": "v0.1.0",
+                "version": "0.1.0",
+            }
+        ]
+    })
+    .to_string();
+    outcome.stdout(format!("{expected_stdout}\n"));
+
+    let calls = fs_err::read_to_string(wrapper_dir.path().join("calls")).unwrap();
+    calls
+        .lines()
+        .filter(|subcommand| *subcommand == "info")
+        .count()
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_trusts_cargo_publish_confirmation() {
+    // The only `cargo info` checks whether the package was already published.
+    // `cargo publish` already waited for the new version to be in the registry index.
+    assert_eq!(release_counting_cargo_info(false).await, 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
+    // Without the confirmation, release-plz queries the registry itself
+    // before creating the tag.
+    assert_eq!(release_counting_cargo_info(true).await, 2);
+}
