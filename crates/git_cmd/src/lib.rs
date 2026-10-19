@@ -36,7 +36,7 @@ pub struct CommitSignatures {
 }
 
 /// A commit of [`Repo::parents_at_paths`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct HistoryCommit {
     pub id: String,
     /// The parents, rewritten by history simplification.
@@ -71,7 +71,8 @@ impl HistoryCommit {
     /// The message, as [`Repo::current_commit_message`] reads it with this
     /// commit checked out.
     pub fn message(&self) -> anyhow::Result<String> {
-        cmd::string_from_bytes(self.message.clone())
+        let message = std::str::from_utf8(&self.message).context("non-UTF-8 commit message")?;
+        Ok(message.trim().to_owned())
     }
 }
 
