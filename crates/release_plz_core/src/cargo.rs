@@ -179,17 +179,13 @@ fn run_cargo_info(
     token: Option<&SecretString>,
 ) -> anyhow::Result<CmdOutput> {
     let registry_name = registry_or_crates_io(registry);
-    let args = vec![
-        "info".to_string(),
-        format!("{}@{}", package.name, package.version),
-        "--registry".to_string(),
-        registry_name.to_string(),
-    ];
+    let spec = format!("{}@{}", package.name, package.version);
+    let args = ["info", &spec, "--registry", registry_name];
 
     debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
 
     let mut cmd = cargo_cmd();
-    cmd.current_dir(workspace_root).args(&args);
+    cmd.current_dir(workspace_root).args(args);
 
     let mut envs = vec![];
 
@@ -198,8 +194,7 @@ fn run_cargo_info(
         envs.push((env_var, token.clone()));
     }
 
-    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_cargo_with_env(workspace_root, &args_refs, &envs)
+    run_cargo_with_env(workspace_root, &args, &envs)
 }
 
 pub async fn wait_until_published(
