@@ -50,7 +50,16 @@ impl Drop for Utf8TempDir {
     /// so delete the files from multiple threads first.
     /// [`tempfile::TempDir`] then removes the remaining directories.
     fn drop(&mut self) {
-        // Symlinks aren't followed, so only the links themselves are deleted.
+        // The walker always follows its root symlink. Leave replaced roots to
+        // `tempfile::TempDir`, which removes the link without following it.
+        if !self
+            .path
+            .symlink_metadata()
+            .is_ok_and(|metadata| metadata.is_dir())
+        {
+            return;
+        }
+        // Nested symlinks aren't followed, so only the links themselves are deleted.
         ignore::WalkBuilder::new(&self.path)
             .standard_filters(false)
             .build_parallel()
@@ -90,6 +99,22 @@ mod tests {
         drop(temp_dir);
         assert!(!path.exists());
         // Only the links are deleted, not what they point to.
+        assert_eq!(fs_err::read_to_string(outside_file).unwrap(), "contents");
+    }
+
+    #[test]
+    fn dropping_temp_dir_does_not_follow_replaced_root() {
+        let outside = Utf8TempDir::new().unwrap();
+        let outside_file = outside.path().join("file");
+        fs_err::write(&outside_file, "contents").unwrap();
+        let temp_dir = Utf8TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+        fs_err::remove_dir(&path).unwrap();
+        std::os::unix::fs::symlink(outside.path(), &path).unwrap();
+
+        drop(temp_dir);
+
+        assert!(!path.is_symlink());
         assert_eq!(fs_err::read_to_string(outside_file).unwrap(), "contents");
     }
 }
