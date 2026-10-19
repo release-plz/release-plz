@@ -52,11 +52,7 @@ impl Drop for Utf8TempDir {
     fn drop(&mut self) {
         // The walker always follows its root symlink. Leave replaced roots to
         // `tempfile::TempDir`, which removes the link without following it.
-        if !self
-            .path
-            .symlink_metadata()
-            .is_ok_and(|metadata| metadata.is_dir())
-        {
+        if self.path.is_symlink() {
             return;
         }
         // Nested symlinks aren't followed, so only the links themselves are deleted.
