@@ -204,7 +204,7 @@ impl TestContext {
     }
 
     pub fn run_release_pr(&self) -> Assert {
-        self.run_release_pr_with_log(&log_level())
+        self.release_pr_command(&self.gitea.token).assert()
     }
 
     pub fn run_release_pr_with_log(&self, log: &str) -> Assert {
