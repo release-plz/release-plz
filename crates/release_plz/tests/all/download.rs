@@ -61,13 +61,21 @@ async fn download_rejects_duplicate_packages() {
     let name = &context.gitea.repo;
     context.run_cargo_publish(name);
 
-    let dest_dir = Utf8TempDir::new().unwrap();
-    let error = context
-        .package_downloader([name, name], dest_dir.path())
-        .download()
-        .await
-        .unwrap_err();
-    assert!(format!("{error:#}").contains("already exists and is not an empty directory"));
+    // Over the sparse protocol, the second query for the same name waits for the
+    // first one's in-flight index fetch: a path the git registry never takes.
+    for registry in [TEST_REGISTRY, TEST_SPARSE_REGISTRY] {
+        let dest_dir = Utf8TempDir::new().unwrap();
+        let error = context
+            .package_downloader([name, name], dest_dir.path())
+            .with_registry(registry.to_string())
+            .download()
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("already exists and is not an empty directory"),
+            "registry: {registry}"
+        );
+    }
 }
 
 #[tokio::test]
