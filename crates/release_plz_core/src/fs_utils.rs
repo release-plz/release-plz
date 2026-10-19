@@ -103,11 +103,14 @@ mod tests {
         fs_err::write(&outside_file, "contents").unwrap();
         let temp_dir = Utf8TempDir::new().unwrap();
         let path = temp_dir.path().to_path_buf();
+        // Replace the temporary directory with a link to another directory.
+        // Following it would delete `outside_file`.
         fs_err::remove_dir(&path).unwrap();
         std::os::unix::fs::symlink(outside.path(), &path).unwrap();
 
         drop(temp_dir);
 
+        // `tempfile` removes the link, but not what it points to.
         assert!(!path.is_symlink());
         assert_eq!(fs_err::read_to_string(outside_file).unwrap(), "contents");
     }
