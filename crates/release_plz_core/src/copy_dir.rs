@@ -1,8 +1,7 @@
-use std::{io, path::Path, process::Command, sync::Mutex};
+use std::{io, path::Path, process::Command, sync::OnceLock};
 
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use ignore::WalkState;
 use tracing::{debug, trace};
 
 use crate::fs_utils::strip_prefix;
@@ -90,14 +89,14 @@ fn copy_directory(
             file_copy,
         )
     };
-    copy_walked_entries(walker, &copy_walked_entry)?;
+    copy_walked_entries(walker, copy_walked_entry)?;
     // Copy Git metadata without applying ignore rules: patterns such as `tags`
     // must not exclude `.git/refs/tags`. `.git` can also be a worktree's gitdir file.
     if git_path.try_exists()? || git_path.is_symlink() {
         let git_walker = ignore::WalkBuilder::new(&git_path)
             .standard_filters(false)
             .build_parallel();
-        copy_walked_entries(git_walker, &copy_walked_entry)?;
+        copy_walked_entries(git_walker, copy_walked_entry)?;
     }
     copy_tracked_files(from, to, root_from, root_to)?;
     Ok(())
@@ -109,19 +108,20 @@ fn copy_directory(
 /// directory of an entry always exists.
 fn copy_walked_entries(
     walker: ignore::WalkParallel,
-    copy: &(dyn Fn(Result<ignore::DirEntry, ignore::Error>) -> anyhow::Result<()> + Sync),
+    copy: impl Fn(Result<ignore::DirEntry, ignore::Error>) -> anyhow::Result<()> + Sync,
 ) -> anyhow::Result<()> {
-    let first_error = Mutex::new(None);
+    // Other threads can fail before they quit, so only the first error is kept.
+    let first_error = OnceLock::new();
     walker.run(|| {
         Box::new(|entry| match copy(entry) {
-            Ok(()) => WalkState::Continue,
+            Ok(()) => ignore::WalkState::Continue,
             Err(error) => {
-                first_error.lock().unwrap().get_or_insert(error);
-                WalkState::Quit
+                first_error.get_or_init(|| error);
+                ignore::WalkState::Quit
             }
         })
     });
-    first_error.into_inner().unwrap().map_or(Ok(()), Err)
+    first_error.into_inner().map_or(Ok(()), Err)
 }
 
 /// Ignore rules only apply to untracked files. The walker can skip whole ignored
