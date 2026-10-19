@@ -22,8 +22,10 @@
 //! absent, as is Git configuration included from a `.rs` file. Hooks and
 //! configuration outside the trees are assumed stable during a walk.
 
+use std::collections::HashMap;
+
 use anyhow::Context as _;
-use git_cmd::Repo;
+use git_cmd::{HistoryCommit, Repo};
 use tracing::debug;
 
 use crate::package_compare::PackageFiles;
@@ -31,19 +33,31 @@ use crate::package_compare::PackageFiles;
 /// The package files of the checkouts of a history walk.
 pub(crate) struct CheckoutPackageFiles<'a> {
     repository: &'a Repo,
+    /// The commits of the walk, in the order it checks out those it doesn't skip.
+    walk: &'a [HistoryCommit],
+    /// Each commit of `walk` after the first, mapped to the commit before it and
+    /// to whether only Rust sources differ between the two. `None` until the
+    /// second checkout.
+    consecutive_changes: Option<HashMap<&'a str, (&'a str, bool)>>,
     /// The last checked-out commit, whose files `files` lists. `None` before the
-    /// first checkout and when that checkout has, or may have, a checkout hook
-    /// or a symlinked manifest.
+    /// first checkout.
     commit: Option<String>,
+    /// Whether the last checkout has, or may have, a checkout hook or a
+    /// symlinked manifest. `None` until a checkout that could reuse `files`
+    /// needs to know.
+    prevents_reuse: Option<bool>,
     files: PackageFiles,
 }
 
 impl<'a> CheckoutPackageFiles<'a> {
-    /// Prepare to walk the history of `repository`.
-    pub(crate) fn new(repository: &'a Repo) -> Self {
+    /// Prepare to check out the commits of `walk` in `repository`.
+    pub(crate) fn new(repository: &'a Repo, walk: &'a [HistoryCommit]) -> Self {
         Self {
             repository,
+            walk,
+            consecutive_changes: None,
             commit: None,
+            prevents_reuse: None,
             files: PackageFiles::default(),
         }
     }
@@ -52,38 +66,67 @@ impl<'a> CheckoutPackageFiles<'a> {
     /// possible. Call this after checking `commit` out, before inspecting the
     /// package.
     pub(crate) fn files_at(&mut self, commit: &str) -> &PackageFiles {
-        let reuses = self.commit.take().is_some_and(|previous| {
-            only_rust_sources_differ(self.repository, &previous, commit).unwrap_or_else(|error| {
-                debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
-                false
-            })
-        });
-        if reuses {
-            // The previous checkout had no checkout hook and no symlinked
-            // manifest, and source-only differences cannot add either.
-            if self.files.is_cached() {
-                debug!("reusing historical package file list at {commit}");
-            }
-        } else {
+        let previous = self.commit.replace(commit.to_owned());
+        let only_sources_differ =
+            previous.is_some_and(|previous| self.only_rust_sources_differ(&previous, commit));
+        if !only_sources_differ {
             self.files = PackageFiles::default();
-            // A hook can change files at each checkout without changing the
-            // trees, so no later checkout may reuse this list.
-            let has_hook = has_checkout_hook(self.repository).unwrap_or_else(|error| {
-                debug!("cannot check for checkout hooks at {commit}: {error:#}");
-                true
-            });
-            let has_symlinked_manifest =
-                has_symlinked_manifest(self.repository).unwrap_or_else(|error| {
-                    debug!("cannot check for symlinked manifests at {commit}: {error:#}");
-                    true
-                });
-            if has_hook || has_symlinked_manifest {
-                return &self.files;
-            }
+            self.prevents_reuse = None;
+            return &self.files;
         }
-        self.commit = Some(commit.to_owned());
+        // Source-only differences can't add or remove a checkout hook or a
+        // symlinked manifest, so checking this checkout tells about the
+        // previous one, and the answer holds until the trees differ otherwise.
+        // Checking only when a list could be reused saves the Git calls at
+        // checkouts whose successor differs beyond sources.
+        let prevents_reuse = *self
+            .prevents_reuse
+            .get_or_insert_with(|| prevents_reuse(self.repository, commit));
+        if prevents_reuse {
+            // A hook can change files at each checkout without changing the
+            // trees, and a symlinked manifest can point to a Rust source.
+            self.files = PackageFiles::default();
+        } else if self.files.is_cached() {
+            debug!("reusing historical package file list at {commit}");
+        }
         &self.files
     }
+
+    /// Whether the trees of the checkouts `previous` and `commit` differ only in
+    /// Rust sources, see [`only_rust_sources_differ`].
+    fn only_rust_sources_differ(&mut self, previous: &str, commit: &str) -> bool {
+        // Most checkouts follow the commit before them in the walk: compare all
+        // of those pairs with one Git call. The walk may skip commits, though.
+        let consecutive_changes = self.consecutive_changes.get_or_insert_with(|| {
+            consecutive_changes(self.repository, self.walk).unwrap_or_else(|error| {
+                debug!("cannot compare the trees of consecutive commits: {error:#}");
+                HashMap::new()
+            })
+        });
+        match consecutive_changes.get(commit) {
+            Some(&(before, only_sources)) if before == previous => only_sources,
+            _ => only_rust_sources_differ(self.repository, previous, commit).unwrap_or_else(
+                |error| {
+                    debug!("cannot compare the trees of {previous} and {commit}: {error:#}");
+                    false
+                },
+            ),
+        }
+    }
+}
+
+/// Whether the checkout of `commit` has, or may have, a checkout hook or a
+/// symlinked manifest.
+fn prevents_reuse(repository: &Repo, commit: &str) -> bool {
+    let has_hook = has_checkout_hook(repository).unwrap_or_else(|error| {
+        debug!("cannot check for checkout hooks at {commit}: {error:#}");
+        true
+    });
+    has_hook
+        || has_symlinked_manifest(repository).unwrap_or_else(|error| {
+            debug!("cannot check for symlinked manifests at {commit}: {error:#}");
+            true
+        })
 }
 
 /// The hooks that `git checkout` runs.
@@ -154,31 +197,72 @@ fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
         .any(|entry| entry.starts_with("120000 ")))
 }
 
+/// `git diff-tree` with the options that [`only_rust_sources_differ`] needs.
+/// `diff-tree` detects no renames, so it reads no blobs and reports a rename
+/// as a deletion and an addition. Report submodule updates even if
+/// `submodule.<name>.ignore` hides them.
+const DIFF_TREE: [&str; 4] = ["diff-tree", "-r", "-z", "--ignore-submodules=none"];
+
 /// Whether the trees of the commits `old` and `new` differ only in the contents
 /// of `.rs` files that are non-executable regular files in both.
 fn only_rust_sources_differ(repository: &Repo, old: &str, new: &str) -> anyhow::Result<bool> {
-    // `diff-tree` detects no renames, so it reads no blobs and reports a rename
-    // as a deletion and an addition. Report submodule updates even if
-    // `submodule.<name>.ignore` hides them.
-    let diff = repository.git(&[
-        "diff-tree",
-        "-r",
-        "-z",
-        "--ignore-submodules=none",
-        old,
-        new,
-    ])?;
-    // Each change is `:<old mode> <new mode> <old id> <new id> <status>`
-    // followed by its path, both NUL-terminated.
+    let diff = repository.git(&[DIFF_TREE.as_slice(), &[old, new]].concat())?;
     let mut fields = diff.split_terminator('\0');
     while let Some(change) = fields.next() {
         let path = fields
             .next()
             .with_context(|| format!("no path follows the change `{change}`"))?;
-        let modified_regular_file = change.starts_with(":100644 100644 ") && change.ends_with(" M");
-        if !(modified_regular_file && path.ends_with(".rs")) {
+        if !is_rust_source_change(change, path) {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+/// [`only_rust_sources_differ`] for each commit of `walk` after the first and
+/// the commit before it, keyed by the former and paired with the latter.
+fn consecutive_changes<'a>(
+    repository: &Repo,
+    walk: &'a [HistoryCommit],
+) -> anyhow::Result<HashMap<&'a str, (&'a str, bool)>> {
+    let mut changes: HashMap<_, _> = walk
+        .windows(2)
+        .map(|pair| (pair[1].id.as_str(), (pair[0].id.as_str(), true)))
+        .collect();
+    if changes.is_empty() {
+        return Ok(changes);
+    }
+    // With `--stdin`, `diff-tree` compares the commits of each input line
+    // `<commit> <parent>` as if `parent` were the parent of `commit`, and
+    // prints `commit` before their changes, if any.
+    let input: String = changes
+        .iter()
+        .map(|(commit, (before, _))| format!("{commit} {before}\n"))
+        .collect();
+    let diff = repository.git_with_input(&[DIFF_TREE.as_slice(), &["--stdin"]].concat(), &input)?;
+    let mut commit = None;
+    let mut fields = diff.split_terminator('\0');
+    while let Some(field) = fields.next() {
+        if !field.starts_with(':') {
+            commit = Some(field);
+            continue;
+        }
+        let path = fields
+            .next()
+            .with_context(|| format!("no path follows the change `{field}`"))?;
+        let commit = commit.with_context(|| format!("no commit precedes the change `{field}`"))?;
+        let (_, only_sources) = changes
+            .get_mut(commit)
+            .with_context(|| format!("unexpected commit `{commit}`"))?;
+        *only_sources &= is_rust_source_change(field, path);
+    }
+    Ok(changes)
+}
+
+/// Whether the `diff-tree` `change` of `path` modifies the contents of a `.rs`
+/// file that is a non-executable regular file on both sides. Each change is
+/// `:<old mode> <new mode> <old id> <new id> <status>`.
+fn is_rust_source_change(change: &str, path: &str) -> bool {
+    let modified_regular_file = change.starts_with(":100644 100644 ") && change.ends_with(" M");
+    modified_regular_file && path.ends_with(".rs")
 }

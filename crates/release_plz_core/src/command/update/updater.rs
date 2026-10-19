@@ -738,10 +738,13 @@ impl Updater<'_> {
         // Exclude already released history using both the release tag and the
         // registry's published commit, when available. The walk skips these
         // commits and their ancestors.
-        let release_boundaries: Vec<&str> = tag_commit
+        let mut release_boundaries: Vec<&str> = tag_commit
             .into_iter()
             .chain(released.and_then(|(p, _)| p.published_at_sha1()))
             .collect();
+        // The tag usually points at the published commit. Checking that a
+        // boundary exists costs a Git call, so check it once.
+        release_boundaries.dedup();
         // Enumerate from the branch tip before checking out any historical snapshot.
         // The parents let RetainedChanges follow the lineages of this same walk.
         let graph = repository.parents_at_paths(
@@ -752,8 +755,9 @@ impl Updater<'_> {
         )?;
         let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
-        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository);
-        for (current_commit_hash, _) in graph {
+        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
+        for commit in &graph {
+            let current_commit_hash = commit.id.as_str();
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
@@ -761,12 +765,12 @@ impl Updater<'_> {
             // changes the package, forked before the release and merged after it,
             // keeps its fork point and every ancestor of it reachable, so all of
             // those are inspected.
-            if retained_changes.skips(&current_commit_hash) {
+            if retained_changes.skips(current_commit_hash) {
                 continue;
             }
-            checkout_commit(repository, &current_commit_hash)?;
+            checkout_commit(repository, current_commit_hash)?;
             // Equality and changed-file checks inspect the same snapshot.
-            let local_package_files = checkout_package_files.files_at(&current_commit_hash);
+            let local_package_files = checkout_package_files.files_at(current_commit_hash);
             if let Some((released_package, released_path)) = released {
                 let are_packages_equal = self.check_package_equality(
                     repository,
@@ -784,12 +788,12 @@ impl Updater<'_> {
                     // RetainedChanges preserves candidates whose changes survive
                     // through another lineage.
                     let ancestors = repository.ancestors_at_paths(
-                        &current_commit_hash,
+                        current_commit_hash,
                         &release_boundaries,
                         &paths.all(),
                     )?;
                     retained_changes.add_boundary(
-                        &current_commit_hash,
+                        current_commit_hash,
                         ancestors,
                         released_package_files.get(released_path)?,
                     );
@@ -801,12 +805,12 @@ impl Updater<'_> {
             if self.are_changed_files_in_package(
                 package_path,
                 repository,
-                &current_commit_hash,
+                current_commit_hash,
                 local_package_files,
             )? {
                 diff.commits.push(Commit::new(
-                    current_commit_hash,
-                    repository.current_commit_message()?,
+                    current_commit_hash.to_owned(),
+                    commit.message()?,
                 ));
             }
         }

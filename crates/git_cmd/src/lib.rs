@@ -4,7 +4,12 @@ mod cmd;
 #[cfg(feature = "test_fixture")]
 pub mod test_fixture;
 
-use std::{collections::HashSet, path::Path, process::Command};
+use std::{
+    collections::HashSet,
+    io::Write as _,
+    path::Path,
+    process::{Command, Output, Stdio},
+};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -28,6 +33,46 @@ pub struct CommitSignatures {
     pub author_email: String,
     pub committer_name: String,
     pub committer_email: String,
+}
+
+/// A commit of [`Repo::parents_at_paths`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryCommit {
+    pub id: String,
+    /// The parents, rewritten by history simplification.
+    pub parents: Vec<String>,
+    /// The message as Git prints it. Like other Git output, it must be UTF-8,
+    /// but only once read: callers may read the messages of some commits only.
+    message: Vec<u8>,
+}
+
+impl HistoryCommit {
+    /// Parse an entry `commit <id> <parents>\n<message>` of `git rev-list --parents`.
+    fn parse(entry: &[u8]) -> anyhow::Result<Self> {
+        let header_end = entry
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .unwrap_or(entry.len());
+        let (header, message) = entry.split_at(header_end);
+        let header = std::str::from_utf8(header).context("non-UTF-8 rev-list header")?;
+        let mut ids = header
+            .strip_prefix("commit ")
+            .with_context(|| format!("unexpected rev-list header `{header}`"))?
+            .split_whitespace()
+            .map(str::to_owned);
+        Ok(Self {
+            id: ids.next().context("rev-list printed no commit id")?,
+            parents: ids.collect(),
+            // Skip the newline that ends the header.
+            message: message.get(1..).unwrap_or_default().to_vec(),
+        })
+    }
+
+    /// The message, as [`Repo::current_commit_message`] reads it with this
+    /// commit checked out.
+    pub fn message(&self) -> anyhow::Result<String> {
+        cmd::string_from_bytes(self.message.clone())
+    }
 }
 
 impl Repo {
@@ -209,6 +254,12 @@ impl Repo {
         git_in_dir(&self.directory, args)
     }
 
+    /// Like [`Repo::git`], but write `input` to the standard input of git.
+    pub fn git_with_input(&self, args: &[&str], input: &str) -> anyhow::Result<String> {
+        let stdout = git_output_in_dir(&self.directory, args, &[], Some(input.as_bytes()))?;
+        cmd::string_from_bytes(stdout)
+    }
+
     pub fn stash_pop(&self) -> anyhow::Result<()> {
         self.git(&["stash", "pop"])?;
         Ok(())
@@ -239,7 +290,11 @@ impl Repo {
 
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
-        self.git(&["checkout", object])
+        // Nobody reads the feedback, and computing it is a large part of a
+        // checkout: Git diffs the worktree to list local changes and, when
+        // leaving a detached HEAD, walks the history of every ref to warn about
+        // the commits left behind. Errors are still reported.
+        self.git(&["checkout", "--quiet", object])
             .context("failed to checkout")?;
         Ok(())
     }
@@ -297,7 +352,7 @@ impl Repo {
         max_commits: Option<u32>,
     ) -> anyhow::Result<Vec<String>> {
         let graph = self.parents_at_paths(head, exclude, paths, max_commits)?;
-        Ok(graph.into_iter().map(|(commit, _)| commit).collect())
+        Ok(graph.into_iter().map(|commit| commit.id).collect())
     }
 
     /// Commits reachable from `commit` that touch `paths`.
@@ -314,11 +369,13 @@ impl Repo {
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
     ) -> anyhow::Result<Vec<String>> {
-        self.rev_list(&["--full-history", commit], exclude, paths)
+        let output = self.rev_list(&["--full-history", commit], exclude, paths)?;
+        let output = cmd::string_from_bytes(output)?;
+        Ok(output.lines().map(str::to_owned).collect())
     }
 
-    /// Commits reachable from `head` that touch `paths`, each paired with its
-    /// parents and ordered with `--date-order`.
+    /// Commits reachable from `head` that touch `paths`, with their parents and
+    /// messages, ordered with `--date-order`.
     ///
     /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
     /// doesn't exist in this repository is ignored, so a commit hash recorded by a
@@ -340,27 +397,30 @@ impl Repo {
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
         max_commits: Option<u32>,
-    ) -> anyhow::Result<Vec<(String, Vec<String>)>> {
+    ) -> anyhow::Result<Vec<HistoryCommit>> {
         let limit = max_commits.map(|n| format!("--max-count={n}"));
-        let mut args = vec!["--parents", "--date-order", head];
+        // Listing the messages here saves a `git log` for each commit a walk
+        // keeps. Git prints each commit as `commit <id> <parents>\n<format>\n`.
+        // Messages can't contain NUL, so a NUL ends each one unambiguously.
+        let mut args = vec!["--parents", "--date-order", "--format=%B%x00", head];
         args.extend(limit.as_deref());
-        let lines = self.rev_list(&args, exclude, paths)?;
-        Ok(lines
-            .iter()
-            .filter_map(|line| {
-                let mut ids = line.split_whitespace();
-                Some((ids.next()?.to_owned(), ids.map(str::to_owned).collect()))
-            })
-            .collect())
+        let output = self.rev_list(&args, exclude, paths)?;
+        output
+            .split(|byte| *byte == b'\0')
+            .map(|entry| entry.strip_prefix(b"\n").unwrap_or(entry))
+            .filter(|entry| !entry.is_empty())
+            .map(HistoryCommit::parse)
+            .collect()
     }
 
-    /// Run `git rev-list` with `args`, restricted to the commits touching `paths`.
+    /// Run `git rev-list` with `args`, restricted to the commits touching `paths`,
+    /// and return its raw output.
     fn rev_list(
         &self,
         args: &[&str],
         exclude: &[&str],
         paths: &[impl AsRef<Utf8Path>],
-    ) -> anyhow::Result<Vec<String>> {
+    ) -> anyhow::Result<Vec<u8>> {
         let exclusions: Vec<String> = exclude
             .iter()
             .filter(|commit| self.commit_exists(commit))
@@ -371,8 +431,7 @@ impl Repo {
         rev_list.extend(exclusions.iter().map(String::as_str));
         rev_list.push("--");
         rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
-        let output = self.git(&rev_list)?;
-        Ok(output.lines().map(str::to_owned).collect())
+        git_output_in_dir(&self.directory, &rev_list, &[], None)
     }
 
     pub fn current_commit_message(&self) -> anyhow::Result<String> {
@@ -519,23 +578,39 @@ pub(crate) fn git_in_dir_with_env(
     args: &[&str],
     envs: &[(&str, &str)],
 ) -> anyhow::Result<String> {
+    let stdout = git_output_in_dir(dir, args, envs, None)?;
+    cmd::string_from_bytes(stdout)
+}
+
+/// Like [`git_in_dir_with_env`], but write `input`, if any, to the standard
+/// input of the git process, and return the stdout as is.
+fn git_output_in_dir(
+    dir: &Utf8Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+    input: Option<&[u8]>,
+) -> anyhow::Result<Vec<u8>> {
     let args: Vec<&str> = args.iter().map(|s| s.trim()).collect();
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .arg("-C")
         .arg(dir)
         .args(&args)
-        .envs(envs.iter().copied())
-        .output()
-        .with_context(|| {
-            format!("error while running git in directory `{dir:?}` with args `{args:?}`")
-        })?;
+        .envs(envs.iter().copied());
+    let output = match input {
+        None => command.output(),
+        Some(input) => output_with_input(&mut command, input),
+    }
+    .with_context(|| {
+        format!("error while running git in directory `{dir:?}` with args `{args:?}`")
+    })?;
     trace!("git {:?}: output = {:?}", args, output);
-    let stdout = cmd::string_from_bytes(output.stdout)?;
     if output.status.success() {
-        Ok(stdout)
+        Ok(output.stdout)
     } else {
         let mut error =
             format!("error while running git in directory `{dir:?}` with args `{args:?}");
+        let stdout = cmd::string_from_bytes(output.stdout)?;
         let stderr = cmd::string_from_bytes(output.stderr)?;
         if !stdout.is_empty() || !stderr.is_empty() {
             error.push(':');
@@ -550,6 +625,28 @@ pub(crate) fn git_in_dir_with_env(
         }
         Err(anyhow!(error))
     }
+}
+
+/// Run `command` like [`Command::output`], but write `input` to its standard input.
+fn output_with_input(command: &mut Command, input: &[u8]) -> std::io::Result<Output> {
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    std::thread::scope(|scope| {
+        // Write from another thread: the child can fill its output pipes
+        // before it reads all of its input. Dropping stdin then closes it.
+        let writer = scope.spawn(move || stdin.write_all(input));
+        let output = child.wait_with_output()?;
+        let written = writer.join().expect("writing to the child panicked");
+        // A child that fails stops reading: its own error explains more.
+        if output.status.success() {
+            written?;
+        }
+        Ok(output)
+    })
 }
 
 /// Get the name of the current branch.
@@ -703,16 +800,62 @@ mod tests {
         let path = Utf8Path::new("pkg");
         fs_err::create_dir(directory.path().join(path)).unwrap();
         let KeepMineMerge { base, mine, .. } = keep_mine_merge(&repo, path);
+        let parents = |exclude: &[&str]| -> Vec<_> {
+            repo.parents_at_paths("HEAD", exclude, &[path], None)
+                .unwrap()
+                .into_iter()
+                .map(|commit| (commit.id, commit.parents))
+                .collect()
+        };
 
         assert_eq!(
-            repo.parents_at_paths("HEAD", &[], &[path], None).unwrap(),
+            parents(&[]),
             [(mine.clone(), vec![base.clone()]), (base.clone(), vec![])]
         );
-        assert_eq!(
-            repo.parents_at_paths("HEAD", &[&base], &[path], None)
-                .unwrap(),
-            [(mine, vec![base])]
-        );
+        assert_eq!(parents(&[&base]), [(mine, vec![base])]);
+    }
+
+    /// [`Repo::parents_at_paths`] reads every message in one go, so it must split
+    /// them from the commit headers whatever they contain.
+    #[test]
+    fn history_messages_equal_the_messages_of_checked_out_commits() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file");
+        // Commit messages from a file outside the repository: `Repo::git` trims
+        // its arguments.
+        let message_file = tempfile::NamedTempFile::new().unwrap();
+        let message_path = message_file.path().to_str().unwrap();
+        for message in [
+            // A line that looks like the header of another commit.
+            "feat: first\n\ncommit 0000000000000000000000000000000000000000\n",
+            // Surrounding whitespace, which both readers trim.
+            "  fix: second  \n\n",
+            "",
+        ] {
+            fs_err::write(directory.path().join(path), message).unwrap();
+            fs_err::write(message_path, message).unwrap();
+            repo.git(&["add", "."]).unwrap();
+            repo.git(&[
+                "commit",
+                "--cleanup=verbatim",
+                "--allow-empty-message",
+                "-F",
+                message_path,
+            ])
+            .unwrap();
+        }
+
+        let commits = repo.parents_at_paths("HEAD", &[], &[path], None).unwrap();
+        assert_eq!(commits.len(), 3);
+        for commit in commits {
+            repo.checkout(&commit.id).unwrap();
+            assert_eq!(
+                commit.message().unwrap(),
+                repo.current_commit_message().unwrap()
+            );
+        }
     }
 
     #[test]
