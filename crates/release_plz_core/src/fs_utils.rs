@@ -70,11 +70,11 @@ impl Drop for Utf8TempDir {
     }
 }
 
-#[cfg(test)]
+// The test creates symlinks, which need privileges on Windows.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     #[test]
     fn dropping_temp_dir_keeps_symlink_targets() {
         let outside = Utf8TempDir::new().unwrap();
