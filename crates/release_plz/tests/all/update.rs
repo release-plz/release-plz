@@ -33,6 +33,36 @@ fn semver_check_preserves_explicit_default_target_directory() {
 }
 
 #[test]
+fn semver_check_builds_in_a_temporary_target_directory_by_default() {
+    assert_cargo_semver_checks_is_installed();
+    let (temp_dir, repo) = released_workspace(
+        &[("one", "version = \"1.0.0\"\n")],
+        "",
+        "[workspace]\nsemver_check = true\n",
+    );
+    let registry_dir = temp_dir.path().join("registry");
+    // The project change removes this public function of the published version.
+    fs_err::write(registry_dir.join("one/src/lib.rs"), "pub fn removed() {}\n").unwrap();
+    change_package(&repo, "one", "fix: update library");
+
+    // Without a configured target directory, release-plz picks one per package.
+    workspace_update_command(&temp_dir, &repo)
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR")
+        .assert()
+        .success();
+
+    // The current and the baseline version have the same name and version, so they
+    // write the same rustdoc JSON file in the shared target directory. The `fix`
+    // commit bumps the major version only if the removed function is still detected.
+    assert_locked_versions(repo.directory(), &[("one", "2.0.0")]);
+    // Build artifacts must not be left in the user's project or registry workspace.
+    for workspace in [repo.directory(), &registry_dir] {
+        assert!(!workspace.join("target").exists(), "{workspace}");
+    }
+}
+
+#[test]
 fn update_workspace_without_publishable_packages() {
     let (temp_dir, repo) = released_workspace(
         &[("one", "version = \"1.0.0\"\npublish = false\n")],
