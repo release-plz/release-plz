@@ -268,53 +268,62 @@ async fn release_plz_can_do_backports() {
     outcome.stdout(format!("{expected_stdout}\n"));
 }
 
-/// Cargo wrapper that records the subcommands run by release-plz.
-/// With `HIDE_PUBLISHED=true`, it removes the `Published` status from the output of
-/// `cargo publish`, like a Cargo whose wait for the package timed out.
-/// With `MIRROR_DIR` set, the mirror catches up after the first failed check
-/// following publication, exercising the retry even when Cargo confirms success.
+/// How [`CARGO_WRAPPER`] and the registry behave during the release.
+#[cfg(unix)]
+#[derive(Debug)]
+enum Scenario {
+    /// `cargo publish` confirms that the package is in the registry.
+    Confirmed,
+    /// `cargo publish` doesn't print the `Published` status,
+    /// like a Cargo whose wait for the package timed out.
+    Unconfirmed,
+    /// `cargo publish` confirms the package, but Cargo resolves dependencies from a
+    /// mirror of the registry, which catches up only after the first failed check
+    /// following publication.
+    LaggingMirror,
+}
+
+/// Cargo wrapper that records the subcommands run by release-plz
+/// and simulates the [`Scenario`] passed in `SCENARIO`.
 #[cfg(unix)]
 const CARGO_WRAPPER: &str = r#"#!/bin/sh
 echo "$1" >> "$WRAPPER_DIR/calls"
-if [ "$1" = info ] && [ -n "$MIRROR_DIR" ] && [ -f "$WRAPPER_DIR/published" ] && [ ! -f "$WRAPPER_DIR/mirror_updated" ]; then
+if [ "$1" = info ] && [ "$SCENARIO" = LaggingMirror ] && grep -qx publish "$WRAPPER_DIR/calls" && [ ! -f "$WRAPPER_DIR/mirror_updated" ]; then
     "$REAL_CARGO" "$@"
     status=$?
     if [ "$status" = 0 ]; then
         echo 'mirror unexpectedly contains the new package' >&2
         exit 1
     fi
-    git -C "$MIRROR_DIR" pull --ff-only >&2 || exit 1
+    git -C "$WRAPPER_DIR/mirror" pull --ff-only >&2 || exit 1
     touch "$WRAPPER_DIR/mirror_updated"
     exit "$status"
 fi
 if [ "$1" = publish ]; then
     "$REAL_CARGO" "$@" 2> "$WRAPPER_DIR/publish_stderr"
     status=$?
-    if [ "$HIDE_PUBLISHED" = true ]; then
+    if [ "$SCENARIO" = Unconfirmed ]; then
         grep -v Published "$WRAPPER_DIR/publish_stderr" >&2
     else
         cat "$WRAPPER_DIR/publish_stderr" >&2
-    fi
-    if [ "$status" = 0 ]; then
-        touch "$WRAPPER_DIR/published"
     fi
     exit $status
 fi
 exec "$REAL_CARGO" "$@"
 "#;
 
-/// Release a new project through [`CARGO_WRAPPER`] and return the `cargo info`
-/// and `cargo publish` subcommands run by release-plz, in order.
+/// Release a new project through [`CARGO_WRAPPER`] in the given `scenario` and return
+/// the `cargo info` and `cargo publish` subcommands run by release-plz, in order.
 #[cfg(unix)]
-async fn release_cargo_calls(hide_published: bool, use_mirror: bool) -> Vec<String> {
+async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
     let context = TestContext::new().await;
     let wrapper_dir = Utf8TempDir::new().unwrap();
     let cargo = wrapper_dir.path().join("cargo");
     fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
     crate::helpers::make_executable(&cargo);
 
-    let mirror = wrapper_dir.path().join("mirror");
-    if use_mirror {
+    if let Scenario::LaggingMirror = scenario {
+        let mirror = wrapper_dir.path().join("mirror");
         let config_path = context.repo_dir().join(".cargo/config.toml");
         let mut config = fs_err::read_to_string(&config_path).unwrap();
         let parsed: toml::Value = toml::from_str(&config).unwrap();
@@ -341,12 +350,11 @@ async fn release_cargo_calls(hide_published: bool, use_mirror: bool) -> Vec<Stri
         .env("CARGO", &cargo)
         .env("REAL_CARGO", env!("CARGO"))
         .env("WRAPPER_DIR", wrapper_dir.path())
-        .env("HIDE_PUBLISHED", hide_published.to_string())
-        .env("MIRROR_DIR", if use_mirror { mirror.as_str() } else { "" })
+        .env("SCENARIO", format!("{scenario:?}"))
         .assert()
         .success();
 
-    if !hide_published {
+    if !matches!(scenario, Scenario::Unconfirmed) {
         let stderr = fs_err::read_to_string(wrapper_dir.path().join("publish_stderr")).unwrap();
         assert!(stderr.contains("Published"), "{stderr}");
     }
@@ -363,7 +371,10 @@ async fn release_cargo_calls(hide_published: bool, use_mirror: bool) -> Vec<Stri
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_trusts_cargo_publish_confirmation() {
     // The first `cargo info` checks whether the package was already published.
-    assert_eq!(release_cargo_calls(false, false).await, ["info", "publish"]);
+    assert_eq!(
+        release_cargo_calls(Scenario::Confirmed).await,
+        ["info", "publish"]
+    );
 }
 
 #[cfg(unix)]
@@ -371,7 +382,7 @@ async fn release_trusts_cargo_publish_confirmation() {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
     assert_eq!(
-        release_cargo_calls(true, false).await,
+        release_cargo_calls(Scenario::Unconfirmed).await,
         ["info", "publish", "info"]
     );
 }
@@ -381,7 +392,7 @@ async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_waits_for_mirror_after_cargo_publish_confirms() {
     assert_eq!(
-        release_cargo_calls(false, true).await,
+        release_cargo_calls(Scenario::LaggingMirror).await,
         ["info", "publish", "info", "info"]
     );
 }
