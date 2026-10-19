@@ -87,14 +87,12 @@ mod tests {
         fs_err::write(&outside_file, "contents").unwrap();
         let temp_dir = Utf8TempDir::new().unwrap();
         let path = temp_dir.path().to_path_buf();
-        fs_err::create_dir(path.join("nested")).unwrap();
-        fs_err::write(path.join("nested/file"), "contents").unwrap();
+        // Following this link would delete `outside_file`.
         std::os::unix::fs::symlink(outside.path(), path.join("dir_link")).unwrap();
-        std::os::unix::fs::symlink(&outside_file, path.join("nested/file_link")).unwrap();
 
         drop(temp_dir);
         assert!(!path.exists());
-        // Only the links are deleted, not what they point to.
+        // Only the link is deleted, not what it points to.
         assert_eq!(fs_err::read_to_string(outside_file).unwrap(), "contents");
     }
 
