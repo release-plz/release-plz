@@ -55,6 +55,7 @@ expect-test.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 toml_edit.workspace = true
+wiremock.workspace = true
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/release-plz-v{ version }/{ name }-{ target }{ archive-suffix }"

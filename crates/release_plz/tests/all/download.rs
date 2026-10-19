@@ -1,4 +1,5 @@
 use release_plz_core::{PackageDownloader, fs_utils::Utf8TempDir};
+use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
 
 use crate::helpers::{TEST_REGISTRY, TEST_SPARSE_REGISTRY, test_context::TestContext};
 
@@ -124,6 +125,53 @@ async fn download_checks_destinations_before_downloading() {
     fs_err::remove_file(marker).unwrap();
     let error = downloader.download().await.unwrap_err();
     assert!(format!("{error:#}").contains("failed to download `"));
+}
+
+#[tokio::test]
+async fn download_stops_querying_after_failed_registry_config() {
+    let server = MockServer::start().await;
+    Mock::given(path("/config.json"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let cargo_dir = Utf8TempDir::new().unwrap();
+    fs_err::create_dir(cargo_dir.path().join(".cargo")).unwrap();
+    // Without retries, every attempt to load `config.json` is a single request.
+    fs_err::write(
+        cargo_dir.path().join(".cargo/config.toml"),
+        format!(
+            "[registries.mock]\nindex = 'sparse+{}/'\n[net]\nretry = 0\n",
+            server.uri()
+        ),
+    )
+    .unwrap();
+
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let error = PackageDownloader::new(["first", "second", "third"], dest_dir.path().as_str())
+        .with_registry("mock".to_string())
+        .with_cargo_cwd(cargo_dir.path().to_path_buf())
+        .download()
+        .await
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("failed to query package first"),
+        "{error:#}"
+    );
+
+    // Cargo doesn't keep a failed `config.json` in memory, and the index cache (keyed by
+    // registry URL) has no copy on disk because the server listens on a random port.
+    // So each query still running would fetch `config.json` again, one after another.
+    let config_requests = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|request| request.url.path() == "/config.json")
+        .count();
+    assert_eq!(
+        config_requests, 1,
+        "the queries after the first failure must not fetch `config.json` again"
+    );
 }
 
 #[tokio::test]
