@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.40.0...release_plz_core-v0.41.0) - 2026-10-19
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+- reuse dependency builds between current and baseline semver checks ([#3243](https://github.com/release-plz/release-plz/pull/3243))
+- list open PRs while release-pr analyzes the packages ([#3249](https://github.com/release-plz/release-plz/pull/3249))
+- read downloaded registry packages in parallel ([#3246](https://github.com/release-plz/release-plz/pull/3246))
+
 ## [0.40.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.39.0...release_plz_core-v0.40.0) - 2026-10-12
 
 ### Performance

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.87...cargo_utils-v0.2.0) - 2026-10-19
+
+### Performance
+
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+
 ## [0.1.87](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.86...cargo_utils-v0.1.87) - 2026-10-12
 
 ### Performance
