@@ -44,3 +44,52 @@ impl Utf8TempDir {
         &self.path
     }
 }
+
+impl Drop for Utf8TempDir {
+    /// Deleting a copy of a big repository one file at a time takes seconds,
+    /// so delete the files from multiple threads first.
+    /// [`tempfile::TempDir`] then removes the remaining directories.
+    fn drop(&mut self) {
+        // Symlinks aren't followed, so only the links themselves are deleted.
+        ignore::WalkBuilder::new(&self.path)
+            .standard_filters(false)
+            .build_parallel()
+            .run(|| {
+                Box::new(|entry| {
+                    if let Ok(entry) = entry
+                        && entry
+                            .file_type()
+                            .is_some_and(|file_type| !file_type.is_dir())
+                    {
+                        // Best effort: `tempfile::TempDir` retries what's left.
+                        drop(fs_err::remove_file(entry.path()));
+                    }
+                    ignore::WalkState::Continue
+                })
+            });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_temp_dir_keeps_symlink_targets() {
+        let outside = Utf8TempDir::new().unwrap();
+        let outside_file = outside.path().join("file");
+        fs_err::write(&outside_file, "contents").unwrap();
+        let temp_dir = Utf8TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+        fs_err::create_dir(path.join("nested")).unwrap();
+        fs_err::write(path.join("nested/file"), "contents").unwrap();
+        std::os::unix::fs::symlink(outside.path(), path.join("dir_link")).unwrap();
+        std::os::unix::fs::symlink(&outside_file, path.join("nested/file_link")).unwrap();
+
+        drop(temp_dir);
+        assert!(!path.exists());
+        // Only the links are deleted, not what they point to.
+        assert_eq!(fs_err::read_to_string(outside_file).unwrap(), "contents");
+    }
+}
