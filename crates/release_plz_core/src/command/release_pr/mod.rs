@@ -134,8 +134,8 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         .update_request
         .git_client()?
         .context("can't find git client")?;
-    // The open PRs don't depend on the version analysis, and listing them can take seconds:
-    // GitHub serves pages of 30 PRs in about 1 s each. So list them while the packages are updated.
+    // Listing the open PRs doesn't depend on the version analysis and takes one slow request per
+    // page, so run it in the background while the packages are updated.
     // If there's nothing to release, the listing is aborted and its errors are ignored.
     let opened_release_prs = AbortOnDropHandle::new(tokio::spawn({
         let git_client = git_client.clone();
