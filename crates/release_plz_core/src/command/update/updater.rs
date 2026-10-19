@@ -768,14 +768,20 @@ impl Updater<'_> {
             // Equality and changed-file checks inspect the same snapshot.
             let local_package_files = checkout_package_files.files_at(&current_commit_hash);
             if let Some((released_package, released_path)) = released {
-                let are_packages_equal = self.check_package_equality(
-                    repository,
+                let are_packages_equal = check_package_equality(
                     package,
                     package_path,
                     released_package,
                     released_path,
-                    (local_package_files, &released_package_files),
-                ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
+                    local_package_files,
+                    &released_package_files,
+                )
+                .with_context(|| {
+                    format!(
+                        "failed to check package equality for `{}` at commit {current_commit_hash}",
+                        package.name
+                    )
+                })?;
                 if are_packages_equal {
                     // Collect pruning candidates with full history: a "keep mine"
                     // merge can hide real ancestors from a simplified walk. Reuse
@@ -798,12 +804,12 @@ impl Updater<'_> {
             }
             // A package can contain another package in a subdirectory, so only count
             // commits that touch files Cargo would package for this package.
-            if self.are_changed_files_in_package(
+            if are_changed_files_in_package(
                 package_path,
                 repository,
                 &current_commit_hash,
                 local_package_files,
-            )? {
+            ) {
                 diff.commits.push(Commit::new(
                     current_commit_hash,
                     repository.current_commit_message()?,
@@ -818,9 +824,8 @@ impl Updater<'_> {
         // A simplified walk can visit an ancestor before the equal snapshot that
         // prunes it. Make the final decision with every discovered boundary,
         // keeping only ancestors whose changes survive through another lineage.
-        retained_changes.retain_surviving(&mut diff.commits, || {
-            self.history_package_files(package_path, repository)
-        })?;
+        retained_changes
+            .retain_surviving(&mut diff.commits, || history_package_files(package_path));
         // The range can be empty when only workspace Cargo.toml or Cargo.lock
         // changed. Dependency updates must not depend on visiting a package commit.
         if diff.commits.is_empty()
@@ -829,44 +834,6 @@ impl Updater<'_> {
             self.add_dependencies_update_if_any(diff, released_package, package, released_path)?;
         }
         Ok(())
-    }
-
-    /// Whether the current checkout equals the released package, README included.
-    fn check_package_equality(
-        &self,
-        repository: &Repo,
-        package: &Package,
-        package_path: &Utf8Path,
-        registry_package: &RegistryPackage,
-        registry_package_path: &Utf8Path,
-        (local_package_files, released_package_files): (&PackageFiles, &PackageFiles),
-    ) -> anyhow::Result<bool> {
-        let packages_equal = self
-            .with_cargo_lock_restored_unless_cached(repository, local_package_files, || {
-                crate::package_compare::are_packages_equal_cached(
-                    package_path,
-                    registry_package_path,
-                    local_package_files,
-                    released_package_files,
-                )
-            })?
-            .context("cannot compare packages");
-        // Most historical snapshots already differ in their packaged files.
-        // Read README metadata only when that comparison cannot decide equality
-        // (because `cargo metadata` is slower).
-        if matches!(packages_equal, Ok(false)) {
-            return Ok(false);
-        }
-        if crate::package_compare::is_readme_updated_with_released_package(
-            &package.name,
-            package_path,
-            &registry_package.package,
-        )? {
-            debug!("{}: README updated", package.name);
-            return Ok(false);
-        }
-        // A README change establishes inequality even if package listing failed.
-        packages_equal
     }
 
     /// If the dependencies changed, add a commit to the diff.
@@ -915,55 +882,6 @@ impl Updater<'_> {
         Ok(())
     }
 
-    fn get_cargo_lock_path(&self, repository: &Repo) -> anyhow::Result<Option<String>> {
-        let project_cargo_lock = self.project.cargo_lock_path();
-        let relative_lock_path = fs_utils::strip_prefix(&project_cargo_lock, self.project.root())?;
-        let repository_cargo_lock = repository.directory().join(relative_lock_path);
-        if repository_cargo_lock.exists() {
-            Ok(Some(repository_cargo_lock.to_string()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Run `f`, which inspects the package with `cargo package`, then revert the
-    /// edits `cargo package` can make to files such as `Cargo.lock`.
-    fn with_cargo_lock_restored<T>(
-        &self,
-        repository: &Repo,
-        f: impl FnOnce() -> T,
-    ) -> anyhow::Result<T> {
-        // Store the path before `f` runs so it can be reverted afterwards.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let result = f();
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
-        Ok(result)
-    }
-
-    /// Run `f` with [`Self::with_cargo_lock_restored`] unless `package_files`,
-    /// the file list of the current checkout of `repository`, is already cached.
-    ///
-    /// Released packages are listed outside `repository`, so `f` only needs the
-    /// restore when it lists the current checkout.
-    fn with_cargo_lock_restored_unless_cached<T>(
-        &self,
-        repository: &Repo,
-        package_files: &PackageFiles,
-        f: impl FnOnce() -> T,
-    ) -> anyhow::Result<T> {
-        if package_files.is_cached() {
-            Ok(f())
-        } else {
-            self.with_cargo_lock_restored(repository, f)
-        }
-    }
-
     fn get_next_version(
         &self,
         new_workspace_version: Option<&Version>,
@@ -997,53 +915,77 @@ impl Updater<'_> {
         };
         Ok(next_version)
     }
+}
 
-    /// `hash` is only used for logging purposes.
-    fn are_changed_files_in_package(
-        &self,
-        package_path: &Utf8Path,
-        repository: &Repo,
-        hash: &str,
-        package_files: &PackageFiles,
-    ) -> anyhow::Result<bool> {
-        let package_files_res =
-            self.with_cargo_lock_restored_unless_cached(repository, package_files, || {
-                get_package_files(package_path, repository, package_files)
-            })?;
-        let Ok(package_files) = package_files_res.inspect_err(|e| {
+/// Whether the current checkout equals the released package, README included.
+fn check_package_equality(
+    package: &Package,
+    package_path: &Utf8Path,
+    registry_package: &RegistryPackage,
+    registry_package_path: &Utf8Path,
+    local_package_files: &PackageFiles,
+    released_package_files: &PackageFiles,
+) -> anyhow::Result<bool> {
+    let packages_equal = crate::package_compare::are_packages_equal_cached(
+        package_path,
+        registry_package_path,
+        local_package_files,
+        released_package_files,
+    )
+    .context("cannot compare packages");
+    // Most historical snapshots already differ in their packaged files.
+    // Read README metadata only when that comparison cannot decide equality
+    // (because `cargo metadata` is slower).
+    if matches!(packages_equal, Ok(false)) {
+        return Ok(false);
+    }
+    if crate::package_compare::is_readme_updated_with_released_package(
+        &package.name,
+        package_path,
+        &registry_package.package,
+    )? {
+        debug!("{}: README updated", package.name);
+        return Ok(false);
+    }
+    // A README change establishes inequality even if package listing failed.
+    packages_equal
+}
+
+/// `hash` is only used for logging purposes.
+fn are_changed_files_in_package(
+    package_path: &Utf8Path,
+    repository: &Repo,
+    hash: &str,
+    package_files: &PackageFiles,
+) -> bool {
+    let Ok(package_files) =
+        get_package_files(package_path, repository, package_files).inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
-        }) else {
-            // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
-            return Ok(true);
-        };
-        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
-            warn!("failed to get changed files of commit {hash}: {e:?}");
-        }) else {
-            // Assume that this commit contains changes to the package.
-            return Ok(true);
-        };
-        Ok(!package_files.is_disjoint(&changed_files))
-    }
+        })
+    else {
+        // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
+        return true;
+    };
+    let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
+        warn!("failed to get changed files of commit {hash}: {e:?}");
+    }) else {
+        // Assume that this commit contains changes to the package.
+        return true;
+    };
+    !package_files.is_disjoint(&changed_files)
+}
 
-    /// List the files Cargo packages in the current checkout, relative to the
-    /// package directory, restoring any existing Cargo.lock after listing.
-    ///
-    /// Return `None` if listing fails, so history comparisons fall back to every
-    /// file under the package directory.
-    fn history_package_files(
-        &self,
-        package_path: &Utf8Path,
-        repository: &Repo,
-    ) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
-        let package_files = self.with_cargo_lock_restored(repository, || {
-            crate::get_cargo_package_files(package_path)
-        })?;
-        // Cargo also lists generated files that do not exist in the checkout.
-        // Tree comparisons only need their names, not canonicalized files.
-        Ok(package_files
-            .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
-            .ok())
-    }
+/// List the files Cargo packages in the current checkout, relative to the
+/// package directory.
+///
+/// Return `None` if listing fails, so history comparisons fall back to every
+/// file under the package directory.
+fn history_package_files(package_path: &Utf8Path) -> Option<Vec<Utf8PathBuf>> {
+    // Cargo also lists generated files that do not exist in the checkout.
+    // Tree comparisons only need their names, not canonicalized files.
+    crate::get_cargo_package_files(package_path)
+        .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
+        .ok()
 }
 
 /// Checkout a commit of the history we are walking, hinting at `--allow-dirty` when

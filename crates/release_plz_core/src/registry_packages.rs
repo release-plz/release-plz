@@ -35,7 +35,7 @@ pub(crate) struct ReleasedWorkspace {
     /// The parsed `Cargo.lock` committed at the release, if any.
     ///
     /// Loaded as soon as the workspace is reconstructed, before cargo commands
-    /// (e.g. `cargo package --list`) can rewrite a stale lockfile on disk.
+    /// (e.g. `cargo semver-checks`) can rewrite a stale lockfile on disk.
     lockfile: Option<WorkspaceLockfile>,
     /// The commit the workspace was reconstructed from.
     pub(crate) commit: String,
