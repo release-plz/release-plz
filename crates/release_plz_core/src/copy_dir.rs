@@ -68,14 +68,7 @@ fn copy_directory(
         // the separate walker below copies them without ignore filtering.
         .filter_entry(|entry| entry.depth() != 1 || entry.file_name() != ".git")
         .build_parallel();
-    // Copy Git metadata without applying ignore rules: patterns such as `tags`
-    // must not exclude `.git/refs/tags`. `.git` can also be a worktree's gitdir file.
     let git_path = from.join(".git");
-    let git_walker = (git_path.try_exists()? || git_path.is_symlink()).then(|| {
-        ignore::WalkBuilder::new(&git_path)
-            .standard_filters(false)
-            .build_parallel()
-    });
     let objects_path = git_path.join("objects");
     let copy_walked_entry = |entry: Result<ignore::DirEntry, ignore::Error>| {
         let entry = entry.context("invalid entry")?;
@@ -97,8 +90,14 @@ fn copy_directory(
             file_copy,
         )
     };
-    for walker in std::iter::once(walker).chain(git_walker) {
-        copy_walked_entries(walker, &copy_walked_entry)?;
+    copy_walked_entries(walker, &copy_walked_entry)?;
+    // Copy Git metadata without applying ignore rules: patterns such as `tags`
+    // must not exclude `.git/refs/tags`. `.git` can also be a worktree's gitdir file.
+    if git_path.try_exists()? || git_path.is_symlink() {
+        let git_walker = ignore::WalkBuilder::new(&git_path)
+            .standard_filters(false)
+            .build_parallel();
+        copy_walked_entries(git_walker, &copy_walked_entry)?;
     }
     copy_tracked_files(from, to, root_from, root_to)?;
     Ok(())
