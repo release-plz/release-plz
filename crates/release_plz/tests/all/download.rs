@@ -191,6 +191,14 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
         request
     }
 
+    async fn respond(mut stream: TcpStream, status: &str, body: &str) {
+        let response = format!(
+            "HTTP/1.1 {status}\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+    }
+
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (release_pending, pending_released) = oneshot::channel();
@@ -200,18 +208,7 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
         let (mut config, _) = listener.accept().await.unwrap();
         let request = read_request(&mut config).await;
         assert!(request.contains("/config.json "));
-        let body = r#"{"dl":"http://127.0.0.1/unused"}"#;
-        config
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .await
-            .unwrap();
-        drop(config);
+        respond(config, "200 OK", r#"{"dl":"http://127.0.0.1/unused"}"#).await;
 
         // Wait for both queries before failing the first. Keep the second response
         // open until the caller has received the error; no response-delay timing is needed.
@@ -222,21 +219,14 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
             requests.push((request, stream));
         }
         requests.sort_by(|(a, _), (b, _)| a.cmp(b));
-        let (second_request, mut second) = requests.pop().unwrap();
-        let (first_request, mut first) = requests.pop().unwrap();
+        let (second_request, second) = requests.pop().unwrap();
+        let (first_request, first) = requests.pop().unwrap();
         assert!(first_request.contains("/fi/rs/first "));
         assert!(second_request.contains("/se/co/second "));
         queries_started.send(()).unwrap();
-        first
-            .write_all(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
-            .await
-            .unwrap();
-        drop(first);
+        respond(first, "503 Service Unavailable", "").await;
         pending_released.await.unwrap();
-        second
-            .write_all(b"HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
-            .await
-            .unwrap();
+        respond(second, "404 Not Found", "").await;
     });
 
     let cargo_dir = Utf8TempDir::new().unwrap();
