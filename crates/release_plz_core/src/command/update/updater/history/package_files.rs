@@ -222,16 +222,17 @@ fn compare_trees(repository: &Repo, pairs: &[(&str, &str)]) -> Vec<Option<bool>>
         "--always",
         "--stdin",
     ];
-    let diff = match repository.git_with_input(&args, &input) {
+    let diff = match repository.git_output_with_input(&args, input.as_bytes()) {
         Ok(diff) => diff,
         Err(error) => {
             debug!("cannot compare the trees of commit pairs: {error:#}");
             return changes;
         }
     };
-    let mut fields = diff.split_terminator('\0').peekable();
+    // With `-z`, Git prints paths verbatim, so they can be invalid UTF-8.
+    let mut fields = diff.split(|byte| *byte == b'\0').peekable();
     for ((_, new), only_sources) in pairs.iter().zip(&mut changes) {
-        let Some(compared) = next_comparison(&mut fields, new) else {
+        let Some(compared) = next_comparison(&mut fields, new.as_bytes()) else {
             debug!("diff-tree didn't report on {new} as expected");
             break;
         };
@@ -244,14 +245,14 @@ fn compare_trees(repository: &Repo, pairs: &[(&str, &str)]) -> Vec<Option<bool>>
 /// all of its changes are [Rust source changes](is_rust_source_change). `None`
 /// if `fields` doesn't continue with `commit` and its changes.
 fn next_comparison<'d>(
-    fields: &mut Peekable<impl Iterator<Item = &'d str>>,
-    commit: &str,
+    fields: &mut Peekable<impl Iterator<Item = &'d [u8]>>,
+    commit: &[u8],
 ) -> Option<bool> {
     if fields.next()? != commit {
         return None;
     }
     let mut only_sources = true;
-    while let Some(change) = fields.next_if(|field| field.starts_with(':')) {
+    while let Some(change) = fields.next_if(|field| field.starts_with(b":")) {
         only_sources &= is_rust_source_change(change, fields.next()?);
     }
     Some(only_sources)
@@ -260,7 +261,7 @@ fn next_comparison<'d>(
 /// Whether the `diff-tree` `change` of `path` modifies the contents of a `.rs`
 /// file that is a non-executable regular file on both sides. Each change is
 /// `:<old mode> <new mode> <old id> <new id> <status>`.
-fn is_rust_source_change(change: &str, path: &str) -> bool {
-    let modified_regular_file = change.starts_with(":100644 100644 ") && change.ends_with(" M");
-    modified_regular_file && path.ends_with(".rs")
+fn is_rust_source_change(change: &[u8], path: &[u8]) -> bool {
+    let modified_regular_file = change.starts_with(b":100644 100644 ") && change.ends_with(b" M");
+    modified_regular_file && path.ends_with(b".rs")
 }

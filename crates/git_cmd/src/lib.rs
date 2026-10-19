@@ -255,10 +255,10 @@ impl Repo {
         git_in_dir(&self.directory, args)
     }
 
-    /// Like [`Repo::git`], but write `input` to the standard input of git.
-    pub fn git_with_input(&self, args: &[&str], input: &str) -> anyhow::Result<String> {
-        let stdout = git_output_in_dir(&self.directory, args, &[], Some(input.as_bytes()))?;
-        cmd::string_from_bytes(stdout)
+    /// Like [`Repo::git`], but write `input` to the standard input of git and
+    /// return its standard output as is, which can be invalid UTF-8.
+    pub fn git_output_with_input(&self, args: &[&str], input: &[u8]) -> anyhow::Result<Vec<u8>> {
+        git_output_in_dir(&self.directory, args, &[], Some(input))
     }
 
     pub fn stash_pop(&self) -> anyhow::Result<()> {
@@ -827,7 +827,7 @@ mod tests {
             fs_err::write(directory.path().join(path), message).unwrap();
             repo.git(&["add", "."]).unwrap();
             // Commit the message from stdin: `Repo::git` trims its arguments.
-            repo.git_with_input(
+            repo.git_output_with_input(
                 &[
                     "commit",
                     "--cleanup=verbatim",
@@ -835,7 +835,7 @@ mod tests {
                     "-F",
                     "-",
                 ],
-                message,
+                message.as_bytes(),
             )
             .unwrap();
         }
@@ -859,8 +859,9 @@ mod tests {
         let directory = tempdir().unwrap();
         let repo = Repo::init(&directory);
         // More than a pipe holds, so writing it can't finish before git exits.
-        let input = "x\n".repeat(1 << 20);
-        repo.git_with_input(&["rev-parse", "HEAD"], &input).unwrap();
+        let input = b"x\n".repeat(1 << 20);
+        repo.git_output_with_input(&["rev-parse", "HEAD"], &input)
+            .unwrap();
     }
 
     #[test]
