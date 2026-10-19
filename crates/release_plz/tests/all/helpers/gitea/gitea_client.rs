@@ -25,6 +25,15 @@ impl GiteaContext {
         )
     }
 
+    /// The same registry as [`Self::cargo_index_url`], served over the sparse protocol.
+    pub fn cargo_sparse_index_url(&self) -> String {
+        format!(
+            "sparse+http://{}/api/packages/{}/cargo/",
+            gitea_address(),
+            self.user.username()
+        )
+    }
+
     pub async fn repo_exists(&self, repo_name: &str) -> bool {
         let repo = self.get_repo(repo_name).await;
         repo == repo_name

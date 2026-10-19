@@ -8,6 +8,7 @@ mod reqwest_utils;
 pub mod test_context;
 
 pub const TEST_REGISTRY: &str = "test-registry";
+pub const TEST_SPARSE_REGISTRY: &str = "test-registry-sparse";
 
 pub fn today() -> String {
     // The changelogs specify the release date in UTC.
