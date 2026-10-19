@@ -742,16 +742,12 @@ async fn release_package_if_needed(
         .context("can't determine registry indexes")?;
 
         for registry in registry_indexes {
-            let CargoRegistry {
-                name, index_url, ..
-            } = &registry;
-            let token = input.find_registry_token(name.as_deref())?;
+            let token = input.find_registry_token(registry.name.as_deref())?;
             let pkg_is_published = is_published(
                 &input.metadata.workspace_root,
                 package,
                 input.publish_timeout,
-                name.as_deref(),
-                index_url.as_ref(),
+                registry.name.as_deref(),
                 token.as_ref(),
             )
             .await
@@ -847,7 +843,7 @@ async fn should_release(
     }
 }
 
-/// Get the indexes used to check publication, following dependency source replacement.
+/// Get the registries where the package should be published.
 /// If `registry` is specified, it takes precedence over the `publish` field
 /// of the package manifest.
 fn registry_indexes(
@@ -958,7 +954,6 @@ async fn release_package(
                 release_info.package,
                 input.publish_timeout,
                 registry_name,
-                registry.index_url.as_ref(),
                 token,
             )
             .await?;
@@ -1861,31 +1856,6 @@ mod tests {
             let registry = CargoRegistry::new(&config, name).unwrap();
             assert!(!registry.source_replaced);
         }
-    }
-
-    #[test]
-    fn should_reference_env_var_provided_index() {
-        use url::Url;
-
-        let registry_name = "my_registry";
-        let mock_index = "https://example.com/git/index";
-        let mock_index_url = Url::parse(mock_index).unwrap();
-
-        let index_env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry_name.to_uppercase());
-
-        let temporary = crate::fs_utils::Utf8TempDir::new().unwrap();
-        let package = Package::from(FakePackage::new("pkg"));
-        let resolve =
-            || registry_indexes(&package, Some(registry_name.to_string()), temporary.path());
-
-        with_env_var(&index_env_var, mock_index, || {
-            let registries = resolve().unwrap();
-            assert_eq!(registries[0].index_url.as_ref(), Some(&mock_index_url));
-            assert!(!registries[0].source_replaced);
-        });
-
-        // The registry is no longer defined once the environment override is removed.
-        assert!(resolve().is_err());
     }
 
     #[test]

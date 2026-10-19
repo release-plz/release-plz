@@ -11,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::{debug, info};
-use url::Url;
 
 /// Read a workspace member without resolving its dependencies.
 pub(crate) fn read_package_metadata(
@@ -46,7 +45,6 @@ pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    pub index_url: Option<Url>,
     /// Whether dependency resolution uses a different source from publishing.
     pub source_replaced: bool,
 }
@@ -66,11 +64,8 @@ impl CargoRegistry {
             .load(source_id)?
             .replaced_source_id();
         let source_replaced = dependency_source != publish_source;
-        let index_url =
-            (name.is_some() || source_replaced).then(|| dependency_source.url().clone());
         Ok(Self {
             name,
-            index_url,
             source_replaced,
         })
     }
@@ -134,11 +129,10 @@ pub async fn is_published(
     package: &Package,
     timeout: Duration,
     registry: Option<&str>,
-    index_url: Option<&Url>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
-        let output = run_cargo_info(workspace_root, package, registry, index_url, token)
+        let output = run_cargo_info(workspace_root, package, registry, token)
             .context("cannot run cargo info")?;
         if output.status.success() {
             Ok(true)
@@ -180,22 +174,15 @@ fn run_cargo_info(
     workspace_root: &Utf8Path,
     package: &Package,
     registry: Option<&str>,
-    index_url: Option<&Url>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<CmdOutput> {
     let registry_name = cargo_info_registry_name(registry);
-    let mut args = vec![
+    let args = vec![
         "info".to_string(),
         format!("{}@{}", package.name, package.version),
+        "--registry".to_string(),
+        registry_name.to_string(),
     ];
-
-    if let Some(index_url) = index_url {
-        args.push("--index".to_string());
-        args.push(index_url.as_str().to_string());
-    } else {
-        args.push("--registry".to_string());
-        args.push(registry_name.to_string());
-    }
 
     debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
 
@@ -218,7 +205,6 @@ pub async fn wait_until_published(
     package: &Package,
     timeout: Duration,
     registry: Option<&str>,
-    index_url: Option<&Url>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<()> {
     let now: Instant = Instant::now();
@@ -226,8 +212,7 @@ pub async fn wait_until_published(
     let mut logged = false;
 
     loop {
-        let is_published =
-            is_published(workspace_root, package, timeout, registry, index_url, token).await?;
+        let is_published = is_published(workspace_root, package, timeout, registry, token).await?;
         if is_published {
             break;
         } else if timeout < now.elapsed() {
