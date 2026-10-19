@@ -777,7 +777,6 @@ mod tests {
         let source = Utf8TempDir::new().unwrap();
         let dir = source.path().join("dir");
         fs_err::create_dir_all(dir.join("nested")).unwrap();
-        fs_err::write(dir.join("nested/file"), "contents").unwrap();
         let destination = Utf8TempDir::new().unwrap();
         // A file where the copy needs a directory fails one of the copying threads.
         fs_err::create_dir(destination.path().join("dir")).unwrap();
