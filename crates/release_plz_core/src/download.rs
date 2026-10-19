@@ -82,7 +82,7 @@ impl PackageDownloader {
 /// instead of waiting for each subprocess in turn.
 fn read_packages(directories: &[Utf8PathBuf]) -> anyhow::Result<Vec<Package>> {
     let parallelism = thread::available_parallelism().map_or(1, usize::from);
-    // `chunks` rejects a size of 0, which an empty list would produce.
+    // `chunks` panics on a size of 0, which an empty list would produce.
     let chunk_size = directories.len().div_ceil(parallelism).max(1);
     thread::scope(|scope| {
         let workers: Vec<_> = directories
