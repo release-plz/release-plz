@@ -5,7 +5,6 @@ use std::{path::Path, thread};
 use anyhow::{Context, anyhow};
 use cargo_metadata::{Package, camino::Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
-use futures::channel::oneshot;
 use tracing::{info, instrument};
 
 use crate::clone::{Cloner, ClonerSource, Crate};
@@ -60,62 +59,23 @@ impl PackageDownloader {
             .iter()
             .map(|package_name| Crate::new(package_name.clone(), None))
             .collect();
-        let directory = self.directory.clone();
-        let cargo_cwd = self.cargo_cwd.clone();
-        let span = tracing::Span::current();
-        let (mut sender, receiver) = oneshot::channel();
-        // Cargo's HTTP worker keeps running when query futures are dropped, and
-        // dropping its context waits for that worker. Own the context on a separate
-        // thread so an error reaches the caller before this network cleanup finishes.
-        let _worker = thread::Builder::new()
-            .name("release-plz-download".to_string())
-            .spawn(move || {
-                span.in_scope(|| {
-                    let mut cloner_builder = Cloner::builder()
-                        .with_directory(directory)
-                        .with_source(source);
-                    if let Some(cwd) = cargo_cwd {
-                        cloner_builder = cloner_builder.with_cargo_cwd(cwd);
-                    }
-                    // Cargo's synchronous package downloads use futures::block_on
-                    // internally, so use Tokio here to avoid nesting that executor.
-                    let setup = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .context("can't build package download runtime")
-                        .and_then(|runtime| {
-                            cloner_builder
-                                .build()
-                                .context("can't build cloner")
-                                .map(|cloner| (runtime, cloner))
-                        });
-                    match setup {
-                        Ok((runtime, cloner)) => {
-                            let result = runtime.block_on(async {
-                                tokio::select! {
-                                    biased;
-                                    // Stop polling the queries if the caller drops the download.
-                                    _ = sender.cancellation() => None,
-                                    result = cloner.clone(&crates) => Some(result),
-                                }
-                            });
-                            if let Some(result) = result {
-                                drop(
-                                    sender.send(result.context("error while downloading packages")),
-                                );
-                            }
-                            // Keep the cloner alive until after sending the result.
-                        }
-                        Err(error) => {
-                            drop(sender.send(Err(error)));
-                        }
-                    }
-                });
-            })
-            .context("can't start package download worker")?;
-        let package_dirs = receiver
-            .await
-            .context("package download worker stopped unexpectedly")??;
+        let mut cloner_builder = Cloner::builder()
+            .with_directory(&self.directory)
+            .with_source(source);
+        if let Some(cwd) = &self.cargo_cwd {
+            cloner_builder = cloner_builder.with_cargo_cwd(cwd.clone());
+        }
+        let cloner = cloner_builder.build().context("can't build cloner")?;
+        let result = cloner.clone(&crates).await;
+        // Dropping Cargo's context waits for its HTTP worker to finish the requests still
+        // in flight, like the queries after a failed one. Don't make the caller wait.
+        // If the thread can't start, `spawn` drops the cloner here instead.
+        drop(
+            thread::Builder::new()
+                .name("release-plz-download".to_string())
+                .spawn(move || drop(cloner)),
+        );
+        let package_dirs = result.context("error while downloading packages")?;
 
         read_packages(&package_dirs)
     }
