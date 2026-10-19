@@ -7,7 +7,8 @@ use git_cmd::Repo;
 
 use anyhow::Context;
 use serde::Serialize;
-use tracing::{debug, info, instrument};
+use tokio::task::JoinHandle;
+use tracing::{Instrument as _, debug, info, instrument};
 use url::Url;
 pub(crate) mod git;
 
@@ -128,6 +129,19 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         !Repo::new(&original_project_root)?.is_head_detached()?,
         "release-pr requires a branch. Check out the target branch instead of a detached HEAD"
     );
+    validate_labels(&input.labels)?;
+    let git_client = input
+        .update_request
+        .git_client()?
+        .context("can't find git client")?;
+    // The open PRs don't depend on the version analysis, and listing them can take seconds:
+    // GitHub serves pages of 30 PRs in about 1 s each. So list them while the packages are updated.
+    // If there's nothing to release, the listing is aborted and its errors are ignored.
+    let opened_release_prs = AbortOnDrop(tokio::spawn({
+        let git_client = git_client.clone();
+        let branch_prefix = input.branch_prefix.clone();
+        async move { git_client.opened_prs(&branch_prefix).await }.in_current_span()
+    }));
     let tmp_project_root_parent = copy_to_temp_dir(&original_project_root)?;
     let tmp_project_manifest_dir = new_manifest_dir_path(
         &original_project_root,
@@ -135,7 +149,6 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
         tmp_project_root_parent.path(),
     )?;
 
-    validate_labels(&input.labels)?;
     let tmp_project_root =
         new_project_root(&original_project_root, tmp_project_root_parent.path())?;
 
@@ -150,21 +163,22 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     let (packages_to_update, _temp_repository) = update(&new_update_request)
         .await
         .context("failed to update packages")?;
-    let git_client = input
-        .update_request
-        .git_client()?
-        .context("can't find git client")?;
 
     if !packages_to_update.updates().is_empty() {
         let unreleased_package_worktree_repo =
             Repo::new(&tmp_project_root).context("create new repo")?;
         let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
         if there_are_commits_to_push {
+            let opened_release_prs = opened_release_prs
+                .join()
+                .await?
+                .context("cannot get opened release-plz prs")?;
             let pr = open_or_update_release_pr(
                 &local_manifest,
                 &packages_to_update,
                 &git_client,
                 &unreleased_package_worktree_repo,
+                &opened_release_prs,
                 ReleasePrOptions {
                     draft: input.draft,
                     pr_name: input.pr_name_template.clone(),
@@ -181,6 +195,22 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     Ok(None)
 }
 
+/// Handle of a background task that is aborted when dropped,
+/// so that early returns don't leave the task running.
+struct AbortOnDrop<T>(JoinHandle<T>);
+
+impl<T> AbortOnDrop<T> {
+    async fn join(mut self) -> anyhow::Result<T> {
+        (&mut self.0).await.context("background task failed")
+    }
+}
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 struct ReleasePrOptions {
     draft: bool,
     pr_name: Option<String>,
@@ -194,13 +224,9 @@ async fn open_or_update_release_pr(
     packages_to_update: &PackagesUpdate,
     git_client: &GitClient,
     repo: &Repo,
+    opened_release_prs: &[GitPr],
     release_pr_options: ReleasePrOptions,
 ) -> anyhow::Result<ReleasePr> {
-    let opened_release_prs = git_client
-        .opened_prs(&release_pr_options.pr_branch_prefix)
-        .await
-        .context("cannot get opened release-plz prs")?;
-
     // Close all release-plz prs, except one.
     let old_release_prs = opened_release_prs.iter().skip(1);
     for pr in old_release_prs {
