@@ -283,6 +283,11 @@ fn copy_entry(
 
 fn hard_link_or_copy(source: &Utf8Path, destination: &Utf8Path) -> io::Result<()> {
     fs_err::hard_link(source, destination).or_else(|error| {
+        // The destination can be a hard link of the source: copying would
+        // truncate the shared file, emptying the original.
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            return Err(error);
+        }
         // E.g. the temporary directory is on another file system.
         trace!("cannot hard link {source:?}, copying it instead: {error}");
         fs_err::copy(source, destination).map(|_| ())
@@ -580,6 +585,21 @@ mod tests {
         }
 
         assert!(!destination_file.exists());
+    }
+
+    #[test]
+    fn hard_link_or_copy_keeps_existing_destination() {
+        let temp = Utf8TempDir::new().unwrap();
+        let source = temp.path().join("source");
+        fs_err::write(&source, "contents").unwrap();
+        let destination = temp.path().join("destination");
+        hard_link_or_copy(&source, &destination).unwrap();
+
+        // The destination is now a hard link of the source, so copying over it
+        // would truncate the source as well.
+        let error = hard_link_or_copy(&source, &destination).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs_err::read_to_string(source).unwrap(), "contents");
     }
 
     #[test]
