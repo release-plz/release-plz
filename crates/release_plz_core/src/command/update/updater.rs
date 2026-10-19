@@ -310,6 +310,7 @@ impl Updater<'_> {
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
+        let semver_check_target_dir = semver_check::TargetDir::new(self.req.cargo_metadata());
         let check_semver = |(p, diff): &mut (&Package, Diff)| -> anyhow::Result<()> {
             let registry_package = registry_packages.get_package(&p.name);
             if let Some(registry_package) = registry_package {
@@ -331,9 +332,12 @@ impl Updater<'_> {
                     SEMVER_CHECK_LOG_ONCE.call_once(|| {
                         tracing::info!("Checking API compatibility with cargo-semver-checks...");
                     });
-                    let semver_check =
-                        semver_check::run_semver_check(&package_path, registry_package_path)
-                            .context("error while running cargo-semver-checks")?;
+                    let semver_check = semver_check::run_semver_check(
+                        &package_path,
+                        registry_package_path,
+                        semver_check_target_dir,
+                    )
+                    .context("error while running cargo-semver-checks")?;
                     diff.set_semver_check(semver_check);
                 }
             }
