@@ -599,18 +599,22 @@ fn git_output_in_dir(
     } else {
         let mut error =
             format!("error while running git in directory `{dir:?}` with args `{args:?}");
-        let stdout = cmd::string_from_bytes(output.stdout)?;
-        let stderr = cmd::string_from_bytes(output.stderr)?;
+        // The output can be invalid UTF-8, such as paths: decode it lossily
+        // so that the error always reports why git failed.
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = stdout.trim();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
         if !stdout.is_empty() || !stderr.is_empty() {
             error.push(':');
         }
         if !stdout.is_empty() {
             error.push_str("\n- stdout: ");
-            error.push_str(&stdout);
+            error.push_str(stdout);
         }
         if !stderr.is_empty() {
             error.push_str("\n- stderr: ");
-            error.push_str(&stderr);
+            error.push_str(stderr);
         }
         Err(anyhow!(error))
     }
@@ -862,6 +866,39 @@ mod tests {
         let input = b"x\n".repeat(1 << 20);
         repo.git_output_with_input(&["rev-parse", "HEAD"], &input)
             .unwrap();
+    }
+
+    /// Git can print invalid UTF-8, such as paths, before it fails: the error
+    /// must still report why it failed.
+    #[test]
+    fn git_error_is_reported_after_invalid_utf8_output() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        // Stage the path from stdin: file systems can reject invalid UTF-8 names.
+        let blob = repo.git(&["rev-parse", "HEAD:README.md"]).unwrap();
+        let entry = [format!("100644 {blob}\t").as_bytes(), b"invalid-\xff\n"].concat();
+        repo.git_output_with_input(&["update-index", "--index-info"], &entry)
+            .unwrap();
+        repo.git(&["commit", "-m", "add invalid UTF-8 path"])
+            .unwrap();
+        let commit = repo.current_commit_hash().unwrap();
+
+        // Git prints the path added by `commit`, then fails on the missing parent.
+        let missing = "0000000000000000000000000000000000000001";
+        let input = format!("{commit}\n{commit} {missing}\n");
+        let error = repo
+            .git_output_with_input(
+                &["diff-tree", "-r", "-z", "--always", "--stdin"],
+                input.as_bytes(),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("fatal: unable to parse commit {missing}")),
+            "{error:#}"
+        );
     }
 
     #[test]
