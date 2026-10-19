@@ -51,10 +51,9 @@ fn semver_check_builds_in_a_temporary_target_directory_by_default() {
 }
 
 /// Runs `release-plz update` with semver checks after a `fix:` commit to `one`,
-/// whose published version has a public function that the commit removes.
-/// `configure` sets the target directory, as the `CARGO_TARGET_DIR` set by
-/// [`release_plz_cmd`] is removed. It runs before the commit, so the files it
-/// writes are committed, as release-plz rejects uncommitted changes.
+/// whose published version has a public function missing from the local one.
+/// The target directory variables are removed, so `configure` decides the target
+/// directory. It runs before the commit, as release-plz rejects uncommitted changes.
 fn update_with_removed_function(
     configure: impl FnOnce(&Repo, &mut assert_cmd::Command),
 ) -> (Utf8TempDir, Repo) {
