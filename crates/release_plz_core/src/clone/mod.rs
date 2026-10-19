@@ -106,10 +106,9 @@ impl Cloner {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
 
-        // `get_source` invalidated the index cache, so every query revalidates its
-        // index file over the network. Cargo's HTTP client runs requests in parallel,
-        // so polling the queries together costs about one round trip instead of one
-        // per crate.
+        // `get_source` invalidated the index cache, so sparse registries revalidate every
+        // index file with the server. Cargo runs these requests in parallel, so poll the
+        // queries together instead of paying one round trip per crate.
         let summaries = join_all(crates.iter().map(|crate_| {
             query_latest_package_summary(src.as_ref(), &crate_.name, crate_.version.as_deref())
         }))
