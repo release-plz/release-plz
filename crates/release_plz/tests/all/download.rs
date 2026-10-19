@@ -256,12 +256,21 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
     // If the downloader regresses to waiting for Cargo's HTTP cleanup, `download()` blocks
     // until the pending response is released. Run it on a blocking thread so this task can
     // still release the response and fail the test instead of hanging.
-    let download = tokio::task::spawn_blocking(move || {
+    let mut download = tokio::task::spawn_blocking(move || {
         tokio::runtime::Handle::current().block_on(downloader.download())
     });
     // Other tests can hold Cargo's package-cache lock. Only time the error return
     // after our queries have acquired it and reached the server.
-    queries_ready.await.unwrap();
+    tokio::select! {
+        // The server fails the first query right after reporting both, so the download
+        // may have finished too.
+        biased;
+        ready = queries_ready => ready.unwrap(),
+        // E.g. the queries run one at a time, or the registry can't be reached.
+        result = &mut download => {
+            panic!("download finished before both queries reached the server: {result:?}")
+        }
+    }
     let result = timeout(Duration::from_secs(10), download).await;
     release_pending.send(()).unwrap();
     timeout(Duration::from_secs(10), server)
