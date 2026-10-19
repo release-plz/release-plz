@@ -64,7 +64,7 @@ fn read_cargo_credentials() -> anyhow::Result<Option<CargoCredentials>> {
 }
 
 fn credentials_path() -> anyhow::Result<Option<PathBuf>> {
-    let cargo_home = crate::cargo_home()?;
+    let cargo_home = cargo_home()?;
     let mut path = cargo_home.join("credentials.toml");
     if !path.exists() {
         path = cargo_home.join("credentials");
@@ -73,6 +73,16 @@ fn credentials_path() -> anyhow::Result<Option<PathBuf>> {
         return Ok(None);
     }
     Ok(Some(path))
+}
+
+fn cargo_home() -> anyhow::Result<PathBuf> {
+    let default_cargo_home = std::env::home_dir()
+        .map(|x| x.join(".cargo"))
+        .context("Failed to read home directory")?;
+    let cargo_home = std::env::var("CARGO_HOME")
+        .map(PathBuf::from)
+        .unwrap_or(default_cargo_home);
+    Ok(cargo_home)
 }
 
 #[derive(Debug, Deserialize, Default, PartialEq)]

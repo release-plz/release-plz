@@ -1,6 +1,3 @@
-use anyhow::Context;
-use std::path::PathBuf;
-
 pub fn cargo_registries_token_env_var_name(registry: &str) -> anyhow::Result<String> {
     let name = if registry == "crates-io" {
         "CARGO_REGISTRY_TOKEN".to_string()
@@ -32,16 +29,6 @@ fn registry_env_var_name(registry: &str) -> anyhow::Result<String> {
     }
 
     Ok(sanitized_name.to_uppercase())
-}
-
-pub fn cargo_home() -> anyhow::Result<PathBuf> {
-    let default_cargo_home = std::env::home_dir()
-        .map(|x| x.join(".cargo"))
-        .context("Failed to read home directory")?;
-    let cargo_home = std::env::var("CARGO_HOME")
-        .map(PathBuf::from)
-        .unwrap_or(default_cargo_home);
-    Ok(cargo_home)
 }
 
 #[cfg(test)]
