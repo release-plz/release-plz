@@ -555,7 +555,6 @@ fn changed_files(output: &str, filter: impl FnMut(&&str) -> bool) -> Vec<String>
         .collect()
 }
 
-#[instrument]
 pub fn git_in_dir(dir: &Utf8Path, args: &[&str]) -> anyhow::Result<String> {
     git_in_dir_with_env(dir, args, &[])
 }
@@ -572,6 +571,8 @@ pub(crate) fn git_in_dir_with_env(
 
 /// Like [`git_in_dir_with_env`], but write `input`, if any, to the standard
 /// input of the git process, and return the stdout as is.
+// Don't record `envs`, which can carry credentials, nor `input`.
+#[instrument(skip(envs, input))]
 fn git_output_in_dir(
     dir: &Utf8Path,
     args: &[&str],
