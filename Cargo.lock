@@ -4490,6 +4490,7 @@ dependencies = [
  "fake_package",
  "flate2",
  "fs-err",
+ "futures",
  "git-cliff-core",
  "git-conventional 1.1.0",
  "git2",
