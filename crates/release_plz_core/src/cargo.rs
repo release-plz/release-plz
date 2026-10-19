@@ -45,9 +45,9 @@ pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    /// Whether Cargo resolves dependencies from a remote registry other than the one
-    /// where `cargo publish` confirms the package, e.g. a mirror, which may lag behind.
-    pub source_replaced: bool,
+    /// Whether Cargo resolves dependencies from a remote mirror, i.e. a remote registry
+    /// other than the one where `cargo publish` confirms the package, which may lag behind.
+    pub has_remote_mirror: bool,
 }
 
 impl CargoRegistry {
@@ -64,11 +64,11 @@ impl CargoRegistry {
         let dependency_source = SourceConfigMap::new(config)?
             .load(source_id)?
             .replaced_source_id();
-        let source_replaced =
+        let has_remote_mirror =
             dependency_source.is_remote_registry() && dependency_source != publish_source;
         Ok(Self {
             name,
-            source_replaced,
+            has_remote_mirror,
         })
     }
 }
@@ -256,7 +256,7 @@ mod tests {
         let config = GlobalContext::new(Default::default(), dir.to_owned(), dir.to_owned());
         for name in [None, Some("crates-io".to_string())] {
             let registry = CargoRegistry::new(&config, name).unwrap();
-            assert!(!registry.source_replaced);
+            assert!(!registry.has_remote_mirror);
         }
     }
 }

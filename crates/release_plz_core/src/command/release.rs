@@ -944,9 +944,10 @@ async fn release_package(
                 );
             }
         }
-        // Cargo confirms the publish registry, but a replacement mirror may still lag.
+        // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
+        // publish registry) or if `cargo publish` didn't confirm the package.
         if !input.dry_run
-            && (registry.source_replaced
+            && (registry.has_remote_mirror
                 || !is_publish_confirmed_by_cargo(&output, release_info.package))
         {
             wait_until_published(
