@@ -230,6 +230,26 @@ fn update_lists_package_files_again_after_changes_in_skipped_commits() {
     );
 }
 
+#[test]
+fn update_lists_package_files_again_after_changes_beyond_the_first_batch() {
+    // The walk has more snapshots than the first `diff-tree` batch compares,
+    // and a commit in a later batch adds a Rust source. HEAD and the parent of
+    // that commit each ask Cargo, and every other snapshot reuses a list.
+    assert_package_file_listings_with_change(
+        "later batch",
+        |repo| {
+            for i in 0..20 {
+                if i == 10 {
+                    fs_err::write(repo.directory().join("one/src/extra.rs"), "").unwrap();
+                }
+                change_package(repo, "one", &format!("fix: change {i}"));
+            }
+        },
+        3,
+        21,
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn update_lists_package_files_when_checkout_hooks_change_files() {
