@@ -195,9 +195,8 @@ async fn download_packages_from_registry(
 
     let mut registry_packages = Vec::new();
     for downloader in &downloaders {
-        // Download registry groups sequentially. `Cloner::clone` holds Cargo's
-        // blocking package-cache lock while awaiting registry queries, so polling
-        // multiple downloads in the same async task can deadlock.
+        // Download registry groups sequentially. Cargo's package-cache lock serializes
+        // their workers, so starting them together would only add lock contention.
         let packages = downloader
             .download()
             .await

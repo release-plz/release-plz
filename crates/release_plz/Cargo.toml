@@ -54,6 +54,7 @@ assert_cmd.workspace = true
 expect-test.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
 toml_edit.workspace = true
 wiremock.workspace = true
 

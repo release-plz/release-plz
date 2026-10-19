@@ -175,6 +175,117 @@ async fn download_stops_querying_after_failed_registry_config() {
 }
 
 #[tokio::test]
+async fn download_returns_query_error_before_other_index_requests_finish() {
+    use std::time::Duration;
+    use tokio::{
+        io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+        net::{TcpListener, TcpStream},
+        sync::oneshot,
+        time::timeout,
+    };
+
+    async fn read_request(stream: &mut TcpStream) -> String {
+        let mut lines = BufReader::new(stream).lines();
+        let request = lines.next_line().await.unwrap().unwrap();
+        while !lines.next_line().await.unwrap().unwrap().is_empty() {}
+        request
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (release_pending, pending_released) = oneshot::channel();
+    let (queries_started, queries_ready) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        // Cargo fetches config.json before starting the package queries.
+        let (mut config, _) = listener.accept().await.unwrap();
+        let request = read_request(&mut config).await;
+        assert!(request.contains("/config.json "));
+        let body = r#"{"dl":"http://127.0.0.1/unused"}"#;
+        config
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        drop(config);
+
+        // Wait for both queries before failing the first. Keep the second response
+        // open until the caller has received the error; no response-delay timing is needed.
+        let mut requests = Vec::new();
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut stream).await;
+            requests.push((request, stream));
+        }
+        requests.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let (second_request, mut second) = requests.pop().unwrap();
+        let (first_request, mut first) = requests.pop().unwrap();
+        assert!(first_request.contains("/fi/rs/first "));
+        assert!(second_request.contains("/se/co/second "));
+        queries_started.send(()).unwrap();
+        first
+            .write_all(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+        drop(first);
+        pending_released.await.unwrap();
+        second
+            .write_all(b"HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+    });
+
+    let cargo_dir = Utf8TempDir::new().unwrap();
+    fs_err::create_dir(cargo_dir.path().join(".cargo")).unwrap();
+    // Disable HTTP/2 pipe waiting so both HTTP/1.1 requests can start before either responds.
+    fs_err::write(
+        cargo_dir.path().join(".cargo/config.toml"),
+        format!(
+            "[registries.mock]\nindex = 'sparse+http://{address}/'\n[net]\nretry = 0\n[http]\nmultiplexing = false\n"
+        ),
+    )
+    .unwrap();
+    let dest_dir = Utf8TempDir::new().unwrap();
+    let downloader = PackageDownloader::new(["first", "second"], dest_dir.path().as_str())
+        .with_registry("mock".to_string())
+        .with_cargo_cwd(cargo_dir.path().to_path_buf());
+    // Isolate a blocking Cargo destructor so the test can release the pending response
+    // and fail cleanly if the downloader regresses.
+    let (finished, result) = oneshot::channel();
+    let download = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        drop(finished.send(runtime.block_on(downloader.download())));
+    });
+    // Other tests can hold Cargo's package-cache lock. Only time the error return
+    // after our queries have acquired it and reached the server.
+    queries_ready.await.unwrap();
+    let result = timeout(Duration::from_secs(10), result).await;
+    release_pending.send(()).unwrap();
+    timeout(Duration::from_secs(10), server)
+        .await
+        .unwrap()
+        .unwrap();
+    download.join().unwrap();
+    let error = result
+        .expect("query errors must return before unrelated index requests finish")
+        .unwrap()
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("failed to query package first"),
+        "{error:#}"
+    );
+    assert!(!dest_dir.path().join("first").exists());
+    assert!(!dest_dir.path().join("second").exists());
+}
+
+#[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn download_respects_source_replacement() {
     let context = TestContext::new().await;
