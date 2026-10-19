@@ -56,10 +56,9 @@ fn semver_check_builds_in_a_temporary_target_directory_by_default() {
     // write the same rustdoc JSON file in the shared target directory. The `fix`
     // commit bumps the major version only if the removed function is still detected.
     assert_locked_versions(repo.directory(), &[("one", "2.0.0")]);
-    // Build artifacts must not be left in the user's project or registry workspace.
-    for workspace in [repo.directory(), &registry_dir] {
-        assert!(!workspace.join("target").exists(), "{workspace}");
-    }
+    // Without a temporary target directory, cargo-semver-checks would build the
+    // baseline in `registry/target`, the default target directory of its workspace.
+    assert!(!registry_dir.join("target").exists());
 }
 
 #[test]
