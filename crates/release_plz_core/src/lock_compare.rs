@@ -535,7 +535,7 @@ source = "registry+https://example.com/index"
         let (_local, local_metadata) = workspace_for_lock(&re_resolved);
         let (released_dir, released_metadata) = workspace_for_lock(committed);
         let released = released_workspace(released_metadata);
-        // Simulate `cargo semver-checks` re-resolving the released lockfile on disk
+        // Simulate a cargo command re-resolving the released lockfile on disk
         // after the snapshot was taken.
         let released_lock = released_dir.path().join("Cargo.lock");
         fs_err::write(&released_lock, &re_resolved).unwrap();
