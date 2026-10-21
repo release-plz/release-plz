@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    panic,
     sync::{Mutex, Once},
     thread,
 };
@@ -356,33 +357,16 @@ impl Updater<'_> {
             Ok(())
         };
 
-        // Worker count is capped at both the CPU count and the number of packages, so no idle threads are spawned.
-        let parallelism = thread::available_parallelism()
-            .map_or(1, usize::from)
-            .min(packages_diffs.len());
-        // Workers pull the next package from a shared queue, so a slow check
-        // doesn't leave other workers idle.
+        let workers = worker_count(packages_diffs.len());
         let queue = Mutex::new(packages_diffs.iter_mut());
-        thread::scope(|scope| {
-            let mut workers = Vec::with_capacity(parallelism);
-            for _ in 0..parallelism {
-                workers.push(scope.spawn(|| {
-                    // Each worker repeatedly takes the next package from the shared queue until it’s empty.
-                    loop {
-                        // Release the queue lock before running the check.
-                        let Some(package_diff) = queue.lock().unwrap().next() else {
-                            break;
-                        };
-                        check_semver(package_diff)?;
-                    }
-                    anyhow::Ok(())
-                }));
-            }
-            for worker in workers {
-                worker.join().expect("semver check thread panicked")?;
+        run_workers(workers, |_| {
+            while let Some(package_diff) = next_job(&queue) {
+                check_semver(package_diff)?;
             }
             anyhow::Ok(())
-        })?;
+        })
+        .into_iter()
+        .collect::<anyhow::Result<()>>()?;
 
         Ok(packages_diffs)
     }
@@ -403,68 +387,50 @@ impl Updater<'_> {
                 .map(|diff| (package, diff))
                 .with_context(|| package_diff_error(package))
         };
-        let walks = histories.iter().filter(|h| h.has_commits()).count();
-        // Worker count is capped at both the CPU count and the number of walks,
-        // since every worker but the first creates a worktree.
-        let parallelism = thread::available_parallelism()
-            .map_or(1, usize::from)
-            .min(walks);
-        if parallelism < 2 || !history::supports_worktrees(repository) {
+        // Every worker but the first creates a worktree, so count only the
+        // histories with commits to check out.
+        let workers = worker_count(histories.iter().filter(|h| h.has_commits()).count());
+        if workers < 2 || !history::supports_worktrees(repository) {
             return histories
                 .into_iter()
                 .map(|history| diff_in(history, repository))
                 .collect();
         }
-        // Workers pull the next package from a shared queue, so a long walk
-        // doesn't leave other workers idle.
         let queue = Mutex::new(histories.into_iter().enumerate());
-        let mut diffs: Vec<_> = thread::scope(|scope| {
-            let workers: Vec<_> = (0..parallelism)
-                .map(|worker| {
-                    let (queue, diff_in) = (&queue, &diff_in);
-                    scope.spawn(move || {
-                        // The first worker walks in `repository`, so a failed
-                        // worktree only costs concurrency.
-                        let worktree = if worker == 0 {
-                            None
-                        } else {
-                            match history::Worktree::new(repository, head) {
-                                Ok(worktree) => Some(worktree),
-                                Err(e) => {
-                                    debug!("cannot create a worktree to walk histories: {e:#}");
-                                    return Vec::new();
-                                }
-                            }
-                        };
-                        let checkout = worktree.as_ref().map_or(repository, |w| w.repo());
-                        let mut diffs = Vec::new();
-                        loop {
-                            // Release the queue lock before walking the history.
-                            let Some((i, history)) = queue.lock().unwrap().next() else {
-                                break;
-                            };
-                            let diff = diff_in(history, checkout);
-                            if diff.is_err() {
-                                // A failed walk can leave its checkout at any
-                                // commit, so its worker empties the queue to
-                                // stop every worker, as the update fails anyway.
-                                // The queue is in package order, so every
-                                // package before the failed one is already
-                                // taken and still walked: the first error is
-                                // the one a sequential walk reports.
-                                queue.lock().unwrap().by_ref().for_each(drop);
-                            }
-                            diffs.push((i, diff));
-                        }
-                        diffs
-                    })
-                })
-                .collect();
-            workers
-                .into_iter()
-                .flat_map(|worker| worker.join().expect("history walk thread panicked"))
-                .collect()
-        });
+        let mut diffs: Vec<_> = run_workers(workers, |worker| {
+            // The first worker walks in `repository`, so a failed worktree only
+            // costs concurrency.
+            let worktree = if worker == 0 {
+                None
+            } else {
+                match history::Worktree::new(repository, head) {
+                    Ok(worktree) => Some(worktree),
+                    Err(e) => {
+                        debug!("cannot create a worktree to walk histories: {e:#}");
+                        return Vec::new();
+                    }
+                }
+            };
+            let checkout = worktree.as_ref().map_or(repository, |w| w.repo());
+            let mut diffs = Vec::new();
+            while let Some((i, history)) = next_job(&queue) {
+                let diff = diff_in(history, checkout);
+                if diff.is_err() {
+                    // A failed walk can leave its checkout at any commit, so
+                    // its worker empties the queue to stop every worker, as the
+                    // update fails anyway. The queue is in package order, so
+                    // every package before the failed one is already taken and
+                    // still walked: the first error is the one a sequential
+                    // walk reports.
+                    queue.lock().unwrap().by_ref().for_each(drop);
+                }
+                diffs.push((i, diff));
+            }
+            diffs
+        })
+        .into_iter()
+        .flatten()
+        .collect();
         diffs.sort_unstable_by_key(|(i, _)| *i);
         diffs.into_iter().map(|(_, diff)| diff).collect()
     }
@@ -1184,6 +1150,36 @@ fn release_boundaries<'a>(
 
 fn package_diff_error(package: &Package) -> String {
     format!("failed to retrieve difference of package {}", package.name)
+}
+
+/// One worker per CPU, but no more than `jobs`, so no worker starts idle.
+fn worker_count(jobs: usize) -> usize {
+    thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(jobs)
+}
+
+/// Run `work` in `workers` threads, passing each its index, and return their
+/// results in the same order.
+fn run_workers<R: Send>(workers: usize, work: impl Fn(usize) -> R + Sync) -> Vec<R> {
+    thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|worker| {
+                let work = &work;
+                scope.spawn(move || work(worker))
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap_or_else(|e| panic::resume_unwind(e)))
+            .collect()
+    })
+}
+
+/// Take the next job from a queue shared by workers, so a long job doesn't
+/// leave the other workers idle. The lock is released before the job runs.
+fn next_job<I: Iterator>(queue: &Mutex<I>) -> Option<I::Item> {
+    queue.lock().unwrap().next()
 }
 
 /// Checkout a commit of the history we are walking, hinting at `--allow-dirty` when
