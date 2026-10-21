@@ -88,13 +88,8 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
         "--get",
         "submodule.recurse",
     ])?;
-    if recurse_submodules == "true" {
-        // Like the common directory, Git reports this path relative to the
-        // working directory.
-        let modules = repository.git(&["rev-parse", "--git-path", "modules"])?;
-        if repository.directory().join(modules).try_exists()? {
-            return Ok(Some("Git recurses into submodules"));
-        }
+    if recurse_submodules == "true" && repository.git_path("modules")?.try_exists()? {
+        return Ok(Some("Git recurses into submodules"));
     }
     Ok(None)
 }

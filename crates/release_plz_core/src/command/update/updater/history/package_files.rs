@@ -102,11 +102,9 @@ fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
 /// Whether the hooks directory has one of the [`CHECKOUT_HOOKS`].
 fn has_hook_file(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
-    // Git reports the directory relative to the repository directory unless it
-    // is absolute. Git for Windows ignores the executable bit of hooks, so test
-    // existence only.
-    let hooks = repository.git(&["rev-parse", "--git-path", "hooks"])?;
-    let hooks = repository.directory().join(hooks);
+    // Git for Windows ignores the executable bit of hooks, so test existence
+    // only.
+    let hooks = repository.git_path("hooks")?;
     for hook in CHECKOUT_HOOKS {
         let hook = hooks.join(hook);
         if fs_err::exists(&hook)? {

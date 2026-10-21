@@ -442,11 +442,9 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
 /// The absolute path of the object database of `repository`.
 ///
 /// Let Git resolve it: libgit2 cannot open repositories with some valid
-/// extensions, such as `extensions.partialClone`. Git reports the path relative
-/// to the repository directory unless it is absolute, as in linked worktrees.
+/// extensions, such as `extensions.partialClone`.
 fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
-    let objects = repository.git(&["rev-parse", "--git-path", "objects"])?;
-    fs_utils::canonicalize_utf8(&repository.directory().join(objects))
+    fs_utils::canonicalize_utf8(&repository.git_path("objects")?)
 }
 
 /// Whether all `modes` describe regular files, so that merging the contents as

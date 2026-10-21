@@ -408,7 +408,7 @@ mod tests {
 
         for path in [repo.directory(), &linked] {
             let source = Repo::new(path).unwrap();
-            let index_path = path.join(source.git(&["rev-parse", "--git-path", "index"]).unwrap());
+            let index_path = source.git_path("index").unwrap();
             let index_before = fs_err::read(&index_path).unwrap();
             let head_before = source.current_commit_hash().unwrap();
             let objects_before = source.git(&["count-objects", "-v"]).unwrap();
