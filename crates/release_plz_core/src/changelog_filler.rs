@@ -58,7 +58,9 @@ pub async fn fill_commits(
     repository: &Repo,
     git_client: Option<&GitClient>,
 ) -> anyhow::Result<()> {
-    if !required_info.is_local_required() && !required_info.is_remote_required() {
+    if commits.is_empty()
+        || (!required_info.is_local_required() && !required_info.is_remote_required())
+    {
         return Ok(());
     }
     // The same commit can be in the changelog of multiple packages,
@@ -74,7 +76,7 @@ pub async fn fill_commits(
         HashMap::new()
     };
 
-    let remotes = if required_info.is_remote_required() && !unique_ids.is_empty() {
+    let remotes = if required_info.is_remote_required() {
         remote_contributors(&unique_ids, required_info, git_client).await?
     } else {
         HashMap::new()
