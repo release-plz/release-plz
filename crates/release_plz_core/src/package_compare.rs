@@ -498,6 +498,14 @@ mod tests {
         assert!(files.contains(&Utf8PathBuf::from("another_file")));
         assert!(!files.contains(&Utf8PathBuf::from("excluded.txt")));
         assert!(!package.path().join("Cargo.toml.orig").exists());
+
+        // Cargo's own listing includes the lockfile it would package, even though
+        // the package has none.
+        let args = ["package", "--list", "--quiet", "--allow-dirty"];
+        let output = run_cargo(package.path(), &args).unwrap();
+        assert!(output.status.success(), "{}", output.stderr);
+        let cargo_files: Vec<_> = output.stdout.lines().map(Utf8PathBuf::from).collect();
+        assert_eq!(files, cargo_files);
     }
 
     #[test]
