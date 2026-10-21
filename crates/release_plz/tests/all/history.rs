@@ -314,7 +314,7 @@ impl TestContext {
         )
     }
 
-    /// Every commit in the order `get_diff` visits them, newest date first.
+    /// Every commit in the order `walk_history` visits them, newest date first.
     fn walk_order(&self) -> String {
         self.repo
             .git(&["rev-list", "--date-order", "HEAD", "--", "."])
