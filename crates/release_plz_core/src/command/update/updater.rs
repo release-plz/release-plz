@@ -1,9 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        Mutex, Once,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Mutex, Once},
     thread,
 };
 
@@ -421,15 +418,10 @@ impl Updater<'_> {
         // Workers pull the next package from a shared queue, so a long walk
         // doesn't leave other workers idle.
         let queue = Mutex::new(histories.into_iter().enumerate());
-        // A failed walk can leave its checkout at any commit, so its worker
-        // stops, and the others stop too, as the update fails anyway. The queue
-        // is in package order, so every package before the failed one is still
-        // walked: the first error is the one a sequential walk reports.
-        let failed = AtomicBool::new(false);
         let mut diffs: Vec<_> = thread::scope(|scope| {
             let workers: Vec<_> = (0..parallelism)
                 .map(|worker| {
-                    let (queue, failed, diff_in) = (&queue, &failed, &diff_in);
+                    let (queue, diff_in) = (&queue, &diff_in);
                     scope.spawn(move || {
                         // The first worker walks in `repository`, so a failed
                         // worktree only costs concurrency.
@@ -446,14 +438,21 @@ impl Updater<'_> {
                         };
                         let checkout = worktree.as_ref().map_or(repository, |w| w.repo());
                         let mut diffs = Vec::new();
-                        while !failed.load(Ordering::Relaxed) {
+                        loop {
                             // Release the queue lock before walking the history.
                             let Some((i, history)) = queue.lock().unwrap().next() else {
                                 break;
                             };
                             let diff = diff_in(history, checkout);
                             if diff.is_err() {
-                                failed.store(true, Ordering::Relaxed);
+                                // A failed walk can leave its checkout at any
+                                // commit, so its worker empties the queue to
+                                // stop every worker, as the update fails anyway.
+                                // The queue is in package order, so every
+                                // package before the failed one is already
+                                // taken and still walked: the first error is
+                                // the one a sequential walk reports.
+                                queue.lock().unwrap().by_ref().for_each(drop);
                             }
                             diffs.push((i, diff));
                         }
