@@ -449,6 +449,53 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn update_restores_the_lockfile_rewritten_by_cargo_before_1_87() {
+    let (temp_dir, repo) = single_package_workspace();
+    change_package(&repo, "one", "fix: first change");
+    // Cargo rewrites this hand-written lockfile when it resolves the workspace to
+    // package a lockfile. Left rewritten, it would stop the walk from checking
+    // out the first change, which has another lockfile.
+    fs_err::write(
+        repo.directory().join("Cargo.lock"),
+        "# Hand-written lockfile\nversion = 3\n[[package]]\nname = \"one\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    change_package(&repo, "one", "fix: second change");
+    // Emulate a Cargo that predates `--exclude-lockfile` and rejects it.
+    let old_cargo = temp_dir.path().join("old-cargo");
+    fs_err::write(
+        &old_cargo,
+        r#"#!/bin/sh
+for arg do
+    if [ "$arg" = --exclude-lockfile ]; then
+        echo "error: unexpected argument '--exclude-lockfile' found" >&2
+        exit 1
+    fi
+done
+exec "$REAL_CARGO" "$@"
+"#,
+    )
+    .unwrap();
+    crate::helpers::make_executable(&old_cargo);
+
+    let output = workspace_update_command(&temp_dir, &repo)
+        .env("CARGO", &old_cargo)
+        .env("REAL_CARGO", env!("CARGO"))
+        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
+        .assert()
+        .success();
+
+    // Each listing falls back to packaging the lockfile.
+    let logs = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+    assert!(
+        logs.contains("Run `cargo package --list --quiet --allow-dirty` in"),
+        "{logs}"
+    );
+    assert_patch_release(&repo, "old cargo", &["first change", "second change"]);
+}
+
 /// Run [`assert_package_file_listings`] on a [`single_package_workspace`]
 /// after the commits `fix: first change` and `fix: second change` to the Rust
 /// source of `one`. `change` runs before the second source change is committed.
