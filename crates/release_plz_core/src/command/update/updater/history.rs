@@ -62,8 +62,9 @@ impl<'a> RetainedChanges<'a> {
         graph: &[(String, Vec<String>)],
         paths: &PackagePaths,
     ) -> anyhow::Result<Self> {
-        // The walked repository can be a temporary copy at a non-canonical path,
-        // such as `/var` on macOS, while the README paths were canonicalized.
+        // The walked repository can be the temporary copy, or a worktree of it,
+        // at a non-canonical path, such as `/var` on macOS, while the README
+        // paths were canonicalized.
         // Canonicalization is best effort: the raw path is tried first anyway.
         let directory = repository.directory();
         let canonical_directory = fs_utils::canonicalize_utf8(directory).ok();

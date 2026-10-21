@@ -3,9 +3,11 @@
 //!
 //! The walked repository is a temporary copy of the project, with any
 //! uncommitted changes stashed. A new worktree at the same commit shares the
-//! objects, refs, configuration and hooks of the copy, and usually has the same
-//! files. Cargo can also package ignored files through a manifest's include
-//! list. [`supports_worktrees`] rules out the differences that Cargo can see.
+//! objects, refs, configuration and hooks of the copy, but can lack its
+//! submodule files and untracked files, as well as ignored files, which Cargo
+//! packages when a manifest's `include` list names them. With
+//! `submodule.recurse`, some checkouts also work only in the copy.
+//! [`supports_worktrees`] rules these cases out.
 
 use anyhow::Context as _;
 use git_cmd::Repo;
@@ -14,8 +16,8 @@ use tracing::debug;
 use crate::fs_utils::Utf8TempDir;
 
 /// Whether a worktree of `repository` checks out the files Cargo packages in
-/// `repository`, and creating it leaves the original repository of the
-/// project untouched.
+/// `repository` at every commit of the walk, and creating it leaves the
+/// original repository of the project untouched.
 pub(crate) fn supports_worktrees(repository: &Repo) -> bool {
     worktree_support(repository).unwrap_or_else(|error| {
         debug!("cannot check whether worktrees can walk histories: {error:#}");
