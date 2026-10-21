@@ -9,7 +9,7 @@ use tracing::debug;
 
 use crate::{
     PackagePath as _,
-    cargo::{read_package_metadata, run_cargo_with_env},
+    cargo::{CmdOutput, read_package_metadata, run_cargo, run_cargo_with_env},
     fs_utils,
 };
 use std::{cell::OnceCell, io::Read};
@@ -161,9 +161,9 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
     }
 }
 
+/// List the files Cargo packages for `package`, leaving the package and its
+/// workspace unchanged.
 fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
-    // Local packages can contain uncommitted changes during an update.
-    let args = ["package", "--list", "--quiet", "--allow-dirty"];
     // Cargo writes scratch state (e.g. `target/CACHEDIR.TAG`) to the target dir
     // even when only listing files. Use a throwaway directory so that neither a
     // shared target dir nor the listed package (which may be a user-supplied
@@ -174,16 +174,73 @@ fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow
         "CARGO_TARGET_DIR".to_owned(),
         SecretString::from(target_dir.path().to_string()),
     )];
-    let output = run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")?;
+    let list = |extra_args: &[&str]| {
+        // Local packages can contain uncommitted changes during an update.
+        let args = [
+            ["package", "--list", "--quiet", "--allow-dirty"].as_slice(),
+            extra_args,
+        ]
+        .concat();
+        run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")
+    };
+    // To package a lockfile, Cargo first resolves the workspace dependencies.
+    // That takes most of the listing time, can query the registry, and rewrites
+    // a stale workspace `Cargo.lock`.
+    let output = list(&["--exclude-lockfile"])?;
+    if !output.status.success() && output.stderr.contains("--exclude-lockfile") {
+        // Cargo before 1.87 rejects the flag. Check every listing: during a
+        // history walk, rustup selects the toolchain of each checked-out commit
+        // from its `rust-toolchain.toml`.
+        return with_workspace_lockfile_restored(package, || parse_package_list(&list(&[])?));
+    }
+    let mut files = parse_package_list(&output)?;
+    // Cargo 1.84 and later, which includes every Cargo accepting the flag,
+    // package a lockfile for every package, even for workspace members without
+    // one in their directory. Insert it where Cargo sorts it, so the list is
+    // still what Cargo packages.
+    let lockfile = Utf8PathBuf::from("Cargo.lock");
+    if let Err(index) = files.binary_search(&lockfile) {
+        files.insert(index, lockfile);
+    }
+    Ok(files)
+}
 
+fn parse_package_list(output: &CmdOutput) -> anyhow::Result<Vec<Utf8PathBuf>> {
     anyhow::ensure!(
         output.status.success(),
         "error while running `cargo package`: {}",
         output.stderr
     );
+    Ok(output.stdout.lines().map(Utf8PathBuf::from).collect())
+}
 
-    let files = output.stdout.lines().map(Utf8PathBuf::from).collect();
-    Ok(files)
+/// Run `list`, which lists `package` with a Cargo that packages a lockfile,
+/// then restore the workspace `Cargo.lock` that Cargo rewrites if it is stale.
+///
+/// A rewritten lockfile would make the listed checkout dirty, which can stop
+/// a history walk from checking out the next commit.
+fn with_workspace_lockfile_restored<T>(
+    package: &Utf8Path,
+    list: impl FnOnce() -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let args = ["locate-project", "--workspace", "--message-format", "plain"];
+    let output = run_cargo(package, &args).context("cannot run `cargo locate-project`")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "error while running `cargo locate-project`: {}",
+        output.stderr
+    );
+    let lockfile = Utf8Path::new(output.stdout.trim_end()).with_file_name("Cargo.lock");
+    // Cargo doesn't write a lockfile when there is none.
+    if !lockfile.exists() {
+        return list();
+    }
+    let original = fs_err::read(&lockfile)?;
+    let result = list();
+    if fs_err::read(&lockfile)? != original {
+        fs_err::write(&lockfile, original)?;
+    }
+    result
 }
 
 fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
@@ -359,7 +416,6 @@ fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cargo::run_cargo;
     use crate::fs_utils::Utf8TempDir;
 
     #[test]
@@ -438,9 +494,19 @@ mod tests {
         fs_err::write(package.path().join("another_file"), "file").unwrap();
         let files = get_cargo_package_files(package.path()).unwrap();
 
-        assert!(files.contains(&Utf8PathBuf::from("src/lib.rs")));
-        assert!(files.contains(&Utf8PathBuf::from("another_file")));
-        assert!(!files.contains(&Utf8PathBuf::from("excluded.txt")));
+        // Like `cargo package --list`, the list includes the lockfile Cargo
+        // packages even though the package has none, and omits the excluded file.
+        assert_eq!(
+            files,
+            [
+                "Cargo.lock",
+                "Cargo.toml",
+                "Cargo.toml.orig",
+                "another_file",
+                "src/lib.rs",
+            ]
+            .map(Utf8PathBuf::from)
+        );
         assert!(!package.path().join("Cargo.toml.orig").exists());
     }
 

@@ -10,6 +10,8 @@ use cargo::util::cache_lock::CacheLockMode;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::camino::Utf8PathBuf;
 pub use cloner_builder::*;
+use futures::StreamExt as _;
+use futures::stream::FuturesOrdered;
 pub use source::*;
 use tracing::warn;
 
@@ -19,7 +21,7 @@ use anyhow::{Context, bail};
 
 use cargo::sources::source::{QueryKind, Source, SourceMap};
 use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
-use cargo::workspace::{Dependency, Package, PackageSet};
+use cargo::workspace::{Dependency, Package, PackageId, PackageSet};
 
 use walkdir::WalkDir;
 
@@ -104,27 +106,8 @@ impl Cloner {
     pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<Utf8PathBuf>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
-        let mut destinations = vec![];
 
-        for crate_ in crates {
-            let name = &crate_.name;
-            let vers = crate_.version.as_deref();
-            let summary = query_latest_package_summary(src.as_ref(), name, vers)
-                .await
-                .with_context(|| format!("failed to query package {name}"))?;
-
-            match summary {
-                Some(summary) => {
-                    let dest_path = self.directory.join(name);
-                    check_destination(&dest_path).with_context(|| {
-                        format!("failed to clone package {name} in {dest_path}")
-                    })?;
-                    destinations.push((summary.package_id(), dest_path));
-                }
-                None => warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*")),
-            }
-        }
-
+        let destinations = self.query_destinations(src.as_ref(), crates).await?;
         if destinations.is_empty() {
             return Ok(vec![]);
         }
@@ -148,6 +131,49 @@ impl Cloner {
                 Ok(dest_path)
             })
             .collect()
+    }
+
+    /// Query the latest version of each crate and check the directory it will be cloned into.
+    /// Crates that don't exist are skipped.
+    async fn query_destinations(
+        &self,
+        src: &dyn Source,
+        crates: &[Crate],
+    ) -> CargoResult<Vec<(PackageId, Utf8PathBuf)>> {
+        // `get_source` invalidated the index cache, so sparse registries revalidate every
+        // index file with the server. Cargo runs these requests in parallel, so poll the
+        // queries together instead of paying one round trip per crate.
+        // Stop at the first error in request order: Cargo doesn't keep a failed sparse
+        // `config.json`, so without a copy on disk every pending query would fetch it
+        // again, one after another.
+        let mut summaries: FuturesOrdered<_> = crates
+            .iter()
+            .map(async |crate_| {
+                let summary =
+                    query_latest_package_summary(src, &crate_.name, crate_.version.as_deref())
+                        .await;
+                (crate_, summary)
+            })
+            .collect();
+
+        let mut destinations = vec![];
+        while let Some((crate_, summary)) = summaries.next().await {
+            let name = &crate_.name;
+            match summary.with_context(|| format!("failed to query package {name}"))? {
+                Some(summary) => {
+                    let dest_path = self.directory.join(name);
+                    check_destination(&dest_path).with_context(|| {
+                        format!("failed to clone package {name} in {dest_path}")
+                    })?;
+                    destinations.push((summary.package_id(), dest_path));
+                }
+                None => warn!(
+                    "Package `{name}@{}` not found",
+                    crate_.version.as_deref().unwrap_or("*.*.*")
+                ),
+            }
+        }
+        Ok(destinations)
     }
 
     fn acquire_cargo_package_cache_lock(

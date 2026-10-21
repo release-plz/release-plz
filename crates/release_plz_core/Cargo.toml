@@ -1,6 +1,6 @@
 [package]
 name = "release_plz_core"
-version = "0.40.0"
+version = "0.41.1"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository = "https://github.com/release-plz/release-plz/tree/main/crates/release_plz_core"
@@ -17,8 +17,8 @@ all-static = ["cargo/vendored-libgit2", "cargo/all-static"]
 
 [dependencies]
 base64.workspace = true
-cargo_utils = { path = "../cargo_utils", version = "0.1.87" }
-git_cmd = { path = "../git_cmd", version = "0.9.0" }
+cargo_utils = { path = "../cargo_utils", version = "0.2.0" }
+git_cmd = { path = "../git_cmd", version = "0.9.1" }
 next_version = { path = "../next_version", version = "0.3" }
 
 anyhow.workspace = true
@@ -47,7 +47,8 @@ url = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["fs", "macros"] }
+tokio = { workspace = true, features = ["fs", "macros", "rt"] }
+tokio-util = { workspace = true, features = ["rt"] }
 tera.workspace = true
 git2.workspace = true
 
@@ -58,6 +59,7 @@ fake_package = { path = "../fake_package" }
 
 expect-test.workspace = true
 flate2.workspace = true
+same-file.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 wiremock.workspace = true

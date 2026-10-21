@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.174](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.173...release-plz-v0.3.174) - 2026-10-21
+
+### Performance
+
+- query registry packages concurrently ([#3240](https://github.com/release-plz/release-plz/pull/3240))
+- speed up the temporary copies of the repository ([#3248](https://github.com/release-plz/release-plz/pull/3248))
+
+## [0.3.173](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.172...release-plz-v0.3.173) - 2026-10-19
+
+### Other
+
+- add UTM params to Encore sponsor links ([#3237](https://github.com/release-plz/release-plz/pull/3237))
+- add sponsors to readme ([#3235](https://github.com/release-plz/release-plz/pull/3235))
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+- reuse dependency builds between current and baseline semver checks ([#3243](https://github.com/release-plz/release-plz/pull/3243))
+- list open PRs while release-pr analyzes the packages ([#3249](https://github.com/release-plz/release-plz/pull/3249))
+- read downloaded registry packages in parallel ([#3246](https://github.com/release-plz/release-plz/pull/3246))
+
 ## [0.3.172](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.171...release-plz-v0.3.172) - 2026-10-12
 
 ### Other

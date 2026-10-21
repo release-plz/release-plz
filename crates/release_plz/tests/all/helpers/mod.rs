@@ -8,10 +8,18 @@ mod reqwest_utils;
 pub mod test_context;
 
 pub const TEST_REGISTRY: &str = "test-registry";
+pub const TEST_SPARSE_REGISTRY: &str = "test-registry-sparse";
 
 pub fn today() -> String {
     // The changelogs specify the release date in UTC.
     chrono::Utc::now().format("%Y-%m-%d").to_string()
+}
+
+pub fn assert_cargo_semver_checks_is_installed() {
+    assert!(
+        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
+        "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
+    );
 }
 
 /// Check resolved versions with `--locked`, which also rejects stale lockfiles.

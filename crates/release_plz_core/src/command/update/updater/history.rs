@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use git_cmd::Repo;
+use git_cmd::{HistoryCommit, Repo};
 use tracing::warn;
 
 use crate::{
@@ -57,7 +57,7 @@ impl<'a> RetainedChanges<'a> {
     pub(super) fn new(
         repository: &'a Repo,
         head: &str,
-        graph: &[(String, Vec<String>)],
+        graph: &[HistoryCommit],
         paths: &PackagePaths,
     ) -> anyhow::Result<Self> {
         // The walked repository can be a temporary copy at a non-canonical path,
@@ -82,8 +82,11 @@ impl<'a> RetainedChanges<'a> {
             },
             released: None,
             package_files: None,
-            root: graph.first().map(|(commit, _)| commit.clone()),
-            parents: graph.iter().cloned().collect(),
+            root: graph.first().map(|commit| commit.id.clone()),
+            parents: graph
+                .iter()
+                .map(|commit| (commit.id.clone(), commit.parents.clone()))
+                .collect(),
             reachable: HashSet::new(),
             released_ancestors: HashSet::new(),
         })
@@ -161,12 +164,12 @@ impl<'a> RetainedChanges<'a> {
     pub(super) fn retain_surviving(
         mut self,
         commits: &mut Vec<Commit>,
-        head_package_files: impl FnOnce() -> anyhow::Result<Option<Vec<Utf8PathBuf>>>,
-    ) -> anyhow::Result<()> {
+        head_package_files: impl FnOnce() -> Option<Vec<Utf8PathBuf>>,
+    ) {
         if !commits.iter().any(|commit| self.is_candidate(&commit.id)) {
-            return Ok(());
+            return;
         }
-        self.add_package_files(head_package_files()?);
+        self.add_package_files(head_package_files());
         // A replay that cannot be built, for example on a SHA-256 repository,
         // is reported once: without evidence, ancestry pruning then applies to
         // every candidate.
@@ -174,7 +177,6 @@ impl<'a> RetainedChanges<'a> {
             .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
             .ok();
         commits.retain(|commit| self.retains(replay.as_ref(), &commit.id));
-        Ok(())
     }
 
     /// Add the package-relative files Cargo packages at another snapshot, or

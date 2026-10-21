@@ -1,6 +1,6 @@
 use crate::helpers::{gitea::gitea_address, reqwest_utils::ReqwestUtils};
 
-use super::{GiteaContext, GiteaUser};
+use super::{CARGO_INDEX_REPO, GiteaContext, GiteaUser};
 
 impl GiteaContext {
     pub fn repo_clone_url(&self) -> String {
@@ -13,6 +13,22 @@ impl GiteaContext {
             self.user.username(),
             self.repo
         )
+    }
+
+    /// Index of the Cargo registry that gitea hosts for the user.
+    /// See <https://docs.gitea.com/usage/packages/cargo>.
+    pub fn cargo_index_url(&self) -> String {
+        format!(
+            "http://{}/{}/{CARGO_INDEX_REPO}.git",
+            gitea_address(),
+            self.user.username()
+        )
+    }
+
+    /// The same registry as [`Self::cargo_index_url`], served over the sparse protocol.
+    pub fn cargo_sparse_index_url(&self) -> String {
+        let registry_url = super::cargo_registry_url(self.user.username());
+        format!("sparse+{registry_url}/")
     }
 
     pub async fn repo_exists(&self, repo_name: &str) -> bool {
