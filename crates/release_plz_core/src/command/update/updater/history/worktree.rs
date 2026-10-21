@@ -6,7 +6,8 @@
 //! objects, refs, configuration and hooks of the copy, but can lack its
 //! submodule files and untracked files, as well as ignored files, which Cargo
 //! packages when a manifest's `include` list names them. With
-//! `submodule.recurse`, some checkouts also work only in the copy.
+//! `submodule.recurse`, checkouts also use the submodule repositories in the
+//! Git directory of the copy, which a worktree doesn't find.
 //! [`supports_worktrees`] rules these cases out.
 
 use anyhow::Context as _;
@@ -70,7 +71,10 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
     // With `submodule.recurse`, checking a commit out also checks its
     // submodules out, from their repositories in the Git directory. A worktree
     // looks for them in its own Git directory, so checking out a commit with a
-    // submodule that HEAD no longer has fails there.
+    // submodule that HEAD no longer has fails there. Without these
+    // repositories, such as in a fresh clone, checkouts behave alike in the
+    // copy and in a worktree. Users can set `submodule.recurse` globally, so
+    // the setting alone doesn't rule worktrees out.
     let recurse_submodules = repository.git(&[
         "config",
         "--type=bool",
@@ -79,8 +83,13 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
         "submodule.recurse",
     ])?;
     if recurse_submodules == "true" {
-        debug!("walking histories one at a time: Git recurses into submodules");
-        return Ok(false);
+        // Like the common directory, Git reports this path relative to the
+        // working directory.
+        let modules = repository.git(&["rev-parse", "--git-path", "modules"])?;
+        if repository.directory().join(modules).try_exists()? {
+            debug!("walking histories one at a time: Git recurses into submodules");
+            return Ok(false);
+        }
     }
     Ok(true)
 }

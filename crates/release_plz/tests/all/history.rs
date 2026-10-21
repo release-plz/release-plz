@@ -1523,9 +1523,10 @@ async fn submodule_files_match_the_release_while_other_histories_are_walked() {
 }
 
 /// With `submodule.recurse`, checking a commit out also checks its submodules
-/// out, from their repositories in the Git directory. A worktree looks for
-/// them in its own Git directory, so a history with a submodule that HEAD
-/// removed stays in the copy of the repository.
+/// out, from their repositories in the Git directory, where `submodule add`
+/// clones them. A worktree looks for them in its own Git directory, so a
+/// history with a submodule that HEAD removed stays in the copy of the
+/// repository.
 #[tokio::test]
 async fn removed_submodules_are_checked_out_while_other_histories_are_walked() {
     let history = concurrent_histories(add_submodule).await;
