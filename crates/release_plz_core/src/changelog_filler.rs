@@ -53,6 +53,7 @@ pub async fn fill_commits(
     repository: &Repo,
     git_client: Option<&GitClient>,
 ) -> anyhow::Result<()> {
+    // Without commits or required info there's nothing to fill, so don't require a git token.
     if commits.is_empty()
         || (!required_info.is_local_required() && !required_info.is_remote_required())
     {
