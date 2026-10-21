@@ -310,6 +310,7 @@ impl Updater<'_> {
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
+        let semver_check_target_dir = semver_check::TargetDir::new(self.req.cargo_metadata());
         let check_semver = |(p, diff): &mut (&Package, Diff)| -> anyhow::Result<()> {
             let registry_package = registry_packages.get_package(&p.name);
             if let Some(registry_package) = registry_package {
@@ -331,9 +332,12 @@ impl Updater<'_> {
                     SEMVER_CHECK_LOG_ONCE.call_once(|| {
                         tracing::info!("Checking API compatibility with cargo-semver-checks...");
                     });
-                    let semver_check =
-                        semver_check::run_semver_check(&package_path, registry_package_path)
-                            .context("error while running cargo-semver-checks")?;
+                    let semver_check = semver_check::run_semver_check(
+                        &package_path,
+                        registry_package_path,
+                        semver_check_target_dir,
+                    )
+                    .context("error while running cargo-semver-checks")?;
                     diff.set_semver_check(semver_check);
                 }
             }
@@ -752,8 +756,9 @@ impl Updater<'_> {
         )?;
         let checked_out_history = !graph.is_empty();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
-        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository);
-        for (current_commit_hash, _) in graph {
+        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
+        for (index, commit) in graph.iter().enumerate() {
+            let current_commit_hash = commit.id.as_str();
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
@@ -761,12 +766,12 @@ impl Updater<'_> {
             // changes the package, forked before the release and merged after it,
             // keeps its fork point and every ancestor of it reachable, so all of
             // those are inspected.
-            if retained_changes.skips(&current_commit_hash) {
+            if retained_changes.skips(current_commit_hash) {
                 continue;
             }
-            checkout_commit(repository, &current_commit_hash)?;
+            checkout_commit(repository, current_commit_hash)?;
             // Equality and changed-file checks inspect the same snapshot.
-            let local_package_files = checkout_package_files.files_at(&current_commit_hash);
+            let local_package_files = checkout_package_files.files_at(index);
             if let Some((released_package, released_path)) = released {
                 let are_packages_equal = check_package_equality(
                     package,
@@ -790,12 +795,12 @@ impl Updater<'_> {
                     // RetainedChanges preserves candidates whose changes survive
                     // through another lineage.
                     let ancestors = repository.ancestors_at_paths(
-                        &current_commit_hash,
+                        current_commit_hash,
                         &release_boundaries,
                         &paths.all(),
                     )?;
                     retained_changes.add_boundary(
-                        &current_commit_hash,
+                        current_commit_hash,
                         ancestors,
                         released_package_files.get(released_path)?,
                     );
@@ -807,12 +812,12 @@ impl Updater<'_> {
             if are_changed_files_in_package(
                 package_path,
                 repository,
-                &current_commit_hash,
+                current_commit_hash,
                 local_package_files,
             ) {
                 diff.commits.push(Commit::new(
-                    current_commit_hash,
-                    repository.current_commit_message()?,
+                    current_commit_hash.to_owned(),
+                    commit.message()?,
                 ));
             }
         }

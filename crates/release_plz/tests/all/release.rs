@@ -267,3 +267,154 @@ async fn release_plz_can_do_backports() {
     .to_string();
     outcome.stdout(format!("{expected_stdout}\n"));
 }
+
+/// How [`CARGO_WRAPPER`] and the registry behave during the release.
+#[cfg(unix)]
+#[derive(Debug)]
+enum Scenario {
+    /// `cargo publish` confirms that the package is in the registry.
+    Confirmed,
+    /// `cargo publish` doesn't print the `Published` status,
+    /// like a Cargo whose wait for the package timed out.
+    Unconfirmed,
+    /// `cargo publish` confirms the package, but Cargo resolves dependencies from a
+    /// mirror of the registry, which catches up only after the first failed check
+    /// following publication.
+    LaggingMirror,
+    /// `cargo publish` confirms the package, and Cargo resolves dependencies from a
+    /// local directory, which never receives the published package.
+    VendoredSource,
+}
+
+/// Cargo wrapper that records the subcommands run by release-plz
+/// and simulates the [`Scenario`] passed in `SCENARIO`.
+#[cfg(unix)]
+const CARGO_WRAPPER: &str = r#"#!/bin/sh
+echo "$1" >> "$WRAPPER_DIR/calls"
+if [ "$1" = info ] && [ "$SCENARIO" = LaggingMirror ] && grep -qx publish "$WRAPPER_DIR/calls" && [ ! -f "$WRAPPER_DIR/mirror_updated" ]; then
+    "$REAL_CARGO" "$@"
+    status=$?
+    if [ "$status" = 0 ]; then
+        echo 'mirror unexpectedly contains the new package' >&2
+        exit 1
+    fi
+    git -C "$WRAPPER_DIR/mirror" pull --ff-only >&2 || exit 1
+    touch "$WRAPPER_DIR/mirror_updated"
+    exit "$status"
+fi
+if [ "$1" = publish ]; then
+    "$REAL_CARGO" "$@" 2> "$WRAPPER_DIR/publish_stderr"
+    status=$?
+    if [ "$SCENARIO" = Unconfirmed ]; then
+        grep -v Published "$WRAPPER_DIR/publish_stderr" >&2
+    else
+        cat "$WRAPPER_DIR/publish_stderr" >&2
+    fi
+    exit $status
+fi
+exec "$REAL_CARGO" "$@"
+"#;
+
+/// Release a new project through [`CARGO_WRAPPER`] in the given `scenario` and return
+/// the `cargo info` and `cargo publish` subcommands run by release-plz, in order.
+#[cfg(unix)]
+async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
+    let context = TestContext::new().await;
+    let wrapper_dir = Utf8TempDir::new().unwrap();
+    let cargo = wrapper_dir.path().join("cargo");
+    fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
+    crate::helpers::make_executable(&cargo);
+
+    let index = context.gitea.cargo_index_url();
+    let replacement = match scenario {
+        Scenario::Confirmed | Scenario::Unconfirmed => None,
+        Scenario::LaggingMirror => {
+            let mirror = wrapper_dir.path().join("mirror");
+            assert_cmd::Command::new("git")
+                .args(["clone", &index, mirror.as_str()])
+                .assert()
+                .success();
+            let mirror_url = url::Url::from_directory_path(&mirror).unwrap();
+            Some(format!("registry = {:?}", mirror_url.as_str()))
+        }
+        Scenario::VendoredSource => {
+            let vendor = wrapper_dir.path().join("vendor");
+            fs_err::create_dir(&vendor).unwrap();
+            // If release-plz waited for the package to appear in the directory,
+            // fail after a few seconds instead of the default 30 minutes.
+            context.write_release_plz_toml("[workspace]\npublish_timeout = \"10s\"\n");
+            Some(format!("directory = {:?}", vendor.as_str()))
+        }
+    };
+    if let Some(replacement) = replacement {
+        // The source name deliberately differs from the registry name: Cargo
+        // matches replacements by index URL, not by registry name.
+        context.append_cargo_config(&format!(
+            "\n[source.origin]\nregistry = {index:?}\nreplace-with = \"replacement\"\n\
+             [source.replacement]\n{replacement}\n"
+        ));
+        context.push_all_changes("replace registry source");
+    }
+
+    context
+        .release_command()
+        .env("CARGO", &cargo)
+        .env("REAL_CARGO", env!("CARGO"))
+        .env("WRAPPER_DIR", wrapper_dir.path())
+        .env("SCENARIO", format!("{scenario:?}"))
+        .assert()
+        .success();
+
+    if !matches!(scenario, Scenario::Unconfirmed) {
+        let stderr = fs_err::read_to_string(wrapper_dir.path().join("publish_stderr")).unwrap();
+        assert!(stderr.contains("Published"), "{stderr}");
+    }
+    let calls = fs_err::read_to_string(wrapper_dir.path().join("calls")).unwrap();
+    calls
+        .lines()
+        .filter(|subcommand| ["info", "publish"].contains(subcommand))
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_trusts_cargo_publish_confirmation() {
+    // The first `cargo info` checks whether the package was already published.
+    assert_eq!(
+        release_cargo_calls(Scenario::Confirmed).await,
+        ["info", "publish"]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
+    assert_eq!(
+        release_cargo_calls(Scenario::Unconfirmed).await,
+        ["info", "publish", "info"]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_waits_for_mirror_after_cargo_publish_confirms() {
+    assert_eq!(
+        release_cargo_calls(Scenario::LaggingMirror).await,
+        ["info", "publish", "info", "info"]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_trusts_cargo_publish_confirmation_with_vendored_sources() {
+    // The directory never receives the package, so release-plz must not wait for it.
+    assert_eq!(
+        release_cargo_calls(Scenario::VendoredSource).await,
+        ["info", "publish"]
+    );
+}

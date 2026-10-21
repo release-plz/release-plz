@@ -1,5 +1,5 @@
 use crate::helpers::{
-    TEST_REGISTRY, assert_locked_versions,
+    TEST_REGISTRY, assert_cargo_semver_checks_is_installed, assert_locked_versions,
     package::{PackageType, TestPackage},
     test_context::TestContext,
     today,
@@ -145,13 +145,6 @@ async fn release_pr_pre_bumped_shared_versions_update_dependency_requirements() 
     );
 }
 
-fn assert_cargo_semver_checks_is_installed() {
-    assert!(
-        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
-        "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
-    );
-}
-
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_opens_pr_with_default_config() {
@@ -193,6 +186,21 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         )
         .trim()
     );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_ignores_forge_errors_when_nothing_to_release() {
+    let context = TestContext::new().await;
+    context.run_release().success();
+
+    // release-pr lists the open PRs while it analyzes the packages. With nothing to release,
+    // the listing isn't needed, so its failure (caused by the invalid token) must not fail the command.
+    context
+        .release_pr_command("invalid-token")
+        .assert()
+        .success()
+        .stdout("{\"prs\":[]}\n");
 }
 
 #[tokio::test]
