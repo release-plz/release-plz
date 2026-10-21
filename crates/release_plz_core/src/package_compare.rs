@@ -494,18 +494,20 @@ mod tests {
         fs_err::write(package.path().join("another_file"), "file").unwrap();
         let files = get_cargo_package_files(package.path()).unwrap();
 
-        assert!(files.contains(&Utf8PathBuf::from("src/lib.rs")));
-        assert!(files.contains(&Utf8PathBuf::from("another_file")));
-        assert!(!files.contains(&Utf8PathBuf::from("excluded.txt")));
+        // Like `cargo package --list`, the list includes the lockfile Cargo
+        // packages even though the package has none, and omits the excluded file.
+        assert_eq!(
+            files,
+            [
+                "Cargo.lock",
+                "Cargo.toml",
+                "Cargo.toml.orig",
+                "another_file",
+                "src/lib.rs",
+            ]
+            .map(Utf8PathBuf::from)
+        );
         assert!(!package.path().join("Cargo.toml.orig").exists());
-
-        // Cargo's own listing includes the lockfile it would package, even though
-        // the package has none.
-        let args = ["package", "--list", "--quiet", "--allow-dirty"];
-        let output = run_cargo(package.path(), &args).unwrap();
-        assert!(output.status.success(), "{}", output.stderr);
-        let cargo_files: Vec<_> = output.stdout.lines().map(Utf8PathBuf::from).collect();
-        assert_eq!(files, cargo_files);
     }
 
     #[test]
