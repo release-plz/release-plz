@@ -19,7 +19,7 @@ use git_cliff_core::{
 };
 use git_cmd::Repo;
 use next_version::NextVersion as _;
-use tracing::{debug, info, instrument, warn};
+use tracing::{Span, debug, info, instrument, warn};
 
 use crate::{
     ChangelogBuilder, ChangelogRequest, ForgeType, NO_COMMIT_ID, PackagePath as _, Project, Remote,
@@ -1162,11 +1162,14 @@ fn worker_count(jobs: usize) -> usize {
 /// Run `work` in `workers` threads, passing each its index, and return their
 /// results in the same order.
 fn run_workers<R: Send>(workers: usize, work: impl Fn(usize) -> R + Sync) -> Vec<R> {
+    // Threads start outside of any span, so enter the current one in each of
+    // them to keep the logs of the work nested under it.
+    let span = Span::current();
     thread::scope(|scope| {
         let handles: Vec<_> = (0..workers)
             .map(|worker| {
-                let work = &work;
-                scope.spawn(move || work(worker))
+                let (work, span) = (&work, &span);
+                scope.spawn(move || span.in_scope(|| work(worker)))
             })
             .collect();
         handles
