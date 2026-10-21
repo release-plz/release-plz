@@ -467,7 +467,6 @@ async fn changelog_contains_remote_info_of_each_commit() {
     // and that commits pushed without a PR didn't get any.
     let username = context.gitea.user.username();
     let package = &context.gitea.repo;
-    let pr_link = |n: u32| format!("[#{n}](https://localhost:3000/{username}/{package}/pulls/{n})");
     let changelog = context.read_changelog();
     assert_eq!(
         changelog.trim(),
@@ -482,15 +481,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- new file 3 ({}) - #3 by @{username}
-- new file 2 ({}) - #2 by @{username}
-- new file 1 ({}) - #1 by @{username}
+- new file 3 ([#3](https://localhost:3000/{username}/{package}/pulls/3)) - #3 by @{username}
+- new file 2 ([#2](https://localhost:3000/{username}/{package}/pulls/2)) - #2 by @{username}
+- new file 1 ([#1](https://localhost:3000/{username}/{package}/pulls/1)) - #1 by @{username}
 - add config file by @{username}
 - cargo init by @{username}
 - Initial commit by @{username}",
-            pr_link(3),
-            pr_link(2),
-            pr_link(1),
         )
         .trim()
     );
