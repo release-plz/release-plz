@@ -4502,6 +4502,7 @@ dependencies = [
  "reqwest",
  "reqwest-middleware",
  "reqwest-retry",
+ "same-file",
  "secrecy 0.10.3",
  "serde",
  "serde_json",
