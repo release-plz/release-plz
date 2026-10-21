@@ -860,8 +860,6 @@ impl Updater<'_> {
 
     /// Add the commits of `history` that changed its package to its diff,
     /// checking them out in `repository`, which is left at `head`.
-    ///
-    /// This operation is not thread-safe, because we do `git checkout` on the repository.
     #[instrument(
         skip_all,
         fields(package = %history.package.name)
