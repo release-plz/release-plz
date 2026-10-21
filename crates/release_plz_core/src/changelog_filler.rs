@@ -63,12 +63,7 @@ pub async fn fill_commits(
     }
     // The same commit can be in the changelog of multiple packages,
     // so we retrieve its information only once.
-    let mut seen_ids = HashSet::new();
-    let unique_ids: Vec<String> = commits
-        .iter()
-        .filter(|commit| seen_ids.insert(commit.id.as_str()))
-        .map(|commit| commit.id.clone())
-        .collect();
+    let unique_ids: HashSet<String> = commits.iter().map(|commit| commit.id.clone()).collect();
 
     let signatures: HashMap<&str, CommitSignatures> = if required_info.is_local_required() {
         unique_ids
@@ -109,7 +104,7 @@ pub async fn fill_commits(
 
 /// Retrieve the remote information of the given commits from the forge.
 async fn remote_contributors<'a>(
-    commit_ids: &'a [String],
+    commit_ids: &'a HashSet<String>,
     required_info: &RequiredInfo,
     git_client: Option<&GitClient>,
 ) -> anyhow::Result<HashMap<&'a str, RemoteContributor>> {
