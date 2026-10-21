@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.174](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.173...release-plz-v0.3.174) - 2026-10-21
+
+### Performance
+
+- query registry packages concurrently ([#3240](https://github.com/release-plz/release-plz/pull/3240))
+- speed up the temporary copies of the repository ([#3248](https://github.com/release-plz/release-plz/pull/3248))
+
 ## [0.3.173](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.172...release-plz-v0.3.173) - 2026-10-19
 
 ### Other
