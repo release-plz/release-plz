@@ -252,9 +252,10 @@ impl Repo {
         Ok(())
     }
 
-    /// Removes a worktree that was created for this repository at the given path.
+    /// Removes a worktree that was created for this repository at the given path,
+    /// even if it has modified or untracked files.
     pub fn remove_worktree(&self, path: impl AsRef<str>) -> anyhow::Result<()> {
-        self.git(&["worktree", "remove", path.as_ref()])
+        self.git(&["worktree", "remove", "--force", path.as_ref()])
             .context("failed to remove worktree")?;
 
         Ok(())

@@ -114,12 +114,9 @@ impl<'a> Worktree<'a> {
 
 impl Drop for Worktree<'_> {
     fn drop(&mut self) {
-        // Force the removal: a failed walk can leave changes behind.
-        let path = self.worktree.directory().as_str();
-        if let Err(error) = self
-            .repository
-            .git(&["worktree", "remove", "--force", path])
-        {
+        // The removal is forced, as a failed walk can leave changes behind.
+        let path = self.worktree.directory();
+        if let Err(error) = self.repository.remove_worktree(path) {
             // The worktree belongs to a temporary repository, so a stale entry
             // is harmless.
             debug!("cannot remove worktree {path}: {error:#}");
