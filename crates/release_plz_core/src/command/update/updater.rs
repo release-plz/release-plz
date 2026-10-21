@@ -795,6 +795,10 @@ impl Updater<'_> {
 
     /// Complete the diff of a package by walking its history in `repository`,
     /// a checkout at `head`.
+    #[instrument(
+        skip_all,
+        fields(package = %history.package.name)
+    )]
     fn package_diff(
         &self,
         history: PackageHistory<'_>,
@@ -824,10 +828,6 @@ impl Updater<'_> {
 
     /// Add the commits of `history` that changed its package to its diff,
     /// checking them out in `repository`, which is left at `head`.
-    #[instrument(
-        skip_all,
-        fields(package = %history.package.name)
-    )]
     fn walk_history(
         &self,
         history: PackageHistory<'_>,
