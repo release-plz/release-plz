@@ -42,8 +42,9 @@ const MAX_CONCURRENT_REMOTE_COMMITS: usize = 10;
 /// Commits are fetched concurrently only if they need at most this many requests.
 /// Otherwise, they are fetched one at a time.
 ///
-/// It's below the 900 GET requests per minute allowed by GitHub's secondary rate limit,
-/// to leave room for the other requests of release-plz.
+/// Concurrent requests can all complete within a minute, so this stays below the
+/// 900 GET requests per minute allowed by GitHub's secondary rate limit,
+/// leaving room for the other requests of release-plz.
 const MAX_REQUESTS_TO_FETCH_CONCURRENTLY: usize = 800;
 
 /// Fill the commits with the information required by the changelog template.
