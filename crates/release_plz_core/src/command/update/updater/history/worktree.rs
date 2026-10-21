@@ -95,13 +95,9 @@ impl<'a> Worktree<'a> {
     /// Check `commit` out in a new worktree of `repository`.
     pub(crate) fn new(repository: &'a Repo, commit: &str) -> anyhow::Result<Self> {
         let dir = Utf8TempDir::new()?;
-        // Keep the directory name, as the temporary copy of the project does, so
-        // relative paths that leave the repository resolve alike.
-        let name = repository
-            .directory()
-            .file_name()
-            .context("the repository directory has no name")?;
-        let path = dir.path().join(name);
+        // Name the worktree like the temporary copy of the project, so relative
+        // paths that leave the repository resolve alike.
+        let path = crate::new_project_root(repository.directory(), dir.path())?;
         repository.add_worktree(&path, commit)?;
         let worktree = Repo::new(&path).context("cannot open worktree")?;
         Ok(Self {
