@@ -1487,6 +1487,26 @@ async fn a_tip_matching_the_release_releases_nothing_although_its_branches_diffe
     assert!(history.update_history().is_empty());
 }
 
+/// Without a reason to walk histories one at a time, each worker walks them in
+/// its own checkout. Losing the worktrees would only slow updates down, which
+/// no other test notices.
+#[tokio::test]
+async fn histories_are_walked_concurrently() {
+    let history = concurrent_histories(|_| {}).await;
+    for package in ["api", PACKAGE] {
+        history.run_cargo_publish(package);
+    }
+    let logs = commit_reverted_change_and_update(&history);
+    // The update runs a worker per CPU, so a single CPU walks one history at
+    // a time.
+    assert_eq!(
+        logs.contains("walking histories concurrently"),
+        can_walk_concurrently(),
+        "{logs}"
+    );
+    assert!(!logs.contains("cannot create a worktree"), "{logs}");
+}
+
 /// Worktrees don't check submodules out, so the history of a package with
 /// submodule files stays in the copy of the repository, which has them, even
 /// when another package's history is walked at the same time.
@@ -1498,7 +1518,8 @@ async fn submodule_files_match_the_release_while_other_histories_are_walked() {
     }
     // The release has the submodule files, so a snapshot without them
     // wouldn't match it, and the reverted change would be released.
-    assert_reverted_change_is_not_released(&history);
+    let logs = commit_reverted_change_and_update(&history);
+    assert_walked_one_at_a_time(&logs, "a new worktree would have other files");
 }
 
 /// With `submodule.recurse`, checking a commit out also checks its submodules
@@ -1525,13 +1546,14 @@ async fn removed_submodules_are_checked_out_while_other_histories_are_walked() {
         .git(&["config", "submodule.recurse", "true"])
         .unwrap();
 
-    history.run_update().success();
+    let logs = update_logs(&history);
 
     let changelog = |package| {
         fs_err::read_to_string(history.package_path(package).join("CHANGELOG.md")).unwrap()
     };
     assert_commits(&changelog(PACKAGE), &[&changed, &removed]);
     assert_commits(&changelog("api"), &[&api]);
+    assert_walked_one_at_a_time(&logs, "Git recurses into submodules");
 }
 
 /// Add the submodule `crates/pkg/vendored` to [`PACKAGE`].
@@ -1581,25 +1603,55 @@ async fn ignored_included_files_match_the_release_while_other_histories_are_walk
         .arg("--allow-dirty")
         .assert()
         .success();
-    assert_reverted_change_is_not_released(&history);
+    let logs = commit_reverted_change_and_update(&history);
+    assert_walked_one_at_a_time(&logs, "a new worktree would have other files");
     assert_eq!(
         fs_err::read_to_string(generated).unwrap(),
         "generated package data\n"
     );
 }
 
-/// Change [`PACKAGE`] and revert the change, then change `api`. Only `api` is
-/// released: the reverted history of [`PACKAGE`] matches its release.
-fn assert_reverted_change_is_not_released(history: &TestContext) {
+/// Change [`PACKAGE`] and revert the change, then change `api`, and run the
+/// update, returning its debug logs. Only `api` is released: the reverted
+/// history of [`PACKAGE`] matches its release.
+fn commit_reverted_change_and_update(history: &TestContext) -> String {
     let lib = "crates/pkg/src/lib.rs";
     let released = fs_err::read_to_string(history.repo.directory().join(lib)).unwrap();
     history.write_commit(lib, "pub fn changed() {}\n", "feat: change");
     history.write_commit(lib, &released, "revert: change");
     let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
 
-    history.run_update().success();
+    let logs = update_logs(history);
 
     let changelog = |package| history.package_path(package).join("CHANGELOG.md");
     assert!(!changelog(PACKAGE).exists());
     assert_commits(&fs_err::read_to_string(changelog("api")).unwrap(), &[&api]);
+    logs
+}
+
+/// Run the update and return its debug logs.
+fn update_logs(history: &TestContext) -> String {
+    let output = history
+        .update_command()
+        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
+        .assert()
+        .success();
+    String::from_utf8_lossy(&output.get_output().stderr).into_owned()
+}
+
+/// Whether the update can walk histories concurrently, as it runs a worker per
+/// CPU.
+fn can_walk_concurrently() -> bool {
+    std::thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2)
+}
+
+/// Assert that the update that logged `logs` walked histories one at a time
+/// because of `reason`. Whether a worktree would walk the history that needs
+/// the copy depends on timing, so the changelogs alone can miss a lost guard.
+/// With a single CPU, the update has no worker to spare and checks no reason.
+fn assert_walked_one_at_a_time(logs: &str, reason: &str) {
+    if can_walk_concurrently() {
+        let expected = format!("walking histories one at a time: {reason}");
+        assert!(logs.contains(&expected), "{logs}");
+    }
 }

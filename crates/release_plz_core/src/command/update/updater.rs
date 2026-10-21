@@ -396,6 +396,7 @@ impl Updater<'_> {
                 .map(|history| diff_in(history, repository))
                 .collect();
         }
+        debug!("walking histories concurrently in {workers} checkouts");
         let queue = Mutex::new(histories.into_iter().enumerate());
         let mut diffs: Vec<_> = run_workers(workers, |worker| {
             // The first worker walks in `repository`, so a failed worktree only
