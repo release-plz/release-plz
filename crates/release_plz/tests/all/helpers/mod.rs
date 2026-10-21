@@ -31,6 +31,12 @@ pub fn make_executable(path: &Utf8Path) {
     fs_err::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// Whether the update can walk histories concurrently, as it runs a worker per
+/// CPU.
+pub fn can_walk_concurrently() -> bool {
+    std::thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2)
+}
+
 pub fn locked_metadata(project_dir: &Utf8Path) -> Metadata {
     cargo_metadata::MetadataCommand::new()
         .current_dir(project_dir)

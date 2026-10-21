@@ -5,6 +5,8 @@ use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
 use crate::helpers::{
+    can_walk_concurrently,
+    cmd::run_with_debug_logs,
     locked_metadata,
     package::{PackageType, TestPackage},
     test_context::TestContext,
@@ -1487,26 +1489,6 @@ async fn a_tip_matching_the_release_releases_nothing_although_its_branches_diffe
     assert!(history.update_history().is_empty());
 }
 
-/// Without a reason to walk histories one at a time, each worker walks them in
-/// its own checkout. Losing the worktrees would only slow updates down, which
-/// no other test notices.
-#[tokio::test]
-async fn histories_are_walked_concurrently() {
-    let history = concurrent_histories(|_| {}).await;
-    for package in ["api", PACKAGE] {
-        history.run_cargo_publish(package);
-    }
-    let logs = commit_reverted_change_and_update(&history);
-    // The update runs a worker per CPU, so a single CPU walks one history at
-    // a time.
-    assert_eq!(
-        logs.contains("walking histories concurrently"),
-        can_walk_concurrently(),
-        "{logs}"
-    );
-    assert!(!logs.contains("cannot create a worktree"), "{logs}");
-}
-
 /// Worktrees don't check submodules out, so the history of a package with
 /// submodule files stays in the copy of the repository, which has them, even
 /// when another package's history is walked at the same time.
@@ -1547,7 +1529,7 @@ async fn removed_submodules_are_checked_out_while_other_histories_are_walked() {
         .git(&["config", "submodule.recurse", "true"])
         .unwrap();
 
-    let logs = update_logs(&history);
+    let logs = run_with_debug_logs(history.update_command());
 
     let changelog = |package| {
         fs_err::read_to_string(history.package_path(package).join("CHANGELOG.md")).unwrap()
@@ -1622,28 +1604,12 @@ fn commit_reverted_change_and_update(history: &TestContext) -> String {
     history.write_commit(lib, &released, "revert: change");
     let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
 
-    let logs = update_logs(history);
+    let logs = run_with_debug_logs(history.update_command());
 
     let changelog = |package| history.package_path(package).join("CHANGELOG.md");
     assert!(!changelog(PACKAGE).exists());
     assert_commits(&fs_err::read_to_string(changelog("api")).unwrap(), &[&api]);
     logs
-}
-
-/// Run the update and return its debug logs.
-fn update_logs(history: &TestContext) -> String {
-    let output = history
-        .update_command()
-        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
-        .assert()
-        .success();
-    String::from_utf8_lossy(&output.get_output().stderr).into_owned()
-}
-
-/// Whether the update can walk histories concurrently, as it runs a worker per
-/// CPU.
-fn can_walk_concurrently() -> bool {
-    std::thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2)
 }
 
 /// Assert that the update that logged `logs` walked histories one at a time

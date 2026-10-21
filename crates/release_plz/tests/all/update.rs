@@ -2,7 +2,11 @@ use cargo_metadata::camino::Utf8Path;
 use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{assert_locked_versions, cmd::release_plz_cmd, locked_metadata};
+use crate::helpers::{
+    assert_locked_versions, can_walk_concurrently,
+    cmd::{release_plz_cmd, run_with_debug_logs},
+    locked_metadata,
+};
 
 #[test]
 fn update_workspace_without_publishable_packages() {
@@ -329,7 +333,7 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
     fs_err::write(&manifest, contents.replace("src/**", "src/lib.rs")).unwrap();
     change_package(&repo, "one", "fix: select sources");
 
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+    let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
     // The symlink itself is unchanged, but its regular .rs target changes
     // Cargo's file selection. Reusing HEAD's list also hides the equal released
@@ -376,7 +380,7 @@ fn assert_package_file_listings(
     cargo_runs: usize,
     reuses: usize,
 ) {
-    let logs = run_workspace_update_with_logs(temp_dir, repo);
+    let logs = run_with_debug_logs(workspace_update_command(temp_dir, repo));
 
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
@@ -436,7 +440,7 @@ fn update_lists_package_files_of_replaced_commits() {
     repo.git(&["checkout", "-"]).unwrap();
     repo.git(&["replace", &replaced, &replacement]).unwrap();
 
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+    let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
     // Reusing HEAD's file list would miss the added file and make the replaced
     // commit equal the release, stopping the walk there.
@@ -558,6 +562,36 @@ fn update_detached_workspace(repo_url: Option<&str>) {
     }
     assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
     assert!(repo.is_head_detached().unwrap());
+}
+
+/// Without a reason to walk histories one at a time, each worker walks them in
+/// its own checkout. Losing the worktrees would only slow updates down, which
+/// no other test notices.
+#[test]
+fn update_walks_histories_concurrently() {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            ("one", "version = \"1.0.0\"\n"),
+            ("two", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    for name in ["one", "two"] {
+        change_package(&repo, name, &format!("fix: update {name}"));
+    }
+
+    let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
+
+    // The update runs a worker per CPU, so a single CPU walks one history at
+    // a time.
+    assert_eq!(
+        logs.contains("walking histories concurrently"),
+        can_walk_concurrently(),
+        "{logs}"
+    );
+    assert!(!logs.contains("cannot create a worktree"), "{logs}");
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.1")]);
 }
 
 #[test]
@@ -1106,18 +1140,6 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
         cmd.args(["--repo-url", url]);
     }
     let output = cmd.assert().success().get_output().stdout.clone();
-    String::from_utf8(output).unwrap()
-}
-
-/// Run [`workspace_update_command`] and return its debug logs.
-fn run_workspace_update_with_logs(temp_dir: &Utf8TempDir, repo: &Repo) -> String {
-    let output = workspace_update_command(temp_dir, repo)
-        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
-        .assert()
-        .success()
-        .get_output()
-        .stderr
-        .clone();
     String::from_utf8(output).unwrap()
 }
 
