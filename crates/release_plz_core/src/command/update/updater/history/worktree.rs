@@ -13,7 +13,7 @@ use tracing::debug;
 
 use crate::fs_utils::Utf8TempDir;
 
-/// Whether a worktree of `repository` has the files Cargo packages in
+/// Whether a worktree of `repository` checks out the files Cargo packages in
 /// `repository`, and creating it leaves the original repository of the
 /// project untouched.
 pub(crate) fn supports_worktrees(repository: &Repo) -> bool {
@@ -63,6 +63,21 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
     });
     if has_other_files {
         debug!("walking histories one at a time: a new worktree would have other files");
+        return Ok(false);
+    }
+    // With `submodule.recurse`, checking a commit out also checks its
+    // submodules out, from their repositories in the Git directory. A worktree
+    // looks for them in its own Git directory, so checking out a commit with a
+    // submodule that HEAD no longer has fails there.
+    let recurse_submodules = repository.git(&[
+        "config",
+        "--type=bool",
+        "--default=false",
+        "--get",
+        "submodule.recurse",
+    ])?;
+    if recurse_submodules == "true" {
+        debug!("walking histories one at a time: Git recurses into submodules");
         return Ok(false);
     }
     Ok(true)

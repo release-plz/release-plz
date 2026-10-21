@@ -1492,28 +1492,63 @@ async fn a_tip_matching_the_release_releases_nothing_although_its_branches_diffe
 /// when another package's history is walked at the same time.
 #[tokio::test]
 async fn submodule_files_match_the_release_while_other_histories_are_walked() {
-    let history = concurrent_histories(|history| {
-        let repo = &history.repo;
-        let vendored = repo.directory().parent().unwrap().join("vendored");
-        fs_err::create_dir(&vendored).unwrap();
-        Repo::init(&vendored);
-        repo.git(&[
-            "-c",
-            "protocol.file.allow=always",
-            "submodule",
-            "add",
-            vendored.as_str(),
-            "crates/pkg/vendored",
-        ])
-        .unwrap();
-    })
-    .await;
+    let history = concurrent_histories(add_submodule).await;
     for package in ["api", PACKAGE] {
         history.run_cargo_publish(package);
     }
     // The release has the submodule files, so a snapshot without them
     // wouldn't match it, and the reverted change would be released.
     assert_reverted_change_is_not_released(&history);
+}
+
+/// With `submodule.recurse`, checking a commit out also checks its submodules
+/// out, from their repositories in the Git directory. A worktree looks for
+/// them in its own Git directory, so a history with a submodule that HEAD
+/// removed stays in the copy of the repository.
+#[tokio::test]
+async fn removed_submodules_are_checked_out_while_other_histories_are_walked() {
+    let history = concurrent_histories(add_submodule).await;
+    for package in ["api", PACKAGE] {
+        history.run_cargo_publish(package);
+    }
+    let changed = history.write_commit(
+        "crates/pkg/src/lib.rs",
+        "pub fn changed() {}\n",
+        "feat: change",
+    );
+    history.repo.git(&["rm", "crates/pkg/vendored"]).unwrap();
+    history.repo.commit("feat: remove the submodule").unwrap();
+    let removed = history.repo.current_commit_hash().unwrap();
+    let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
+    history
+        .repo
+        .git(&["config", "submodule.recurse", "true"])
+        .unwrap();
+
+    history.run_update().success();
+
+    let changelog = |package| {
+        fs_err::read_to_string(history.package_path(package).join("CHANGELOG.md")).unwrap()
+    };
+    assert_commits(&changelog(PACKAGE), &[&changed, &removed]);
+    assert_commits(&changelog("api"), &[&api]);
+}
+
+/// Add the submodule `crates/pkg/vendored` to [`PACKAGE`].
+fn add_submodule(history: &TestContext) {
+    let repo = &history.repo;
+    let vendored = repo.directory().parent().unwrap().join("vendored");
+    fs_err::create_dir(&vendored).unwrap();
+    Repo::init(&vendored);
+    repo.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        vendored.as_str(),
+        "crates/pkg/vendored",
+    ])
+    .unwrap();
 }
 
 /// Cargo's explicit include list can package globally ignored files. The
