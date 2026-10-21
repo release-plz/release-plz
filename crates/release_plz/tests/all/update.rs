@@ -454,9 +454,9 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
 fn update_restores_the_lockfile_rewritten_by_cargo_before_1_87() {
     let (temp_dir, repo) = single_package_workspace();
     change_package(&repo, "one", "fix: first change");
-    // Cargo rewrites this lockfile in its own format, keeping version 3, when it
-    // resolves the workspace to package a lockfile. Left rewritten, it would stop
-    // the walk from checking out the first change, which has another lockfile.
+    // Cargo rewrites this hand-written lockfile when it resolves the workspace to
+    // package a lockfile. Left rewritten, it would stop the walk from checking
+    // out the first change, which has another lockfile.
     fs_err::write(
         repo.directory().join("Cargo.lock"),
         "# Hand-written lockfile\nversion = 3\n[[package]]\nname = \"one\"\nversion = \"1.0.0\"\n",
