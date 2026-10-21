@@ -20,24 +20,32 @@ use crate::fs_utils::Utf8TempDir;
 /// `repository` at every commit of the walk, and creating it leaves the
 /// original repository of the project untouched.
 pub(crate) fn supports_worktrees(repository: &Repo) -> bool {
-    worktree_support(repository).unwrap_or_else(|error| {
-        debug!("cannot check whether worktrees can walk histories: {error:#}");
-        false
-    })
+    match reason_against_worktrees(repository) {
+        Ok(None) => true,
+        Ok(Some(reason)) => {
+            debug!("walking histories one at a time: {reason}");
+            false
+        }
+        Err(error) => {
+            debug!("cannot check whether worktrees can walk histories: {error:#}");
+            false
+        }
+    }
 }
 
-fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
-    // The copy of a linked worktree shares the Git directory of the original
-    // repository, which would register the new worktree. Git reports a
-    // repository's own Git directory relative to the working directory.
+/// The reason worktrees can't walk the histories of `repository`, if any.
+fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static str>> {
+    // When `.git` is a file, as in linked worktrees and repositories with a
+    // separate Git directory, the copy shares the Git directory of the project,
+    // which would register the new worktree. Git reports a repository's own Git
+    // directory relative to the working directory.
     let common_dir = repository.git(&["rev-parse", "--git-common-dir"])?;
     if !repository
         .directory()
         .join(common_dir)
         .starts_with(repository.directory())
     {
-        debug!("walking histories one at a time: the repository is a linked worktree");
-        return Ok(false);
+        return Ok(Some("the repository shares the project's Git directory"));
     }
     // A new worktree has the files of HEAD, with their committed contents and
     // no untracked files. It has no submodule files either, while Cargo
@@ -47,8 +55,7 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
         .git(&["diff-index", "--cached", "--quiet", "HEAD", "--"])
         .is_err()
     {
-        debug!("walking histories one at a time: the index differs from HEAD");
-        return Ok(false);
+        return Ok(Some("the index differs from HEAD"));
     }
     // Git lists each indexed file as `<tag> <mode> <id> <stage>\t<path>`, with
     // mode 160000 for submodules. The tag is `H` unless the file has the
@@ -65,8 +72,7 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
             .is_none_or(|entry| entry.starts_with("160000 "))
     });
     if has_other_files {
-        debug!("walking histories one at a time: a new worktree would have other files");
-        return Ok(false);
+        return Ok(Some("a new worktree would have other files"));
     }
     // With `submodule.recurse`, checking a commit out also checks its
     // submodules out, from their repositories in the Git directory. A worktree
@@ -87,11 +93,10 @@ fn worktree_support(repository: &Repo) -> anyhow::Result<bool> {
         // working directory.
         let modules = repository.git(&["rev-parse", "--git-path", "modules"])?;
         if repository.directory().join(modules).try_exists()? {
-            debug!("walking histories one at a time: Git recurses into submodules");
-            return Ok(false);
+            return Ok(Some("Git recurses into submodules"));
         }
     }
-    Ok(true)
+    Ok(None)
 }
 
 /// A worktree of a repository, detached at a commit and removed on drop.
