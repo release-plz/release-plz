@@ -16,7 +16,9 @@ use secrecy::SecretString;
 
 use tracing::info;
 
-use super::{TEST_REGISTRY, fake_utils, gitea::GiteaContext, package::TestPackage};
+use super::{
+    TEST_REGISTRY, TEST_SPARSE_REGISTRY, fake_utils, gitea::GiteaContext, package::TestPackage,
+};
 
 const CRATES_DIR: &str = "crates";
 const RELEASE_PLZ_LOG: &str = "RELEASE_PLZ_LOG";
@@ -336,20 +338,20 @@ fn configure_repo(repo_dir: &Utf8Path, gitea: &GiteaContext) -> Repo {
         .unwrap();
     repo.disable_gpg_signing().unwrap();
 
-    create_cargo_config(repo_dir, &gitea.cargo_index_url());
+    create_cargo_config(repo_dir, gitea);
 
     repo
 }
 
-fn create_cargo_config(repo_dir: &Utf8Path, index_url: &str) {
+fn create_cargo_config(repo_dir: &Utf8Path, gitea: &GiteaContext) {
     let config_dir = repo_dir.join(".cargo");
     fs_err::create_dir(&config_dir).unwrap();
     let config_file = config_dir.join("config.toml");
-    let cargo_config = cargo_config(index_url);
+    let cargo_config = cargo_config(&gitea.cargo_index_url(), &gitea.cargo_sparse_index_url());
     fs_err::write(config_file, cargo_config).unwrap();
 }
 
-fn cargo_config(index_url: &str) -> String {
+fn cargo_config(index_url: &str, sparse_index_url: &str) -> String {
     // matches the docker compose file
     format!(
         r#"[registry]
@@ -357,6 +359,9 @@ default = "{TEST_REGISTRY}"
 
 [registries.{TEST_REGISTRY}]
 index = "{index_url}"
+
+[registries.{TEST_SPARSE_REGISTRY}]
+index = "{sparse_index_url}"
 
 [net]
 git-fetch-with-cli = true

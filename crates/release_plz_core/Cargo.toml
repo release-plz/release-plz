@@ -27,6 +27,7 @@ cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
+futures.workspace = true
 git-cliff-core.workspace = true
 # Match the parser used by git-cliff-core.
 git-conventional = "1.0.0"

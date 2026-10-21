@@ -65,12 +65,17 @@ impl PackageDownloader {
         if let Some(cwd) = &self.cargo_cwd {
             cloner_builder = cloner_builder.with_cargo_cwd(cwd.clone());
         }
-        let package_dirs = cloner_builder
-            .build()
-            .context("can't build cloner")?
-            .clone(&crates)
-            .await
-            .context("error while downloading packages")?;
+        let cloner = cloner_builder.build().context("can't build cloner")?;
+        let result = cloner.clone(&crates).await;
+        // Dropping Cargo's context waits for its HTTP worker to finish the requests still
+        // in flight, like the queries after a failed one. Don't make the caller wait.
+        // If the thread can't start, `spawn` drops the cloner here instead.
+        drop(
+            thread::Builder::new()
+                .name("release-plz-download".to_string())
+                .spawn(move || drop(cloner)),
+        );
+        let package_dirs = result.context("error while downloading packages")?;
 
         read_packages(&package_dirs)
     }
