@@ -63,6 +63,13 @@ pub async fn fill_commits(
     {
         return Ok(());
     }
+    let git_client = if required_info.is_remote_required() {
+        Some(git_client.context(
+            "The changelog template requires information from the remote, but git token wasn't provided",
+        )?)
+    } else {
+        None
+    };
     // The same commit can be in the changelog of multiple packages,
     // so we retrieve its information only once.
     let unique_ids: HashSet<String> = commits.iter().map(|commit| commit.id.clone()).collect();
@@ -76,10 +83,9 @@ pub async fn fill_commits(
         HashMap::new()
     };
 
-    let remotes = if required_info.is_remote_required() {
-        remote_contributors(&unique_ids, required_info, git_client).await?
-    } else {
-        HashMap::new()
+    let remotes = match git_client {
+        Some(git_client) => remote_contributors(&unique_ids, required_info, git_client).await?,
+        None => HashMap::new(),
     };
 
     for commit in commits {
@@ -108,10 +114,8 @@ pub async fn fill_commits(
 async fn remote_contributors<'a>(
     commit_ids: &'a HashSet<String>,
     required_info: &RequiredInfo,
-    git_client: Option<&GitClient>,
+    git_client: &GitClient,
 ) -> anyhow::Result<HashMap<&'a str, RemoteContributor>> {
-    let git_client = git_client
-        .context("The changelog template requires information from the remote, but git token wasn't provided")?;
     let requests = commit_ids.len() * required_info.remote_requests_per_commit();
     let concurrency = if requests <= MAX_CONCURRENTLY_FETCHED_REQUESTS {
         MAX_CONCURRENT_REMOTE_COMMITS
