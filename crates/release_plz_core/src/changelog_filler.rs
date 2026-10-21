@@ -58,16 +58,18 @@ pub async fn fill_commits(
     {
         return Ok(());
     }
-    let git_client = if required_info.is_remote_required() {
-        Some(git_client.context(
-            "The changelog template requires information from the remote, but git token wasn't provided",
-        )?)
-    } else {
-        None
-    };
     // The same commit can be in the changelog of multiple packages,
     // so we retrieve its information only once.
     let unique_ids: HashSet<String> = commits.iter().map(|commit| commit.id.clone()).collect();
+
+    let remotes = if required_info.is_remote_required() {
+        let git_client = git_client.context(
+            "The changelog template requires information from the remote, but git token wasn't provided",
+        )?;
+        remote_contributors(&unique_ids, required_info, git_client).await?
+    } else {
+        HashMap::new()
+    };
 
     let signatures: HashMap<&str, CommitSignatures> = if required_info.is_local_required() {
         unique_ids
@@ -76,11 +78,6 @@ pub async fn fill_commits(
             .collect::<anyhow::Result<_>>()?
     } else {
         HashMap::new()
-    };
-
-    let remotes = match git_client {
-        Some(git_client) => remote_contributors(&unique_ids, required_info, git_client).await?,
-        None => HashMap::new(),
     };
 
     for commit in commits {
