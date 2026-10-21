@@ -32,24 +32,19 @@ impl RequiredInfo {
     }
 }
 
-/// Maximum number of commits whose information is requested to the forge at the same time.
+/// Maximum number of commits whose remote information is fetched at the same time.
 ///
-/// Requesting one commit at a time costs a round trip per request, which adds up to several
-/// seconds for a release with a few dozen commits.
-/// The requests of a single commit are sequential, so this is also the maximum number
-/// of in-flight requests. Ten concurrent reads is the default of GitHub's octokit
-/// throttling plugin, and it's far below the 100 concurrent requests that trigger
-/// GitHub's secondary rate limit.
+/// The requests of a commit are sequential, so this is also the maximum number of
+/// in-flight requests. It's the default of GitHub's octokit throttling plugin,
+/// and far below the 100 concurrent requests that trigger GitHub's secondary rate limit.
 const MAX_CONCURRENT_REMOTE_COMMITS: usize = 10;
 
 /// Commits are fetched concurrently only if they need at most this many requests.
+/// Otherwise, they are fetched one at a time.
 ///
-/// GitHub's secondary rate limit allows 900 REST requests per minute, and concurrent
-/// requests can all complete within a minute. This leaves room for the other requests
-/// of the release-plz run.
-/// Bigger histories (e.g. the first release of a project with a long history)
-/// are fetched one commit at a time, like before.
-const MAX_CONCURRENTLY_FETCHED_REQUESTS: usize = 800;
+/// It's below the 900 GET requests per minute allowed by GitHub's secondary rate limit,
+/// to leave room for the other requests of release-plz.
+const MAX_REQUESTS_TO_FETCH_CONCURRENTLY: usize = 800;
 
 /// Fill the commits with the information required by the changelog template.
 pub async fn fill_commits(
@@ -117,7 +112,7 @@ async fn remote_contributors<'a>(
     git_client: &GitClient,
 ) -> anyhow::Result<HashMap<&'a str, RemoteContributor>> {
     let requests = commit_ids.len() * required_info.remote_requests_per_commit();
-    let concurrency = if requests <= MAX_CONCURRENTLY_FETCHED_REQUESTS {
+    let concurrency = if requests <= MAX_REQUESTS_TO_FETCH_CONCURRENTLY {
         MAX_CONCURRENT_REMOTE_COMMITS
     } else {
         1
