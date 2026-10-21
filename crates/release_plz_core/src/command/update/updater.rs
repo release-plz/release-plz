@@ -23,7 +23,7 @@ use tracing::{debug, info, instrument, warn};
 use crate::{
     ChangelogBuilder, ChangelogRequest, ForgeType, NO_COMMIT_ID, PackagePath as _, Project, Remote,
     RepoUrl, UpdateResult,
-    changelog_filler::{fill_commits, get_required_info},
+    changelog_filler::{self, get_required_info},
     changelog_parser,
     command::update::changelog_update::{OldChangelog, OldChangelogs},
     diff::{Commit, Diff},
@@ -400,11 +400,14 @@ impl Updater<'_> {
                 .iter_mut()
                 .flat_map(|(_package, diff)| &mut diff.commits)
                 .collect();
-            fill_commits(commits, &required_info, repository, git_client.as_ref())
-                .await
-                .context(
-                    "Failed to fetch the commit information required by the changelog template",
-                )?;
+            changelog_filler::fill_commits(
+                commits,
+                &required_info,
+                repository,
+                git_client.as_ref(),
+            )
+            .await
+            .context("Failed to fetch the commit information required by the changelog template")?;
         }
         Ok(packages_diffs)
     }
