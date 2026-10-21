@@ -291,11 +291,11 @@ impl Updater<'_> {
         Ok(new_versions.into_iter().max())
     }
 
-    async fn get_packages_diffs(
-        &self,
-        registry_packages: &PackagesCollection,
+    async fn get_packages_diffs<'a>(
+        &'a self,
+        registry_packages: &'a PackagesCollection,
         repository: &Repo,
-    ) -> anyhow::Result<Vec<(&Package, Diff)>> {
+    ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
         let packages = self.packages_to_process();
         if packages.is_empty() {
             return Ok(Vec::new());
@@ -315,11 +315,9 @@ impl Updater<'_> {
                     .with_context(|| package_diff_error(p))
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
-        let diffs = self.walk_histories(histories, repository, &head)?;
+        let packages_diffs = self.walk_histories(histories, repository, &head)?;
 
-        let mut packages_diffs = self
-            .fill_commits(packages.into_iter().zip(diffs).collect(), repository)
-            .await?;
+        let mut packages_diffs = self.fill_commits(packages_diffs, repository).await?;
         // Snapshot only histories another package includes before adding commits to diffs.
         let included_packages: HashSet<String> = packages_diffs
             .iter()
@@ -392,19 +390,20 @@ impl Updater<'_> {
         Ok(packages_diffs)
     }
 
-    /// The diffs of the packages of `histories`, in the same order.
+    /// The packages of `histories` with their diffs.
     ///
     /// Walking a history checks its commits out, so concurrent walks need a
     /// checkout each: `repository` and worktrees of it at `head`.
-    fn walk_histories(
+    fn walk_histories<'a>(
         &self,
-        histories: Vec<PackageHistory<'_>>,
+        histories: Vec<PackageHistory<'a>>,
         repository: &Repo,
         head: &str,
-    ) -> anyhow::Result<Vec<Diff>> {
-        let diff_in = |history: PackageHistory<'_>, checkout: &Repo| {
+    ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
+        let diff_in = |history: PackageHistory<'a>, checkout: &Repo| {
             let package = history.package;
             self.package_diff(history, checkout, head)
+                .map(|diff| (package, diff))
                 .with_context(|| package_diff_error(package))
         };
         let walks = histories.iter().filter(|h| h.has_commits()).count();
