@@ -231,7 +231,7 @@ fn with_workspace_lockfile_restored<T>(
         output.stderr
     );
     let lockfile = Utf8Path::new(output.stdout.trim_end()).with_file_name("Cargo.lock");
-    // Cargo only resolves the workspace if the lockfile exists.
+    // Cargo doesn't write a lockfile when there is none.
     if !lockfile.exists() {
         return list();
     }
