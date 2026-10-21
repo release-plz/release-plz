@@ -15,9 +15,11 @@ use super::PackagePaths;
 
 mod package_files;
 mod replay;
+mod worktree;
 
 pub(super) use package_files::CheckoutPackageFiles;
 use replay::{ChangeReplay, TokenConflicts};
+pub(super) use worktree::{Worktree, supports_worktrees};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
 ///

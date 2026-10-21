@@ -1468,3 +1468,98 @@ async fn a_tip_matching_the_release_releases_nothing_although_its_branches_diffe
     history.publish_snapshot(&[]);
     assert!(history.update_history().is_empty());
 }
+
+/// Worktrees don't check submodules out, so the history of a package with
+/// submodule files stays in the copy of the repository, which has them, even
+/// when another package's history is walked at the same time.
+#[tokio::test]
+async fn submodule_files_match_the_release_while_other_histories_are_walked() {
+    // `api` is walked first, in the copy of the repository: a concurrent walk
+    // of `pkg` would take a worktree.
+    let history = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("api").with_type(PackageType::Lib),
+        TestPackage::new(PACKAGE).with_type(PackageType::Lib),
+    ])
+    .await;
+    let repo = &history.repo;
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let vendored = repo.directory().parent().unwrap().join("vendored");
+    fs_err::create_dir(&vendored).unwrap();
+    Repo::init(&vendored);
+    repo.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        vendored.as_str(),
+        "crates/pkg/vendored",
+    ])
+    .unwrap();
+    history.write_release_plz_toml(HISTORY_CONFIG);
+    for package in ["api", PACKAGE] {
+        history.run_cargo_publish(package);
+    }
+    // The release has the submodule files, so a snapshot without them
+    // wouldn't match it, and the reverted change would be released.
+    let lib = "crates/pkg/src/lib.rs";
+    let released = fs_err::read_to_string(repo.directory().join(lib)).unwrap();
+    history.write_commit(lib, "pub fn changed() {}\n", "feat: change");
+    history.write_commit(lib, &released, "revert: change");
+    let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
+
+    history.run_update().success();
+
+    let changelog = |package| history.package_path(package).join("CHANGELOG.md");
+    assert!(!changelog(PACKAGE).exists());
+    assert_commits(&fs_err::read_to_string(changelog("api")).unwrap(), &[&api]);
+}
+
+/// Cargo's explicit include list can package globally ignored files. The
+/// temporary repository keeps them, but a new worktree would omit them.
+#[tokio::test]
+async fn ignored_included_files_match_the_release_while_other_histories_are_walked() {
+    let history = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("api").with_type(PackageType::Lib),
+        TestPackage::new(PACKAGE).with_type(PackageType::Lib),
+    ])
+    .await;
+    let repo = &history.repo;
+    let excludes = repo.directory().parent().unwrap().join("excludes");
+    fs_err::write(&excludes, "generated.txt\n").unwrap();
+    repo.git(&["config", "core.excludesFile", excludes.as_str()])
+        .unwrap();
+    let manifest_path = history.package_path(PACKAGE).join(CARGO_TOML);
+    let manifest = fs_err::read_to_string(&manifest_path).unwrap();
+    fs_err::write(
+        manifest_path,
+        manifest.replace(
+            "[package]",
+            "[package]\ninclude = [\"src/**\", \"generated.txt\"]",
+        ),
+    )
+    .unwrap();
+    let generated = history.package_path(PACKAGE).join("generated.txt");
+    fs_err::write(&generated, "generated package data\n").unwrap();
+    history.write_release_plz_toml(HISTORY_CONFIG);
+    history.run_cargo_publish("api");
+    history
+        .cargo_publish_command(PACKAGE)
+        .arg("--allow-dirty")
+        .assert()
+        .success();
+    let lib = "crates/pkg/src/lib.rs";
+    let released = fs_err::read_to_string(repo.directory().join(lib)).unwrap();
+    history.write_commit(lib, "pub fn changed() {}\n", "feat: change");
+    history.write_commit(lib, &released, "revert: change");
+    let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
+
+    history.run_update().success();
+
+    let changelog = |package| history.package_path(package).join("CHANGELOG.md");
+    assert!(!changelog(PACKAGE).exists());
+    assert_commits(&fs_err::read_to_string(changelog("api")).unwrap(), &[&api]);
+    assert_eq!(
+        fs_err::read_to_string(generated).unwrap(),
+        "generated package data\n"
+    );
+}
