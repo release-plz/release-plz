@@ -467,23 +467,22 @@ fn update_restores_the_lockfile_rewritten_by_cargo_before_1_87() {
     let old_cargo = temp_dir.path().join("old-cargo");
     fs_err::write(
         &old_cargo,
-        format!(
-            "#!/bin/sh\n\
-             for arg do\n\
-                 if [ \"$arg\" = --exclude-lockfile ]; then\n\
-                     echo \"error: unexpected argument '--exclude-lockfile' found\" >&2\n\
-                     exit 1\n\
-                 fi\n\
-             done\n\
-             exec '{}' \"$@\"\n",
-            env!("CARGO")
-        ),
+        r#"#!/bin/sh
+for arg do
+    if [ "$arg" = --exclude-lockfile ]; then
+        echo "error: unexpected argument '--exclude-lockfile' found" >&2
+        exit 1
+    fi
+done
+exec "$REAL_CARGO" "$@"
+"#,
     )
     .unwrap();
     crate::helpers::make_executable(&old_cargo);
 
     let output = workspace_update_command(&temp_dir, &repo)
         .env("CARGO", &old_cargo)
+        .env("REAL_CARGO", env!("CARGO"))
         .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
         .assert()
         .success();
