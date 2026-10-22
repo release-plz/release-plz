@@ -213,12 +213,19 @@ fn action_yaml(
         )
     };
 
-    let cargo_registry_token = if trusted_publishing {
-        // release-plz will generate the token during the release process if needed,
-        // so we don't need to pass the token to the action.
+    let cargo_registry_token_env = if trusted_publishing {
+        // release-plz generates the token during the release process if needed,
+        // and public crates don't need it in the PR workflow.
+        // Trusted publishing also works for private crates: if that's your case,
+        // add the token to the PR workflow manually.
         String::new()
     } else {
-        format!("${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}")
+        // The crate might be private, so the PR workflow gets the token too.
+        // If the crate is public, it won't hurt having it there. You can also remove it if you want.
+        format!(
+            "
+          CARGO_REGISTRY_TOKEN: ${{{{ secrets.{CARGO_REGISTRY_TOKEN} }}}}"
+        )
     };
 
     let id_token_permissions = if trusted_publishing {
@@ -226,30 +233,6 @@ fn action_yaml(
       id-token: write"
     } else {
         ""
-    };
-
-    let pr_cargo_registry_token = if trusted_publishing {
-        // For public crates, the cargo registry token is not needed in the PR workflow.
-        // So if we use trusted publishing, we can omit it.
-        // Trusted publishing also works for private crates, and if that's your case, write the token manually.
-        String::new()
-    } else {
-        // The crate might be private, so we add the token to the PR workflow.
-        // If the crate is public, it won't hurt having it here. You can also remove it if you want.
-        format!(
-            "
-          CARGO_REGISTRY_TOKEN: {cargo_registry_token}"
-        )
-    };
-
-    let release_cargo_registry_token_env = if trusted_publishing {
-        // Omit the token in the release workflow as well when using trusted publishing.
-        String::new()
-    } else {
-        format!(
-            "
-          CARGO_REGISTRY_TOKEN: {cargo_registry_token}"
-        )
     };
 
     format!(
@@ -282,7 +265,7 @@ jobs:
         with:
           command: release
         env:
-          GITHUB_TOKEN: {github_token_secret}{release_cargo_registry_token_env}
+          GITHUB_TOKEN: {github_token_secret}{cargo_registry_token_env}
 
   release-plz-pr:
     name: Release-plz PR
@@ -302,7 +285,7 @@ jobs:
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: {github_token_secret}{pr_cargo_registry_token}
+          GITHUB_TOKEN: {github_token_secret}{cargo_registry_token_env}
 "
     )
 }
@@ -466,11 +449,10 @@ mod tests {
             false,
         ));
     }
-}
 
-#[test]
-fn actions_yaml_string_with_trusted_publishing_is_correct() {
-    expect_test::expect![[r"
+    #[test]
+    fn actions_yaml_string_with_trusted_publishing_is_correct() {
+        expect_test::expect![[r"
             name: Release-plz
 
             on:
@@ -523,18 +505,18 @@ fn actions_yaml_string_with_trusted_publishing_is_correct() {
                     env:
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
         "]]
-    .assert_eq(&action_yaml(
-        "main",
-        CUSTOM_GITHUB_TOKEN,
-        "owner",
-        true,
-        false,
-    ));
-}
+        .assert_eq(&action_yaml(
+            "main",
+            CUSTOM_GITHUB_TOKEN,
+            "owner",
+            true,
+            false,
+        ));
+    }
 
-#[test]
-fn actions_yaml_string_with_persist_credentials_is_correct() {
-    expect_test::expect![[r"
+    #[test]
+    fn actions_yaml_string_with_persist_credentials_is_correct() {
+        expect_test::expect![[r"
             name: Release-plz
 
             on:
@@ -589,11 +571,12 @@ fn actions_yaml_string_with_persist_credentials_is_correct() {
                       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
                       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         "]]
-    .assert_eq(&action_yaml(
-        "main",
-        CUSTOM_GITHUB_TOKEN,
-        "owner",
-        false,
-        true,
-    ));
+        .assert_eq(&action_yaml(
+            "main",
+            CUSTOM_GITHUB_TOKEN,
+            "owner",
+            false,
+            true,
+        ));
+    }
 }
