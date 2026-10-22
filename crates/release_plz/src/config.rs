@@ -1,9 +1,7 @@
 use anyhow::Context as _;
-use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
     GitReleaseConfig, ReleaseRequest,
-    fs_utils::to_utf8_path,
     set_version::SetVersionRequest,
     update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
@@ -540,12 +538,6 @@ impl PackageConfig {
                 .or(default.custom_major_increment_regex),
             git_only: self.git_only.or(default.git_only),
         }
-    }
-
-    pub fn changelog_path(&self) -> Option<&Utf8Path> {
-        self.changelog_path
-            .as_ref()
-            .map(|p| to_utf8_path(p.as_ref()).unwrap())
     }
 }
 

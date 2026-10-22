@@ -4,7 +4,6 @@ use std::{
 };
 
 use cargo_metadata::semver::Version;
-use clap::builder::PathBufValueParser;
 use release_plz_core::set_version::{SetVersionRequest, SetVersionSpec, VersionChange};
 
 use crate::config::Config;
@@ -19,7 +18,7 @@ pub struct SetVersion {
     /// Path to the Cargo.toml of the project you want to update.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
     /// Both Cargo workspaces and single packages are supported.
-    #[arg(long, value_parser = PathBufValueParser::new())]
+    #[arg(long)]
     manifest_path: Option<PathBuf>,
 
     /// Path to the release-plz config file.
