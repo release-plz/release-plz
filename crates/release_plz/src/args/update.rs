@@ -206,10 +206,9 @@ impl Update {
                         .context("cannot parse release_date to y-m-d format")
                 })
                 .transpose()?;
-            let pr_link = update.repo_url().map(|url| url.git_pr_link_for(forge_type));
             let changelog_req = ChangelogRequest {
                 release_date,
-                changelog_config: Some(self.changelog_config(config, pr_link.as_deref())?),
+                changelog_config: Some(self.changelog_config(config)?),
             };
             update = update.with_changelog_req(changelog_req);
         }
@@ -237,11 +236,7 @@ impl Update {
         Ok(update)
     }
 
-    fn changelog_config(
-        &self,
-        config: &Config,
-        pr_link: Option<&str>,
-    ) -> anyhow::Result<GitCliffConfig> {
+    fn changelog_config(&self, config: &Config) -> anyhow::Result<GitCliffConfig> {
         let path = match self.user_changelog_config(config) {
             Some(provided_path) => {
                 if provided_path.exists() {
@@ -261,7 +256,7 @@ impl Update {
             );
             GitCliffConfig::load(&path).context("failed to parse git-cliff config file")?
         } else {
-            changelog_config::to_git_cliff_config(config.changelog.clone(), pr_link)
+            changelog_config::to_git_cliff_config(config.changelog.clone())
                 .context("invalid `[changelog] config")?
         };
 
