@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.2.0...cargo_utils-v0.3.0) - 2026-10-22
+
+### Other
+
+- *(cargo_utils)* [**breaking**] remove unused manifest helpers ([#3257](https://github.com/release-plz/release-plz/pull/3257))
+
 ## [0.2.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.87...cargo_utils-v0.2.0) - 2026-10-19
 
 ### Performance
