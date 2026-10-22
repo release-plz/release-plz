@@ -1,7 +1,7 @@
 // Copied from [cargo-clone](https://github.com/JanLikar/cargo-clone/blob/89ba4da215663ffb3b8c93a674f3002937eafec4/cargo-clone-core/src/cloner_builder.rs)
 
 use anyhow::Context;
-use cargo::{CargoResult, GlobalContext};
+use cargo::CargoResult;
 use cargo_metadata::camino::Utf8PathBuf;
 
 use crate::{cargo::new_cargo_config, fs_utils::current_directory};
@@ -11,12 +11,10 @@ use super::{Cloner, ClonerSource};
 /// Builder for [`Cloner`].
 #[derive(Debug, Default)]
 pub struct ClonerBuilder {
-    config: Option<GlobalContext>,
     directory: Option<Utf8PathBuf>,
     source: ClonerSource,
     /// Cargo current working directory. You can use it to point to the right `.cargo/config.toml`.
     cargo_cwd: Option<Utf8PathBuf>,
-    use_git: bool,
 }
 
 impl ClonerBuilder {
@@ -50,10 +48,7 @@ impl ClonerBuilder {
 
     /// Build the [`Cloner`].
     pub fn build(self) -> CargoResult<Cloner> {
-        let config = match self.config {
-            Some(config) => config,
-            None => new_cargo_config(self.cargo_cwd).context("Unable to get cargo config.")?,
-        };
+        let config = new_cargo_config(self.cargo_cwd).context("Unable to get cargo config.")?;
 
         let directory = match self.directory {
             Some(directory) => directory,
@@ -70,7 +65,6 @@ impl ClonerBuilder {
             config,
             directory,
             srcid,
-            use_git: self.use_git,
         })
     }
 }
