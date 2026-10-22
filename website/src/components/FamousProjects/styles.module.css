@@ -1,0 +1,31 @@
+.famousProjects {
+  margin-bottom: 1rem;
+}
+
+.famousProjects ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.famousProjects li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.famousProjects a {
+  font-weight: 600;
+}
+
+.projectStars {
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: var(--ifm-color-emphasis-600);
+  font-size: 0.9em;
+}
+
+.projectDescription {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.85em;
+}
