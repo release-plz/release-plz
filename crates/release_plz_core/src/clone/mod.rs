@@ -15,8 +15,6 @@ use futures::stream::FuturesOrdered;
 pub use source::*;
 use tracing::warn;
 
-use std::process::Command;
-
 use anyhow::{Context, bail};
 
 use cargo::sources::source::{QueryKind, Source, SourceMap};
@@ -58,8 +56,6 @@ pub struct Cloner {
     pub(crate) directory: Utf8PathBuf,
     /// Where the crates will be cloned from.
     pub(crate) srcid: SourceId,
-    /// If true, use `git` to clone the git repository present in the manifest metadata.
-    pub(crate) use_git: bool,
 }
 
 impl Cloner {
@@ -70,36 +66,7 @@ impl Cloner {
         ClonerBuilder::new()
     }
 
-    fn clone_package_into(&self, pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
-        // Duplicate requests share a destination that an earlier copy already filled.
-        check_destination(dest_path)?;
-        fs_err::create_dir_all(dest_path)?;
-
-        let name = pkg.name();
-
-        if self.use_git {
-            let repo = pkg
-                .manifest()
-                .metadata()
-                .repository
-                .as_ref()
-                .with_context(|| {
-                    format!(
-                        "Cannot clone {name} from git repo because \
-                        repository is not specified in package's manifest."
-                    )
-                })?;
-
-            clone_git_repo(repo, dest_path)?;
-        } else {
-            clone_directory(to_utf8_path(pkg.root())?, dest_path)
-                .context("failed to clone directory")?;
-        }
-
-        Ok(())
-    }
-
-    /// Clone the specified crates from registry or git repository.
+    /// Clone the specified crates from the registry.
     /// Each crate is cloned in a subdirectory named as the crate name.
     /// Returns the paths where the crates are cloned.
     /// If a crate doesn't exist, its path is not returned.
@@ -125,7 +92,7 @@ impl Cloner {
             .into_iter()
             .map(|(id, dest_path)| {
                 let pkg = package_set.get_one(id)?;
-                self.clone_package_into(pkg, &dest_path).with_context(|| {
+                clone_package_into(pkg, &dest_path).with_context(|| {
                     format!("failed to clone package {} in {dest_path}", id.name())
                 })?;
                 Ok(dest_path)
@@ -197,6 +164,13 @@ impl Cloner {
     }
 }
 
+fn clone_package_into(pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
+    // Duplicate requests share a destination that an earlier copy already filled.
+    check_destination(dest_path)?;
+    fs_err::create_dir_all(dest_path)?;
+    clone_directory(to_utf8_path(pkg.root())?, dest_path).context("failed to clone directory")
+}
+
 fn check_destination(dest_path: &Utf8Path) -> CargoResult<()> {
     // Cloning into an existing directory is only allowed if the directory is empty.
     if dest_path.exists() && dest_path.read_dir()?.next().is_some() {
@@ -244,34 +218,16 @@ fn clone_directory(from: &Utf8Path, to: &Utf8Path) -> CargoResult<()> {
         let utf8_entry: &Utf8Path = entry.path().try_into()?;
         dest_path.push(strip_prefix(utf8_entry, from).unwrap());
 
+        // .cargo-ok is not wanted in this context
         if entry.file_name() == ".cargo-ok" {
             continue;
         }
 
         if !file_type.is_dir() {
-            // .cargo-ok is not wanted in this context
             fs_err::copy(entry.path(), &dest_path)?;
-        } else if file_type.is_dir() {
-            if dest_path == to {
-                continue;
-            }
+        } else if dest_path != to {
             fs_err::create_dir(&dest_path)?;
         }
-    }
-
-    Ok(())
-}
-
-fn clone_git_repo(repo: &str, to: &Utf8Path) -> CargoResult<()> {
-    let status = Command::new("git")
-        .arg("clone")
-        .arg(repo)
-        .arg(to)
-        .status()
-        .context("Failed to clone from git repo.")?;
-
-    if !status.success() {
-        bail!("Failed to clone from git repo.")
     }
 
     Ok(())
