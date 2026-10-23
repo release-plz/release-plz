@@ -79,6 +79,8 @@ impl Release {
         config: &Config,
         metadata: cargo_metadata::Metadata,
     ) -> anyhow::Result<ReleaseRequest> {
+        config.check_publish_fields(&metadata)?;
+
         let git_release = if let Some(git_token) = &self.git_token {
             let git_token = SecretString::from(git_token.clone());
             let repo_url = self.get_repo_url(config)?;
@@ -109,8 +111,6 @@ impl Release {
         req = config.fill_release_config(self.allow_dirty, self.no_verify, req)?;
 
         req = req.with_branch_prefix(config.workspace.pr_branch_prefix.clone());
-
-        req.check_publish_fields()?;
 
         Ok(req)
     }
