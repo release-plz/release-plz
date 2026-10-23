@@ -534,7 +534,10 @@ impl GitClient {
 
         req.send()
             .await
-            .with_context(|| format!("cannot edit pr {pr_number}"))?;
+            .with_context(|| format!("cannot edit pr {pr_number}"))?
+            .successful_status()
+            .await
+            .with_context(|| format!("forge rejected the edit of pr {pr_number}"))?;
 
         Ok(())
     }
@@ -1282,6 +1285,37 @@ mod tests {
             let remote_commit = client.get_remote_commit("abc").await.unwrap();
             assert_eq!(remote_commit.username.as_deref(), Some("bob"), "{forge:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn rejected_pr_close_is_an_error() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_json, method, path},
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/pulls/42"))
+            .and(body_json(json!({"state": "closed"})))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "message": "Resource not accessible by integration"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let client = GitClient::new(GitForge::Github(github)).unwrap();
+
+        let error = client.close_pr(42).await.unwrap_err();
+
+        // The forge's explanation must reach the user, e.g. to fix the token permissions.
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("Resource not accessible by integration"),
+            "{error}"
+        );
+        server.verify().await;
     }
 
     #[test]
