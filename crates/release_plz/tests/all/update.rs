@@ -193,35 +193,41 @@ fn changelog_include_commits_bump_the_version_at_most_by_a_patch() {
 [workspace]
 semver_check = false
 [[package]]
-name = "cli"
+name = "without_commits"
+changelog_include = ["core"]
+[[package]]
+name = "with_feature"
 changelog_include = ["core"]
 "#;
-    for (cli_commit, cli_version) in [
-        // Only the included commits release `cli`, as if `core` was a dependency.
-        (None, "1.0.1"),
-        // The commits of `cli` determine its version increment.
-        (Some("feat: update cli"), "1.1.0"),
-    ] {
-        let (temp_dir, repo) = released_workspace(
-            &[
-                ("cli", "version = \"1.0.0\"\n"),
-                ("core", "version = \"1.0.0\"\n"),
-            ],
-            "",
-            config,
-        );
-        change_package(&repo, "core", "feat!: break core");
-        if let Some(message) = cli_commit {
-            change_package(&repo, "cli", message);
-        }
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("without_commits", "version = \"1.0.0\"\n"),
+            ("with_feature", "version = \"1.0.0\"\n"),
+            ("core", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        config,
+    );
+    change_package(&repo, "core", "feat!: break core");
+    change_package(&repo, "with_feature", "feat: update with_feature");
 
-        run_workspace_update(&temp_dir, &repo, None);
+    run_workspace_update(&temp_dir, &repo, None);
 
-        // The breaking change of `core` doesn't break `cli`, even if its changelog lists it.
-        assert_locked_versions(repo.directory(), &[("cli", cli_version), ("core", "2.0.0")]);
-        let changelog = fs_err::read_to_string(repo.directory().join("cli/CHANGELOG.md")).unwrap();
-        assert!(changelog.contains("break core"), "{changelog}");
-    }
+    // The breaking change of `core` doesn't break the packages that include its commits.
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            // Only the included commits release it, as if `core` was a dependency.
+            ("without_commits", "1.0.1"),
+            // Its own `feat` commit requires a bigger increment than the included commits.
+            ("with_feature", "1.1.0"),
+            ("core", "2.0.0"),
+        ],
+    );
+    // The changelog lists the breaking change, even if it only bumps the patch.
+    let changelog =
+        fs_err::read_to_string(repo.directory().join("without_commits/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("break core"), "{changelog}");
 }
 
 #[tokio::test]
