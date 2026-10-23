@@ -7,7 +7,7 @@ use release_plz_core::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use url::Url;
 
 use crate::changelog_config::ChangelogCfg;
@@ -32,6 +32,14 @@ pub struct Config {
 }
 
 impl Config {
+    /// Package-specific configurations, keeping only the last entry for each name.
+    fn packages(&self) -> HashMap<&str, &PackageSpecificConfig> {
+        self.package
+            .iter()
+            .map(|p| (p.name.as_str(), &p.config))
+            .collect()
+    }
+
     /// Package-specific configurations merged with the workspace defaults.
     /// Returns `<package name, package config>`.
     fn merged_packages(&self) -> anyhow::Result<Vec<(&str, PackageSpecificConfig)>> {
@@ -40,13 +48,13 @@ impl Config {
         validate_git_only_settings(defaults.git_only, defaults.publish)
             .context("Wrong workspace context")?;
 
-        self.package
-            .iter()
-            .map(|p| {
-                let config = p.config.clone().merge(defaults.clone());
+        self.packages()
+            .into_iter()
+            .map(|(package, config)| {
+                let config = config.clone().merge(defaults.clone());
                 validate_git_only_settings(config.common.git_only, config.common.publish)
-                    .with_context(|| format!("Wrong configuration of package {}", p.name))?;
-                Ok((p.name.as_str(), config))
+                    .with_context(|| format!("Wrong configuration of package {package}"))?;
+                Ok((package, config))
             })
             .collect()
     }
@@ -76,10 +84,10 @@ impl Config {
         &self,
         set_version_request: &mut SetVersionRequest,
     ) -> anyhow::Result<()> {
-        for package in &self.package {
-            if let Some(changelog_path) = package.config.common.changelog_path.clone() {
+        for (package, config) in self.packages() {
+            if let Some(changelog_path) = config.common.changelog_path.clone() {
                 let changelog_path = to_utf8_pathbuf(changelog_path)?;
-                set_version_request.set_changelog_path(&package.name, changelog_path);
+                set_version_request.set_changelog_path(package, changelog_path);
             }
         }
         Ok(())
@@ -546,6 +554,38 @@ impl From<ReleaseType> for release_plz_core::ReleaseType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overridden_duplicate_package_config_is_not_validated() {
+        let config: Config = toml::from_str(
+            r#"
+            [[package]]
+            name = "duplicate"
+            git_only = true
+            publish = true
+
+            [[package]]
+            name = "duplicate"
+            publish = false
+            "#,
+        )
+        .unwrap();
+
+        let request = config
+            .fill_release_config(
+                false,
+                false,
+                ReleaseRequest::new(fake_package::metadata::fake_metadata()),
+            )
+            .unwrap();
+        assert_eq!(
+            request.get_package_config("duplicate"),
+            release_plz_core::ReleaseConfig::from(PackageConfig {
+                publish: Some(false),
+                ..Default::default()
+            })
+        );
+    }
 
     #[test]
     fn generated_release_notes_respect_workspace_defaults_and_package_overrides() {

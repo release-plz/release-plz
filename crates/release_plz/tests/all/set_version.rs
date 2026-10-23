@@ -253,6 +253,38 @@ fn set_version_updates_version_in_workspace() {
 }
 
 #[test]
+fn set_version_uses_last_duplicate_package_config() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let changelog = fs_err::read_to_string(&changelog_path).unwrap();
+    let ignored_changelog_path = project_dir.join("IGNORED_CHANGELOG.md");
+    fs_err::write(&ignored_changelog_path, &changelog).unwrap();
+    fs_err::write(
+        project_dir.join("release-plz.toml"),
+        r#"
+[[package]]
+name = "set-version-in-package"
+changelog_path = "IGNORED_CHANGELOG.md"
+
+[[package]]
+name = "set-version-in-package"
+"#,
+    )
+    .unwrap();
+
+    run_set_version(&project_dir, "0.1.1");
+
+    assert_eq!(
+        fs_err::read_to_string(changelog_path).unwrap(),
+        changelog.replace("0.1.0", "0.1.1")
+    );
+    assert_eq!(
+        fs_err::read_to_string(ignored_changelog_path).unwrap(),
+        changelog
+    );
+}
+
+#[test]
 fn set_version_updates_version_in_package() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
     // There's a single crate in this project, so we don't need to specify the package name.
