@@ -255,13 +255,11 @@ fn set_version_updates_version_in_workspace() {
 #[test]
 fn set_version_rejects_duplicate_package_config() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
-    let original_manifest = fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap();
     fs_err::write(
         project_dir.join("release-plz.toml"),
         r#"
 [[package]]
 name = "set-version-in-package"
-changelog_path = "OTHER_CHANGELOG.md"
 
 [[package]]
 name = "set-version-in-package"
@@ -269,21 +267,10 @@ name = "set-version-in-package"
     )
     .unwrap();
 
-    let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
-        .current_dir(&project_dir)
-        .args(["set-version", "0.1.1"])
-        .assert()
-        .failure();
-
-    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    let stderr = run_set_version_failure(&project_dir, "0.1.1");
     assert!(
         stderr.contains("package `set-version-in-package` is configured more than once"),
         "{stderr}"
-    );
-    // The config is rejected before anything is written.
-    assert_eq!(
-        fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap(),
-        original_manifest
     );
 }
 
@@ -419,20 +406,10 @@ fn set_version_preserves_inheritance_for_single_package() {
 #[test]
 fn set_version_requires_package_names_without_workspace_version() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-without-workspace-version");
-    let original_manifest = fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap();
-    let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
-        .current_dir(&project_dir)
-        .args(["set-version", "1.2.3"])
-        .assert()
-        .failure();
-    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    let stderr = run_set_version_failure(&project_dir, "1.2.3");
     assert!(
         stderr.contains("Please specify which package you want to update"),
         "{stderr}"
-    );
-    assert_eq!(
-        fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap(),
-        original_manifest
     );
 }
 
@@ -456,6 +433,23 @@ fn copy_fixture(name: &str) -> (Utf8TempDir, Utf8PathBuf) {
     let temp_dir = copy_to_temp_dir(&fixture_dir).unwrap();
     let project_dir = temp_dir.path().join(name);
     (temp_dir, project_dir)
+}
+
+// Returns the stderr of the failed command.
+fn run_set_version_failure(project_dir: &Utf8Path, version: &str) -> String {
+    let manifest_path = project_dir.join(CARGO_TOML);
+    let original_manifest = fs_err::read_to_string(&manifest_path).unwrap();
+    let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
+        .current_dir(project_dir)
+        .args(["set-version", version])
+        .assert()
+        .failure();
+    // The command must fail before writing anything.
+    assert_eq!(
+        fs_err::read_to_string(&manifest_path).unwrap(),
+        original_manifest
+    );
+    String::from_utf8_lossy(&output.get_output().stderr).into_owned()
 }
 
 fn read_manifest(directory: &Utf8Path) -> toml_edit::DocumentMut {
