@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.174...release-plz-v0.4.0) - 2026-10-22
+
+### Other
+
+- simplify the conversion of the changelog config to git-cliff ([#3258](https://github.com/release-plz/release-plz/pull/3258))
+- *(cli)* remove redundant path parsers and unused helpers ([#3261](https://github.com/release-plz/release-plz/pull/3261))
+- *(init)* deduplicate the CARGO_REGISTRY_TOKEN workflow env ([#3259](https://github.com/release-plz/release-plz/pull/3259))
+- share authenticated requests in the Gitea test client ([#3260](https://github.com/release-plz/release-plz/pull/3260))
+- *(repo_url)* [**breaking**] share host and port formatting ([#3263](https://github.com/release-plz/release-plz/pull/3263))
+- *(clone)* remove the unused git clone path ([#3256](https://github.com/release-plz/release-plz/pull/3256))
+- *(changelog)* replace ChangelogParser with a single helper ([#3262](https://github.com/release-plz/release-plz/pull/3262))
+- *(changelog)* deduplicate context and rendering helpers ([#3264](https://github.com/release-plz/release-plz/pull/3264))
+- share Cargo workspace and lockfile loading ([#3265](https://github.com/release-plz/release-plz/pull/3265))
+
+### Performance
+
+- list package files without resolving the lockfile ([#3247](https://github.com/release-plz/release-plz/pull/3247))
+
 ## [0.3.174](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.173...release-plz-v0.3.174) - 2026-10-21
 
 ### Performance

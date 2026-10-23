@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.41.1...release_plz_core-v0.42.0) - 2026-10-22
+
+### Other
+
+- *(repo_url)* [**breaking**] share host and port formatting ([#3263](https://github.com/release-plz/release-plz/pull/3263))
+- *(clone)* remove the unused git clone path ([#3256](https://github.com/release-plz/release-plz/pull/3256))
+- *(changelog)* replace ChangelogParser with a single helper ([#3262](https://github.com/release-plz/release-plz/pull/3262))
+- *(changelog)* deduplicate context and rendering helpers ([#3264](https://github.com/release-plz/release-plz/pull/3264))
+- share Cargo workspace and lockfile loading ([#3265](https://github.com/release-plz/release-plz/pull/3265))
+
+### Performance
+
+- list package files without resolving the lockfile ([#3247](https://github.com/release-plz/release-plz/pull/3247))
+
 ## [0.41.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.41.0...release_plz_core-v0.41.1) - 2026-10-21
 
 ### Performance
