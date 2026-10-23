@@ -604,44 +604,37 @@ impl Updater<'_> {
             })
         };
 
-        let changelog_outcome = {
-            let cfg = self.req.get_package_config(package.name.as_str());
-            let changelog_req = cfg
-                .should_update_changelog()
-                .then_some(self.req.changelog_req().clone());
-            let commits: Vec<Commit> = commits
-                .into_iter()
-                // If not conventional commit, only consider the first line of the commit message.
-                .filter_map(|c| {
-                    if c.is_conventional() {
-                        Some(c)
-                    } else {
-                        c.message.lines().next().map(|line| Commit {
-                            message: line.to_string(),
-                            ..c
-                        })
-                    }
-                })
-                .collect();
-            changelog_req
-                .map(|r| {
-                    get_changelog(
-                        &commits,
-                        &version,
-                        Some(r),
-                        old_changelog,
-                        changelog_repo,
-                        package,
-                        previous_version,
-                    )
-                })
-                .transpose()
-        }?;
-
-        let (changelog, new_changelog_entry) = match changelog_outcome {
-            Some((changelog, new_changelog_entry)) => (Some(changelog), Some(new_changelog_entry)),
-            None => (None, None),
-        };
+        let (changelog, new_changelog_entry) = self
+            .req
+            .get_package_config(package.name.as_str())
+            .should_update_changelog()
+            .then(|| {
+                let commits: Vec<Commit> = commits
+                    .into_iter()
+                    // If not conventional commit, only consider the first line of the commit message.
+                    .filter_map(|c| {
+                        if c.is_conventional() {
+                            Some(c)
+                        } else {
+                            c.message.lines().next().map(|line| Commit {
+                                message: line.to_string(),
+                                ..c
+                            })
+                        }
+                    })
+                    .collect();
+                get_changelog(
+                    &commits,
+                    &version,
+                    self.req.changelog_req(),
+                    old_changelog,
+                    changelog_repo,
+                    package,
+                    previous_version,
+                )
+            })
+            .transpose()?
+            .unzip();
 
         Ok(UpdateResult {
             version,
@@ -1116,7 +1109,7 @@ struct ChangelogRepo<'a> {
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
-    changelog_req: Option<ChangelogRequest>,
+    changelog_req: &ChangelogRequest,
     old_changelog: &OldChangelog,
     repo: Option<ChangelogRepo<'_>>,
     package: &Package,
@@ -1124,58 +1117,56 @@ fn get_changelog(
 ) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
-    let contributors = if changelog_req.is_some() && repo.is_some() {
+    let contributors = if repo.is_some() {
         get_contributors(&commits)
     } else {
         Vec::new()
     };
     let mut changelog_builder =
         ChangelogBuilder::new(commits, next_version.to_string(), package.name.to_string());
-    if let Some(changelog_req) = changelog_req {
-        if let Some(release_date) = changelog_req.release_date {
-            changelog_builder = changelog_builder.with_release_date(release_date);
-        }
-        if let Some(config) = changelog_req.changelog_config {
-            changelog_builder = changelog_builder.with_config(config);
-        }
-        if let Some(repo) = repo {
-            changelog_builder = changelog_builder.with_release_link(repo.release_link);
-            let repo_url = repo.url;
-            let remote = Remote {
-                owner: repo_url.owner.clone(),
-                repo: repo_url.name.clone(),
-                link: repo_url.full_host(),
-                contributors,
-            };
-            changelog_builder = changelog_builder.with_remote(remote);
+    if let Some(release_date) = changelog_req.release_date {
+        changelog_builder = changelog_builder.with_release_date(release_date);
+    }
+    if let Some(config) = &changelog_req.changelog_config {
+        changelog_builder = changelog_builder.with_config(config.clone());
+    }
+    if let Some(repo) = repo {
+        changelog_builder = changelog_builder.with_release_link(repo.release_link);
+        let repo_url = repo.url;
+        let remote = Remote {
+            owner: repo_url.owner.clone(),
+            repo: repo_url.name.clone(),
+            link: repo_url.full_host(),
+            contributors,
+        };
+        changelog_builder = changelog_builder.with_remote(remote);
 
-            let pr_link = repo_url.git_pr_link_for(repo.forge);
-            changelog_builder = changelog_builder.with_pr_link(pr_link);
-        }
-        let is_package_published = next_version != &package.version;
+        let pr_link = repo_url.git_pr_link_for(repo.forge);
+        changelog_builder = changelog_builder.with_pr_link(pr_link);
+    }
+    let is_package_published = next_version != &package.version;
 
-        let last_version = old_changelog.original().and_then(|old_changelog| {
-            changelog_parser::last_version_from_str(old_changelog)
-                .ok()
-                .flatten()
-        });
-        if is_package_published {
-            // The latest release of a shared changelog can belong to another package.
-            let last_version = last_version
-                .filter(|_| !old_changelog.is_shared())
-                .unwrap_or_else(|| previous_version.to_string());
-            changelog_builder = changelog_builder.with_previous_version(last_version);
-        } else if let Some(last_version) = last_version
-            && let Some(old_changelog) = old_changelog.current()
-            && last_version == next_version.to_string()
-        {
-            // If the next version is the same as the last version of the changelog,
-            // don't update the changelog (returning the old one).
-            // This can happen when no version of the package was published,
-            // but the changelog already contains the changes of the initial version
-            // of the package (e.g. because a release PR was merged).
-            return Ok((old_changelog.to_string(), String::new()));
-        }
+    let last_version = old_changelog.original().and_then(|old_changelog| {
+        changelog_parser::last_version_from_str(old_changelog)
+            .ok()
+            .flatten()
+    });
+    if is_package_published {
+        // The latest release of a shared changelog can belong to another package.
+        let last_version = last_version
+            .filter(|_| !old_changelog.is_shared())
+            .unwrap_or_else(|| previous_version.to_string());
+        changelog_builder = changelog_builder.with_previous_version(last_version);
+    } else if let Some(last_version) = last_version
+        && let Some(old_changelog) = old_changelog.current()
+        && last_version == next_version.to_string()
+    {
+        // If the next version is the same as the last version of the changelog,
+        // don't update the changelog (returning the old one).
+        // This can happen when no version of the package was published,
+        // but the changelog already contains the changes of the initial version
+        // of the package (e.g. because a release PR was merged).
+        return Ok((old_changelog.to_string(), String::new()));
     }
     let new_changelog = changelog_builder.build();
     let changelog = match old_changelog.current() {
@@ -1350,7 +1341,7 @@ mod tests {
             let new = get_changelog(
                 &commits,
                 &next_version,
-                Some(changelog_req.clone()),
+                &changelog_req,
                 &old_changelog,
                 None,
                 &package,
