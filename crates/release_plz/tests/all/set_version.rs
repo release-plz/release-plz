@@ -444,7 +444,7 @@ fn run_set_version_failure(project_dir: &Utf8Path, version: &str) -> String {
         .args(["set-version", version])
         .assert()
         .failure();
-    // The command must fail before writing anything.
+    // The command must fail before updating the manifest.
     assert_eq!(
         fs_err::read_to_string(&manifest_path).unwrap(),
         original_manifest
