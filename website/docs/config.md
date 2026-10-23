@@ -831,7 +831,8 @@ If the changelog of a package is in a different location, you can specify it wit
 This field is relative to the root `Cargo.toml` file.
 In GitHub Actions, this is the root of the repository.
 
-This field cannot be set in the `[workspace]` section.
+If set in the `[workspace]` section, this field applies to all packages that don't set it
+in their `[[package]]` section, e.g. to [share a single changelog](./extra/single-changelog.md#all-packages).
 
 #### The `changelog_update` field (`package` section)
 
