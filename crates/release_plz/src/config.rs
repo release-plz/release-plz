@@ -58,7 +58,6 @@ impl Config {
     /// The workspace defaults are validated even if no package is configured.
     fn merged_packages(&self) -> anyhow::Result<Vec<(&str, PackageSpecificConfig)>> {
         let defaults = &self.workspace.packages_defaults;
-        // Validate workspace defaults (applies to all packages without specific config)
         validate_git_only_settings(defaults.git_only, defaults.publish)
             .context("Wrong workspace context")?;
 
