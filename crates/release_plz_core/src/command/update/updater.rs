@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::Context as _;
-use cargo::util::VersionExt as _;
 use cargo_metadata::{
     Package, TargetKind,
     camino::{Utf8Path, Utf8PathBuf},
@@ -17,7 +16,6 @@ use git_cliff_core::{
     contributor::RemoteContributor,
 };
 use git_cmd::Repo;
-use next_version::NextVersion as _;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
@@ -33,7 +31,7 @@ use crate::{
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
-    version::NextVersionFromDiff as _,
+    version::{NextVersionFromDiff as _, patch_increment},
 };
 
 use super::{
@@ -145,7 +143,7 @@ impl Updater<'_> {
             // - Version changes.
             // - Package is new.
             // - Version was already bumped with pending unreleased commits so that we update the changelog.
-            let version_already_bumped = !diff.is_version_published && !diff.commits.is_empty();
+            let version_already_bumped = !diff.is_version_published && diff.has_commits();
             if next_version != current_version
                 || !diff.registry_package_exists
                 || version_already_bumped
@@ -319,7 +317,7 @@ impl Updater<'_> {
                 let package_config = self.req.get_package_config(&p.name);
                 for pkg_to_include in &package_config.changelog_include {
                     if let Some(commits) = packages_commits.get(pkg_to_include) {
-                        diff.add_commits(commits);
+                        diff.include_commits(commits);
                     }
                 }
                 if diff.should_update_version()
@@ -486,12 +484,10 @@ impl Updater<'_> {
                 };
                 let (change, version) = if !deps.is_empty() {
                     let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
-                    let next_version = if !diff.is_version_published {
-                        p.version.clone()
-                    } else if p.version.is_prerelease() {
-                        p.version.increment_prerelease()
+                    let next_version = if diff.is_version_published {
+                        patch_increment(&p.version)
                     } else {
-                        p.version.increment_patch()
+                        p.version.clone()
                     };
                     (
                         format!(
@@ -518,6 +514,7 @@ impl Updater<'_> {
                     package: p,
                     diff: Diff {
                         commits: vec![Commit::new(NO_COMMIT_ID.to_string(), change)],
+                        included_commits: vec![],
                         semver_check: SemverCheck::Skipped,
                         ..diff.clone()
                     },
@@ -564,7 +561,7 @@ impl Updater<'_> {
         let changelog_path = self.req.changelog_path(p);
         let old_changelog = old_changelogs.get_or_read(&changelog_path);
         let update_result = self.update_result(
-            diff.commits,
+            diff.all_commits().cloned().collect(),
             version,
             p,
             diff.semver_check,

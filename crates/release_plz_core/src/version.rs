@@ -1,5 +1,6 @@
+use cargo::util::VersionExt as _;
 use cargo_metadata::semver::Version;
-use next_version::{VersionIncrement, VersionUpdater};
+use next_version::{NextVersion as _, VersionIncrement, VersionUpdater};
 
 use crate::{diff::Diff, semver_check::SemverCheck};
 
@@ -17,8 +18,28 @@ impl NextVersionFromDiff for Version {
             let increment = VersionIncrement::breaking(self);
             increment.bump(self)
         } else {
-            version_updater.increment(self, diff.commits.iter().map(|c| &c.message))
+            let next = version_updater
+                .clone()
+                .increment(self, diff.commits.iter().map(|c| &c.message));
+            let included_next =
+                version_updater.increment(self, diff.included_commits.iter().map(|c| &c.message));
+            // Like a dependency update, included commits bump the version at most by a patch.
+            if included_next == *self {
+                next
+            } else {
+                next.max(patch_increment(self))
+            }
         }
+    }
+}
+
+/// The version of a package released because of changes in other packages,
+/// such as its dependencies.
+pub(crate) fn patch_increment(version: &Version) -> Version {
+    if version.is_prerelease() {
+        version.increment_prerelease()
+    } else {
+        version.increment_patch()
     }
 }
 
@@ -51,6 +72,7 @@ mod tests {
                 NO_COMMIT_ID.to_string(),
                 "my change".to_string(),
             )],
+            included_commits: vec![],
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
             registry_version: None,
@@ -70,6 +92,7 @@ mod tests {
                 NO_COMMIT_ID.to_string(),
                 "feat: my change".to_string(),
             )],
+            included_commits: vec![],
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
             registry_version: None,
@@ -89,6 +112,7 @@ mod tests {
                 NO_COMMIT_ID.to_string(),
                 "feat: my change".to_string(),
             )],
+            included_commits: vec![],
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
             registry_version: None,

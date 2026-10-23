@@ -187,6 +187,43 @@ changelog_include = ["three"]
     }
 }
 
+#[test]
+fn changelog_include_commits_bump_the_version_at_most_by_a_patch() {
+    let config = r#"
+[workspace]
+semver_check = false
+[[package]]
+name = "cli"
+changelog_include = ["core"]
+"#;
+    for (cli_commit, cli_version) in [
+        // Only the included commits release `cli`, as if `core` was a dependency.
+        (None, "1.0.1"),
+        // The commits of `cli` determine its version increment.
+        (Some("feat: update cli"), "1.1.0"),
+    ] {
+        let (temp_dir, repo) = released_workspace(
+            &[
+                ("cli", "version = \"1.0.0\"\n"),
+                ("core", "version = \"1.0.0\"\n"),
+            ],
+            "",
+            config,
+        );
+        change_package(&repo, "core", "feat!: break core");
+        if let Some(message) = cli_commit {
+            change_package(&repo, "cli", message);
+        }
+
+        run_workspace_update(&temp_dir, &repo, None);
+
+        // The breaking change of `core` doesn't break `cli`, even if its changelog lists it.
+        assert_locked_versions(repo.directory(), &[("cli", cli_version), ("core", "2.0.0")]);
+        let changelog = fs_err::read_to_string(repo.directory().join("cli/CHANGELOG.md")).unwrap();
+        assert!(changelog.contains("break core"), "{changelog}");
+    }
+}
+
 #[tokio::test]
 async fn update_relocated_workspace_preserves_original_manifests() {
     let (temp_dir, repo) = released_workspace(

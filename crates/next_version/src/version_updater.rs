@@ -21,7 +21,7 @@ use crate::VersionIncrement;
 ///
 /// assert_eq!(Version::new(1, 3, 0), updated_version);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VersionUpdater {
     pub(crate) features_always_increment_minor: bool,
     pub(crate) breaking_always_increment_major: bool,
