@@ -799,9 +799,6 @@ publish_no_verify = true
 Name of the package to which the configuration applies.
 *(Required field)*.
 
-Each package can be configured at most once:
-release-plz fails if two `[[package]]` sections have the same `name`.
-
 #### The `changelog_include` field
 
 By default, release-plz populates the changelog of a package with commits
