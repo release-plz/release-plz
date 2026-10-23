@@ -518,16 +518,12 @@ impl GitClient {
     }
 
     pub async fn edit_pr(&self, pr_number: u64, pr_edit: PrEdit) -> anyhow::Result<()> {
+        let url = format!("{}/{pr_number}", self.pulls_url());
         let req = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => self
-                .client
-                .patch(format!("{}/{}", self.pulls_url(), pr_number))
-                .json(&pr_edit),
+            ForgeType::Github | ForgeType::Gitea => self.client.patch(url).json(&pr_edit),
             ForgeType::Gitlab => {
                 let edit_mr: GitLabMrEdit = pr_edit.into();
-                self.client
-                    .put(format!("{}/merge_requests/{pr_number}", self.repo_url()))
-                    .json(&edit_mr)
+                self.client.put(url).json(&edit_mr)
             }
         };
         debug!("editing pr: {req:?}");
@@ -575,15 +571,7 @@ impl GitClient {
             .await
             .context("received unexpected response")?;
 
-        let git_pr: GitPr = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => {
-                rep.json().await.context("Failed to parse PR")?
-            }
-            ForgeType::Gitlab => {
-                let gitlab_mr: GitLabMr = rep.json().await.context("Failed to parse Gitlab MR")?;
-                gitlab_mr.into()
-            }
-        };
+        let git_pr = self.pr_from_response(rep).await?;
 
         info!("opened pr: {}", git_pr.html_url);
         self.add_labels(&pr.labels, git_pr.number)
@@ -840,25 +828,9 @@ impl GitClient {
         debug!("Associated PR found. Status: {}", response.status());
 
         let prs = match self.forge {
-            ForgeType::Github => {
-                let prs: Vec<GitPr> = response
-                    .json()
-                    .await
-                    .context("can't parse associated PRs")?;
-                prs
-            }
-            ForgeType::Gitea => {
-                let pr: GitPr = response.json().await.context("can't parse associated PR")?;
-                vec![pr]
-            }
-            ForgeType::Gitlab => {
-                let gitlab_mrs: Vec<GitLabMr> = response
-                    .json()
-                    .await
-                    .context("can't parse associated Gitlab MR")?;
-                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
-                git_prs
-            }
+            ForgeType::Github | ForgeType::Gitlab => self.prs_from_response(response).await?,
+            // Gitea returns the single PR that merged the commit.
+            ForgeType::Gitea => vec![self.pr_from_response(response).await?],
         };
 
         let prs_numbers = prs.iter().map(|pr| pr.number).collect::<Vec<_>>();
