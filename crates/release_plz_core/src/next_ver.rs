@@ -428,6 +428,12 @@ impl UpdateResult {
             None => Ok(None),
         }
     }
+
+    /// Version the package is updated from: the registry version when the local version
+    /// was already bumped, otherwise the local version of `package`.
+    pub(crate) fn previous_version<'a>(&'a self, package: &'a Package) -> &'a Version {
+        self.registry_version.as_ref().unwrap_or(&package.version)
+    }
 }
 
 pub fn workspace_packages(metadata: &Metadata) -> anyhow::Result<Vec<Package>> {

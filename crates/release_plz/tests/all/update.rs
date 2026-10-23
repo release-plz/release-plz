@@ -210,9 +210,10 @@ async fn update_relocated_workspace_preserves_original_manifests() {
         .unwrap()
         .with_registry_manifest_path(&temp_dir.path().join("registry/Cargo.toml"))
         .unwrap()
-        .with_default_package_config(
-            release_plz_core::UpdateConfig::default().with_semver_check(false),
-        );
+        .with_default_package_config(release_plz_core::UpdateConfig {
+            semver_check: false,
+            ..Default::default()
+        });
 
     release_plz_core::update(&request).await.unwrap();
 

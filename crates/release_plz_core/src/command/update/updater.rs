@@ -178,11 +178,7 @@ impl Updater<'_> {
             .into_iter()
             .map(|update| self.calculate_update_result(update, &mut old_changelogs))
             .collect::<anyhow::Result<_>>()?;
-        let mut packages_to_update = PackagesUpdate::new(updates);
-        if let Some(version) = workspace_version {
-            packages_to_update.with_workspace_version(version);
-        }
-        Ok(packages_to_update)
+        Ok(PackagesUpdate::new(updates, workspace_version))
     }
 
     /// Changelogs that more than one of the `workspace_packages` writes to.

@@ -89,34 +89,6 @@ impl Default for UpdateConfig {
 }
 
 impl UpdateConfig {
-    pub fn with_semver_check(self, semver_check: bool) -> Self {
-        Self {
-            semver_check,
-            ..self
-        }
-    }
-
-    pub fn with_features_always_increment_minor(
-        self,
-        features_always_increment_minor: bool,
-    ) -> Self {
-        Self {
-            features_always_increment_minor,
-            ..self
-        }
-    }
-
-    pub fn with_changelog_update(self, changelog_update: bool) -> Self {
-        Self {
-            changelog_update,
-            ..self
-        }
-    }
-
-    pub fn with_publish(self, publish: bool) -> Self {
-        Self { publish, ..self }
-    }
-
     pub fn version_updater(&self) -> Result<VersionUpdater, regex::Error> {
         let mut updater = VersionUpdater::default()
             .with_features_always_increment_minor(self.features_always_increment_minor);

@@ -5,34 +5,24 @@ use crate::{UpdateResult, semver_check::SemverCheck};
 
 use super::ReleaseInfo;
 
-pub type PackagesToUpdate = Vec<(Package, UpdateResult)>;
-
 #[derive(Clone, Debug, Default)]
 pub struct PackagesUpdate {
-    updates: PackagesToUpdate,
+    updates: Vec<(Package, UpdateResult)>,
     /// New workspace version. If None, the workspace version is not updated.
     /// See cargo [docs](https://doc.rust-lang.org/cargo/reference/workspaces.html#root-package).
     workspace_version: Option<Version>,
 }
 
 impl PackagesUpdate {
-    pub fn new(updates: PackagesToUpdate) -> Self {
+    pub fn new(updates: Vec<(Package, UpdateResult)>, workspace_version: Option<Version>) -> Self {
         Self {
             updates,
-            workspace_version: None,
+            workspace_version,
         }
-    }
-
-    pub fn with_workspace_version(&mut self, workspace_version: Version) {
-        self.workspace_version = Some(workspace_version);
     }
 
     pub fn updates(&self) -> &[(Package, UpdateResult)] {
         &self.updates
-    }
-
-    pub fn updates_mut(&mut self) -> &mut PackagesToUpdate {
-        &mut self.updates
     }
 
     pub fn workspace_version(&self) -> Option<&Version> {
@@ -49,9 +39,7 @@ impl PackagesUpdate {
         self.updates
             .iter()
             .map(|(package, update)| {
-                // Use registry_version as previous_version when available
-                // (version already bumped case), otherwise use package.version
-                let previous_version = update.registry_version.as_ref().unwrap_or(&package.version);
+                let previous_version = update.previous_version(package);
                 if previous_version == &update.version {
                     format!("\n* `{}`: {}", package.name, update.version)
                 } else {
@@ -67,7 +55,7 @@ impl PackagesUpdate {
             .collect()
     }
 
-    pub fn breaking_changes(&self) -> String {
+    fn breaking_changes(&self) -> String {
         self.updates
             .iter()
             .map(|(package, update)| match &update.semver_check {
@@ -87,10 +75,7 @@ impl PackagesUpdate {
         self.updates
             .iter()
             .map(|(package, update)| {
-                let default_result = match &update.new_changelog_entry {
-                    Some(entry) => (None, Some(entry.clone())),
-                    None => (None, None),
-                };
+                let default_result = (None, update.new_changelog_entry.clone());
                 let (changelog_title, changelog_notes) = match update.last_changes() {
                     Err(e) => {
                         warn!(
@@ -117,20 +102,12 @@ impl PackagesUpdate {
                     SemverCheck::Skipped => ("skipped", None),
                 };
 
-                // Use registry_version as previous_version when available
-                // (version already bumped case), otherwise use package.version
-                let previous_version = update
-                    .registry_version
-                    .as_ref()
-                    .unwrap_or(&package.version)
-                    .to_string();
-
                 ReleaseInfo {
                     package: package.name.to_string(),
                     title: changelog_title,
                     changelog: changelog_notes,
                     next_version: update.version.to_string(),
-                    previous_version,
+                    previous_version: update.previous_version(package).to_string(),
                     breaking_changes,
                     semver_check: semver_check.to_string(),
                 }
