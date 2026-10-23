@@ -52,7 +52,10 @@ where
 
 impl Config {
     /// Package-specific configurations merged with the workspace defaults.
-    /// Returns `<package name, package config>`.
+    ///
+    /// Returns an error if the `git_only` and `publish` settings are invalid
+    /// in the workspace defaults or in any merged package configuration.
+    /// The workspace defaults are validated even if no package is configured.
     fn merged_packages(&self) -> anyhow::Result<Vec<(&str, PackageSpecificConfig)>> {
         let defaults = &self.workspace.packages_defaults;
         // Validate workspace defaults (applies to all packages without specific config)
