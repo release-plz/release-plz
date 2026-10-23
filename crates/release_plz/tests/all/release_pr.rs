@@ -1,6 +1,7 @@
 use crate::helpers::{
     TEST_REGISTRY, assert_cargo_semver_checks_is_installed, assert_locked_versions,
     package::{PackageType, TestPackage},
+    release_pr_stdout, release_stdout,
     test_context::TestContext,
     today,
 };
@@ -275,18 +276,7 @@ async fn release_plz_can_do_backport_prs() {
 
     // Running `release` the first time, releases the project
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 
     // Publish a new breaking release
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
@@ -294,18 +284,7 @@ async fn release_plz_can_do_backport_prs() {
     context.run_cargo_check();
     context.push_all_changes("breaking release");
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.2.0",
-                "version": "0.2.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.2.0", "0.2.0"));
 
     // Open a release PR for a backport
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 0));
@@ -358,18 +337,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     context.merge_release_pr().await;
 
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.1", "0.1.1"));
 }
 
 #[tokio::test]
@@ -853,19 +821,7 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 
     let opened_prs = context.opened_release_prs().await;
     let open_pr = &opened_prs[0];
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.2.0"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.2.0"));
     context.merge_release_pr().await;
 
     let expected_tag = "v0.2.0";
@@ -918,19 +874,7 @@ async fn release_plz_detects_symlink_package_changes() {
 
     let opened_prs = context.opened_release_prs().await;
     let open_pr = &opened_prs[0];
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.1"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.1.1"));
     context.merge_release_pr().await;
 
     let expected_tag = "v0.1.1";
@@ -1589,19 +1533,7 @@ async fn release_plz_handles_invalid_readme_path_gracefully() {
     assert_eq!(open_pr.title, "chore: release v0.1.0");
 
     // Verify the PR was created successfully
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "head_branch": open_pr.branch(),
-            "base_branch": "main",
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.0"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.1.0"));
 
     // Additional test: Make a change and ensure subsequent operations work
     let new_file = context.repo_dir().join("src").join("new.rs");
