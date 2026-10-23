@@ -253,18 +253,15 @@ fn set_version_updates_version_in_workspace() {
 }
 
 #[test]
-fn set_version_uses_last_duplicate_package_config() {
+fn set_version_rejects_duplicate_package_config() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
-    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
-    let changelog = fs_err::read_to_string(&changelog_path).unwrap();
-    let ignored_changelog_path = project_dir.join("IGNORED_CHANGELOG.md");
-    fs_err::write(&ignored_changelog_path, &changelog).unwrap();
+    let original_manifest = fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap();
     fs_err::write(
         project_dir.join("release-plz.toml"),
         r#"
 [[package]]
 name = "set-version-in-package"
-changelog_path = "IGNORED_CHANGELOG.md"
+changelog_path = "OTHER_CHANGELOG.md"
 
 [[package]]
 name = "set-version-in-package"
@@ -272,15 +269,21 @@ name = "set-version-in-package"
     )
     .unwrap();
 
-    run_set_version(&project_dir, "0.1.1");
+    let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
+        .current_dir(&project_dir)
+        .args(["set-version", "0.1.1"])
+        .assert()
+        .failure();
 
-    assert_eq!(
-        fs_err::read_to_string(changelog_path).unwrap(),
-        changelog.replace("0.1.0", "0.1.1")
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("package `set-version-in-package` is configured more than once"),
+        "{stderr}"
     );
+    // The config is rejected before anything is written.
     assert_eq!(
-        fs_err::read_to_string(ignored_changelog_path).unwrap(),
-        changelog
+        fs_err::read_to_string(project_dir.join(CARGO_TOML)).unwrap(),
+        original_manifest
     );
 }
 
