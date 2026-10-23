@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    GitReleaseConfig, ReleaseRequest,
+    GitReleaseConfig, Publishable as _, ReleaseRequest,
     set_version::SetVersionRequest,
     update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
@@ -134,6 +134,26 @@ impl Config {
                 release_request.with_package_config(package, release_config.common.into());
         }
         Ok(release_request)
+    }
+
+    /// Errors if a package has `publish = false` or `publish = []` in the Cargo.toml,
+    /// but `publish = true` in its `[[package]]` section.
+    ///
+    /// A `publish` field that is unset or inherited from the `[workspace]` section isn't checked:
+    /// release-plz doesn't publish packages that Cargo can't publish anyway.
+    pub fn check_publish_fields(&self, metadata: &cargo_metadata::Metadata) -> anyhow::Result<()> {
+        for package in metadata.workspace_packages() {
+            let is_publish_explicitly_enabled = self
+                .package
+                .iter()
+                .any(|p| p.name == package.name.as_str() && p.config.common.publish == Some(true));
+            anyhow::ensure!(
+                package.is_publishable() || !is_publish_explicitly_enabled,
+                "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
+                package.name
+            );
+        }
+        Ok(())
     }
 }
 
