@@ -808,8 +808,11 @@ For example, the changelog of the `release-plz` package of this repository
 includes commits of the `release_plz_core` package, because they affect the
 `release-plz` package, too.
 
-Like a dependency update, the included commits bump the version of the package
-at most by a patch.
+The included commits release the package, but bump its version at most by a
+patch (a prerelease increment for prerelease versions), as when a local
+dependency of the package changes.
+The commits of the package and the [semver check](#the-semver_check-field) can
+still require a bigger version increment.
 For example, a breaking change in `release_plz_core` releases a new patch
 version of `release-plz`, unless the commits of `release-plz` require a bigger
 version increment.

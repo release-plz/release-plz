@@ -19,7 +19,7 @@ impl NextVersionFromDiff for Version {
             increment.bump(self)
         } else {
             let next = version_updater.increment(self, diff.commits.iter().map(|c| &c.message));
-            // Like a dependency update, included commits bump the version at most by a patch.
+            // Like a local dependency update, included commits bump the version at most by a patch.
             let included_next = version_updater
                 .increment(self, diff.included_commits.iter().map(|c| &c.message))
                 .min(patch_increment(self));
