@@ -97,9 +97,6 @@ impl Release {
         if let Some(token) = self.token {
             req = req.with_token(SecretString::from(token));
         }
-        if let Some(repo_url) = self.repo_url {
-            req = req.with_repo_url(repo_url);
-        }
         if let Some(git_release) = git_release {
             req = req.with_git_release(git_release);
         }

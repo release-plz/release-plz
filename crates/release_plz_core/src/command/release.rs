@@ -48,10 +48,6 @@ pub struct ReleaseRequest {
     release_always: bool,
     /// Publishes GitHub release.
     git_release: Option<GitRelease>,
-    /// GitHub/Gitea/Gitlab repository url where your project is hosted.
-    /// It is used to create the git release.
-    /// It defaults to the url of the default remote.
-    repo_url: Option<String>,
     /// Package-specific configurations.
     packages_config: PackagesConfig,
     /// publish timeout
@@ -69,7 +65,6 @@ impl ReleaseRequest {
             token: None,
             dry_run: false,
             git_release: None,
-            repo_url: None,
             packages_config: PackagesConfig::default(),
             publish_timeout: minutes_30,
             release_always: true,
@@ -99,11 +94,6 @@ impl ReleaseRequest {
 
     pub fn with_git_release(mut self, git_release: GitRelease) -> Self {
         self.git_release = Some(git_release);
-        self
-    }
-
-    pub fn with_repo_url(mut self, repo_url: impl Into<String>) -> Self {
-        self.repo_url = Some(repo_url.into());
         self
     }
 
@@ -253,15 +243,14 @@ impl ReleaseRequest {
     /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
     /// but has `publish = true` in the release-plz configuration.
     pub fn check_publish_fields(&self) -> anyhow::Result<()> {
-        let publish_fields = self.packages_config.publish_overrides_fields();
-
         for package in &self.metadata.packages {
+            // Only packages with a `[[package]]` section in the release-plz config are checked.
             if !package.is_publishable()
                 && !self.is_git_only(&package.name)
-                && let Some(should_publish) = publish_fields.get(package.name.as_str())
+                && let Some(config) = self.packages_config.overrides.get(package.name.as_str())
             {
                 anyhow::ensure!(
-                    !should_publish,
+                    !config.publish.enabled,
                     "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
                     package.name
                 );
@@ -308,19 +297,6 @@ impl PackagesConfig {
 
     pub fn overridden_packages(&self) -> HashSet<&str> {
         self.overrides.keys().map(|s| s.as_str()).collect()
-    }
-
-    // Return the `publish` fields explicitly set in the
-    // `[[package]]` section of the release-plz config.
-    // I.e. `publish` isn't inherited from the `[workspace]` section of the
-    // release-plz config.
-    pub fn publish_overrides_fields(&self) -> BTreeMap<String, bool> {
-        self.overrides
-            .iter()
-            .map(|(package_name, release_config)| {
-                (package_name.clone(), release_config.publish().is_enabled())
-            })
-            .collect()
     }
 }
 
@@ -409,10 +385,6 @@ impl ReleaseConfig {
         self
     }
 
-    pub fn publish(&self) -> &PublishConfig {
-        &self.publish
-    }
-
     pub fn git_release(&self) -> &GitReleaseConfig {
         &self.git_release
     }
@@ -450,10 +422,6 @@ impl Default for PublishConfig {
 impl PublishConfig {
     pub fn enabled(enabled: bool) -> Self {
         Self { enabled }
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 }
 
@@ -561,10 +529,6 @@ impl GitTagConfig {
     pub fn set_name_template(mut self, name_template: Option<String>) -> Self {
         self.name_template = name_template;
         self
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 }
 
