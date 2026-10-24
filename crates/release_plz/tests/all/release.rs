@@ -273,14 +273,13 @@ async fn release_app_whose_registry_dependency_depends_on_shared(app_is_root_pac
     let app_manifest = format!(
         "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = [\"{TEST_REGISTRY}\"]\n"
     );
+    // `crates` now contains `shared` and, if `app` isn't the root package, `app`.
+    let workspace = "[workspace]\nresolver = \"3\"\nmembers = [\"crates/*\"]\n";
     let root_manifest = context.repo_dir().join("Cargo.toml");
     let app_dir = if app_is_root_package {
-        let workspace = "[workspace]\nresolver = \"3\"\nmembers = [\"crates/shared\"]\n";
         fs_err::write(root_manifest, format!("{app_manifest}\n{workspace}")).unwrap();
         context.repo_dir()
     } else {
-        let workspace =
-            "[workspace]\nresolver = \"3\"\nmembers = [\"crates/shared\", \"crates/app\"]\n";
         fs_err::write(root_manifest, workspace).unwrap();
         let app_dir = context.package_path("app");
         fs_err::create_dir_all(&app_dir).unwrap();
