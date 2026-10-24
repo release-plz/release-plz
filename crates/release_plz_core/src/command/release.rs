@@ -796,7 +796,7 @@ fn update_stale_registry_copies(
         return Ok(());
     }
     // Cargo must still reject the uncommitted changes of the lockfile that release-plz didn't make.
-    let was_lockfile_committed = !has_uncommitted_changes(repo, &["Cargo.lock"])?;
+    let was_lockfile_committed = uncommitted_changes(repo, &["Cargo.lock"])?.is_empty();
     let mut args = vec!["update"];
     for spec in &specs {
         args.extend(["--package", spec]);
@@ -809,7 +809,7 @@ fn update_stale_registry_copies(
         output.stderr
     );
     // `cargo update` doesn't change the lockfile if the registry has no newer compatible versions.
-    if was_lockfile_committed && has_uncommitted_changes(repo, &["Cargo.lock"])? {
+    if was_lockfile_committed && !uncommitted_changes(repo, &["Cargo.lock"])?.is_empty() {
         context.lockfile_updated = true;
     }
     Ok(())
@@ -1359,9 +1359,9 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
     }
 }
 
-/// Return `true` if the files matching `pathspecs` have uncommitted changes.
+/// Return the `git status` of the files matching `pathspecs` that have uncommitted changes.
 /// Git runs in the workspace root, so relative pathspecs are relative to it.
-fn has_uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<bool> {
+fn uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<String> {
     // List all the uncommitted changes, even the ones that `status.showUntrackedFiles` or
     // `submodule.<name>.ignore` hide, so that release-plz doesn't let `cargo publish`
     // accept changes it didn't see.
@@ -1373,8 +1373,7 @@ fn has_uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<bo
         "--",
     ];
     args.extend(pathspecs);
-    let changes = repo.git(&args)?;
-    Ok(!changes.is_empty())
+    repo.git(&args)
 }
 
 /// Return `true` if `cargo publish` must accept uncommitted changes.
@@ -1395,8 +1394,18 @@ fn should_allow_dirty(
         return Ok(false);
     }
     // Accept them only if the lockfile is the only uncommitted change, so that Cargo
-    // still rejects the other ones.
-    Ok(!has_uncommitted_changes(repo, &[":/", ":!Cargo.lock"])?)
+    // still rejects the other ones. Check the whole repository, because Cargo also checks
+    // some files outside the package directory, such as the `readme` and `license` files.
+    let other_changes = uncommitted_changes(repo, &[":/", ":!Cargo.lock"])?;
+    if !other_changes.is_empty() {
+        // Cargo might only reject the lockfile, e.g. if the other changes are in other
+        // packages, so tell the user that release-plz changed it.
+        warn!(
+            "release-plz updated the lockfile, but can't let `cargo publish` accept it for the root package {} because of other uncommitted changes. Commit or remove them:\n{other_changes}",
+            package.name
+        );
+    }
+    Ok(other_changes.is_empty())
 }
 
 fn run_cargo_publish(
