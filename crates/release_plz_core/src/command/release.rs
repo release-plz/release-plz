@@ -18,8 +18,8 @@ use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
-    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
+    DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote,
     cargo::{
         CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
         wait_until_published,
@@ -131,15 +131,11 @@ impl ReleaseRequest {
 
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
-        config
-            .changelog_path
-            .map(|p| self.metadata.workspace_root.join(p))
-            .unwrap_or_else(|| {
-                package
-                    .package_path()
-                    .expect("can't determine package path")
-                    .join(CHANGELOG_FILENAME)
-            })
+        crate::changelog_path(
+            package,
+            &self.metadata.workspace_root,
+            config.changelog_path.as_deref(),
+        )
     }
 
     /// Return true if the package must be published to a cargo registry.
@@ -196,14 +192,14 @@ impl ReleaseRequest {
 
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
     fn find_registry_token(&self, registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
-        let is_registry_same_as_request = self.registry.as_deref() == registry;
-        let token = is_registry_same_as_request
-            .then(|| self.token.clone())
-            .flatten()
-            // if the registry is not the same as the request or if there's no token in the request,
-            // try to find the token in the Cargo credentials file or in the environment variables.
-            .or(cargo_utils::registry_token(self.registry.as_deref())?);
-        Ok(token)
+        if self.registry.as_deref() == registry
+            && let Some(token) = &self.token
+        {
+            return Ok(Some(token.clone()));
+        }
+        // if the registry is not the same as the request or if there's no token in the request,
+        // try to find the token in the environment variables or in the Cargo credentials file.
+        cargo_utils::registry_token(registry)
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
@@ -1314,6 +1310,7 @@ mod tests {
     use fake_package::{FakePackage, metadata::fake_metadata};
 
     use super::*;
+    use crate::CHANGELOG_FILENAME;
 
     // Trick to avoid the tests to run concurrently.
     // It's used to not affect environment variables used in other tests

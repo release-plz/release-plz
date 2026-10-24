@@ -1,6 +1,10 @@
 use std::sync::LazyLock;
 
 use anyhow::Context;
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use chrono::{NaiveDate, TimeZone, Utc};
 use git_cliff_core::{
     changelog::Changelog as GitCliffChangelog,
@@ -13,7 +17,7 @@ use regex::Regex;
 use serde::Serialize;
 use tracing::warn;
 
-use crate::changelog_parser;
+use crate::{PackagePath as _, changelog_parser};
 
 pub const CHANGELOG_HEADER: &str = r"# Changelog
 
@@ -28,6 +32,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 pub const CHANGELOG_FILENAME: &str = "CHANGELOG.md";
 pub const RELEASE_LINK: &str = "release_link";
 pub const REMOTE: &str = "remote";
+
+/// Path of the changelog of `package`.
+/// `configured_path` is relative to `workspace_root`.
+/// If it's not set, the changelog is in the package directory.
+pub(crate) fn changelog_path(
+    package: &Package,
+    workspace_root: &Utf8Path,
+    configured_path: Option<&Utf8Path>,
+) -> Utf8PathBuf {
+    match configured_path {
+        Some(path) => workspace_root.join(path),
+        None => package
+            .package_path()
+            .expect("can't determine package path")
+            .join(CHANGELOG_FILENAME),
+    }
+}
 
 #[derive(Debug)]
 pub struct Changelog<'a> {
