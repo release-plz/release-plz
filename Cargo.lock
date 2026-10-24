@@ -1622,7 +1622,7 @@ dependencies = [
  "glob",
  "humantime-serde",
  "indexmap",
- "next_version 0.3.4",
+ "next_version 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
  "regex",
@@ -3508,9 +3508,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "next_version"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89b84ff0972faa3bb74d2ffe5979776f87e3bad64aa4b985eb71418eaa9a2df"
+version = "0.3.5"
 dependencies = [
  "git-conventional 1.1.0",
  "regex",
@@ -3520,6 +3518,8 @@ dependencies = [
 [[package]]
 name = "next_version"
 version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00a6a2b4d7d00c336f6d4f13845c85a92dac6491186b940803a7b4e29ebe7a0d"
 dependencies = [
  "git-conventional 1.1.0",
  "regex",
