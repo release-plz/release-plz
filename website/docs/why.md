@@ -54,6 +54,7 @@ Release-plz, instead, generates a release PR for every commit affecting one of y
 regardless of the commit message.
 Release-plz also generates a release PR if you change the dependencies of your packages
 (either in the `Cargo.toml` or in the `Cargo.lock` files).
+Dev-dependencies in the `Cargo.toml` file are ignored.
 
 ### No multiple programming languages support 👎
 
