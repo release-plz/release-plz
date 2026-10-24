@@ -255,6 +255,34 @@ async fn release_publishes_root_package_whose_registry_dependency_depends_on_wor
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_doesnt_publish_root_package_with_other_uncommitted_changes() {
+    let context = app_whose_registry_dependency_depends_on_shared(true).await;
+    // With this config, `git status` hides untracked files. Cargo doesn't reject them as
+    // uncommitted changes either, but it still packages them.
+    context
+        .repo
+        .git(&["config", "status.showUntrackedFiles", "no"])
+        .unwrap();
+    // Cargo packages this file with `app`.
+    fs_err::write(context.repo_dir().join("src").join("extra.rs"), "").unwrap();
+
+    // release-plz updates the lockfile to publish `app`, but it must not pass `--allow-dirty`
+    // to `cargo publish`, because Cargo would publish `app` with the uncommitted file.
+    let outcome = context
+        .release_command()
+        // Print release-plz's warnings.
+        .env("RELEASE_PLZ_LOG", "warn")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    // Cargo rejected the updated lockfile, so `app` wasn't published.
+    assert!(stderr.contains("failed to publish app"), "{stderr}");
+    // release-plz explains that the uncommitted file kept it from accepting the lockfile.
+    assert!(stderr.contains("src/extra.rs"), "{stderr}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_rerun_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
     let context = app_whose_registry_dependency_depends_on_shared(false).await;
     // Like a previous `release` run that published and tagged `shared`, and then failed
