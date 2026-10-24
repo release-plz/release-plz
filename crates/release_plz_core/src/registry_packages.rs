@@ -43,7 +43,8 @@ pub(crate) struct ReleasedWorkspace {
 
 impl ReleasedWorkspace {
     pub(crate) fn new(metadata: Metadata, commit: String) -> anyhow::Result<Self> {
-        let lockfile = WorkspaceLockfile::load_committed(&metadata, &commit)?;
+        let lockfile = WorkspaceLockfile::load(&metadata)
+            .with_context(|| format!("cannot load the lockfile committed at {commit}"))?;
         Ok(Self {
             metadata,
             lockfile,

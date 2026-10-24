@@ -26,7 +26,7 @@ use crate::{
     },
     changelog_parser,
     git::forge::GitClient,
-    lock_compare,
+    lock_compare::{self, WorkspaceLockfile},
     next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
@@ -661,7 +661,7 @@ async fn release_packages(
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
     };
-    let mut registry_copies = OutdatedRegistryCopies::new(&input.metadata, &packages)?;
+    let mut registry_copies = OutdatedRegistryCopies::new(&input.metadata)?;
     for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, &mut context).await?
@@ -669,7 +669,7 @@ async fn release_packages(
             package_releases.push(pkg_release);
         }
         // Packages released later might depend on the released version of this package.
-        registry_copies.update(&package.name)?;
+        registry_copies.update(package)?;
     }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
@@ -718,17 +718,17 @@ impl ReleaseContext<'_> {
 /// lockfile when this struct is dropped.
 struct OutdatedRegistryCopies<'a> {
     metadata: &'a Metadata,
-    /// Package ID specs of the copies, by workspace package name.
-    copies: HashMap<String, Vec<String>>,
+    /// The lockfile where release-plz looks for the copies, if any.
+    lockfile: Option<WorkspaceLockfile>,
     /// The lockfile before release-plz updated it.
     original_lockfile: Option<String>,
 }
 
 impl<'a> OutdatedRegistryCopies<'a> {
-    fn new(metadata: &'a Metadata, packages: &[&Package]) -> anyhow::Result<Self> {
+    fn new(metadata: &'a Metadata) -> anyhow::Result<Self> {
         Ok(Self {
             metadata,
-            copies: lock_compare::outdated_registry_copies(metadata, packages)
+            lockfile: WorkspaceLockfile::load(metadata)
                 .context("can't find outdated registry packages in the lockfile")?,
             original_lockfile: None,
         })
@@ -740,14 +740,21 @@ impl<'a> OutdatedRegistryCopies<'a> {
 
     /// Update the registry copies of `package` to the latest compatible version
     /// in the registry, which is the released version if `package` was published.
-    fn update(&mut self, package: &str) -> anyhow::Result<()> {
-        let Some(specs) = self.copies.remove(package) else {
+    fn update(&mut self, package: &Package) -> anyhow::Result<()> {
+        let Some(lockfile) = &self.lockfile else {
             return Ok(());
         };
+        let specs = lockfile.outdated_registry_copies(package);
+        if specs.is_empty() {
+            return Ok(());
+        }
         if self.original_lockfile.is_none() {
             self.original_lockfile = Some(fs_err::read_to_string(self.lockfile_path())?);
         }
-        debug!("updating registry copies of {package} in the lockfile: {specs:?}");
+        debug!(
+            "updating registry copies of {} in the lockfile: {specs:?}",
+            package.name
+        );
         let mut args = vec!["update"];
         for spec in &specs {
             args.extend(["--package", spec]);
@@ -756,7 +763,8 @@ impl<'a> OutdatedRegistryCopies<'a> {
             .context("failed to run cargo to update the lockfile")?;
         anyhow::ensure!(
             output.status.success(),
-            "failed to update the registry copies of {package} in the lockfile: {}",
+            "failed to update the registry copies of {} in the lockfile: {}",
+            package.name,
             output.stderr
         );
         Ok(())

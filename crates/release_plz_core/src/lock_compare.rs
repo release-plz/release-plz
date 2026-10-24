@@ -30,13 +30,10 @@ pub(crate) struct WorkspaceLockfile {
 }
 
 impl WorkspaceLockfile {
-    /// Decode the lockfile committed at `commit` without resolving or fetching dependencies.
+    /// Decode the workspace lockfile without resolving or fetching dependencies.
     ///
-    /// Returns `None` when no lockfile was committed.
-    pub(crate) fn load_committed(
-        metadata: &Metadata,
-        commit: &str,
-    ) -> anyhow::Result<Option<Self>> {
+    /// Returns `None` when the workspace has no lockfile.
+    pub(crate) fn load(metadata: &Metadata) -> anyhow::Result<Option<Self>> {
         let lock_path = workspace_lockfile_path(metadata);
         if !lock_path.exists() {
             return Ok(None);
@@ -44,7 +41,7 @@ impl WorkspaceLockfile {
         let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
         let workspace = load_workspace(metadata, &config)?;
         let resolve = cargo::ops::load_pkg_lockfile(&workspace)
-            .with_context(|| format!("cannot load lockfile {lock_path:?} committed at {commit}"))?;
+            .with_context(|| format!("cannot load lockfile {lock_path:?}"))?;
         Ok(resolve.as_ref().map(Self::from_resolve))
     }
 
@@ -66,6 +63,27 @@ impl WorkspaceLockfile {
                 .map(|(&package, &replacement)| (package, replacement))
                 .collect(),
         }
+    }
+
+    /// Find the registry packages that are older but semver compatible versions of the
+    /// workspace `package`.
+    /// They come from registry dependencies that depend on the workspace package.
+    ///
+    /// Return their package ID specs.
+    pub(crate) fn outdated_registry_copies(
+        &self,
+        package: &cargo_metadata::Package,
+    ) -> Vec<String> {
+        self.dependencies
+            .keys()
+            .filter(|id| {
+                id.source_id().is_registry()
+                    && id.name().as_str() == package.name.as_str()
+                    && id.version() < &package.version
+                    && id.version().to_caret_req().matches(&package.version)
+            })
+            .map(|id| id.to_spec().to_string())
+            .collect()
     }
 }
 
@@ -201,42 +219,6 @@ fn workspace_lock_dependencies(
             })
             .collect(),
     }))
-}
-
-/// Find the registry packages in the workspace lockfile that are older but semver compatible
-/// versions of the given workspace `packages`.
-/// They come from registry dependencies that depend on workspace packages.
-///
-/// Return their package ID specs, grouped by package name.
-pub(crate) fn outdated_registry_copies(
-    metadata: &Metadata,
-    packages: &[&cargo_metadata::Package],
-) -> anyhow::Result<HashMap<String, Vec<String>>> {
-    let lock_path = workspace_lockfile_path(metadata);
-    let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
-    let workspace = load_workspace(metadata, &config)?;
-    let Some(resolve) = cargo::ops::load_pkg_lockfile(&workspace)
-        .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
-    else {
-        return Ok(HashMap::new());
-    };
-    let versions: HashMap<&str, &Version> = packages
-        .iter()
-        .map(|package| (package.name.as_str(), &package.version))
-        .collect();
-    let mut copies: HashMap<String, Vec<String>> = HashMap::new();
-    for id in resolve.iter().filter(|id| id.source_id().is_registry()) {
-        if let Some(&version) = versions.get(id.name().as_str())
-            && id.version() < version
-            && id.version().to_caret_req().matches(version)
-        {
-            copies
-                .entry(id.name().to_string())
-                .or_default()
-                .push(id.to_spec().to_string());
-        }
-    }
-    Ok(copies)
 }
 
 pub(crate) fn workspace_lockfile_path(metadata: &Metadata) -> Utf8PathBuf {
