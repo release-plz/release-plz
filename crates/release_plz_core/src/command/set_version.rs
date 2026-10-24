@@ -17,13 +17,20 @@ pub struct SetVersionRequest {
     /// Cargo metadata.
     metadata: Metadata,
     version_changes: SetVersionSpec,
+    /// Changelog paths relative to the workspace root, by package name.
     changelog_paths: BTreeMap<String, Utf8PathBuf>,
+    /// Changelog path, relative to the workspace root, of the packages missing from `changelog_paths`.
+    default_changelog_path: Option<Utf8PathBuf>,
 }
 
 impl SetVersionRequest {
     pub fn set_changelog_path(&mut self, package: &str, changelog_path: Utf8PathBuf) {
         self.changelog_paths
             .insert(package.to_string(), changelog_path);
+    }
+
+    pub fn set_default_changelog_path(&mut self, changelog_path: Utf8PathBuf) {
+        self.default_changelog_path = Some(changelog_path);
     }
 }
 
@@ -67,6 +74,7 @@ impl SetVersionRequest {
             metadata,
             manifest,
             changelog_paths: BTreeMap::new(),
+            default_changelog_path: None,
         })
     }
 }
@@ -174,12 +182,15 @@ fn update_package_changelog(
     updated_changelogs: &mut BTreeSet<Utf8PathBuf>,
 ) -> anyhow::Result<()> {
     let package_path = package.package_path()?;
-    let default_changelog_path = package_path.join(CHANGELOG_FILENAME);
-    let changelog_path = input
+    let changelog_path = &input
         .changelog_paths
         .get(package.name.as_str())
         .or(change.changelog_path.as_ref())
-        .map_or(default_changelog_path.as_path(), |path| path.as_path());
+        .or(input.default_changelog_path.as_ref())
+        .map_or_else(
+            || package_path.join(CHANGELOG_FILENAME),
+            |path| input.metadata.workspace_root.join(path),
+        );
     if updating_workspace {
         let resolved_path = crate::fs_utils::canonicalize_utf8(changelog_path)
             .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
