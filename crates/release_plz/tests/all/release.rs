@@ -186,6 +186,24 @@ async fn release_plz_does_not_releases_twice() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_plz_publishes_with_the_token_of_the_package_registry() {
+    let context = TestContext::new().await;
+
+    let crate_name = &context.gitea.repo;
+
+    // Without `--registry`, the package is published to the test registry because it's
+    // the one in its `publish` field. The crates.io token is invalid for the test registry,
+    // so `cargo publish` only succeeds if release-plz uses the token of the test registry.
+    let outcome = context
+        .release_command_without_registry()
+        .env("CARGO_REGISTRY_TOKEN", "crates-io-token")
+        .assert()
+        .success();
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_can_do_backports() {
     let context = TestContext::new().await;
 
