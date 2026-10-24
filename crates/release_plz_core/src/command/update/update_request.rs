@@ -285,18 +285,18 @@ pub struct PackagesConfig {
 }
 
 impl PackagesConfig {
-    fn get(&self, package_name: &str) -> PackageUpdateConfig {
+    pub(crate) fn get(&self, package_name: &str) -> PackageUpdateConfig {
         self.overrides
             .get(package_name)
             .cloned()
             .unwrap_or_else(|| self.default.clone().into())
     }
 
-    fn set_default(&mut self, config: UpdateConfig) {
+    pub(crate) fn set_default(&mut self, config: UpdateConfig) {
         self.default = config;
     }
 
-    fn set(&mut self, package_name: String, config: PackageUpdateConfig) {
+    pub(crate) fn set(&mut self, package_name: String, config: PackageUpdateConfig) {
         self.overrides.insert(package_name, config);
     }
 

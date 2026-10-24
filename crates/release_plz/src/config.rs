@@ -97,15 +97,11 @@ impl Config {
         &self,
         set_version_request: &mut SetVersionRequest,
     ) -> anyhow::Result<()> {
-        for package in &self.package {
-            if let Some(changelog_path) = package.config.common.changelog_path.clone() {
-                let changelog_path = to_utf8_pathbuf(changelog_path)?;
-                set_version_request.set_changelog_path(&package.name, changelog_path);
-            }
-        }
-        if let Some(changelog_path) = self.workspace.packages_defaults.changelog_path.clone() {
-            let changelog_path = to_utf8_pathbuf(changelog_path)?;
-            set_version_request.set_default_changelog_path(changelog_path);
+        let packages = self.merged_packages()?;
+        set_version_request
+            .set_default_package_config(self.workspace.packages_defaults.clone().into());
+        for (package, config) in packages {
+            set_version_request.set_package_config(package, config.into());
         }
         Ok(())
     }
