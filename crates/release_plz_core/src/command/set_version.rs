@@ -20,7 +20,7 @@ pub struct SetVersionRequest {
     /// Cargo metadata.
     metadata: Metadata,
     version_changes: SetVersionSpec,
-    /// Package-specific configurations. Only the changelog settings are used.
+    /// Package-specific configurations. Only `changelog_path` and `changelog_update` are used.
     packages_config: PackagesConfig,
 }
 
