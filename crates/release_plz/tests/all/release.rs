@@ -288,24 +288,25 @@ async fn app_whose_registry_dependency_depends_on_shared(app_is_root_package: bo
     // Replace `external` with `app` in the workspace, so that `app` can depend on the
     // registry version of `external`.
     fs_err::remove_dir_all(context.package_path("external")).unwrap();
+    let app_dir = if app_is_root_package {
+        context.repo_dir()
+    } else {
+        context.package_path("app")
+    };
+    fs_err::create_dir_all(app_dir.join("src")).unwrap();
+    fs_err::write(app_dir.join("src").join("lib.rs"), "").unwrap();
     let app_manifest = format!(
         "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = [\"{TEST_REGISTRY}\"]\n"
     );
     // `crates` now contains `shared` and, if `app` isn't the root package, `app`.
     let workspace = "[workspace]\nresolver = \"3\"\nmembers = [\"crates/*\"]\n";
     let root_manifest = context.repo_dir().join("Cargo.toml");
-    let app_dir = if app_is_root_package {
+    if app_is_root_package {
         fs_err::write(root_manifest, format!("{app_manifest}\n{workspace}")).unwrap();
-        context.repo_dir()
     } else {
         fs_err::write(root_manifest, workspace).unwrap();
-        let app_dir = context.package_path("app");
-        fs_err::create_dir_all(&app_dir).unwrap();
         fs_err::write(app_dir.join("Cargo.toml"), app_manifest).unwrap();
-        app_dir
-    };
-    fs_err::create_dir_all(app_dir.join("src")).unwrap();
-    fs_err::write(app_dir.join("src").join("lib.rs"), "").unwrap();
+    }
     let cargo_add = |args: &[&str]| {
         assert_cmd::Command::new("cargo")
             .current_dir(&app_dir)
