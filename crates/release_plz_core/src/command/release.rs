@@ -1011,14 +1011,14 @@ async fn release_package(
             warn!("can't update the stale registry copies in the lockfile: {e:#}");
         }
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let allow_dirty = allow_dirty(input, repo, context, release_info.package)?;
+        let should_allow_dirty = should_allow_dirty(input, repo, context, release_info.package)?;
         let output = run_cargo_publish(
             release_info.package,
             input,
             workspace_root,
             &publish_token,
             registry_name,
-            allow_dirty,
+            should_allow_dirty,
         )
         .context("failed to run cargo publish")?;
         if !output.status.success()
@@ -1337,7 +1337,7 @@ fn is_lockfile_committed(repo: &Repo) -> anyhow::Result<bool> {
 }
 
 /// Return `true` if `cargo publish` must accept uncommitted changes.
-fn allow_dirty(
+fn should_allow_dirty(
     input: &ReleaseRequest,
     repo: &Repo,
     context: &ReleaseContext<'_>,
@@ -1366,7 +1366,7 @@ fn run_cargo_publish(
     workspace_root: &Utf8Path,
     token: &Option<SecretString>,
     registry: Option<&str>,
-    allow_dirty: bool,
+    should_allow_dirty: bool,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
     args.push("--color");
@@ -1389,7 +1389,7 @@ fn run_cargo_publish(
     if input.dry_run {
         args.push("--dry-run");
     }
-    if allow_dirty {
+    if should_allow_dirty {
         args.push("--allow-dirty");
     }
     if input.no_verify(&package.name) {
