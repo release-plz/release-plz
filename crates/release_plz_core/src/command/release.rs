@@ -21,7 +21,7 @@ use crate::{
     DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
     ReleaseMetadataBuilder, Remote,
     cargo::{
-        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo, run_cargo_with_env,
+        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
         wait_until_published,
     },
     changelog_parser,
@@ -763,8 +763,18 @@ fn update_outdated_registry_copies(
     // Only look for copies in the registries where the package is published:
     // packages with the same name from other registries are different packages.
     let mut specs = vec![];
+    let mut envs = vec![];
     for registry in registry_indexes {
-        specs.extend(lockfile.outdated_registry_copies(package, registry.source_id));
+        let registry_specs = lockfile.outdated_registry_copies(package, registry.source_id);
+        if registry_specs.is_empty() {
+            continue;
+        }
+        specs.extend(registry_specs);
+        // The registry might require the token to read its index.
+        let registry_name = registry.name.as_deref();
+        if let Some(token) = input.find_registry_token(registry_name)? {
+            envs.push((cargo_registry_token_env_var(registry_name)?, token));
+        }
     }
     if specs.is_empty() {
         return Ok(());
@@ -777,7 +787,7 @@ fn update_outdated_registry_copies(
     for spec in &specs {
         args.extend(["--package", spec]);
     }
-    let output = run_cargo(&input.metadata.workspace_root, &args)
+    let output = run_cargo_with_env(&input.metadata.workspace_root, &args, &envs)
         .context("failed to run cargo to update the lockfile")?;
     anyhow::ensure!(
         output.status.success(),
