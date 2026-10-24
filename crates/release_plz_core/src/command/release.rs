@@ -650,7 +650,8 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
     }
 
     // `release_packages` might update the lockfile, so save it to restore it later.
-    // Release-plz doesn't update a lockfile it can't read.
+    // If the lockfile can't be read, e.g. because the workspace has none, release-plz doesn't
+    // update it either.
     let lockfile_path = workspace_lockfile_path(&input.metadata);
     let original_lockfile = fs_err::read(&lockfile_path).ok();
 
