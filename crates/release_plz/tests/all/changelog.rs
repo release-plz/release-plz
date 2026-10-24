@@ -429,3 +429,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         .trim()
     );
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn changelog_contains_remote_info_of_each_commit() {
+    let context = TestContext::new().await;
+    let config = r#"
+    [changelog]
+    body = """
+    {% for commit in commits %}
+    - {{ commit.message }}{% if commit.remote.pr_number %} - #{{ commit.remote.pr_number }}{% endif %} by @{{ commit.remote.username }}
+    {%- endfor %}
+    """
+    trim = true
+    "#;
+    context.write_release_plz_toml(config);
+
+    for i in 1..=3 {
+        fs_err::write(context.repo_dir().join(format!("new{i}.rs")), "// hi").unwrap();
+        context
+            .push_to_pr(&format!("feat: new file {i}"), &format!("pr{i}"))
+            .await;
+        context.merge_all_prs().await;
+    }
+
+    context
+        .update_command()
+        .arg("--git-token")
+        .arg(&context.gitea.token)
+        .arg("--forge")
+        .arg("gitea")
+        .assert()
+        .success();
+
+    // The remote info of the commits is fetched concurrently, so check that
+    // every commit got the number of the PR that merged it (the one in its message),
+    // and that commits pushed without a PR didn't get any.
+    let username = context.gitea.user.username();
+    let package = &context.gitea.repo;
+    let changelog = context.read_changelog();
+    assert_eq!(
+        changelog.trim(),
+        format!(
+            r"
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+- new file 3 ([#3](https://localhost:3000/{username}/{package}/pulls/3)) - #3 by @{username}
+- new file 2 ([#2](https://localhost:3000/{username}/{package}/pulls/2)) - #2 by @{username}
+- new file 1 ([#1](https://localhost:3000/{username}/{package}/pulls/1)) - #1 by @{username}
+- add config file by @{username}
+- cargo init by @{username}
+- Initial commit by @{username}",
+        )
+        .trim()
+    );
+}
