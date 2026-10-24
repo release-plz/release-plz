@@ -796,7 +796,7 @@ fn update_stale_registry_copies(
         return Ok(());
     }
     // Cargo must still reject the uncommitted changes of the lockfile that release-plz didn't make.
-    let was_lockfile_committed = is_lockfile_committed(repo)?;
+    let was_lockfile_committed = !has_uncommitted_changes(repo, &["Cargo.lock"])?;
     let mut args = vec!["update"];
     for spec in &specs {
         args.extend(["--package", spec]);
@@ -809,7 +809,7 @@ fn update_stale_registry_copies(
         output.stderr
     );
     // `cargo update` doesn't change the lockfile if the registry has no newer compatible versions.
-    if was_lockfile_committed && !is_lockfile_committed(repo)? {
+    if was_lockfile_committed && has_uncommitted_changes(repo, &["Cargo.lock"])? {
         context.lockfile_updated = true;
     }
     Ok(())
@@ -1359,11 +1359,13 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
     }
 }
 
-/// Return `true` if the workspace lockfile has no uncommitted changes.
-fn is_lockfile_committed(repo: &Repo) -> anyhow::Result<bool> {
-    // Git runs in the workspace root, so `Cargo.lock` is the workspace lockfile.
-    let changes = repo.git(&["status", "--porcelain", "--", "Cargo.lock"])?;
-    Ok(changes.is_empty())
+/// Return `true` if the files matching `pathspecs` have uncommitted changes.
+/// Git runs in the workspace root, so relative pathspecs are relative to it.
+fn has_uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<bool> {
+    let mut args = vec!["status", "--porcelain", "--"];
+    args.extend(pathspecs);
+    let changes = repo.git(&args)?;
+    Ok(!changes.is_empty())
 }
 
 /// Return `true` if `cargo publish` must accept uncommitted changes.
@@ -1385,9 +1387,7 @@ fn should_allow_dirty(
     }
     // Accept them only if the lockfile is the only uncommitted change, so that Cargo
     // still rejects the other ones.
-    // Git runs in the workspace root, so `:!Cargo.lock` excludes the workspace lockfile.
-    let other_changes = repo.git(&["status", "--porcelain", "--", ":/", ":!Cargo.lock"])?;
-    Ok(other_changes.is_empty())
+    Ok(!has_uncommitted_changes(repo, &[":/", ":!Cargo.lock"])?)
 }
 
 fn run_cargo_publish(
