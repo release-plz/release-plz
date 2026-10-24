@@ -314,14 +314,14 @@ impl TestContext {
     }
 }
 
-pub fn run_set_version(directory: &Utf8Path, change: &str) {
-    let change: Vec<_> = change.split(' ').collect();
+pub fn run_set_version(directory: &Utf8Path, args: &str) {
+    let args: Vec<_> = args.split(' ').collect();
     let target_dir = Utf8PathBuf::from("target");
     super::cmd::release_plz_cmd(&target_dir)
         .current_dir(directory)
         .env(RELEASE_PLZ_LOG, log_level())
         .arg("set-version")
-        .args(&change)
+        .args(&args)
         .assert()
         .success();
 }

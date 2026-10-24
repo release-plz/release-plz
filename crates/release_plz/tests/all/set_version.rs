@@ -432,18 +432,10 @@ fn set_version_resolves_changelog_path_from_workspace_root() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     // Run from outside the workspace: the `changelog_path = "./CHANGELOG.md"` of `one`
     // must still point to the workspace changelog, not to the current directory.
-    crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
-        .current_dir(project_dir.parent().unwrap())
-        .args([
-            "set-version",
-            "--manifest-path",
-            "set-version-in-workspace/Cargo.toml",
-            "--config",
-            "set-version-in-workspace/release-plz.toml",
-            "one@0.1.1",
-        ])
-        .assert()
-        .success();
+    run_set_version(
+        project_dir.parent().unwrap(),
+        "--manifest-path set-version-in-workspace/Cargo.toml --config set-version-in-workspace/release-plz.toml one@0.1.1",
+    );
 
     let changelog = fs_err::read_to_string(project_dir.join(CHANGELOG_FILENAME)).unwrap();
     assert!(changelog.contains("## [0.1.1] - 2024-05-16"), "{changelog}");
