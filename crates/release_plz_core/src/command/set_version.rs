@@ -25,14 +25,20 @@ pub struct SetVersionRequest {
 }
 
 impl SetVersionRequest {
-    /// Set config for all packages.
-    pub fn set_default_package_config(&mut self, config: UpdateConfig) {
+    /// Set update config for all packages.
+    pub fn with_default_package_config(mut self, config: UpdateConfig) -> Self {
         self.packages_config.set_default(config);
+        self
     }
 
-    /// Set config for a specific package.
-    pub fn set_package_config(&mut self, package: impl Into<String>, config: PackageUpdateConfig) {
+    /// Set update config for a specific package.
+    pub fn with_package_config(
+        mut self,
+        package: impl Into<String>,
+        config: PackageUpdateConfig,
+    ) -> Self {
         self.packages_config.set(package.into(), config);
+        self
     }
 }
 
