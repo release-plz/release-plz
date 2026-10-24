@@ -1,4 +1,4 @@
-use crate::git::{gitea_client::Gitea, gitlab_client::GitLab, gitlab_graphql};
+use crate::git::{error::GitError, gitea_client::Gitea, gitlab_client::GitLab, gitlab_graphql};
 use crate::{GitHub, GitReleaseInfo};
 use std::collections::{HashMap, HashSet};
 
@@ -584,7 +584,7 @@ impl GitClient {
     }
 
     #[instrument(skip(self))]
-    pub async fn add_labels(&self, labels: &[String], pr_number: u64) -> anyhow::Result<()> {
+    pub async fn add_labels(&self, labels: &[String], pr_number: u64) -> Result<(), GitError> {
         if labels.is_empty() {
             return Ok(());
         }
@@ -601,68 +601,68 @@ impl GitClient {
     }
 
     /// Add all labels to PR
-    async fn post_github_labels(&self, labels: &[String], pr_number: u64) -> anyhow::Result<()> {
-        self.client
+    async fn post_github_labels(&self, labels: &[String], pr_number: u64) -> Result<(), GitError> {
+        let response = self
+            .client
             .post(self.pr_labels_url(pr_number))
             .json(&json!({
                 "labels": labels
             }))
             .send()
-            .await?
-            .successful_status()
             .await?;
+        GitError::check_response(response).await?;
 
         Ok(())
     }
 
     /// Add all labels to PR
-    async fn post_gitlab_labels(&self, labels: &[String], pr_number: u64) -> anyhow::Result<()> {
-        self.client
+    async fn post_gitlab_labels(&self, labels: &[String], pr_number: u64) -> Result<(), GitError> {
+        let response = self
+            .client
             .put(format!("{}/{}", self.pulls_url(), pr_number))
             .json(&json!({
                 "add_labels": labels.join(",")
             }))
             .send()
-            .await?
-            .successful_status()
             .await?;
+        GitError::check_response(response).await?;
 
         Ok(())
     }
 
     /// Add all labels to PR
-    async fn post_gitea_labels(&self, labels: &[String], pr_number: u64) -> anyhow::Result<()> {
+    async fn post_gitea_labels(&self, labels: &[String], pr_number: u64) -> Result<(), GitError> {
         let (labels_to_create, mut label_ids) = self
             .get_labels_info_and_categorize_labels(labels, pr_number)
             .await?;
         let new_label_ids = self.create_gitea_labels(&labels_to_create).await?;
         label_ids.extend(new_label_ids);
-        anyhow::ensure!(
-            !label_ids.is_empty(),
-            "The provided labels: {labels:?} \n
-                were not added to PR #{pr_number}",
-        );
-        self.client
+        if label_ids.is_empty() {
+            return Err(anyhow::anyhow!(
+                "The provided labels: {labels:?} \n
+                were not added to PR #{pr_number}"
+            )
+            .into());
+        }
+        let response = self
+            .client
             .post(self.pr_labels_url(pr_number))
             .json(&json!({ "labels": label_ids }))
             .send()
-            .await?
-            .successful_status()
             .await?;
+        GitError::check_response(response).await?;
         Ok(())
     }
 
     /// Get Gitea and GitHub repository labels
-    async fn get_repository_labels(&self) -> anyhow::Result<Vec<Label>> {
-        self.client
+    async fn get_repository_labels(&self) -> Result<Vec<Label>, GitError> {
+        let response = self
+            .client
             .get(format!("{}/labels", self.repo_url()))
             .send()
-            .await?
-            .successful_status()
-            .await?
-            .json()
-            .await
-            .context("failed to parse labels")
+            .await?;
+        let response = GitError::check_response(response).await?;
+        Ok(response.json().await.context("failed to parse labels")?)
     }
 
     /// Retrieves and categorizes labels for a PR, ensuring exact matching and deduplication
@@ -675,7 +675,7 @@ impl GitClient {
         &self,
         labels: &[String],
         pr_number: u64,
-    ) -> anyhow::Result<(Vec<String>, Vec<u64>)> {
+    ) -> Result<(Vec<String>, Vec<u64>), GitError> {
         // Fetch both existing repository labels and current PR labels concurrently
         let (existing_labels, pr_info) =
             tokio::try_join!(self.get_repository_labels(), self.get_pr_info(pr_number))?;
@@ -717,7 +717,7 @@ impl GitClient {
         Ok((labels_to_create, label_ids))
     }
 
-    async fn create_gitea_labels(&self, labels_to_create: &[String]) -> anyhow::Result<Vec<u64>> {
+    async fn create_gitea_labels(&self, labels_to_create: &[String]) -> Result<Vec<u64>, GitError> {
         let mut label_ids = Vec::new();
 
         for label in labels_to_create {
@@ -728,7 +728,7 @@ impl GitClient {
         Ok(label_ids)
     }
 
-    async fn create_gitea_repository_label(&self, label: &str) -> anyhow::Result<u64> {
+    async fn create_gitea_repository_label(&self, label: &str) -> Result<u64, GitError> {
         debug!("Forge Gitea creating label: {label}");
         let res = self
             .client
@@ -743,7 +743,7 @@ impl GitClient {
             .error_for_status()
             .map_err(|err| {
                 let status = err.status();
-                let err = anyhow::anyhow!(err);
+                let err = GitError::from(err);
                 match status {
                     Some(StatusCode::NOT_FOUND) => {
                         err.context(format!(
@@ -841,16 +841,15 @@ impl GitClient {
         Ok(prs)
     }
 
-    pub async fn get_pr_info(&self, pr_number: u64) -> anyhow::Result<GitPr> {
+    pub async fn get_pr_info(&self, pr_number: u64) -> Result<GitPr, GitError> {
         let response = self
             .client
             .get(format!("{}/{}", self.pulls_url(), pr_number))
             .send()
-            .await?
-            .successful_status()
             .await?;
+        let response = GitError::check_response(response).await?;
 
-        self.pr_from_response(response).await
+        Ok(self.pr_from_response(response).await?)
     }
 
     /// Get information about the given commit from the forge.
@@ -891,7 +890,7 @@ impl GitClient {
     }
 
     /// Create a new branch from the given SHA.
-    pub async fn create_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
+    pub async fn create_branch(&self, branch_name: &str, sha: &str) -> Result<(), GitError> {
         match self.forge {
             ForgeType::Github => {
                 self.post_github_ref(&format!("refs/heads/{branch_name}"), sha)
@@ -902,7 +901,7 @@ impl GitClient {
         }
     }
 
-    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), GitError> {
         let response = self
             .client
             .post(format!("{}/git/refs", self.repo_url()))
@@ -914,9 +913,17 @@ impl GitClient {
             .await?;
 
         let status = response.status();
-        response.successful_status().await.with_context(|| {
+        GitError::check_response(response).await.map_err(|error| {
             let mut message = format!("failed to create ref {ref_name} with sha {sha}");
-            if status == StatusCode::UNPROCESSABLE_ENTITY {
+            if status == StatusCode::FORBIDDEN {
+                message.push_str(
+                    ". Check the token's write permissions and repository rulesets. \
+GitHub can also reject an older commit whose .github/workflows files differ from \
+current branch tips when the token cannot write workflows. \
+Run release-plz on the latest target branch commit instead of rerunning an old workflow. \
+See https://release-plz.dev/docs/troubleshooting#github-rejects-branch-creation-with-403-resource-not-accessible-by-integration.",
+                );
+            } else if status == StatusCode::UNPROCESSABLE_ENTITY {
                 message.push_str(
                     ". GitHub rejected the reference creation. \
 Check that the commit has been pushed to the remote repository, \
@@ -926,53 +933,60 @@ Write permissions alone do not bypass repository rulesets. \
 If the commit hasn't been pushed to the remote repository yet, push it and run release-plz again.",
                 );
             }
-            message
+            error.context(message)
         })?;
         Ok(())
     }
 
-    async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
-        self.client
+    async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> Result<(), GitError> {
+        let response = self
+            .client
             .post(format!("{}/repository/branches", self.repo_url()))
             .json(&json!({
                 "branch": branch_name,
                 "ref": sha
             }))
             .send()
-            .await?
-            .successful_status()
-            .await
-            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
+            .await?;
+        GitError::check_response(response).await.map_err(|error| {
+            error.context(format!(
+                "failed to create branch {branch_name} with sha {sha}"
+            ))
+        })?;
         Ok(())
     }
 
-    async fn post_gitea_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
-        self.client
+    async fn post_gitea_branch(&self, branch_name: &str, sha: &str) -> Result<(), GitError> {
+        let response = self
+            .client
             .post(format!("{}/branches", self.repo_url()))
             .json(&json!({
                 "new_branch_name": branch_name,
                 "old_ref_name": sha
             }))
             .send()
-            .await?
-            .successful_status()
-            .await
-            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
+            .await?;
+        GitError::check_response(response).await.map_err(|error| {
+            error.context(format!(
+                "failed to create branch {branch_name} with sha {sha}"
+            ))
+        })?;
         Ok(())
     }
 
-    pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
-        self.client
+    pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> Result<(), GitError> {
+        let response = self
+            .client
             .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
             .json(&json!({
                 "sha": sha,
                 "force": true
             }))
             .send()
-            .await?
-            .successful_status()
-            .await
-            .with_context(|| format!("failed to update ref {ref_name} with sha {sha}"))?;
+            .await?;
+        GitError::check_response(response).await.map_err(|error| {
+            error.context(format!("failed to update ref {ref_name} with sha {sha}"))
+        })?;
         Ok(())
     }
 
@@ -1042,8 +1056,9 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
             .with_context(|| {
                 format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
             })?;
-        self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
-            .await
+        Ok(self
+            .post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
+            .await?)
     }
 
     async fn create_gitlab_tag(

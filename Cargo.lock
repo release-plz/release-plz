@@ -4510,6 +4510,7 @@ dependencies = [
  "tempfile",
  "tera 2.4.0",
  "test_logs",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "toml 1.1.8+spec-1.1.0",
