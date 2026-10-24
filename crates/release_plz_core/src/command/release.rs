@@ -675,6 +675,7 @@ async fn release_packages(
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
         lockfile_load_failed: false,
+        lockfile_updated: false,
     };
     for package in packages {
         if let Some(pkg_release) =
@@ -706,6 +707,9 @@ struct ReleaseContext<'a> {
     /// Whether the Cargo library bundled in release-plz failed to load the lockfile,
     /// so that release-plz warns once instead of trying again for each package.
     lockfile_load_failed: bool,
+    /// Whether release-plz updated registry copies, so the lockfile might differ from the
+    /// committed one.
+    lockfile_updated: bool,
 }
 
 impl ReleaseContext<'_> {
@@ -795,6 +799,7 @@ fn update_outdated_registry_copies(
         package.name,
         output.stderr
     );
+    context.lockfile_updated = true;
     Ok(())
 }
 
@@ -1013,12 +1018,14 @@ async fn release_package(
 
     if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
+        let allow_dirty = allow_dirty(input, repo, context, release_info.package)?;
         let output = run_cargo_publish(
             release_info.package,
             input,
             workspace_root,
             &publish_token,
             registry_name,
+            allow_dirty,
         )
         .context("failed to run cargo publish")?;
         if !output.status.success()
@@ -1329,12 +1336,37 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
     }
 }
 
+/// Return `true` if `cargo publish` must accept uncommitted changes.
+fn allow_dirty(
+    input: &ReleaseRequest,
+    repo: &Repo,
+    context: &ReleaseContext<'_>,
+    package: &Package,
+) -> anyhow::Result<bool> {
+    if input.allow_dirty(&package.name) {
+        return Ok(true);
+    }
+    // Cargo packages the workspace lockfile with the root package, so it rejects the registry
+    // copies that release-plz updated in the lockfile as uncommitted changes.
+    let is_root_package =
+        package.manifest_path.parent() == Some(input.metadata.workspace_root.as_path());
+    if !context.lockfile_updated || !is_root_package {
+        return Ok(false);
+    }
+    // Accept them only if the lockfile is the only uncommitted change, so that Cargo
+    // still rejects the other ones.
+    // Git runs in the workspace root, so `:!Cargo.lock` excludes the workspace lockfile.
+    let other_changes = repo.git(&["status", "--porcelain", "--", ":/", ":!Cargo.lock"])?;
+    Ok(other_changes.is_empty())
+}
+
 fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
     token: &Option<SecretString>,
     registry: Option<&str>,
+    allow_dirty: bool,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
     args.push("--color");
@@ -1357,7 +1389,7 @@ fn run_cargo_publish(
     if input.dry_run {
         args.push("--dry-run");
     }
-    if input.allow_dirty(&package.name) {
+    if allow_dirty {
         args.push("--allow-dirty");
     }
     if input.no_verify(&package.name) {
