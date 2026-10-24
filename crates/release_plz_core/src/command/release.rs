@@ -1362,7 +1362,16 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
 /// Return `true` if the files matching `pathspecs` have uncommitted changes.
 /// Git runs in the workspace root, so relative pathspecs are relative to it.
 fn has_uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<bool> {
-    let mut args = vec!["status", "--porcelain", "--"];
+    // List all the uncommitted changes, even the ones that `status.showUntrackedFiles` or
+    // `submodule.<name>.ignore` hide, so that release-plz doesn't let `cargo publish`
+    // accept changes it didn't see.
+    let mut args = vec![
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+        "--",
+    ];
     args.extend(pathspecs);
     let changes = repo.git(&args)?;
     Ok(!changes.is_empty())
