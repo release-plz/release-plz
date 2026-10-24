@@ -26,7 +26,7 @@ use crate::{
     },
     changelog_parser,
     git::forge::GitClient,
-    lock_compare::{self, WorkspaceLockfile},
+    lock_compare::WorkspaceLockfile,
     next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
@@ -626,8 +626,22 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         }
     }
 
+    // `release_packages` might update the lockfile, so save it to restore it later.
+    // Release-plz doesn't update a lockfile it can't read.
+    let lockfile_path = input.metadata.workspace_root.join("Cargo.lock");
+    let original_lockfile = fs_err::read(&lockfile_path).ok();
+
     // Don't return the error immediately because we want to go back to the previous commit if needed
     let release = release_packages(input, &project, &repo, &git_client).await;
+
+    // Restore the lockfile before going back to the previous commit, because `git checkout`
+    // refuses to overwrite the changed lockfile, or carries the changes over to the previous commit.
+    if let Some(original_lockfile) = original_lockfile
+        && fs_err::read(&lockfile_path)? != original_lockfile
+    {
+        fs_err::write(&lockfile_path, original_lockfile)
+            .context("failed to restore the lockfile")?;
+    }
 
     // Go back to the previous commit so that the user finds
     // the repository in the same commit they launched release-plz.
@@ -661,7 +675,8 @@ async fn release_packages(
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
     };
-    let mut registry_copies = OutdatedRegistryCopies::new(&input.metadata)?;
+    let lockfile = WorkspaceLockfile::load(&input.metadata)
+        .context("can't find outdated registry packages in the lockfile")?;
     for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, &mut context).await?
@@ -669,7 +684,9 @@ async fn release_packages(
             package_releases.push(pkg_release);
         }
         // Packages released later might depend on the released version of this package.
-        registry_copies.update(package)?;
+        if let Some(lockfile) = &lockfile {
+            update_outdated_registry_copies(input, lockfile, package)?;
+        }
     }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
@@ -703,7 +720,8 @@ impl ReleaseContext<'_> {
     }
 }
 
-/// Registry copies of workspace packages that the lockfile pins to older versions.
+/// Update the registry copies of the workspace `package` in the lockfile to the latest
+/// compatible version in the registry, which is the released version if `package` was published.
 ///
 /// Registry dependencies can depend on workspace packages. E.g. `release_plz_core` depends on
 /// `next_version` and on `git-cliff-core`, which depends on `next_version` from crates.io.
@@ -713,72 +731,32 @@ impl ReleaseContext<'_> {
 /// `cargo publish` replaces the path dependency of `release_plz_core` with a registry one, and
 /// Cargo can't lock two semver compatible versions of `next_version` from crates.io,
 /// so publishing `release_plz_core` fails until the lockfile is updated.
-///
-/// Release-plz updates the registry copies after releasing a package and restores the
-/// lockfile when this struct is dropped.
-struct OutdatedRegistryCopies<'a> {
-    metadata: &'a Metadata,
-    /// The lockfile where release-plz looks for the copies, if any.
-    lockfile: Option<WorkspaceLockfile>,
-    /// The lockfile before release-plz updated it.
-    original_lockfile: Option<String>,
-}
-
-impl<'a> OutdatedRegistryCopies<'a> {
-    fn new(metadata: &'a Metadata) -> anyhow::Result<Self> {
-        Ok(Self {
-            metadata,
-            lockfile: WorkspaceLockfile::load(metadata)
-                .context("can't find outdated registry packages in the lockfile")?,
-            original_lockfile: None,
-        })
+fn update_outdated_registry_copies(
+    input: &ReleaseRequest,
+    lockfile: &WorkspaceLockfile,
+    package: &Package,
+) -> anyhow::Result<()> {
+    let specs = lockfile.outdated_registry_copies(package);
+    if specs.is_empty() {
+        return Ok(());
     }
-
-    fn lockfile_path(&self) -> Utf8PathBuf {
-        lock_compare::workspace_lockfile_path(self.metadata)
+    debug!(
+        "updating registry copies of {} in the lockfile: {specs:?}",
+        package.name
+    );
+    let mut args = vec!["update"];
+    for spec in &specs {
+        args.extend(["--package", spec]);
     }
-
-    /// Update the registry copies of `package` to the latest compatible version
-    /// in the registry, which is the released version if `package` was published.
-    fn update(&mut self, package: &Package) -> anyhow::Result<()> {
-        let Some(lockfile) = &self.lockfile else {
-            return Ok(());
-        };
-        let specs = lockfile.outdated_registry_copies(package);
-        if specs.is_empty() {
-            return Ok(());
-        }
-        if self.original_lockfile.is_none() {
-            self.original_lockfile = Some(fs_err::read_to_string(self.lockfile_path())?);
-        }
-        debug!(
-            "updating registry copies of {} in the lockfile: {specs:?}",
-            package.name
-        );
-        let mut args = vec!["update"];
-        for spec in &specs {
-            args.extend(["--package", spec]);
-        }
-        let output = run_cargo(&self.metadata.workspace_root, &args)
-            .context("failed to run cargo to update the lockfile")?;
-        anyhow::ensure!(
-            output.status.success(),
-            "failed to update the registry copies of {} in the lockfile: {}",
-            package.name,
-            output.stderr
-        );
-        Ok(())
-    }
-}
-
-impl Drop for OutdatedRegistryCopies<'_> {
-    fn drop(&mut self) {
-        if let Some(lockfile) = &self.original_lockfile
-            && let Err(e) = fs_err::write(self.lockfile_path(), lockfile)
-        {
-            warn!("failed to restore the lockfile: {e:?}");
-        }
-    }
+    let output = run_cargo(&input.metadata.workspace_root, &args)
+        .context("failed to run cargo to update the lockfile")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to update the registry copies of {} in the lockfile: {}",
+        package.name,
+        output.stderr
+    );
+    Ok(())
 }
 
 async fn release_package_if_needed(
