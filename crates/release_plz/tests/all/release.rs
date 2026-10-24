@@ -240,7 +240,8 @@ async fn release_plz_can_do_backports() {
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
-    release_app_whose_registry_dependency_depends_on_shared(false).await;
+    let context = app_whose_registry_dependency_depends_on_shared(false).await;
+    assert_release_publishes_shared_and_app(&context);
 }
 
 #[tokio::test]
@@ -248,15 +249,32 @@ async fn release_publishes_package_whose_registry_dependency_depends_on_workspac
 async fn release_publishes_root_package_whose_registry_dependency_depends_on_workspace_package() {
     // Cargo packages the workspace lockfile with the root package, so `cargo publish` also
     // checks that the lockfile has no uncommitted changes.
-    release_app_whose_registry_dependency_depends_on_shared(true).await;
+    let context = app_whose_registry_dependency_depends_on_shared(true).await;
+    assert_release_publishes_shared_and_app(&context);
 }
 
-/// Check that `release` publishes the workspace packages `shared` and `app`, where `app`
-/// depends on `shared` and on the registry package `external`, which depends on `shared`
-/// from the registry.
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_rerun_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
+    let context = app_whose_registry_dependency_depends_on_shared(false).await;
+    // Like a previous `release` run that published and tagged `shared`, and then failed
+    // before publishing `app`.
+    context.run_cargo_publish("shared");
+    context.repo.tag_lightweight("shared-v0.1.1").unwrap();
+
+    // `release` doesn't release `shared` again, but it must still update the registry copy
+    // of `shared` that `external` uses to publish `app`.
+    let outcome = context.run_release().success();
+    outcome.stdout(release_stdout("app", "app-v0.1.0", "0.1.0"));
+}
+
+/// Create a workspace with the packages `shared` and `app`, where `app` depends on `shared`
+/// and on the registry package `external`, which depends on `shared` from the registry.
 /// E.g. `release_plz_core` depends on `next_version` and on `git-cliff-core`,
 /// which depends on `next_version` from crates.io.
-async fn release_app_whose_registry_dependency_depends_on_shared(app_is_root_package: bool) {
+///
+/// Like after merging a release PR, `app` requires `shared` 0.1.1, which isn't published yet.
+async fn app_whose_registry_dependency_depends_on_shared(app_is_root_package: bool) -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("shared").with_type(PackageType::Lib),
         TestPackage::new("external")
@@ -306,7 +324,12 @@ async fn release_app_whose_registry_dependency_depends_on_shared(app_is_root_pac
     // because `shared` 0.1.1 isn't published yet.
     context.run_cargo_check();
     context.push_all_changes("bump shared");
+    context
+}
 
+/// Check that `release` publishes `shared` and `app` in the workspace created by
+/// [`app_whose_registry_dependency_depends_on_shared`].
+fn assert_release_publishes_shared_and_app(context: &TestContext) {
     // `cargo publish` resolves `app`'s dependency on `shared` from the registry, so it
     // can only publish `app` if the lockfile lets `external` use `shared` 0.1.1, too.
     let outcome = context.run_release().success();
