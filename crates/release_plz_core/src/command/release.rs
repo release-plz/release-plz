@@ -233,7 +233,7 @@ impl ReleaseRequest {
                         .collect()
                 }
             })
-            .with_context(|| format!("can't determine the registries of package {}", package.name))
+            .context("can't determine the registries")
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
