@@ -1040,8 +1040,8 @@ async fn release_package(
         if let Err(e) = update_stale_registry_copies(input, repo, context) {
             warn!("can't update the stale registry copies in the lockfile: {e:#}");
         }
-        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let should_allow_dirty = should_allow_dirty(input, repo, context, release_info.package)?;
+        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
             release_info.package,
             input,
