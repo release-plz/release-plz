@@ -779,19 +779,17 @@ fn update_stale_registry_copies(
     let mut specs = vec![];
     let mut envs = vec![];
     for package in packages {
-        // Only look for stale copies in the registries where the package is published:
-        // packages with the same name from other registries are different packages.
-        for registry in input.registries(package)? {
-            let registry_specs = lockfile.stale_registry_copies(package, registry.source_id);
-            if registry_specs.is_empty() {
-                continue;
+        // If release-plz can't find the copies of a package, still update the copies of the
+        // other packages.
+        match package_stale_registry_copies(input, &lockfile, package) {
+            Ok(copies) => {
+                specs.extend(copies.specs);
+                envs.extend(copies.envs);
             }
-            specs.extend(registry_specs);
-            // The registry might require the token to read its index.
-            let registry_name = registry.name.as_deref();
-            if let Some(token) = input.find_registry_token(registry_name)? {
-                envs.push((cargo_registry_token_env_var(registry_name)?, token));
-            }
+            Err(e) => warn!(
+                "can't update the stale registry copies of package {} in the lockfile: {e:#}",
+                package.name
+            ),
         }
     }
     if specs.is_empty() {
@@ -815,6 +813,39 @@ fn update_stale_registry_copies(
         context.lockfile_updated = true;
     }
     Ok(())
+}
+
+/// Stale registry copies to update with `cargo update`.
+struct StaleRegistryCopies {
+    /// Package ID specs of the copies.
+    specs: Vec<String>,
+    /// Environment variables with the tokens of the registries of the copies.
+    envs: Vec<(String, SecretString)>,
+}
+
+/// Find the stale registry copies of the workspace `package` in the `lockfile`.
+fn package_stale_registry_copies(
+    input: &ReleaseRequest,
+    lockfile: &WorkspaceLockfile,
+    package: &Package,
+) -> anyhow::Result<StaleRegistryCopies> {
+    let mut specs = vec![];
+    let mut envs = vec![];
+    // Only look for stale copies in the registries where the package is published:
+    // packages with the same name from other registries are different packages.
+    for registry in input.registries(package)? {
+        let registry_specs = lockfile.stale_registry_copies(package, registry.source_id);
+        if registry_specs.is_empty() {
+            continue;
+        }
+        specs.extend(registry_specs);
+        // The registry might require the token to read its index.
+        let registry_name = registry.name.as_deref();
+        if let Some(token) = input.find_registry_token(registry_name)? {
+            envs.push((cargo_registry_token_env_var(registry_name)?, token));
+        }
+    }
+    Ok(StaleRegistryCopies { specs, envs })
 }
 
 async fn release_package_if_needed(
