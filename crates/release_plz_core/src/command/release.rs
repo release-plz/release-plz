@@ -206,14 +206,14 @@ impl ReleaseRequest {
 
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
     fn find_registry_token(&self, registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
-        let is_registry_same_as_request = self.registry.as_deref() == registry;
-        let token = is_registry_same_as_request
-            .then(|| self.token.clone())
-            .flatten()
-            // if the registry is not the same as the request or if there's no token in the request,
-            // try to find the token in the Cargo credentials file or in the environment variables.
-            .or(cargo_utils::registry_token(self.registry.as_deref())?);
-        Ok(token)
+        if self.registry.as_deref() == registry
+            && let Some(token) = &self.token
+        {
+            return Ok(Some(token.clone()));
+        }
+        // if the registry is not the same as the request or if there's no token in the request,
+        // try to find the token in the environment variables or in the Cargo credentials file.
+        cargo_utils::registry_token(registry)
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
