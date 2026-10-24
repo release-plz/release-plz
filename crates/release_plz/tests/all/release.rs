@@ -1,6 +1,275 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{release_stdout, test_context::TestContext};
+use crate::helpers::{
+    TEST_REGISTRY,
+    package::{PackageType, TestPackage},
+    release_stdout,
+    test_context::TestContext,
+};
+
+/// Neither package exists in the registry, including the optional dependency.
+async fn unpublished_workspace() -> TestContext {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("dependency").with_type(PackageType::Lib),
+        TestPackage::new("dependent").with_path_dependencies(vec!["../dependency"]),
+    ])
+    .await;
+    let root_manifest = context.repo_dir().join("Cargo.toml");
+    let mut root = cargo_utils::LocalManifest::try_new(&root_manifest).unwrap();
+    root.data["workspace"]["dependencies"]["dependency"] = toml_edit::value({
+        let mut dependency = toml_edit::InlineTable::new();
+        dependency.insert("path", "crates/dependency".into());
+        dependency.insert("version", "0.1.0".into());
+        dependency.insert("registry", TEST_REGISTRY.into());
+        dependency
+    });
+    root.write().unwrap();
+    let mut dependent =
+        cargo_utils::LocalManifest::try_new(&context.package_path("dependent").join("Cargo.toml"))
+            .unwrap();
+    dependent.data["dependencies"]["dependency"] = toml_edit::value({
+        let mut dependency = toml_edit::InlineTable::new();
+        dependency.insert("workspace", true.into());
+        dependency.insert("optional", true.into());
+        dependency
+    });
+    dependent.write().unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("use optional workspace dependency");
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_unpublished_workspace_dependencies() {
+    let context = unpublished_workspace().await;
+    for no_verify in [false, true] {
+        // Exercise registry selection from package manifests as well as --registry.
+        let mut command = if no_verify {
+            let mut command = context.release_command();
+            command.arg("--no-verify");
+            command
+        } else {
+            context.release_command_without_registry()
+        };
+        command
+            .arg("--dry-run")
+            .assert()
+            .success()
+            .stdout("{\"releases\":[]}\n");
+    }
+    for package in ["dependency", "dependent"] {
+        assert!(
+            context
+                .cargo_target_dir()
+                .join(format!("package/{package}-0.1.0/Cargo.toml"))
+                .exists()
+        );
+    }
+    let downloaded = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(["dependency", "dependent"], downloaded.path())
+        .download()
+        .await
+        .unwrap();
+    assert!(packages.is_empty(), "a dry run must not upload packages");
+    assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
+    context.repo.is_clean().unwrap();
+
+    fs_err::write(
+        context.package_path("dependent").join("src/main.rs"),
+        "compile_error!(\"verification must still run\");",
+    )
+    .unwrap();
+    context.push_all_changes("break dependent compilation");
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("verification must still run"), "{stderr}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_preserves_package_selection() {
+    let context = TestContext::new_workspace(&[
+        "selected",
+        "selected-too",
+        "published",
+        "tagged",
+        "disabled",
+        "unpublished",
+        "git-only",
+    ])
+    .await;
+    context.run_cargo_publish("published");
+    context.repo.tag_lightweight("tagged-v0.1.0").unwrap();
+    // Including any skipped package in Cargo's batch would fail verification.
+    for name in ["published", "tagged", "disabled", "unpublished", "git-only"] {
+        fs_err::write(
+            context.package_path(name).join("src/main.rs"),
+            "compile_error!(\"this package must not be verified\");",
+        )
+        .unwrap();
+    }
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "disabled"
+release = false
+[[package]]
+name = "unpublished"
+publish = false
+[[package]]
+name = "git-only"
+git_only = true
+"#,
+    );
+    context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout("{\"releases\":[]}\n");
+    for name in ["selected", "selected-too"] {
+        assert!(
+            context
+                .cargo_target_dir()
+                .join(format!("package/{name}-0.1.0/Cargo.toml"))
+                .exists()
+        );
+    }
+    assert_eq!(
+        context.repo.git(&["tag", "--list"]).unwrap(),
+        "tagged-v0.1.0"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_preserves_per_package_options() {
+    let context = TestContext::new_workspace(&["one", "two", "unchecked"]).await;
+    for (name, feature) in [("one", "only_one"), ("two", "only_two")] {
+        let manifest_path = context.package_path(name).join("Cargo.toml");
+        let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+        manifest.data["features"][feature] = toml_edit::value(toml_edit::Array::new());
+        manifest.write().unwrap();
+        fs_err::write(
+            context.package_path(name).join("src/main.rs"),
+            format!(
+                "#[cfg(not(feature = {feature:?}))]\ncompile_error!(\"missing feature\");\nfn main() {{}}"
+            ),
+        )
+        .unwrap();
+    }
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "one"
+publish_features = ["only_one"]
+[[package]]
+name = "two"
+publish_all_features = true
+[[package]]
+name = "unchecked"
+publish_no_verify = true
+publish_allow_dirty = true
+"#,
+    );
+    fs_err::write(
+        context.package_path("unchecked").join("src/main.rs"),
+        "compile_error!(\"do not compile this dirty package\");",
+    )
+    .unwrap();
+    context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .success();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_preserves_per_package_registries() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    let other_registry = TestContext::new().await;
+    context.append_cargo_config(&format!(
+        "\n[registries.other]\nindex = {:?}\n",
+        other_registry.gitea.cargo_index_url()
+    ));
+    let manifest_path = context.package_path("two").join("Cargo.toml");
+    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+    let mut registries = toml_edit::Array::new();
+    registries.push("other");
+    manifest.data["package"]["publish"] = toml_edit::value(registries);
+    manifest.write().unwrap();
+    context.push_all_changes("use different registries");
+    context
+        .release_command_without_registry()
+        .arg("--dry-run")
+        .assert()
+        .success();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_explains_incompatible_dependency_options() {
+    let context = unpublished_workspace().await;
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "dependency"
+publish_no_verify = true
+"#,
+    );
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("failed to dry-run publishing dependent"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("same dry-run batch"), "{stderr}");
+    assert!(stderr.contains("publish_no_verify"), "{stderr}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_requires_recent_cargo_for_batches() {
+    let context = unpublished_workspace().await;
+    let wrapper_dir = Utf8TempDir::new().unwrap();
+    let cargo = wrapper_dir.path().join("cargo");
+    fs_err::write(
+        &cargo,
+        r#"#!/bin/sh
+if [ "$1" = --version ]; then
+    echo 'cargo 1.89.0 (c24e10642 2025-06-23)'
+    exit 0
+fi
+exec "$REAL_CARGO" "$@"
+"#,
+    )
+    .unwrap();
+    crate::helpers::make_executable(&cargo);
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .env("CARGO", &cargo)
+        .env("REAL_CARGO", env!("CARGO"))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("require Cargo 1.90 or newer (found 1.89.0)"),
+        "{stderr}"
+    );
+}
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]

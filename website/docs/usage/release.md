@@ -27,6 +27,24 @@ If all packages are already published, the `release-plz release` command does no
 
 To learn more, run `release-plz release --help`.
 
+## Dry runs
+
+Run `release-plz release --dry-run` to check a release without uploading packages
+or creating tags and git releases.
+
+Release-plz checks unpublished workspace packages together with Cargo, so a package
+can depend on a version that would be published earlier in the same release.
+Checking multiple packages together requires Cargo 1.90 or newer.
+Only packages selected for publication are included; already published packages
+and packages excluded by the release-plz configuration are skipped.
+
+Packages are checked in separate batches when their registry or any of these
+settings differ: `publish_allow_dirty`, `publish_no_verify`, `publish_features`,
+and `publish_all_features`. An unpublished workspace dependency must be in the
+same batch as its dependent packages. Give those packages matching settings to
+check them together. `--no-verify` skips compilation but still requires dependency
+resolution during packaging.
+
 ## Git Forges
 
 GitHub is the default release-plz forge. Both github.com and self-hosted

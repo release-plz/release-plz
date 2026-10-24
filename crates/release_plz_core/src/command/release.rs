@@ -17,6 +17,8 @@ use secrecy::SecretString;
 use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
 
+mod dry_run;
+
 use crate::{
     DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
     ReleaseMetadataBuilder, Remote,
@@ -659,6 +661,7 @@ async fn release_packages(
         git_client,
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
+        dry_run: dry_run::PublishBatches::default(),
     };
     for package in packages {
         if let Some(pkg_release) =
@@ -667,6 +670,7 @@ async fn release_packages(
             package_releases.push(pkg_release);
         }
     }
+    context.dry_run.publish(input)?;
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
     {
@@ -685,6 +689,8 @@ struct ReleaseContext<'a> {
     pr_authors: HashMap<u64, String>,
     /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+    /// Dry runs must package unpublished workspace dependencies together.
+    dry_run: dry_run::PublishBatches,
 }
 
 impl ReleaseContext<'_> {
@@ -751,6 +757,16 @@ async fn release_package_if_needed(
 
             if pkg_is_published {
                 info!("{} {}: already published", package.name, package.version);
+                continue;
+            }
+            if input.dry_run {
+                context.dry_run.add(package, registry.name, input)?;
+                log_dry_run_info(
+                    &release_info,
+                    true,
+                    input.is_git_tag_enabled(&package.name),
+                    input.is_git_release_enabled(&package.name),
+                );
                 continue;
             }
             let package_was_released_at_index = release_package(
@@ -915,7 +931,7 @@ async fn release_package(
     if should_publish {
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
-            release_info.package,
+            std::slice::from_ref(release_info.package),
             input,
             workspace_root,
             &publish_token,
@@ -1231,22 +1247,38 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
 }
 
 fn run_cargo_publish(
-    package: &Package,
+    packages: &[Package],
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
     token: &Option<SecretString>,
     registry: Option<&str>,
 ) -> anyhow::Result<CmdOutput> {
+    // All packages in a batch have the same publish options.
+    let package = &packages[0];
+    let manifest = if packages.len() == 1 {
+        package.manifest_path.clone()
+    } else {
+        input.local_manifest()
+    };
     let mut args = vec!["publish"];
     args.push("--color");
     args.push("always");
     args.push("--manifest-path");
-    args.push(package.manifest_path.as_ref());
+    args.push(manifest.as_ref());
     // We specify the package name to allow publishing root packages.
     // See https://github.com/release-plz/release-plz/issues/1545
-    args.push("--package");
-    args.push(&package.name);
-    if let Some(registry) = &input.registry {
+    for package in packages {
+        args.push("--package");
+        args.push(&package.name);
+    }
+    // A dry-run batch can contain packages whose manifests select the registry.
+    // Select that registry explicitly for the entire batch.
+    let publish_registry = if input.dry_run {
+        registry
+    } else {
+        input.registry.as_deref()
+    };
+    if let Some(registry) = publish_registry {
         args.push("--registry");
         args.push(registry);
     }
