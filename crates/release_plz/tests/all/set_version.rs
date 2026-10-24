@@ -427,6 +427,74 @@ fn set_version_updates_shared_workspace_changelog_once() {
     );
 }
 
+#[test]
+fn set_version_resolves_changelog_path_from_workspace_root() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    // Run from outside the workspace: the `changelog_path = "./CHANGELOG.md"` of `one`
+    // must still point to the workspace changelog, not to the current directory.
+    run_set_version(
+        project_dir.parent().unwrap(),
+        "--manifest-path set-version-in-workspace/Cargo.toml --config set-version-in-workspace/release-plz.toml one@0.1.1",
+    );
+
+    let changelog = fs_err::read_to_string(project_dir.join(CHANGELOG_FILENAME)).unwrap();
+    assert!(changelog.contains("## [0.1.1] - 2024-05-16"), "{changelog}");
+}
+
+#[test]
+fn set_version_uses_workspace_changelog_path() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    // `one` has no `[[package]]` entry, so it uses the workspace changelog path,
+    // while `two` overrides it.
+    fs_err::write(
+        project_dir.join("release-plz.toml"),
+        r#"
+[workspace]
+changelog_path = "./CHANGELOG.md"
+
+[[package]]
+name = "two"
+changelog_path = "crates/two/CHANGELOG.md"
+"#,
+    )
+    .unwrap();
+
+    run_set_version(&project_dir, "one@0.1.1 two@0.3.0");
+
+    let one_changelog = fs_err::read_to_string(project_dir.join(CHANGELOG_FILENAME)).unwrap();
+    assert!(
+        one_changelog.contains("## [0.1.1] - 2024-05-16"),
+        "{one_changelog}"
+    );
+    let two_changelog =
+        fs_err::read_to_string(project_dir.join("crates/two").join(CHANGELOG_FILENAME)).unwrap();
+    assert!(
+        two_changelog.contains("## [0.3.0] - 2024-05-16"),
+        "{two_changelog}"
+    );
+}
+
+#[test]
+fn set_version_skips_changelog_when_changelog_update_is_disabled() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    fs_err::write(
+        project_dir.join("release-plz.toml"),
+        "[workspace]\nchangelog_update = false\n",
+    )
+    .unwrap();
+    let two_dir = project_dir.join("crates/two");
+    let changelog_path = two_dir.join(CHANGELOG_FILENAME);
+    let changelog = fs_err::read_to_string(&changelog_path).unwrap();
+
+    run_set_version(&project_dir, "two@0.3.0");
+
+    assert_eq!(fs_err::read_to_string(changelog_path).unwrap(), changelog);
+    assert_eq!(
+        read_manifest(&two_dir)["package"]["version"].as_str(),
+        Some("0.3.0")
+    );
+}
+
 // Keep the returned temporary directory alive for the duration of the test.
 fn copy_fixture(name: &str) -> (Utf8TempDir, Utf8PathBuf) {
     let fixture_dir = Utf8Path::new("../../tests/fixtures").join(name);

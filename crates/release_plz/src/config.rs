@@ -95,15 +95,15 @@ impl Config {
 
     pub fn fill_set_version_config(
         &self,
-        set_version_request: &mut SetVersionRequest,
-    ) -> anyhow::Result<()> {
-        for package in &self.package {
-            if let Some(changelog_path) = package.config.common.changelog_path.clone() {
-                let changelog_path = to_utf8_pathbuf(changelog_path)?;
-                set_version_request.set_changelog_path(&package.name, changelog_path);
-            }
+        set_version_request: SetVersionRequest,
+    ) -> anyhow::Result<SetVersionRequest> {
+        let packages = self.merged_packages()?;
+        let mut set_version_request = set_version_request
+            .with_default_package_config(self.workspace.packages_defaults.clone().into());
+        for (package, config) in packages {
+            set_version_request = set_version_request.with_package_config(package, config.into());
         }
-        Ok(())
+        Ok(set_version_request)
     }
 
     pub fn fill_release_config(
