@@ -7,7 +7,7 @@ use release_plz_core::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashSet, path::PathBuf, time::Duration};
 use url::Url;
 
 use crate::changelog_config::ChangelogCfg;
@@ -27,17 +27,48 @@ pub struct Config {
     /// # Package
     /// Package-specific configuration. This overrides `workspace`.
     /// Not all settings of `workspace` can be overridden.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_unique_packages")]
     package: Vec<PackageSpecificConfigWithName>,
 }
 
+fn deserialize_unique_packages<'de, D>(
+    deserializer: D,
+) -> Result<Vec<PackageSpecificConfigWithName>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let packages = Vec::<PackageSpecificConfigWithName>::deserialize(deserializer)?;
+    let mut names = HashSet::new();
+    for package in &packages {
+        if !names.insert(package.name.as_str()) {
+            return Err(serde::de::Error::custom(format!(
+                "package `{}` is configured more than once",
+                package.name
+            )));
+        }
+    }
+    Ok(packages)
+}
+
 impl Config {
-    /// Package-specific configurations.
-    /// Returns `<package name, package config>`.
-    fn packages(&self) -> HashMap<&str, &PackageSpecificConfig> {
+    /// Package-specific configurations merged with the workspace defaults.
+    ///
+    /// Returns an error if the `git_only` and `publish` settings are invalid
+    /// in the workspace defaults or in any merged package configuration.
+    /// The workspace defaults are validated even if no package is configured.
+    fn merged_packages(&self) -> anyhow::Result<Vec<(&str, PackageSpecificConfig)>> {
+        let defaults = &self.workspace.packages_defaults;
+        validate_git_only_settings(defaults.git_only, defaults.publish)
+            .context("Wrong workspace context")?;
+
         self.package
             .iter()
-            .map(|p| (p.name.as_str(), &p.config))
+            .map(|p| {
+                let config = p.config.clone().merge(defaults.clone());
+                validate_git_only_settings(config.common.git_only, config.common.publish)
+                    .with_context(|| format!("Wrong configuration of package {}", p.name))?;
+                Ok((p.name.as_str(), config))
+            })
             .collect()
     }
 
@@ -46,32 +77,14 @@ impl Config {
         is_changelog_update_disabled: bool,
         update_request: UpdateRequest,
     ) -> anyhow::Result<UpdateRequest> {
-        // Validate workspace defaults (applies to all packages without specific config)
-        validate_git_only_settings(
-            self.workspace.packages_defaults.git_only,
-            self.workspace.packages_defaults.publish,
-        )
-        .context("Wrong workspace context")?;
-
+        let packages = self.merged_packages()?;
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
             default_update_config.changelog_update = false.into();
         }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
-        for (package, config) in self.packages() {
-            let mut update_config = config.clone();
-            update_config = update_config.merge(self.workspace.packages_defaults.clone());
-
-            // Effective git_only includes workspace-level setting
-            let effective_git_only = update_config
-                .common
-                .git_only
-                .or(self.workspace.packages_defaults.git_only);
-
-            validate_git_only_settings(effective_git_only, update_config.common.publish)
-                .with_context(|| format!("Wrong configuration of package {package}"))?;
-
+        for (package, mut update_config) in packages {
             if is_changelog_update_disabled {
                 update_config.common.changelog_update = false.into();
             }
@@ -84,10 +97,10 @@ impl Config {
         &self,
         set_version_request: &mut SetVersionRequest,
     ) -> anyhow::Result<()> {
-        for (package, config) in self.packages() {
-            if let Some(changelog_path) = config.common.changelog_path.clone() {
+        for package in &self.package {
+            if let Some(changelog_path) = package.config.common.changelog_path.clone() {
                 let changelog_path = to_utf8_pathbuf(changelog_path)?;
-                set_version_request.set_changelog_path(package, changelog_path);
+                set_version_request.set_changelog_path(&package.name, changelog_path);
             }
         }
         Ok(())
@@ -99,13 +112,7 @@ impl Config {
         no_verify: bool,
         release_request: ReleaseRequest,
     ) -> anyhow::Result<ReleaseRequest> {
-        // Validate workspace defaults (applies to all packages without specific config)
-        validate_git_only_settings(
-            self.workspace.packages_defaults.git_only,
-            self.workspace.packages_defaults.publish,
-        )
-        .context("Wrong workspace context")?;
-
+        let packages = self.merged_packages()?;
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
             default_config.publish_no_verify = Some(true);
@@ -116,19 +123,7 @@ impl Config {
         let mut release_request =
             release_request.with_default_package_config(default_config.into());
 
-        for (package, config) in self.packages() {
-            let mut release_config = config.clone();
-            release_config = release_config.merge(self.workspace.packages_defaults.clone());
-
-            // Effective git_only includes workspace-level setting
-            let effective_git_only = release_config
-                .common
-                .git_only
-                .or(self.workspace.packages_defaults.git_only);
-
-            validate_git_only_settings(effective_git_only, release_config.common.publish)
-                .with_context(|| format!("Wrong configuration of package {package}"))?;
-
+        for (package, mut release_config) in packages {
             if no_verify {
                 release_config.common.publish_no_verify = Some(true);
             }

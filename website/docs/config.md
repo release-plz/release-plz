@@ -808,6 +808,10 @@ For example, the changelog of the `release-plz` package of this repository
 includes commits of the `release_plz_core` package, because they affect the
 `release-plz` package, too.
 
+The included commits release the package, but bump its version at most by a
+patch (a prerelease increment for prerelease versions), as when a local
+dependency of the package changes.
+
 Example:
 
 ```toml
