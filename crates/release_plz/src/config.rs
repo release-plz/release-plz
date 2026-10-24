@@ -142,15 +142,19 @@ impl Config {
     /// A `publish` field that is unset or inherited from the `[workspace]` section isn't checked:
     /// release-plz doesn't publish packages that Cargo can't publish anyway.
     pub fn check_publish_fields(&self, metadata: &cargo_metadata::Metadata) -> anyhow::Result<()> {
-        for package in metadata.workspace_packages() {
-            let is_publish_explicitly_enabled = self
-                .package
+        let workspace_packages = metadata.workspace_packages();
+        let explicitly_published = self
+            .package
+            .iter()
+            .filter(|p| p.config.common.publish == Some(true));
+        for package_config in explicitly_published {
+            let is_unpublishable = workspace_packages
                 .iter()
-                .any(|p| p.name == package.name.as_str() && p.config.common.publish == Some(true));
+                .any(|p| p.name.as_str() == package_config.name && !p.is_publishable());
             anyhow::ensure!(
-                package.is_publishable() || !is_publish_explicitly_enabled,
+                !is_unpublishable,
                 "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
-                package.name
+                package_config.name
             );
         }
         Ok(())
