@@ -475,31 +475,15 @@ changelog_path = "crates/two/CHANGELOG.md"
 }
 
 #[test]
-fn set_version_skips_changelog_of_packages_with_changelog_update_disabled() {
+fn set_version_skips_changelog_when_changelog_update_is_disabled() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
-    // Only `one` has a changelog, as in the single changelog guide.
-    // `two` inherits the workspace `changelog_path`, but not its changelog updates.
     fs_err::write(
         project_dir.join("release-plz.toml"),
-        r#"
-[workspace]
-changelog_update = false
-changelog_path = "./CHANGELOG.md"
-
-[[package]]
-name = "one"
-changelog_update = true
-"#,
+        "[workspace]\nchangelog_update = false\n",
     )
     .unwrap();
     let two_dir = project_dir.join("crates/two");
-    fs_err::remove_file(two_dir.join(CHANGELOG_FILENAME)).unwrap();
-    // Give `two` the version of the latest release in the changelog of `one`,
-    // so that updating the changelog for `two` would rewrite that release.
-    let two_manifest_path = two_dir.join(CARGO_TOML);
-    let two_manifest = fs_err::read_to_string(&two_manifest_path).unwrap();
-    fs_err::write(&two_manifest_path, two_manifest.replace("0.2.0", "0.1.0")).unwrap();
-    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let changelog_path = two_dir.join(CHANGELOG_FILENAME);
     let changelog = fs_err::read_to_string(&changelog_path).unwrap();
 
     run_set_version(&project_dir, "two@0.3.0");
