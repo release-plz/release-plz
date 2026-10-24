@@ -21,11 +21,12 @@ use crate::{
     DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
     ReleaseMetadataBuilder, Remote,
     cargo::{
-        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
+        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo, run_cargo_with_env,
         wait_until_published,
     },
     changelog_parser,
     git::forge::GitClient,
+    lock_compare,
     next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
@@ -660,12 +661,15 @@ async fn release_packages(
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
     };
+    let mut registry_copies = OutdatedRegistryCopies::new(&input.metadata, &packages)?;
     for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, &mut context).await?
         {
             package_releases.push(pkg_release);
         }
+        // Packages released later might depend on the released version of this package.
+        registry_copies.update(&package.name)?;
     }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
@@ -696,6 +700,76 @@ impl ReleaseContext<'_> {
             }
         };
         Ok(author)
+    }
+}
+
+/// Registry copies of workspace packages that the lockfile pins to older versions.
+///
+/// Registry dependencies can depend on workspace packages. E.g. `release_plz_core` depends on
+/// `next_version` and on `git-cliff-core`, which depends on `next_version` from crates.io.
+/// The release PR bumps `next_version` to a semver compatible version and makes
+/// `release_plz_core` require it, but the lockfile still pins the `next_version` dependency
+/// of `git-cliff-core` to the previous version, because the new one isn't published yet.
+/// `cargo publish` replaces the path dependency of `release_plz_core` with a registry one, and
+/// Cargo can't lock two semver compatible versions of `next_version` from crates.io,
+/// so publishing `release_plz_core` fails until the lockfile is updated.
+///
+/// Release-plz updates the registry copies after releasing a package and restores the
+/// lockfile when this struct is dropped.
+struct OutdatedRegistryCopies<'a> {
+    metadata: &'a Metadata,
+    /// Package ID specs of the copies, by workspace package name.
+    copies: HashMap<String, Vec<String>>,
+    /// The lockfile before release-plz updated it.
+    original_lockfile: Option<String>,
+}
+
+impl<'a> OutdatedRegistryCopies<'a> {
+    fn new(metadata: &'a Metadata, packages: &[&Package]) -> anyhow::Result<Self> {
+        Ok(Self {
+            metadata,
+            copies: lock_compare::outdated_registry_copies(metadata, packages)
+                .context("can't find outdated registry packages in the lockfile")?,
+            original_lockfile: None,
+        })
+    }
+
+    fn lockfile_path(&self) -> Utf8PathBuf {
+        lock_compare::workspace_lockfile_path(self.metadata)
+    }
+
+    /// Update the registry copies of `package` to the latest compatible version
+    /// in the registry, which is the released version if `package` was published.
+    fn update(&mut self, package: &str) -> anyhow::Result<()> {
+        let Some(specs) = self.copies.remove(package) else {
+            return Ok(());
+        };
+        if self.original_lockfile.is_none() {
+            self.original_lockfile = Some(fs_err::read_to_string(self.lockfile_path())?);
+        }
+        debug!("updating registry copies of {package} in the lockfile: {specs:?}");
+        let mut args = vec!["update"];
+        for spec in &specs {
+            args.extend(["--package", spec]);
+        }
+        let output = run_cargo(&self.metadata.workspace_root, &args)
+            .context("failed to run cargo to update the lockfile")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "failed to update the registry copies of {package} in the lockfile: {}",
+            output.stderr
+        );
+        Ok(())
+    }
+}
+
+impl Drop for OutdatedRegistryCopies<'_> {
+    fn drop(&mut self) {
+        if let Some(lockfile) = &self.original_lockfile
+            && let Err(e) = fs_err::write(self.lockfile_path(), lockfile)
+        {
+            warn!("failed to restore the lockfile: {e:?}");
+        }
     }
 }
 
