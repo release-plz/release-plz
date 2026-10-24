@@ -736,7 +736,8 @@ fn update_outdated_registry_copies(
     package: &Package,
     context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<()> {
-    if context.lockfile_load_failed {
+    // Release-plz doesn't publish the new version of packages whose publishing is disabled.
+    if !input.is_publish_enabled(&package.name) || context.lockfile_load_failed {
         return Ok(());
     }
     // Load the lockfile from disk, because updating the copies of the previous packages can
@@ -753,7 +754,18 @@ fn update_outdated_registry_copies(
             return Ok(());
         }
     };
-    let specs = lockfile.outdated_registry_copies(package);
+    let registry_indexes = registry_indexes(
+        package,
+        input.registry.clone(),
+        &input.metadata.workspace_root,
+    )
+    .context("can't determine registry indexes")?;
+    // Only look for copies in the registries where the package is published:
+    // packages with the same name from other registries are different packages.
+    let mut specs = vec![];
+    for registry in registry_indexes {
+        specs.extend(lockfile.outdated_registry_copies(package, registry.source_id));
+    }
     if specs.is_empty() {
         return Ok(());
     }

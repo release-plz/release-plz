@@ -45,6 +45,8 @@ pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
+    /// The source ID of the registry before source replacement, as recorded in the lockfile.
+    pub source_id: SourceId,
     /// Whether Cargo resolves dependencies from a remote mirror, i.e. a remote registry
     /// other than the one where `cargo publish` confirms the package, which may lag behind.
     pub has_remote_mirror: bool,
@@ -68,6 +70,7 @@ impl CargoRegistry {
             dependency_source.is_remote_registry() && dependency_source != publish_source;
         Ok(Self {
             name,
+            source_id,
             has_remote_mirror,
         })
     }

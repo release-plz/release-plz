@@ -6,7 +6,7 @@ use cargo::{
     resolver::Resolve,
     util::{CanonicalUrl, VersionExt as _},
     workspace::{
-        PackageId, Workspace,
+        PackageId, SourceId, Workspace,
         dependency::{DepKind, Patch},
     },
 };
@@ -65,19 +65,20 @@ impl WorkspaceLockfile {
         }
     }
 
-    /// Find the registry packages that are older but semver compatible versions of the
-    /// workspace `package`.
+    /// Find the packages of the `registry` that are older but semver compatible versions of
+    /// the workspace `package`.
     /// They come from registry dependencies that depend on the workspace package.
     ///
     /// Return their package ID specs.
     pub(crate) fn outdated_registry_copies(
         &self,
         package: &cargo_metadata::Package,
+        registry: SourceId,
     ) -> Vec<String> {
         self.dependencies
             .keys()
             .filter(|id| {
-                id.source_id().is_registry()
+                id.source_id() == registry
                     && id.name().as_str() == package.name.as_str()
                     && id.version() < &package.version
                     && id.version().to_caret_req().matches(&package.version)
