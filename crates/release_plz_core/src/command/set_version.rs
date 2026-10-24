@@ -9,8 +9,8 @@ use cargo_metadata::{
 use cargo_utils::{LocalManifest, canonical_local_manifest, workspace_members};
 
 use crate::{
-    CHANGELOG_FILENAME, PackagePath as _, PackageUpdateConfig, UpdateConfig,
-    changelog_parser::last_release_from_str, update_request::PackagesConfig,
+    PackagePath as _, PackageUpdateConfig, UpdateConfig, changelog_parser::last_release_from_str,
+    update_request::PackagesConfig,
 };
 
 #[derive(Debug)]
@@ -186,16 +186,15 @@ fn update_package_changelog(
     if !config.should_update_changelog() {
         return Ok(());
     }
-    let package_path = package.package_path()?;
-    let changelog_path = config
-        .generic
-        .changelog_path
-        .as_ref()
-        .or(change.changelog_path.as_ref())
-        .map_or_else(
-            || package_path.join(CHANGELOG_FILENAME),
-            |path| input.metadata.workspace_root.join(path),
-        );
+    let changelog_path = crate::changelog_path(
+        package,
+        &input.metadata.workspace_root,
+        config
+            .generic
+            .changelog_path
+            .as_deref()
+            .or(change.changelog_path.as_deref()),
+    );
     if updating_workspace {
         let resolved_path = crate::fs_utils::canonicalize_utf8(&changelog_path)
             .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;

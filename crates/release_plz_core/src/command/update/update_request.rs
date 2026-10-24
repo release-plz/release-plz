@@ -10,9 +10,7 @@ use cargo_metadata::{
 };
 use regex::Regex;
 
-use crate::{
-    ChangelogRequest, ForgeType, GitClient, GitForge, PackagePath as _, RepoUrl, fs_utils,
-};
+use crate::{ChangelogRequest, ForgeType, GitClient, GitForge, RepoUrl, fs_utils};
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
 
@@ -78,16 +76,11 @@ impl UpdateRequest {
 
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
-        config
-            .generic
-            .changelog_path
-            .map(|p| self.local_manifest.parent().unwrap().join(p))
-            .unwrap_or_else(|| {
-                package
-                    .package_path()
-                    .expect("can't determine package path")
-                    .join(crate::CHANGELOG_FILENAME)
-            })
+        crate::changelog_path(
+            package,
+            self.local_manifest.parent().unwrap(),
+            config.generic.changelog_path.as_deref(),
+        )
     }
 
     pub fn git_client(&self) -> anyhow::Result<Option<GitClient>> {

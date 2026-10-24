@@ -18,8 +18,8 @@ use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
-    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
+    DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote,
     cargo::{
         CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
         wait_until_published,
@@ -141,15 +141,11 @@ impl ReleaseRequest {
 
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
-        config
-            .changelog_path
-            .map(|p| self.metadata.workspace_root.join(p))
-            .unwrap_or_else(|| {
-                package
-                    .package_path()
-                    .expect("can't determine package path")
-                    .join(CHANGELOG_FILENAME)
-            })
+        crate::changelog_path(
+            package,
+            &self.metadata.workspace_root,
+            config.changelog_path.as_deref(),
+        )
     }
 
     /// Return true if the package must be published to a cargo registry.
@@ -1350,6 +1346,7 @@ mod tests {
     use fake_package::{FakePackage, metadata::fake_metadata};
 
     use super::*;
+    use crate::CHANGELOG_FILENAME;
 
     // Trick to avoid the tests to run concurrently.
     // It's used to not affect environment variables used in other tests
