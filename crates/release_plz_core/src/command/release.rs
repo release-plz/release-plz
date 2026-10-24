@@ -712,8 +712,8 @@ struct ReleaseContext<'a> {
     /// Packages whose stale registry copies, if any, release-plz didn't update in the
     /// lockfile yet.
     packages_with_stale_copies: Vec<&'a Package>,
-    /// Whether release-plz updated stale registry copies, so the lockfile might differ from
-    /// the committed one.
+    /// Whether release-plz updated stale registry copies in a lockfile without uncommitted
+    /// changes, so that all the uncommitted changes of the lockfile are release-plz's.
     lockfile_updated: bool,
 }
 
@@ -743,6 +743,7 @@ impl ReleaseContext<'_> {
 /// `cargo publish` needs them.
 fn update_stale_registry_copies(
     input: &ReleaseRequest,
+    repo: &Repo,
     context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<()> {
     let packages = std::mem::take(&mut context.packages_with_stale_copies);
@@ -781,6 +782,8 @@ fn update_stale_registry_copies(
     if specs.is_empty() {
         return Ok(());
     }
+    // Cargo must still reject the uncommitted changes of the lockfile that release-plz didn't make.
+    let was_lockfile_committed = is_lockfile_committed(repo)?;
     debug!("updating stale registry copies in the lockfile: {specs:?}");
     let mut args = vec!["update"];
     for spec in &specs {
@@ -793,7 +796,10 @@ fn update_stale_registry_copies(
         "cargo update failed: {}",
         output.stderr
     );
-    context.lockfile_updated = true;
+    // `cargo update` doesn't change the lockfile if the registry has no newer compatible versions.
+    if was_lockfile_committed && !is_lockfile_committed(repo)? {
+        context.lockfile_updated = true;
+    }
     Ok(())
 }
 
@@ -1015,7 +1021,7 @@ async fn release_package(
         // Only some workspaces have stale registry copies, so don't fail the release if
         // release-plz can't update them, e.g. because the Cargo library bundled in release-plz
         // can't load the lockfile. If `cargo publish` needs the update, it fails with Cargo's error.
-        if let Err(e) = update_stale_registry_copies(input, context) {
+        if let Err(e) = update_stale_registry_copies(input, repo, context) {
             warn!("can't update the stale registry copies in the lockfile: {e:#}");
         }
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
@@ -1335,6 +1341,13 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
         Some(registry) => cargo_utils::cargo_registries_token_env_var_name(registry),
         None => Ok("CARGO_REGISTRY_TOKEN".to_string()),
     }
+}
+
+/// Return `true` if the workspace lockfile has no uncommitted changes.
+fn is_lockfile_committed(repo: &Repo) -> anyhow::Result<bool> {
+    // Git runs in the workspace root, so `Cargo.lock` is the workspace lockfile.
+    let changes = repo.git(&["status", "--porcelain", "--", "Cargo.lock"])?;
+    Ok(changes.is_empty())
 }
 
 /// Return `true` if `cargo publish` must accept uncommitted changes.
