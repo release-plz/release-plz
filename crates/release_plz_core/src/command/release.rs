@@ -675,8 +675,13 @@ async fn release_packages(
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
     };
-    let lockfile = WorkspaceLockfile::load(&input.metadata)
-        .context("can't find outdated registry packages in the lockfile")?;
+    // Only some workspaces have registry copies to update, so don't fail the release if the
+    // Cargo library bundled in release-plz can't load the workspace, e.g. because the lockfile
+    // or the manifests need a newer Cargo version.
+    let lockfile = WorkspaceLockfile::load(&input.metadata).unwrap_or_else(|e| {
+        warn!("can't update the registry copies of workspace packages in the lockfile: {e:#}");
+        None
+    });
     for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, &mut context).await?
