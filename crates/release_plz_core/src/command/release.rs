@@ -26,7 +26,7 @@ use crate::{
     },
     changelog_parser,
     git::forge::GitClient,
-    lock_compare::WorkspaceLockfile,
+    lock_compare::{WorkspaceLockfile, workspace_lockfile_path},
     next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
@@ -650,7 +650,7 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
 
     // `release_packages` might update the lockfile, so save it to restore it later.
     // Release-plz doesn't update a lockfile it can't read.
-    let lockfile_path = input.metadata.workspace_root.join("Cargo.lock");
+    let lockfile_path = workspace_lockfile_path(&input.metadata);
     let original_lockfile = fs_err::read(&lockfile_path).ok();
 
     // Don't return the error immediately because we want to go back to the previous commit if needed

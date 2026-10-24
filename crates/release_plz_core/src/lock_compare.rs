@@ -221,7 +221,7 @@ fn workspace_lock_dependencies(
     }))
 }
 
-fn workspace_lockfile_path(metadata: &Metadata) -> Utf8PathBuf {
+pub(crate) fn workspace_lockfile_path(metadata: &Metadata) -> Utf8PathBuf {
     metadata.workspace_root.join("Cargo.lock")
 }
 
