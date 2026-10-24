@@ -213,6 +213,28 @@ impl ReleaseRequest {
         cargo_utils::registry_token(registry)
     }
 
+    /// Get the registries where the `package` should be published.
+    /// If [`Self::registry`] is specified, it takes precedence over the `publish` field
+    /// of the package manifest.
+    fn registries(&self, package: &Package) -> anyhow::Result<Vec<CargoRegistry>> {
+        let registries = self
+            .registry
+            .clone()
+            .map(|r| vec![r])
+            .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
+        let config = new_cargo_config(Some(self.metadata.workspace_root.clone()))?;
+        let registries = if registries.is_empty() {
+            CargoRegistry::new(&config, None).map(|registry| vec![registry])
+        } else {
+            registries
+                .into_iter()
+                .map(|name| CargoRegistry::new(&config, Some(name)))
+                .collect()
+        };
+        registries
+            .with_context(|| format!("can't determine the registries of package {}", package.name))
+    }
+
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
         let Some(git_release) = &self.git_release else {
             return Ok(());
@@ -757,15 +779,9 @@ fn update_stale_registry_copies(
     let mut specs = vec![];
     let mut envs = vec![];
     for package in packages {
-        let registry_indexes = registry_indexes(
-            package,
-            input.registry.clone(),
-            &input.metadata.workspace_root,
-        )
-        .context("can't determine registry indexes")?;
         // Only look for stale copies in the registries where the package is published:
         // packages with the same name from other registries are different packages.
-        for registry in registry_indexes {
+        for registry in input.registries(package)? {
             let registry_specs = lockfile.stale_registry_copies(package, registry.source_id);
             if registry_specs.is_empty() {
                 continue;
@@ -833,14 +849,7 @@ async fn release_package_if_needed(
     let mut package_was_released = false;
 
     if should_publish {
-        let registry_indexes = registry_indexes(
-            package,
-            input.registry.clone(),
-            &input.metadata.workspace_root,
-        )
-        .context("can't determine registry indexes")?;
-
-        for registry in registry_indexes {
+        for registry in input.registries(package)? {
             let token = input.find_registry_token(registry.name.as_deref())?;
             let pkg_is_published = is_published(
                 &input.metadata.workspace_root,
@@ -939,28 +948,6 @@ async fn should_release(
                 Ok(ShouldRelease::No)
             }
         }
-    }
-}
-
-/// Get the registries where the package should be published.
-/// If `registry` is specified, it takes precedence over the `publish` field
-/// of the package manifest.
-fn registry_indexes(
-    package: &Package,
-    registry: Option<String>,
-    workspace_root: &Utf8Path,
-) -> anyhow::Result<Vec<CargoRegistry>> {
-    let registries = registry
-        .map(|r| vec![r])
-        .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
-    let config = new_cargo_config(Some(workspace_root.to_owned()))?;
-    if registries.is_empty() {
-        Ok(vec![CargoRegistry::new(&config, None)?])
-    } else {
-        registries
-            .into_iter()
-            .map(|name| CargoRegistry::new(&config, Some(name)))
-            .collect()
     }
 }
 
