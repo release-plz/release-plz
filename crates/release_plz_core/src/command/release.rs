@@ -730,8 +730,7 @@ impl ReleaseContext<'_> {
 }
 
 /// Update the stale registry copies of [`ReleaseContext::packages_with_stale_copies`] in the
-/// lockfile to the latest compatible version in the registry, which is the released version if
-/// the package was published.
+/// lockfile to the latest compatible version in the registry.
 ///
 /// A registry dependency can depend on a workspace package, so the lockfile can contain a
 /// registry copy of the workspace package. `cargo publish` replaces the path dependencies on
