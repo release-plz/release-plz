@@ -217,21 +217,22 @@ impl ReleaseRequest {
     /// If [`Self::registry`] is specified, it takes precedence over the `publish` field
     /// of the package manifest.
     fn registries(&self, package: &Package) -> anyhow::Result<Vec<CargoRegistry>> {
-        let registries = self
+        let names = self
             .registry
             .clone()
             .map(|r| vec![r])
             .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
-        let config = new_cargo_config(Some(self.metadata.workspace_root.clone()))?;
-        let registries = if registries.is_empty() {
-            CargoRegistry::new(&config, None).map(|registry| vec![registry])
-        } else {
-            registries
-                .into_iter()
-                .map(|name| CargoRegistry::new(&config, Some(name)))
-                .collect()
-        };
-        registries
+        new_cargo_config(Some(self.metadata.workspace_root.clone()))
+            .and_then(|config| {
+                if names.is_empty() {
+                    Ok(vec![CargoRegistry::new(&config, None)?])
+                } else {
+                    names
+                        .into_iter()
+                        .map(|name| CargoRegistry::new(&config, Some(name)))
+                        .collect()
+                }
+            })
             .with_context(|| format!("can't determine the registries of package {}", package.name))
     }
 
