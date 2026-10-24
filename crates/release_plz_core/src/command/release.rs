@@ -733,8 +733,7 @@ struct ReleaseContext<'a> {
     pr_authors: HashMap<u64, String>,
     /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
-    /// Packages whose stale registry copies, if any, release-plz didn't update in the
-    /// lockfile yet.
+    /// Packages whose stale registry copies, if any, release-plz didn't try to update yet.
     packages_with_stale_copies: Vec<&'a Package>,
     /// Whether release-plz updated stale registry copies in a lockfile without uncommitted
     /// changes, so that all the uncommitted changes of the lockfile are release-plz's.
