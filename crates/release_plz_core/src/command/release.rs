@@ -674,14 +674,8 @@ async fn release_packages(
         git_client,
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
+        lockfile_load_failed: false,
     };
-    // Only some workspaces have registry copies to update, so don't fail the release if the
-    // Cargo library bundled in release-plz can't load the workspace, e.g. because the lockfile
-    // or the manifests need a newer Cargo version.
-    let lockfile = WorkspaceLockfile::load(&input.metadata).unwrap_or_else(|e| {
-        warn!("can't update the registry copies of workspace packages in the lockfile: {e:#}");
-        None
-    });
     for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, &mut context).await?
@@ -689,9 +683,7 @@ async fn release_packages(
             package_releases.push(pkg_release);
         }
         // Packages released later might depend on the released version of this package.
-        if let Some(lockfile) = &lockfile {
-            update_outdated_registry_copies(input, lockfile, package)?;
-        }
+        update_outdated_registry_copies(input, package, &mut context)?;
     }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
@@ -711,6 +703,9 @@ struct ReleaseContext<'a> {
     pr_authors: HashMap<u64, String>,
     /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+    /// Whether the Cargo library bundled in release-plz failed to load the lockfile,
+    /// so that release-plz warns once instead of trying again for each package.
+    lockfile_load_failed: bool,
 }
 
 impl ReleaseContext<'_> {
@@ -738,9 +733,26 @@ impl ReleaseContext<'_> {
 /// so publishing `release_plz_core` fails until the lockfile is updated.
 fn update_outdated_registry_copies(
     input: &ReleaseRequest,
-    lockfile: &WorkspaceLockfile,
     package: &Package,
+    context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<()> {
+    if context.lockfile_load_failed {
+        return Ok(());
+    }
+    // Load the lockfile from disk, because updating the copies of the previous packages can
+    // remove copies of this package, which `cargo update` can't find, or add new ones.
+    let lockfile = match WorkspaceLockfile::load(&input.metadata) {
+        Ok(Some(lockfile)) => lockfile,
+        Ok(None) => return Ok(()),
+        // Only some workspaces have registry copies to update, so don't fail the release if the
+        // Cargo library bundled in release-plz can't load the workspace, e.g. because the
+        // lockfile or the manifests need a newer Cargo version.
+        Err(e) => {
+            warn!("can't update the registry copies of workspace packages in the lockfile: {e:#}");
+            context.lockfile_load_failed = true;
+            return Ok(());
+        }
+    };
     let specs = lockfile.outdated_registry_copies(package);
     if specs.is_empty() {
         return Ok(());
