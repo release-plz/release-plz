@@ -65,11 +65,11 @@ impl WorkspaceLockfile {
         }
     }
 
-    /// Find the packages of the `registry` that are older but semver compatible versions of
-    /// the workspace `package`.
+    /// Find the stale registry copies of the workspace `package`, i.e. the packages of the
+    /// `registry` that are older but semver compatible versions of it.
     ///
     /// Return their package ID specs.
-    pub(crate) fn outdated_registry_copies(
+    pub(crate) fn stale_registry_copies(
         &self,
         package: &cargo_metadata::Package,
         registry: SourceId,
