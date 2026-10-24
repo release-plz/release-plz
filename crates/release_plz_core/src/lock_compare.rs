@@ -4,7 +4,7 @@ use anyhow::Context;
 use cargo::{
     GlobalContext,
     resolver::Resolve,
-    util::CanonicalUrl,
+    util::{CanonicalUrl, VersionExt as _},
     workspace::{
         PackageId, Workspace,
         dependency::{DepKind, Patch},
@@ -228,7 +228,7 @@ pub(crate) fn outdated_registry_copies(
     for id in resolve.iter().filter(|id| id.source_id().is_registry()) {
         if let Some(&version) = versions.get(id.name().as_str())
             && id.version() < version
-            && are_semver_compatible(id.version(), version)
+            && id.version().to_caret_req().matches(version)
         {
             copies
                 .entry(id.name().to_string())
@@ -237,16 +237,6 @@ pub(crate) fn outdated_registry_copies(
         }
     }
     Ok(copies)
-}
-
-/// Return `true` if the left-most non-zero components of the versions are equal.
-/// Cargo can't lock two compatible versions of a package from the same source.
-fn are_semver_compatible(a: &Version, b: &Version) -> bool {
-    match (a.major, a.minor) {
-        (0, 0) => b.major == 0 && b.minor == 0 && b.patch == a.patch,
-        (0, minor) => b.major == 0 && b.minor == minor,
-        (major, _) => b.major == major,
-    }
 }
 
 pub(crate) fn workspace_lockfile_path(metadata: &Metadata) -> Utf8PathBuf {
@@ -1312,18 +1302,5 @@ dependencies = ["shared 2.0.0"]
         fs_err::write(&local, lockfile.replace("1.0.0", "1.0.1")).unwrap();
         assert!(compare_workspace_locks(&local, &released, "binary"));
         assert!(!compare_workspace_locks(&local, &released, "unrelated"));
-    }
-
-    #[test]
-    fn semver_compatibility_follows_the_left_most_non_zero_component() {
-        let compatible = |a: &str, b: &str| {
-            are_semver_compatible(&Version::parse(a).unwrap(), &Version::parse(b).unwrap())
-        };
-        assert!(compatible("1.2.3", "1.4.0"));
-        assert!(!compatible("1.2.3", "2.0.0"));
-        assert!(compatible("0.3.4", "0.3.5"));
-        assert!(!compatible("0.3.4", "0.4.0"));
-        assert!(!compatible("0.0.1", "0.0.2"));
-        assert!(compatible("0.0.1", "0.0.1"));
     }
 }
