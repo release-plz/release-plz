@@ -1,6 +1,6 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::test_context::TestContext;
+use crate::helpers::{release_stdout, test_context::TestContext};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -72,18 +72,7 @@ async fn release_plz_releases_a_new_project_with_custom_tag_name() {
     assert!(!is_tag_created());
 
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": expected_tag,
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, &expected_tag, "0.1.0"));
 
     assert!(is_tag_created());
 }
@@ -188,18 +177,7 @@ async fn release_plz_does_not_releases_twice() {
 
     // Running `release` the first time, releases the project
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 
     // Running `release` the second time, releases nothing.
     let outcome = context.run_release().success();
@@ -215,18 +193,7 @@ async fn release_plz_can_do_backports() {
 
     // Running `release` the first time, releases the project
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 
     // Publish a new breaking release
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
@@ -234,18 +201,7 @@ async fn release_plz_can_do_backports() {
     context.run_cargo_check();
     context.push_all_changes("breaking release");
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.2.0",
-                "version": "0.2.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.2.0", "0.2.0"));
 
     // Publish a backport release.
     // It's a backport because v0.1.1 < v0.2.0.
@@ -254,18 +210,7 @@ async fn release_plz_can_do_backports() {
     context.run_cargo_check();
     context.push_all_changes("backport release");
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.1", "0.1.1"));
 }
 
 /// How [`CARGO_WRAPPER`] and the registry behave during the release.
