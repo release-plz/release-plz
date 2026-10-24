@@ -727,14 +727,11 @@ impl ReleaseContext<'_> {
 /// Update the registry copies of the workspace `package` in the lockfile to the latest
 /// compatible version in the registry, which is the released version if `package` was published.
 ///
-/// Registry dependencies can depend on workspace packages. E.g. `release_plz_core` depends on
-/// `next_version` and on `git-cliff-core`, which depends on `next_version` from crates.io.
-/// The release PR bumps `next_version` to a semver compatible version and makes
-/// `release_plz_core` require it, but the lockfile still pins the `next_version` dependency
-/// of `git-cliff-core` to the previous version, because the new one isn't published yet.
-/// `cargo publish` replaces the path dependency of `release_plz_core` with a registry one, and
-/// Cargo can't lock two semver compatible versions of `next_version` from crates.io,
-/// so publishing `release_plz_core` fails until the lockfile is updated.
+/// A registry dependency can depend on a workspace package, so the lockfile can contain a
+/// registry copy of the workspace package. `cargo publish` replaces the path dependencies on
+/// the workspace package with registry ones, and Cargo can't lock two semver compatible
+/// versions of a package from the same registry, so the registry copy must be updated after
+/// publishing the workspace package.
 fn update_outdated_registry_copies(
     input: &ReleaseRequest,
     package: &Package,
