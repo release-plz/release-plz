@@ -67,7 +67,6 @@ impl WorkspaceLockfile {
 
     /// Find the packages of the `registry` that are older but semver compatible versions of
     /// the workspace `package`.
-    /// They come from registry dependencies that depend on the workspace package.
     ///
     /// Return their package ID specs.
     pub(crate) fn outdated_registry_copies(
