@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "cargo_utils"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -1622,7 +1622,7 @@ dependencies = [
  "glob",
  "humantime-serde",
  "indexmap",
- "next_version 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "next_version 0.3.4",
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
  "regex",
@@ -3509,6 +3509,8 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 [[package]]
 name = "next_version"
 version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89b84ff0972faa3bb74d2ffe5979776f87e3bad64aa4b985eb71418eaa9a2df"
 dependencies = [
  "git-conventional 1.1.0",
  "regex",
@@ -3517,9 +3519,7 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89b84ff0972faa3bb74d2ffe5979776f87e3bad64aa4b985eb71418eaa9a2df"
+version = "0.3.5"
 dependencies = [
  "git-conventional 1.1.0",
  "regex",
@@ -4442,7 +4442,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "release-plz"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4477,7 +4477,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4496,7 +4496,7 @@ dependencies = [
  "git2",
  "git_cmd",
  "ignore",
- "next_version 0.3.4",
+ "next_version 0.3.5",
  "parse-changelog",
  "regex",
  "reqwest",
