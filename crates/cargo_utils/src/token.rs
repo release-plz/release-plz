@@ -78,7 +78,7 @@ fn cargo_home() -> anyhow::Result<PathBuf> {
     Ok(cargo_home)
 }
 
-#[derive(Debug, Deserialize, Default, PartialEq)]
+#[derive(Debug, Deserialize)]
 struct CargoCredentials {
     #[serde(default)]
     registry: Option<RegistryToken>,
@@ -98,7 +98,7 @@ impl CargoCredentials {
     }
 }
 
-#[derive(Debug, Deserialize, Default, PartialEq)]
+#[derive(Debug, Deserialize)]
 struct RegistryToken {
     token: Option<String>,
 }
@@ -117,18 +117,12 @@ mod tests {
             token = "bbb"   # Access token for the named registry
         "#;
         let creds = toml::from_str::<CargoCredentials>(sample).unwrap();
-        assert_eq!(
-            creds.registry.and_then(|r| r.token),
-            Some("aaaa".to_string())
-        );
-        assert_eq!(
-            creds.registries.get("my").and_then(|r| r.token.clone()),
-            Some("bbb".to_string())
-        );
-        assert_eq!(
-            creds.registries.get("foo").and_then(|r| r.token.clone()),
-            None
-        );
+        assert_eq!(creds.token(None), Some("aaaa"));
+        // Packages with `publish = ["crates-io"]` refer to crates.io by name,
+        // but its token is in `[registry]`, not in `[registries.crates-io]`.
+        assert_eq!(creds.token(Some("crates-io")), Some("aaaa"));
+        assert_eq!(creds.token(Some("my")), Some("bbb"));
+        assert_eq!(creds.token(Some("foo")), None);
     }
 
     #[test]
@@ -138,50 +132,17 @@ mod tests {
             token = "aaaa"   # Access token for crates.io
         "#;
         let creds = toml::from_str::<CargoCredentials>(sample).unwrap();
-        assert_eq!(
-            creds.registry.and_then(|r| r.token),
-            Some("aaaa".to_string())
-        );
-        assert_eq!(
-            creds.registries.get("my").and_then(|r| r.token.clone()),
-            None
-        );
-        assert_eq!(
-            creds.registries.get("foo").and_then(|r| r.token.clone()),
-            None
-        );
+        assert_eq!(creds.token(None), Some("aaaa"));
+        assert_eq!(creds.token(Some("my")), None);
+        assert_eq!(creds.token(Some("foo")), None);
     }
 
     #[test]
     fn test_parse_cargo_credentials_empty() {
         let sample = "";
         let creds = toml::from_str::<CargoCredentials>(sample).unwrap();
-        assert_eq!(creds.registry.and_then(|r| r.token), None);
-        assert_eq!(
-            creds.registries.get("my").and_then(|r| r.token.clone()),
-            None
-        );
-        assert_eq!(
-            creds.registries.get("foo").and_then(|r| r.token.clone()),
-            None
-        );
-    }
-
-    #[test]
-    fn test_cargo_credentials_token() {
-        let sample = r#"
-            [registry]
-            token = "aaaa"   # Access token for crates.io
-
-            [registries.my]
-            token = "bbb"   # Access token for the named registry
-        "#;
-        let creds = toml::from_str::<CargoCredentials>(sample).unwrap();
-        assert_eq!(creds.token(None), Some("aaaa"));
-        // Packages with `publish = ["crates-io"]` refer to crates.io by name,
-        // but its token is in `[registry]`, not in `[registries.crates-io]`.
-        assert_eq!(creds.token(Some("crates-io")), Some("aaaa"));
-        assert_eq!(creds.token(Some("my")), Some("bbb"));
+        assert_eq!(creds.token(None), None);
+        assert_eq!(creds.token(Some("my")), None);
         assert_eq!(creds.token(Some("foo")), None);
     }
 }
