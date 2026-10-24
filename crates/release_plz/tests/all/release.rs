@@ -199,18 +199,7 @@ async fn release_plz_publishes_with_the_token_of_the_package_registry() {
         .env("CARGO_REGISTRY_TOKEN", "crates-io-token")
         .assert()
         .success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 }
 
 #[tokio::test]
