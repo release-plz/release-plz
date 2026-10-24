@@ -9,7 +9,7 @@ pub fn registry_token(registry: Option<&str>) -> anyhow::Result<Option<SecretStr
     if token.is_none() {
         token = registry_token_from_credential_file(registry).with_context(|| {
             format!(
-                "can't retreive token from credential file for registry `{}`",
+                "can't retrieve token from credential file for registry `{}`",
                 registry.unwrap_or("crates.io"),
             )
         })?;
@@ -19,48 +19,34 @@ pub fn registry_token(registry: Option<&str>) -> anyhow::Result<Option<SecretStr
 
 /// Read credentials for a specific registry using environment variables.
 /// <https://doc.rust-lang.org/cargo/reference/registry-authentication.html#cargotoken>
-pub fn registry_token_from_env(registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
-    let token = if let Some(r) = registry {
-        let env_var_name = crate::cargo_registries_token_env_var_name(r)?;
-        std::env::var(env_var_name)
-    } else {
-        std::env::var("CARGO_REGISTRY_TOKEN")
-    };
-    Ok(token.ok().map(|t| t.into()))
+fn registry_token_from_env(registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
+    let env_var_name = crate::cargo_registries_token_env_var_name(registry.unwrap_or("crates-io"))?;
+    Ok(std::env::var(env_var_name).ok().map(SecretString::from))
 }
 
 /// Read credentials for a specific registry using file cargo/credentials.toml.
 /// <https://doc.rust-lang.org/cargo/reference/config.html#credentials>
-pub fn registry_token_from_credential_file(
+fn registry_token_from_credential_file(
     registry: Option<&str>,
 ) -> anyhow::Result<Option<SecretString>> {
-    let credentials = read_cargo_credentials()?;
-    let token = credentials
-        .and_then(|c| {
-            let token: Option<RegistryToken> = if let Some(r) = registry {
-                c.registries.get(r).cloned()
-            } else {
-                c.registry.as_ref().cloned()
-            };
-            token
+    let token = read_cargo_credentials()?
+        .and_then(|mut c| match registry {
+            Some(r) => c.registries.remove(r),
+            None => c.registry,
         })
-        .and_then(|r| r.token.clone())
-        .map(|t| t.into());
+        .and_then(|r| r.token)
+        .map(SecretString::from);
     Ok(token)
 }
 
 fn read_cargo_credentials() -> anyhow::Result<Option<CargoCredentials>> {
-    let credentials_path = credentials_path()?;
-    let credentials = if let Some(credentials_path) = credentials_path {
-        let content = fs_err::read_to_string(&credentials_path)
-            .context("failed to read cargo credentials file")?;
-        let credentials = toml::from_str::<CargoCredentials>(&content)
-            .context("Invalid cargo credentials file")?;
-        Some(credentials)
-    } else {
-        None
-    };
-    Ok(credentials)
+    credentials_path()?
+        .map(|credentials_path| {
+            let content = fs_err::read_to_string(&credentials_path)
+                .context("failed to read cargo credentials file")?;
+            toml::from_str::<CargoCredentials>(&content).context("Invalid cargo credentials file")
+        })
+        .transpose()
 }
 
 fn credentials_path() -> anyhow::Result<Option<PathBuf>> {
@@ -93,7 +79,7 @@ struct CargoCredentials {
     registries: HashMap<String, RegistryToken>,
 }
 
-#[derive(Debug, Deserialize, Default, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Default, PartialEq)]
 struct RegistryToken {
     token: Option<String>,
 }
