@@ -674,7 +674,7 @@ async fn release_packages(
         git_client,
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
-        lockfile_load_failed: false,
+        packages_with_stale_copies: vec![],
         lockfile_updated: false,
     };
     for package in packages {
@@ -683,8 +683,13 @@ async fn release_packages(
         {
             package_releases.push(pkg_release);
         }
-        // Packages released later might depend on the released version of this package.
-        update_stale_registry_copies(input, package, &mut context)?;
+        // Packages published later might depend on the new version of this package.
+        // Include it even if it was already tagged or published, because a previous run might
+        // have published it and failed before publishing the packages that depend on it.
+        // Release-plz doesn't publish the new version of packages whose publishing is disabled.
+        if input.is_publish_enabled(&package.name) {
+            context.packages_with_stale_copies.push(package);
+        }
     }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
@@ -704,9 +709,9 @@ struct ReleaseContext<'a> {
     pr_authors: HashMap<u64, String>,
     /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
-    /// Whether the Cargo library bundled in release-plz failed to load the lockfile,
-    /// so that release-plz warns once instead of trying again for each package.
-    lockfile_load_failed: bool,
+    /// Packages whose stale registry copies, if any, release-plz didn't update in the
+    /// lockfile yet.
+    packages_with_stale_copies: Vec<&'a Package>,
     /// Whether release-plz updated stale registry copies, so the lockfile might differ from
     /// the committed one.
     lockfile_updated: bool,
@@ -724,66 +729,59 @@ impl ReleaseContext<'_> {
     }
 }
 
-/// Update the stale registry copies of the workspace `package` in the lockfile to the latest
-/// compatible version in the registry, which is the released version if `package` was published.
+/// Update the stale registry copies of [`ReleaseContext::packages_with_stale_copies`] in the
+/// lockfile to the latest compatible version in the registry, which is the released version if
+/// the package was published.
 ///
 /// A registry dependency can depend on a workspace package, so the lockfile can contain a
 /// registry copy of the workspace package. `cargo publish` replaces the path dependencies on
 /// the workspace package with registry ones, and Cargo can't lock two semver compatible
 /// versions of a package from the same registry, so a stale registry copy must be updated
 /// after publishing the workspace package.
+///
+/// Release-plz updates the copies only right before publishing a package, because only
+/// `cargo publish` needs them.
 fn update_stale_registry_copies(
     input: &ReleaseRequest,
-    package: &Package,
     context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<()> {
-    // Release-plz doesn't publish the new version of packages whose publishing is disabled.
-    if !input.is_publish_enabled(&package.name) || context.lockfile_load_failed {
+    let packages = std::mem::take(&mut context.packages_with_stale_copies);
+    if packages.is_empty() {
         return Ok(());
     }
-    // Load the lockfile from disk, because updating the stale copies of the previous packages
-    // can remove stale copies of this package, which `cargo update` can't find, or add new ones.
-    let lockfile = match WorkspaceLockfile::load(&input.metadata) {
-        Ok(Some(lockfile)) => lockfile,
-        Ok(None) => return Ok(()),
-        // Only some workspaces have stale registry copies, so don't fail the release if the
-        // Cargo library bundled in release-plz can't load the workspace, e.g. because the
-        // lockfile or the manifests need a newer Cargo version.
-        Err(e) => {
-            warn!("can't update the stale registry copies in the lockfile: {e:#}");
-            context.lockfile_load_failed = true;
-            return Ok(());
-        }
+    // Load the lockfile from disk, because the previous updates can remove stale copies,
+    // which `cargo update` can't find, or add new ones.
+    let Some(lockfile) = WorkspaceLockfile::load(&input.metadata)? else {
+        return Ok(());
     };
-    let registry_indexes = registry_indexes(
-        package,
-        input.registry.clone(),
-        &input.metadata.workspace_root,
-    )
-    .context("can't determine registry indexes")?;
-    // Only look for stale copies in the registries where the package is published:
-    // packages with the same name from other registries are different packages.
     let mut specs = vec![];
     let mut envs = vec![];
-    for registry in registry_indexes {
-        let registry_specs = lockfile.stale_registry_copies(package, registry.source_id);
-        if registry_specs.is_empty() {
-            continue;
-        }
-        specs.extend(registry_specs);
-        // The registry might require the token to read its index.
-        let registry_name = registry.name.as_deref();
-        if let Some(token) = input.find_registry_token(registry_name)? {
-            envs.push((cargo_registry_token_env_var(registry_name)?, token));
+    for package in packages {
+        let registry_indexes = registry_indexes(
+            package,
+            input.registry.clone(),
+            &input.metadata.workspace_root,
+        )
+        .context("can't determine registry indexes")?;
+        // Only look for stale copies in the registries where the package is published:
+        // packages with the same name from other registries are different packages.
+        for registry in registry_indexes {
+            let registry_specs = lockfile.stale_registry_copies(package, registry.source_id);
+            if registry_specs.is_empty() {
+                continue;
+            }
+            specs.extend(registry_specs);
+            // The registry might require the token to read its index.
+            let registry_name = registry.name.as_deref();
+            if let Some(token) = input.find_registry_token(registry_name)? {
+                envs.push((cargo_registry_token_env_var(registry_name)?, token));
+            }
         }
     }
     if specs.is_empty() {
         return Ok(());
     }
-    debug!(
-        "updating stale registry copies of {} in the lockfile: {specs:?}",
-        package.name
-    );
+    debug!("updating stale registry copies in the lockfile: {specs:?}");
     let mut args = vec!["update"];
     for spec in &specs {
         args.extend(["--package", spec]);
@@ -792,8 +790,7 @@ fn update_stale_registry_copies(
         .context("failed to run cargo to update the lockfile")?;
     anyhow::ensure!(
         output.status.success(),
-        "failed to update the stale registry copies of {} in the lockfile: {}",
-        package.name,
+        "cargo update failed: {}",
         output.stderr
     );
     context.lockfile_updated = true;
@@ -1014,6 +1011,13 @@ async fn release_package(
     }
 
     if should_publish {
+        // This package might depend on the new versions of the packages before it.
+        // Only some workspaces have stale registry copies, so don't fail the release if
+        // release-plz can't update them, e.g. because the Cargo library bundled in release-plz
+        // can't load the lockfile. If `cargo publish` needs the update, it fails with Cargo's error.
+        if let Err(e) = update_stale_registry_copies(input, context) {
+            warn!("can't update the stale registry copies in the lockfile: {e:#}");
+        }
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let allow_dirty = allow_dirty(input, repo, context, release_info.package)?;
         let output = run_cargo_publish(
