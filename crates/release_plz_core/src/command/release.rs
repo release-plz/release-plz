@@ -799,7 +799,6 @@ fn update_stale_registry_copies(
     }
     // Cargo must still reject the uncommitted changes of the lockfile that release-plz didn't make.
     let was_lockfile_committed = is_lockfile_committed(repo)?;
-    debug!("updating stale registry copies in the lockfile: {specs:?}");
     let mut args = vec!["update"];
     for spec in &specs {
         args.extend(["--package", spec]);
