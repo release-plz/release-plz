@@ -18,7 +18,7 @@ fn path_dependency(path: &str) -> toml_edit::Item {
     toml_edit::value(dependency)
 }
 
-/// Neither package exists in the registry, including the optional dependency.
+/// `dependent` optionally depends on `dependency`; neither is published.
 async fn unpublished_workspace() -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("dependency").with_type(PackageType::Lib),
@@ -54,9 +54,9 @@ fn break_compilation(context: &TestContext, package: &str, message: &str) {
     .unwrap();
 }
 
-/// List the tags, including the ones of the remote repository: without tag signing,
-/// release-plz creates tags through the forge API.
-fn remote_tags(context: &TestContext) -> String {
+/// List the local tags and the tags of the remote repository, which must be fetched:
+/// without tag signing, release-plz creates tags through the forge API.
+fn all_tags(context: &TestContext) -> String {
     context.repo.git(&["fetch", "--tags"]).unwrap();
     context.repo.git(&["tag", "--list"]).unwrap()
 }
@@ -101,7 +101,7 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
         .await
         .unwrap();
     assert!(packages.is_empty(), "a dry run must not upload packages");
-    assert!(remote_tags(&context).is_empty());
+    assert!(all_tags(&context).is_empty());
     context.repo.is_clean().unwrap();
 
     break_compilation(&context, "dependent", "verification must still run");
@@ -154,7 +154,7 @@ git_only = true
         .success()
         .stdout("{\"releases\":[]}\n");
     assert_packaged(&context, &["selected", "selected-too"]);
-    assert_eq!(remote_tags(&context), "tagged-v0.1.0");
+    assert_eq!(all_tags(&context), "tagged-v0.1.0");
 }
 
 #[tokio::test]
