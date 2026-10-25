@@ -9,6 +9,13 @@ use tracing::warn;
 use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
 use crate::cargo::{new_cargo_config, run_cargo};
 
+/// Possible cause of a failed check when packages are checked separately.
+const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished workspace package, \
+    Cargo can only resolve the dependency if both packages are checked together. \
+    Release-plz checks packages separately if their registry, publish_allow_dirty, \
+    publish_no_verify or publish_all_features differ, if they set publish_features, \
+    or if Cargo is older than 1.90.";
+
 pub(super) struct PublishBatches {
     batches: Vec<PublishBatch>,
     /// Registry that Cargo uses for packages that don't select one.
@@ -92,21 +99,18 @@ impl PublishBatches {
                 token.as_ref(),
             )
             .context("failed to run cargo publish --dry-run")?;
-            // Cargo's exit status covers the whole batch. In particular, do not
-            // treat an already-published error for one member as batch success.
-            let hint = if self.batches.len() > 1 {
-                "\nUnpublished workspace dependencies must be selected in the same dry-run batch. \
-                 They must use the same registry, publish_allow_dirty, publish_no_verify, \
-                 publish_features and publish_all_features settings."
-            } else {
-                ""
-            };
-            anyhow::ensure!(
-                output.status.success(),
-                "failed to dry-run publishing {}: {}{hint}",
-                batch.packages.join(", "),
-                output.stderr
-            );
+            if !output.status.success() {
+                let hint = if self.batches.len() > 1 {
+                    SEPARATE_CHECKS_HINT
+                } else {
+                    ""
+                };
+                anyhow::bail!(
+                    "failed to dry-run publishing {}: {}{hint}",
+                    batch.packages.join(", "),
+                    output.stderr
+                );
+            }
         }
         Ok(())
     }

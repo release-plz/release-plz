@@ -279,7 +279,10 @@ publish_no_verify = true
         stderr.contains("failed to dry-run publishing dependent"),
         "{stderr}"
     );
-    assert!(stderr.contains("same dry-run batch"), "{stderr}");
+    assert!(
+        stderr.contains("If a package depends on an unpublished workspace package"),
+        "{stderr}"
+    );
     assert!(stderr.contains("publish_no_verify"), "{stderr}");
 }
 
