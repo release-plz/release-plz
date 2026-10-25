@@ -1,6 +1,6 @@
 [package]
 name = "release_plz_core"
-version = "0.38.7"
+version = "0.42.1"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository = "https://github.com/release-plz/release-plz/tree/main/crates/release_plz_core"
@@ -17,9 +17,9 @@ all-static = ["cargo/vendored-libgit2", "cargo/all-static"]
 
 [dependencies]
 base64.workspace = true
-cargo_utils = { path = "../cargo_utils", version = "0.1.85" }
-git_cmd = { path = "../git_cmd", version = "0.8.0" }
-next_version = { path = "../next_version", version = "0.3" }
+cargo_utils = { path = "../cargo_utils", version = "0.3.1" }
+git_cmd = { path = "../git_cmd", version = "0.9.1" }
+next_version = { path = "../next_version", version = "0.3.5" }
 
 anyhow.workspace = true
 cargo_metadata.workspace = true
@@ -27,7 +27,10 @@ cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 dunce.workspace = true
 fs-err = { workspace = true, features = ["tokio"] }
+futures.workspace = true
 git-cliff-core.workspace = true
+# Match the parser used by git-cliff-core.
+git-conventional = "1.0.0"
 ignore.workspace = true
 parse-changelog.workspace = true
 regex.workspace = true
@@ -44,7 +47,8 @@ url = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["fs", "macros"] }
+tokio = { workspace = true, features = ["fs", "macros", "rt"] }
+tokio-util = { workspace = true, features = ["rt"] }
 tera.workspace = true
 git2.workspace = true
 
@@ -55,6 +59,7 @@ fake_package = { path = "../fake_package" }
 
 expect-test.workspace = true
 flate2.workspace = true
+same-file.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 wiremock.workspace = true

@@ -2,6 +2,12 @@ use next_version::{NextVersion, VersionUpdater};
 use semver::Version;
 
 #[test]
+fn no_commits_leave_version_unchanged() {
+    let version = Version::new(1, 2, 3);
+    assert_eq!(version.next(std::iter::empty::<&str>()), version);
+}
+
+#[test]
 fn commit_without_semver_prefix_increments_patch_version() {
     let commits = ["my change"];
     let version = Version::new(1, 2, 3);
@@ -70,6 +76,80 @@ fn commit_with_breaking_change_increments_major_version_when_major_is_zero() {
 }
 
 #[test]
+fn feature_does_not_hide_later_major_increment_when_major_is_zero() {
+    let commits = ["feat: add behavior", "fix!: change behavior"];
+    assert_eq!(
+        VersionUpdater::new()
+            .with_features_always_increment_minor(true)
+            .with_breaking_always_increment_major(true)
+            .increment(&Version::new(0, 2, 3), commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
+fn commit_with_breaking_change_increments_major_version_when_major_and_minor_are_zero() {
+    let commits = ["feat!: break user"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_breaking_always_increment_major(true)
+            .increment(&version, commits),
+        Version::new(1, 0, 0)
+    );
+}
+
+#[test]
+fn breaking_change_among_other_commits() {
+    for breaking in [
+        "feat!: break user",
+        "feat: change behavior\n\nBREAKING CHANGE: break user",
+    ] {
+        for commits in [
+            [breaking, "feat: add feature", "fix: correct behavior"],
+            ["fix: correct behavior", "feat: add feature", breaking],
+        ] {
+            for (version, expected) in [
+                (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+                (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+                (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+            ] {
+                assert_eq!(
+                    version.next(commits),
+                    expected,
+                    "{commits:?} from {version}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn breaking_feature_increments_minor_version_from_0_0_x_when_features_always_increment_minor() {
+    let commits = ["feat!: break user"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_features_always_increment_minor(true)
+            .increment(&version, commits),
+        Version::new(0, 1, 0)
+    );
+}
+
+#[test]
+fn custom_minor_increment_regex_increments_minor_version_after_breaking_change_from_0_0_x() {
+    let commits = ["feat!: break user", "fix: correct behavior"];
+    let version = Version::new(0, 0, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_minor_increment_regex("^fix$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(0, 1, 0)
+    );
+}
+
+#[test]
 fn commit_with_custom_major_increment_regex_increments_major_version() {
     let commits = ["major: some changes"];
     let version = Version::new(1, 2, 3);
@@ -122,7 +202,50 @@ fn non_conventional_commit_with_custom_major_increment_regex_increments_major_ve
 }
 
 #[test]
-fn conventional_commit_with_matching_description_does_not_trigger_custom_regex() {
+fn commit_with_custom_major_increment_regex_increments_major_version_when_major_is_zero() {
+    let commit_lists: [&[&str]; 5] = [
+        &["major: some changes"],
+        &["A major change"],
+        // A custom major match takes precedence over the breaking change of the same commit...
+        &["major!: some changes"],
+        // ...and of other commits.
+        &["feat!: break user", "major: some changes"],
+        &["feat!: break user", "A major change"],
+    ];
+    for version in [Version::new(0, 0, 3), Version::new(0, 2, 3)] {
+        for commits in commit_lists {
+            assert_eq!(
+                VersionUpdater::new()
+                    .with_custom_major_increment_regex("major")
+                    .unwrap()
+                    .increment(&version, commits),
+                Version::new(1, 0, 0),
+                "{commits:?} from {version}"
+            );
+        }
+    }
+}
+
+#[test]
+fn non_matching_custom_major_increment_regex_preserves_breaking_change_increments() {
+    for (version, expected) in [
+        (Version::new(0, 0, 3), Version::new(0, 0, 4)),
+        (Version::new(0, 2, 3), Version::new(0, 3, 0)),
+        (Version::new(1, 2, 3), Version::new(2, 0, 0)),
+    ] {
+        assert_eq!(
+            VersionUpdater::new()
+                .with_custom_major_increment_regex("major")
+                .unwrap()
+                .increment(&version, ["feat!: break user"]),
+            expected,
+            "breaking change from {version}"
+        );
+    }
+}
+
+#[test]
+fn conventional_commit_with_matching_description_does_not_trigger_custom_minor_regex() {
     // The word "minor" appears in the description, but not in the type
     // For conventional commits, only the type should be checked
     let commits = ["fix: a minor bug"];
@@ -137,6 +260,21 @@ fn conventional_commit_with_matching_description_does_not_trigger_custom_regex()
 }
 
 #[test]
+fn conventional_commit_with_matching_description_does_not_trigger_custom_major_regex() {
+    // The word "major" appears in the description, but not in the type
+    // For conventional commits, only the type should be checked
+    let commits = ["fix: a major bug"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_custom_major_increment_regex("major")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4) // Patch, not major
+    );
+}
+
+#[test]
 fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
     let commits = ["docs: update readme", "feat: make coffee"];
     let version = Version::new(1, 2, 3);
@@ -146,6 +284,19 @@ fn no_increment_regex_filters_matching_commits_but_keeps_other_bumps() {
             .unwrap()
             .increment(&version, commits),
         Version::new(1, 3, 0)
+    );
+}
+
+#[test]
+fn no_increment_regex_filters_breaking_commits() {
+    let commits = ["docs!: change documentation", "fix: correct behavior"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("^docs$")
+            .unwrap()
+            .increment(&version, commits),
+        Version::new(1, 2, 4)
     );
 }
 
@@ -207,4 +358,46 @@ fn commit_with_scope_minor() {
     let commits = ["feat(my scope): this is a test commit"];
     let version = Version::new(1, 0, 0);
     assert_eq!(version.next(commits), Version::new(1, 1, 0));
+}
+
+#[test]
+fn major_increment_takes_precedence_over_minor_regardless_of_commit_order() {
+    for major in [
+        "major: incompatible change",
+        "An incompatible change",
+        "fix!: breaking fix",
+    ] {
+        for minor in [
+            "feat: new feature",
+            "minor: new behavior",
+            "New minor behavior",
+        ] {
+            for commits in [[minor, major], [major, minor]] {
+                let next = VersionUpdater::new()
+                    .with_custom_major_increment_regex("major|incompatible")
+                    .unwrap()
+                    .with_custom_minor_increment_regex("minor")
+                    .unwrap()
+                    .increment(&Version::new(1, 2, 3), commits);
+                assert_eq!(next, Version::new(2, 0, 0), "{commits:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn no_increment_regex_takes_precedence_over_custom_increment_regexes() {
+    let commits = ["skip: conventional change", "Please skip this change"];
+    let version = Version::new(1, 2, 3);
+    assert_eq!(
+        VersionUpdater::new()
+            .with_no_increment_regex("skip")
+            .unwrap()
+            .with_custom_major_increment_regex("skip")
+            .unwrap()
+            .with_custom_minor_increment_regex("skip")
+            .unwrap()
+            .increment(&version, commits),
+        version
+    );
 }

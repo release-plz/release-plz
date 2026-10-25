@@ -1,4 +1,10 @@
+use std::sync::LazyLock;
+
 use anyhow::Context;
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use chrono::{NaiveDate, TimeZone, Utc};
 use git_cliff_core::{
     changelog::Changelog as GitCliffChangelog,
@@ -11,7 +17,7 @@ use regex::Regex;
 use serde::Serialize;
 use tracing::warn;
 
-use crate::changelog_parser;
+use crate::{PackagePath as _, changelog_parser};
 
 pub const CHANGELOG_HEADER: &str = r"# Changelog
 
@@ -26,6 +32,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 pub const CHANGELOG_FILENAME: &str = "CHANGELOG.md";
 pub const RELEASE_LINK: &str = "release_link";
 pub const REMOTE: &str = "remote";
+
+/// Path of the changelog of `package`.
+/// `configured_path` is relative to `workspace_root`.
+/// If it's not set, the changelog is in the package directory.
+pub(crate) fn changelog_path(
+    package: &Package,
+    workspace_root: &Utf8Path,
+    configured_path: Option<&Utf8Path>,
+) -> Utf8PathBuf {
+    match configured_path {
+        Some(path) => workspace_root.join(path),
+        None => package
+            .package_path()
+            .expect("can't determine package path")
+            .join(CHANGELOG_FILENAME),
+    }
+}
 
 #[derive(Debug)]
 pub struct Changelog<'a> {
@@ -51,20 +74,16 @@ pub struct Remote {
     pub contributors: Vec<RemoteContributor>,
 }
 
-impl Changelog<'_> {
+impl<'a> Changelog<'a> {
     /// Generate the full changelog.
-    pub fn generate(self) -> anyhow::Result<String> {
+    pub fn generate(mut self) -> anyhow::Result<String> {
         let config = self.changelog_config(None);
-        let changelog = self.get_changelog(&config)?;
-        let mut out = Vec::new();
-        changelog
-            .generate(&mut out)
-            .context("cannot generate changelog")?;
-        String::from_utf8(out).context("cannot convert bytes to string")
+        let changelog = self.get_changelog(config)?;
+        render(|out| changelog.generate(out), "cannot generate changelog")
     }
 
     /// Update an existing changelog.
-    pub fn prepend(self, old_changelog: impl Into<String>) -> anyhow::Result<String> {
+    pub fn prepend(mut self, old_changelog: impl Into<String>) -> anyhow::Result<String> {
         let old_changelog: String = old_changelog.into();
         if is_version_unchanged(&self.release) {
             // The changelog already contains this version, so we don't update the changelog.
@@ -72,7 +91,7 @@ impl Changelog<'_> {
         }
         let old_header = changelog_parser::parse_header(&old_changelog);
         let config = self.changelog_config(old_header.clone());
-        let changelog = self.get_changelog(&config)?;
+        let changelog = self.get_changelog(config)?;
 
         // If we successfully parsed an old header, compose manually to preserve exact formatting
         // and avoid potential header duplication.
@@ -81,28 +100,29 @@ impl Changelog<'_> {
         }
 
         // Fallback: let git-cliff handle the prepend.
-        let mut out = Vec::new();
-        changelog
-            .prepend(old_changelog, &mut out)
-            .context("cannot update changelog")?;
-        String::from_utf8(out).context("cannot convert bytes to string")
+        render(
+            |out| changelog.prepend(old_changelog, out),
+            "cannot update changelog",
+        )
     }
 
-    fn get_changelog<'a>(
-        &'a self,
-        config: &'a Config,
-    ) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
-        let mut changelog =
-            GitCliffChangelog::new(vec![self.release.clone()], config.clone(), None)
-                .context("error while building changelog")?;
-        add_package_context(&mut changelog, &self.package)?;
-        add_release_link_context(&mut changelog, self.release_link.as_deref())?;
-        add_remote_context(&mut changelog, self.remote.as_ref())?;
+    fn get_changelog(self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
+        let mut changelog = GitCliffChangelog::new(vec![self.release], config, None)
+            .context("error while building changelog")?;
+        add_context(&mut changelog, "package", &self.package)?;
+        if let Some(release_link) = &self.release_link {
+            add_context(&mut changelog, RELEASE_LINK, release_link)?;
+        }
+        if let Some(remote) = &self.remote {
+            add_context(&mut changelog, REMOTE, remote)?;
+        }
         Ok(changelog)
     }
 
-    fn changelog_config(&self, header: Option<String>) -> Config {
-        let user_config = self.config.clone().unwrap_or(default_git_cliff_config());
+    fn changelog_config(&mut self, header: Option<String>) -> Config {
+        let Some(user_config) = self.config.take() else {
+            return default_git_cliff_config(self.pr_link.as_deref());
+        };
         Config {
             changelog: apply_defaults_to_changelog_config(user_config.changelog, header),
             git: apply_defaults_to_git_config(user_config.git, self.pr_link.as_deref()),
@@ -117,20 +137,13 @@ fn compose_changelog(
     changelog: &GitCliffChangelog<'_>,
     header: &str,
 ) -> Result<String, anyhow::Error> {
-    let generated = {
-        let mut new_out = Vec::new();
-        changelog
-            .generate(&mut new_out)
-            .context("cannot generate updated changelog")?;
-        String::from_utf8(new_out).context("cannot convert bytes to string")?
-    };
+    let generated = render(
+        |out| changelog.generate(out),
+        "cannot generate updated changelog",
+    )?;
     // Parse the header so we can remove it later
-    let generated_header = crate::changelog_parser::parse_header(&generated);
-    let header_to_strip = if let Some(gen_h) = generated_header {
-        gen_h
-    } else {
-        header.to_string()
-    };
+    let header_to_strip =
+        changelog_parser::parse_header(&generated).unwrap_or_else(|| header.to_string());
     // Remove the header to get the changelog body
     let generated_body = generated
         .strip_prefix(&header_to_strip)
@@ -139,22 +152,30 @@ fn compose_changelog(
     Ok(format!("{header}{generated_body}{old_body}"))
 }
 
+/// Collect the changelog that `write` renders into a string.
+fn render(
+    write: impl FnOnce(&mut Vec<u8>) -> git_cliff_core::error::Result<()>,
+    error_context: &'static str,
+) -> anyhow::Result<String> {
+    let mut out = Vec::new();
+    write(&mut out).context(error_context)?;
+    String::from_utf8(out).context("cannot convert bytes to string")
+}
+
 /// Apply release-plz defaults to git config
 fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) -> GitConfig {
-    let default_git_config = default_git_config(pr_link);
-
     GitConfig {
         conventional_commits: git_config.conventional_commits,
         require_conventional: git_config.require_conventional,
         filter_unconventional: git_config.filter_unconventional,
         split_commits: git_config.split_commits,
         commit_preprocessors: if git_config.commit_preprocessors.is_empty() {
-            default_git_config.commit_preprocessors
+            default_commit_preprocessors(pr_link)
         } else {
             git_config.commit_preprocessors
         },
         commit_parsers: if git_config.commit_parsers.is_empty() {
-            default_git_config.commit_parsers
+            kac_commit_parsers()
         } else {
             git_config.commit_parsers
         },
@@ -170,68 +191,27 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         topo_order_commits: git_config.topo_order_commits,
         processing_order: git_config.processing_order,
         sort_commits: if git_config.sort_commits.is_empty() {
-            default_git_config.sort_commits
+            "newest".to_string()
         } else {
             git_config.sort_commits
         },
         limit_commits: git_config.limit_commits,
         recurse_submodules: git_config.recurse_submodules,
-        link_parsers: if git_config.link_parsers.is_empty() {
-            default_git_config.link_parsers
-        } else {
-            git_config.link_parsers
-        },
+        link_parsers: git_config.link_parsers,
         exclude_paths: git_config.exclude_paths,
         include_paths: git_config.include_paths,
         fail_on_unmatched_commit: git_config.fail_on_unmatched_commit,
     }
 }
 
-fn add_package_context(
-    changelog: &mut GitCliffChangelog,
-    package: &str,
-) -> Result<(), anyhow::Error> {
-    changelog
-        .add_context("package", package)
-        .with_context(|| format!("failed to add `{package}` to the `package` changelog context"))?;
-    Ok(())
-}
-
-fn add_release_link_context(
-    changelog: &mut GitCliffChangelog,
-    release_link: Option<&str>,
-) -> Result<(), anyhow::Error> {
-    if let Some(release_link) = release_link {
-        changelog
-            .add_context(RELEASE_LINK, release_link)
-            .with_context(|| {
-                format!(
-                    "failed to add `{release_link:?}` to the `{RELEASE_LINK}` changelog context"
-                )
-            })?;
-    }
-    Ok(())
-}
-
-fn add_remote_context(
-    changelog: &mut GitCliffChangelog,
-    remote: Option<&Remote>,
-) -> Result<(), anyhow::Error> {
-    if let Some(remote) = remote {
-        add_context(changelog, REMOTE, remote)?;
-    }
-    Ok(())
-}
-
 fn add_context(
     changelog: &mut GitCliffChangelog,
     key: &str,
-    value: impl serde::Serialize,
+    value: &(impl serde::Serialize + std::fmt::Debug),
 ) -> Result<(), anyhow::Error> {
-    let value_str = serde_json::to_string(&value).context("failed to serialize value")?;
     changelog
         .add_context(key, value)
-        .with_context(|| format!("failed to add `{value_str}` to the `{key}` changelog context"))
+        .with_context(|| format!("failed to add `{value:?}` to the `{key}` changelog context"))
 }
 
 /// Apply release-plz defaults
@@ -268,10 +248,10 @@ fn is_version_unchanged(release: &Release) -> bool {
     previous_version == new_version
 }
 
-fn default_git_cliff_config() -> Config {
+fn default_git_cliff_config(pr_link: Option<&str>) -> Config {
     Config {
         changelog: default_changelog_config(None),
-        git: default_git_config(None),
+        git: default_git_config(pr_link),
         remote: RemoteConfig::default(),
         bump: Bump::default(),
     }
@@ -356,16 +336,19 @@ impl<'a> ChangelogBuilder<'a> {
     }
 
     pub fn build(&self) -> Changelog<'a> {
-        let git_config = self
-            .config
-            .clone()
-            .map(|c| c.git)
-            .unwrap_or_else(|| default_git_config(self.pr_link.as_deref()));
+        let default_config;
+        let git_config = match &self.config {
+            Some(config) => &config.git,
+            None => {
+                default_config = default_git_config(self.pr_link.as_deref());
+                &default_config
+            }
+        };
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
             .commits
             .iter()
-            .filter_map(|c| c.process(&git_config).ok())
+            .filter_map(|c| c.process(git_config).ok())
             .collect();
 
         match git_config.sort_commits.to_lowercase().as_str() {
@@ -437,20 +420,26 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
         ignore_tags: None,
         limit_commits: None,
         sort_commits: "newest".to_string(),
-        commit_preprocessors: pr_link
-            .map(|pr_link| {
-                // Replace #123 with [#123](https://link_to_pr).
-                // If the number refers to an issue, GitHub redirects the PR link to the issue link.
-                vec![TextProcessor {
-                    pattern: Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"),
-                    replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
-                    replace_command: None,
-                }]
-            })
-            .unwrap_or_default(),
+        commit_preprocessors: default_commit_preprocessors(pr_link),
         link_parsers: vec![],
         ..Default::default()
     }
+}
+
+fn default_commit_preprocessors(pr_link: Option<&str>) -> Vec<TextProcessor> {
+    pr_link
+        .map(|pr_link| {
+            static PR_NUMBER: LazyLock<Regex> =
+                LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
+            // Replace #123 with [#123](https://link_to_pr).
+            // If the number refers to an issue, GitHub redirects the PR link to the issue link.
+            vec![TextProcessor {
+                pattern: PR_NUMBER.clone(),
+                replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
+                replace_command: None,
+            }]
+        })
+        .unwrap_or_default()
 }
 
 fn commit_parser(regex: &str, group: &str) -> CommitParser {
@@ -471,15 +460,18 @@ fn commit_parser(regex: &str, group: &str) -> CommitParser {
 
 /// Commit parsers based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 fn kac_commit_parsers() -> Vec<CommitParser> {
-    vec![
-        commit_parser("^feat", "added"),
-        commit_parser("^changed", "changed"),
-        commit_parser("^deprecated", "deprecated"),
-        commit_parser("^removed", "removed"),
-        commit_parser("^fix", "fixed"),
-        commit_parser("^security", "security"),
-        commit_parser(".*", "other"),
-    ]
+    static PARSERS: LazyLock<Vec<CommitParser>> = LazyLock::new(|| {
+        vec![
+            commit_parser("^feat", "added"),
+            commit_parser("^changed", "changed"),
+            commit_parser("^deprecated", "deprecated"),
+            commit_parser("^removed", "removed"),
+            commit_parser("^fix", "fixed"),
+            commit_parser("^security", "security"),
+            commit_parser(".*", "other"),
+        ]
+    });
+    PARSERS.clone()
 }
 
 pub fn default_changelog_config(header: Option<String>) -> ChangelogConfig {

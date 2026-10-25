@@ -68,8 +68,28 @@ export default function Home() {
         <HomepageFeatures />
       </main>
       <QuickStartSection />
+      <SponsorsSection />
       <TweetsSection />
     </Layout>
+  );
+}
+
+function SponsorsSection() {
+  return (
+    <div className={styles.section}>
+      <div className="container text--center">
+        <Heading as="h2" className="margin-bottom--lg">
+          Sponsored by 🤝
+        </Heading>
+        <a href="https://encore.dev/?utm_source=release-plz&utm_medium=sponsorship&utm_content=website">
+          <img className={styles.sponsorLogo} alt="Encore" src="img/sponsors/encore.svg" />
+        </a>
+        <p className="margin-top--lg margin-bottom--none">
+          Want to support Release-plz too?{" "}
+          <a href="https://github.com/sponsors/release-plz">Become a sponsor</a>. ❤️
+        </p>
+      </div>
+    </div>
   );
 }
 

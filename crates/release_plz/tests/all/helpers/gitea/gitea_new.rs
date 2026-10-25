@@ -85,7 +85,7 @@ async fn create_repository(user_token: &str, repo_name: &str, client: &reqwest::
 async fn upload_registry_config(user_token: &str, username: &str, client: &reqwest::Client) {
     use base64::Engine as _;
     let content = {
-        let cargo_url = format!("http://localhost:3000/api/packages/{username}/cargo");
+        let cargo_url = super::cargo_registry_url(username);
         format!("{{\"dl\":\"{cargo_url}/api/v1/crates\",\"api\":\"{cargo_url}\"}}")
     };
 
