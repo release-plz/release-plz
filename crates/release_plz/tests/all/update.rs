@@ -101,6 +101,44 @@ fn update_workspace_without_publishable_packages() {
 }
 
 #[test]
+fn update_ignores_inherited_dev_dependency_requirement_changes() {
+    for (kind, expected_version) in [
+        ("dev-dependencies", "1.0.0"),
+        ("dependencies", "1.0.1"),
+        ("build-dependencies", "1.0.1"),
+    ] {
+        let package = format!("version = \"1.0.0\"\n[{kind}]\nanyhow.workspace = true\n");
+        let (temp_dir, repo) = released_workspace(
+            &[("one", &package)],
+            "[workspace.dependencies]\nanyhow = \"1.0.0\"\n",
+            "[workspace]\nsemver_check = false\n",
+        );
+        // Only the workspace manifest changes: the package has no commits of its own.
+        let manifest_path = repo.directory().join("Cargo.toml");
+        let manifest = fs_err::read_to_string(&manifest_path).unwrap();
+        fs_err::write(manifest_path, manifest.replace("1.0.0", "1.0.1")).unwrap();
+        generate_lockfile(repo.directory());
+        repo.add_all_and_commit("chore: update workspace dependency")
+            .unwrap();
+
+        run_workspace_update(&temp_dir, &repo, None);
+
+        assert_locked_versions(repo.directory(), &[("one", expected_version)]);
+        let changelog_path = repo.directory().join("one/CHANGELOG.md");
+        if kind == "dev-dependencies" {
+            repo.is_clean().unwrap();
+            assert!(!changelog_path.exists());
+        } else {
+            let changelog = fs_err::read_to_string(changelog_path).unwrap();
+            assert!(
+                changelog.contains("update Cargo.toml dependencies"),
+                "{changelog}"
+            );
+        }
+    }
+}
+
+#[test]
 fn update_changelog_includes_distinct_author_and_committer() {
     for (body, expected) in [
         (
