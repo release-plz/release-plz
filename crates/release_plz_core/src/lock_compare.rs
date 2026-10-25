@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use cargo::{
+    GlobalContext,
     resolver::Resolve,
     util::CanonicalUrl,
     workspace::{
@@ -9,7 +10,11 @@ use cargo::{
         dependency::{DepKind, Patch},
     },
 };
-use cargo_metadata::{Metadata, camino::Utf8Path, semver::Version};
+use cargo_metadata::{
+    Metadata,
+    camino::{Utf8Path, Utf8PathBuf},
+    semver::Version,
+};
 use tracing::{debug, warn};
 
 use crate::registry_packages::ReleasedWorkspace;
@@ -25,7 +30,25 @@ pub(crate) struct WorkspaceLockfile {
 }
 
 impl WorkspaceLockfile {
-    pub(crate) fn from_resolve(resolve: &Resolve) -> Self {
+    /// Decode the lockfile committed at `commit` without resolving or fetching dependencies.
+    ///
+    /// Returns `None` when no lockfile was committed.
+    pub(crate) fn load_committed(
+        metadata: &Metadata,
+        commit: &str,
+    ) -> anyhow::Result<Option<Self>> {
+        let lock_path = workspace_lockfile_path(metadata);
+        if !lock_path.exists() {
+            return Ok(None);
+        }
+        let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
+        let workspace = load_workspace(metadata, &config)?;
+        let resolve = cargo::ops::load_pkg_lockfile(&workspace)
+            .with_context(|| format!("cannot load lockfile {lock_path:?} committed at {commit}"))?;
+        Ok(resolve.as_ref().map(Self::from_resolve))
+    }
+
+    fn from_resolve(resolve: &Resolve) -> Self {
         Self {
             dependencies: resolve
                 .iter()
@@ -53,7 +76,7 @@ pub fn are_lock_dependencies_updated(
     registry_package: &Utf8Path,
     package_name: &str,
 ) -> anyhow::Result<bool> {
-    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
+    if !workspace_lockfile_path(local_metadata).exists() {
         return Ok(false);
     }
     let registry_metadata = cargo_utils::cargo_metadata_command()
@@ -62,7 +85,7 @@ pub fn are_lock_dependencies_updated(
         .manifest_path(registry_package.join("Cargo.toml"))
         .exec()
         .context("cannot load metadata of registry package")?;
-    let registry_lock_path = registry_metadata.workspace_root.join("Cargo.lock");
+    let registry_lock_path = workspace_lockfile_path(&registry_metadata);
     if !registry_lock_path.exists() {
         return Ok(false);
     }
@@ -93,7 +116,7 @@ pub(crate) fn are_workspace_lock_dependencies_updated(
     let Some(lockfile) = released_workspace.lockfile() else {
         return Ok(false);
     };
-    if !local_metadata.workspace_root.join("Cargo.lock").exists() {
+    if !workspace_lockfile_path(local_metadata).exists() {
         return Ok(false);
     }
     let local = local_lock_dependencies(local_metadata, package_name)?;
@@ -126,7 +149,7 @@ fn local_lock_dependencies(metadata: &Metadata, package_name: &str) -> anyhow::R
         format!(
             "cannot find package {package_name:?} {} in lockfile {:?}. Hint: run `cargo check` to update the lockfile and commit it.",
             package.version,
-            metadata.workspace_root.join("Cargo.lock")
+            workspace_lockfile_path(metadata)
         )
     })
 }
@@ -141,14 +164,9 @@ fn workspace_lock_dependencies(
     package: &cargo_metadata::Package,
     lockfile: Option<&WorkspaceLockfile>,
 ) -> anyhow::Result<Option<Lockfile>> {
-    let lock_path = metadata.workspace_root.join("Cargo.lock");
+    let lock_path = workspace_lockfile_path(metadata);
     let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
-    let manifest = metadata.workspace_root.join("Cargo.toml");
-    let workspace = Workspace::new(manifest.as_std_path(), &config).with_context(|| {
-        format!(
-            "cannot load workspace manifest {manifest:?} with the Cargo library bundled in release-plz"
-        )
-    })?;
+    let workspace = load_workspace(metadata, &config)?;
     let loaded_lockfile;
     let lockfile = match lockfile {
         Some(lockfile) => lockfile,
@@ -183,6 +201,23 @@ fn workspace_lock_dependencies(
             })
             .collect(),
     }))
+}
+
+fn workspace_lockfile_path(metadata: &Metadata) -> Utf8PathBuf {
+    metadata.workspace_root.join("Cargo.lock")
+}
+
+/// Load the workspace with the Cargo library bundled in release-plz.
+fn load_workspace<'gctx>(
+    metadata: &Metadata,
+    gctx: &'gctx GlobalContext,
+) -> anyhow::Result<Workspace<'gctx>> {
+    let manifest = cargo_utils::workspace_manifest(metadata);
+    Workspace::new(manifest.as_std_path(), gctx).with_context(|| {
+        format!(
+            "cannot load workspace manifest {manifest:?} with the Cargo library bundled in release-plz"
+        )
+    })
 }
 
 fn reachable_lock_dependencies(
@@ -535,7 +570,7 @@ source = "registry+https://example.com/index"
         let (_local, local_metadata) = workspace_for_lock(&re_resolved);
         let (released_dir, released_metadata) = workspace_for_lock(committed);
         let released = released_workspace(released_metadata);
-        // Simulate `cargo package --list` re-resolving the released lockfile on disk
+        // Simulate a cargo command re-resolving the released lockfile on disk
         // after the snapshot was taken.
         let released_lock = released_dir.path().join("Cargo.lock");
         fs_err::write(&released_lock, &re_resolved).unwrap();

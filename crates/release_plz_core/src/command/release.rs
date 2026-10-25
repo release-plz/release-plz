@@ -16,13 +16,13 @@ use git_cmd::Repo;
 use secrecy::SecretString;
 use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
-use url::Url;
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
-    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
+    DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote,
     cargo::{
-        CargoRegistry, CmdOutput, is_published, run_cargo_with_env_async, wait_until_published,
+        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env_async,
+        wait_until_published,
     },
     changelog_parser,
     git::forge::GitClient,
@@ -141,15 +141,11 @@ impl ReleaseRequest {
 
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
-        config
-            .changelog_path
-            .map(|p| self.metadata.workspace_root.join(p))
-            .unwrap_or_else(|| {
-                package
-                    .package_path()
-                    .expect("can't determine package path")
-                    .join(CHANGELOG_FILENAME)
-            })
+        crate::changelog_path(
+            package,
+            &self.metadata.workspace_root,
+            config.changelog_path.as_deref(),
+        )
     }
 
     /// Return true if the package must be published to a cargo registry.
@@ -206,14 +202,14 @@ impl ReleaseRequest {
 
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
     fn find_registry_token(&self, registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
-        let is_registry_same_as_request = self.registry.as_deref() == registry;
-        let token = is_registry_same_as_request
-            .then(|| self.token.clone())
-            .flatten()
-            // if the registry is not the same as the request or if there's no token in the request,
-            // try to find the token in the Cargo credentials file or in the environment variables.
-            .or(cargo_utils::registry_token(self.registry.as_deref())?);
-        Ok(token)
+        if self.registry.as_deref() == registry
+            && let Some(token) = &self.token
+        {
+            return Ok(Some(token.clone()));
+        }
+        // if the registry is not the same as the request or if there's no token in the request,
+        // try to find the token in the environment variables or in the Cargo credentials file.
+        cargo_utils::registry_token(registry)
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
@@ -775,17 +771,20 @@ async fn publish_package_if_needed<'a>(
     let mut package_was_released = false;
 
     if should_publish {
-        let registry_indexes = registry_indexes(package, input.registry.clone())
-            .context("can't determine registry indexes")?;
+        let registry_indexes = registry_indexes(
+            package,
+            input.registry.clone(),
+            &input.metadata.workspace_root,
+        )
+        .context("can't determine registry indexes")?;
 
-        for CargoRegistry { name, index_url } in registry_indexes {
-            let token = input.find_registry_token(name.as_deref())?;
+        for registry in registry_indexes {
+            let token = input.find_registry_token(registry.name.as_deref())?;
             let pkg_is_published = is_published(
                 &input.metadata.workspace_root,
                 package,
                 input.publish_timeout,
-                name.as_deref(),
-                index_url.as_ref(),
+                registry.name.as_deref(),
                 token.as_ref(),
             )
             .await
@@ -800,8 +799,7 @@ async fn publish_package_if_needed<'a>(
                 trusted_publishing_client,
                 &release_info,
                 token.as_ref(),
-                name.as_deref(),
-                index_url.as_ref(),
+                &registry,
             )
             .await
             .with_context(|| format!("failed to publish package {}", package.name))?;
@@ -875,39 +873,26 @@ async fn should_release(
     }
 }
 
-/// Get the indexes where the package should be published.
+/// Get the registries where the package should be published.
 /// If `registry` is specified, it takes precedence over the `publish` field
 /// of the package manifest.
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
+    workspace_root: &Utf8Path,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
         .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
-    let registry_urls = registries
-        .into_iter()
-        .map(|r| {
-            cargo_utils::registry_url(package.manifest_path.as_ref(), Some(&r))
-                .context("failed to retrieve registry url")
-                .map(|url| (r, url))
-        })
-        .collect::<anyhow::Result<Vec<(String, Url)>>>()?;
-
-    let mut registry_indexes = registry_urls
-        .into_iter()
-        .map(|(registry, u)| CargoRegistry {
-            name: Some(registry),
-            index_url: Some(u),
-        })
-        .collect::<Vec<CargoRegistry>>();
-    if registry_indexes.is_empty() {
-        registry_indexes.push(CargoRegistry {
-            name: None,
-            index_url: None,
-        });
+    let config = new_cargo_config(Some(workspace_root.to_owned()))?;
+    if registries.is_empty() {
+        Ok(vec![CargoRegistry::new(&config, None)?])
+    } else {
+        registries
+            .into_iter()
+            .map(|name| CargoRegistry::new(&config, Some(name)))
+            .collect()
     }
-    Ok(registry_indexes)
 }
 
 struct ReleaseInfo<'a> {
@@ -924,11 +909,11 @@ async fn publish_package(
     trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
     release_info: &ReleaseInfo<'_>,
     token: Option<&SecretString>,
-    registry: Option<&str>,
-    index_url: Option<&Url>,
+    registry: &CargoRegistry,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
-    let is_crates_io = registry.is_none() || registry == Some("crates-io");
+    let registry_name = registry.name.as_deref();
+    let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
@@ -964,7 +949,7 @@ async fn publish_package(
         input,
         workspace_root,
         &publish_token,
-        registry,
+        registry_name,
     )
     .await
     .context("failed to run cargo publish")?;
@@ -986,6 +971,21 @@ async fn publish_package(
             );
         }
     }
+    // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
+    // publish registry) or if `cargo publish` didn't confirm the package.
+    if !input.dry_run
+        && (registry.has_remote_mirror
+            || !is_publish_confirmed_by_cargo(&output, release_info.package))
+    {
+        wait_until_published(
+            workspace_root,
+            release_info.package,
+            input.publish_timeout,
+            registry_name,
+            token,
+        )
+        .await?;
+    }
 
     if input.dry_run {
         log_dry_run_info(
@@ -996,24 +996,30 @@ async fn publish_package(
         );
         Ok(false)
     } else {
-        wait_until_published(
-            workspace_root,
-            release_info.package,
-            input.publish_timeout,
-            registry,
-            index_url,
-            token,
-        )
-        .await?;
         info!(
             "published {} {} to {}",
             release_info.package.name,
             release_info.package.version,
-            registry.unwrap_or("crates.io")
+            registry_name.unwrap_or("crates.io")
         );
 
         Ok(true)
     }
+}
+
+/// Return `true` if `cargo publish` reported that the package is available in the registry.
+///
+/// After the upload, Cargo waits until the new version appears in the registry index
+/// and then prints `Published <package> v<version> at <registry>`.
+/// If the wait times out (after 60 s on stable Cargo), Cargo prints a warning instead,
+/// and release-plz must wait.
+fn is_publish_confirmed_by_cargo(output: &CmdOutput, package: &Package) -> bool {
+    // The status is colored, so look for the status and the package on the same line.
+    let published_package = format!("{} v{} at ", package.name, package.version);
+    output
+        .stderr
+        .lines()
+        .any(|line| line.contains("Published") && line.contains(&published_package))
 }
 
 fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {
@@ -1372,6 +1378,7 @@ mod tests {
     use fake_package::{FakePackage, metadata::fake_metadata};
 
     use super::*;
+    use crate::CHANGELOG_FILENAME;
 
     // Trick to avoid the tests to run concurrently.
     // It's used to not affect environment variables used in other tests
@@ -1862,35 +1869,6 @@ mod tests {
             assert!(registry_token.is_some());
             assert_eq!(token, registry_token.unwrap().expose_secret());
         });
-    }
-
-    #[test]
-    fn should_reference_env_var_provided_index() {
-        use cargo_utils::registry_url;
-
-        let registry_name = "my_registry";
-        let mock_index = "https://example.com/git/index";
-        let mock_index_url = Url::parse(mock_index).unwrap();
-
-        let index_env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry_name.to_uppercase());
-
-        let fake_metadata = fake_metadata();
-        let fake_manifest_path = fake_metadata.workspace_root.as_ref();
-
-        with_env_var(&index_env_var, mock_index, || {
-            let maybe_registry_index =
-                registry_url(fake_manifest_path, Some(registry_name)).unwrap();
-
-            // assert the registry index is properly overriden
-            assert_eq!(maybe_registry_index, mock_index_url);
-        });
-
-        let non_overriden_maybe_registry_index =
-            registry_url(fake_manifest_path, Some(registry_name)).ok();
-
-        // assert the index is inherited from the workspace after the env var
-        // is cleared.
-        assert_eq!(non_overriden_maybe_registry_index, None);
     }
 
     #[test]

@@ -179,10 +179,6 @@ impl Project {
         crate::tera::render_template(template, &context, template_name)
     }
 
-    pub fn cargo_lock_path(&self) -> Utf8PathBuf {
-        self.manifest_dir.join("Cargo.lock")
-    }
-
     // Check mandatory fields for crates.io
     pub fn check_mandatory_fields(&self) -> anyhow::Result<()> {
         let mut missing_fields = Vec::new();
