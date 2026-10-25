@@ -322,10 +322,9 @@ async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
     );
 }
 
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_dry_run_checks_dev_dependency_cycles_individually() {
-    // Like a crate and its proc-macro crate, which dev-depends on the crate to test it.
+/// `lib` depends on `macros`, which dev-depends on `lib` to test it, like a crate and its
+/// proc-macro crate. Both are published in version 0.1.0 and bumped to 0.1.1.
+async fn dev_dependency_cycle_workspace() -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("lib").with_type(PackageType::Lib),
         TestPackage::new("macros").with_type(PackageType::Lib),
@@ -356,11 +355,44 @@ async fn release_dry_run_checks_dev_dependency_cycles_individually() {
     }
     context.run_cargo_check();
     context.push_all_changes("bump versions");
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_dev_dependency_cycles_individually() {
+    let context = dev_dependency_cycle_workspace().await;
     // Cargo rejects the cycle if it checks both packages together, while the real
     // release publishes them one at a time, resolving the dev-dependency to `lib` 0.1.0.
     context
         .release_command()
         .arg("--dry-run")
+        .assert()
+        .success();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_recognizes_cycles_reported_as_timeouts() {
+    let context = dev_dependency_cycle_workspace().await;
+    // Cargo 1.90 to 1.95 report a cycle between the selected packages as a timeout.
+    // Simulate them, so that the dry run only passes if release-plz recognizes the
+    // timeout and checks the packages individually.
+    let cargo_dir = fake_cargo(
+        r#"#!/bin/sh
+if [ "$1" = publish ] && [ "$(printf '%s\n' "$@" | grep -cx -- --package)" -gt 1 ]; then
+    echo 'error: unable to publish lib v0.1.1 and macros v0.1.1 due to a timeout while waiting for published dependencies to be available.' >&2
+    exit 1
+fi
+exec "$REAL_CARGO" "$@"
+"#,
+    );
+    context
+        .release_command()
+        .arg("--dry-run")
+        .env("CARGO", cargo_dir.path().join("cargo"))
+        .env("REAL_CARGO", env!("CARGO"))
         .assert()
         .success();
 }

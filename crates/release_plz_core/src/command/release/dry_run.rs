@@ -108,11 +108,7 @@ impl PublishBatch {
             // Cargo rejects selected packages that form a cycle, e.g. a proc-macro crate that
             // dev-depends on the crate depending on it. The real release publishes them one at
             // a time, so Cargo resolves the dev-dependency to the version in the registry.
-            if output.status.success()
-                || !output
-                    .stderr
-                    .contains("circular dependency detected while publishing")
-            {
+            if output.status.success() || !is_cycle_error(&output.stderr) {
                 return ensure_success(&output, &self.packages, package_count);
             }
             info!(
@@ -165,6 +161,18 @@ fn ensure_success(
         );
     }
     Ok(())
+}
+
+/// Whether `cargo publish --dry-run` failed because the selected packages form a cycle.
+fn is_cycle_error(stderr: &str) -> bool {
+    // Reported by Cargo 1.96 and newer.
+    stderr.contains("circular dependency detected while publishing")
+        // Reported by Cargo 1.90 to 1.95. Dry runs don't wait for the registry: they consider
+        // every checked package available, so they only "time out" if no remaining package
+        // has all its dependencies checked, i.e. if the remaining packages form a cycle.
+        || stderr.contains(
+            "due to a timeout while waiting for published dependencies to be available",
+        )
 }
 
 /// Whether Cargo can publish multiple packages with a single `cargo publish`,
