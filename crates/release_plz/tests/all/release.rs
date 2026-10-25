@@ -53,23 +53,25 @@ async fn unpublished_workspace() -> TestContext {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_checks_unpublished_workspace_dependencies() {
     let context = unpublished_workspace().await;
-    for no_verify in [false, true] {
-        // Exercise registry selection from package manifests as well as --registry.
-        // Without --registry, the dry run only passes if release-plz recognizes that
-        // the default registry of `dependency` is the one `dependent` names.
-        let mut command = if no_verify {
-            let mut command = context.release_command();
-            command.arg("--no-verify");
-            command
-        } else {
-            context.release_command_without_registry()
-        };
-        command
-            .arg("--dry-run")
-            .assert()
-            .success()
-            .stdout("{\"releases\":[]}\n");
-    }
+    // Without `--registry`, release-plz reads the registries from the package manifests.
+    // The dry run only passes if release-plz recognizes that the default registry of
+    // `dependency` is the one `dependent` names, and checks them together.
+    context
+        .release_command_without_registry()
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout("{\"releases\":[]}\n");
+    // Issue #2878 used `--no-verify`, which skips compilation but not packaging:
+    // Cargo still needs to resolve `dependency` to package `dependent`.
+    // This run also covers selecting the registry with `--registry`.
+    context
+        .release_command()
+        .arg("--no-verify")
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout("{\"releases\":[]}\n");
     for package in ["dependency", "dependent"] {
         assert!(
             context
