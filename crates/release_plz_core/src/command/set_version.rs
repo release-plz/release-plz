@@ -145,7 +145,7 @@ fn prepare_version_changes<'a>(
             );
             vec![(packages.values().next().unwrap(), version)]
         }
-        SetVersionSpec::Workspace(changes) => changes
+        SetVersionSpec::Workspace(versions) => versions
             .iter()
             .map(|(name, version)| {
                 let package = packages
