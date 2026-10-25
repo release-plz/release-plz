@@ -11,14 +11,11 @@ mod set_version;
 mod update;
 
 use anyhow::bail;
-use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use cargo_utils::CARGO_TOML;
 use clap::{
     ValueEnum,
     builder::{Styles, styling::AnsiColor},
 };
 use init::Init;
-use release_plz_core::fs_utils::current_directory;
 use set_version::SetVersion;
 use tracing::level_filters::LevelFilter;
 
@@ -127,11 +124,4 @@ pub enum Command {
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutputType {
     Json,
-}
-
-fn local_manifest(manifest_path: Option<&Utf8Path>) -> Utf8PathBuf {
-    match manifest_path {
-        Some(manifest) => manifest.to_path_buf(),
-        None => current_directory().unwrap().join(CARGO_TOML),
-    }
 }

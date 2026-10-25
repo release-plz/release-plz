@@ -8,7 +8,10 @@ use cargo_metadata::{
 };
 use cargo_utils::{LocalManifest, canonical_local_manifest, workspace_members};
 
-use crate::{CHANGELOG_FILENAME, PackagePath as _, changelog_parser::last_release_from_str};
+use crate::{
+    PackagePath as _, PackageUpdateConfig, UpdateConfig, changelog_parser::last_release_from_str,
+    update_request::PackagesConfig,
+};
 
 #[derive(Debug)]
 pub struct SetVersionRequest {
@@ -17,13 +20,25 @@ pub struct SetVersionRequest {
     /// Cargo metadata.
     metadata: Metadata,
     version_changes: SetVersionSpec,
-    changelog_paths: BTreeMap<String, Utf8PathBuf>,
+    /// Package-specific configurations. Only `changelog_path` and `changelog_update` are used.
+    packages_config: PackagesConfig,
 }
 
 impl SetVersionRequest {
-    pub fn set_changelog_path(&mut self, package: &str, changelog_path: Utf8PathBuf) {
-        self.changelog_paths
-            .insert(package.to_string(), changelog_path);
+    /// Set update config for all packages.
+    pub fn with_default_package_config(mut self, config: UpdateConfig) -> Self {
+        self.packages_config.set_default(config);
+        self
+    }
+
+    /// Set update config for a specific package.
+    pub fn with_package_config(
+        mut self,
+        package: impl Into<String>,
+        config: PackageUpdateConfig,
+    ) -> Self {
+        self.packages_config.set(package.into(), config);
+        self
     }
 }
 
@@ -66,7 +81,7 @@ impl SetVersionRequest {
             version_changes,
             metadata,
             manifest,
-            changelog_paths: BTreeMap::new(),
+            packages_config: PackagesConfig::default(),
         })
     }
 }
@@ -173,22 +188,28 @@ fn update_package_changelog(
     updating_workspace: bool,
     updated_changelogs: &mut BTreeSet<Utf8PathBuf>,
 ) -> anyhow::Result<()> {
-    let package_path = package.package_path()?;
-    let default_changelog_path = package_path.join(CHANGELOG_FILENAME);
-    let changelog_path = input
-        .changelog_paths
-        .get(package.name.as_str())
-        .or(change.changelog_path.as_ref())
-        .map_or(default_changelog_path.as_path(), |path| path.as_path());
+    let config = input.packages_config.get(&package.name);
+    if !config.should_update_changelog() {
+        return Ok(());
+    }
+    let changelog_path = crate::changelog_path(
+        package,
+        &input.metadata.workspace_root,
+        config
+            .generic
+            .changelog_path
+            .as_deref()
+            .or(change.changelog_path.as_deref()),
+    );
     if updating_workspace {
-        let resolved_path = crate::fs_utils::canonicalize_utf8(changelog_path)
+        let resolved_path = crate::fs_utils::canonicalize_utf8(&changelog_path)
             .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
         // Several packages can share a changelog, including through different relative paths.
         if !updated_changelogs.insert(resolved_path) {
             return Ok(());
         }
     }
-    update_changelog(changelog_path, &package.version, &change.version)
+    update_changelog(&changelog_path, &package.version, &change.version)
         .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
     Ok(())
 }
