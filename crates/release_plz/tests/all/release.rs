@@ -286,7 +286,10 @@ publish_no_verify = true
         stderr.contains("If a package depends on an unpublished workspace package"),
         "{stderr}"
     );
-    assert!(stderr.contains("publish_no_verify"), "{stderr}");
+    assert!(
+        stderr.contains("https://release-plz.dev/docs/usage/release#dry-runs"),
+        "{stderr}"
+    );
 }
 
 #[tokio::test]

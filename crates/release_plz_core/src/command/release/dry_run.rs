@@ -12,9 +12,7 @@ use crate::cargo::{CmdOutput, run_cargo};
 /// Possible cause of a failed check when packages are checked separately.
 const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished workspace package, \
     Cargo can only resolve the dependency if both packages are checked together. \
-    Release-plz checks packages separately if their registry, publish_allow_dirty, \
-    publish_no_verify or publish_all_features differ, if they set publish_features, \
-    or if Cargo is older than 1.90.";
+    Learn more at https://release-plz.dev/docs/usage/release#dry-runs";
 
 #[derive(Default)]
 pub(super) struct PublishBatches {
