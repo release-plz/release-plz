@@ -225,7 +225,7 @@ async fn release_dry_run_checks_packages_with_features_individually() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_dry_run_preserves_per_package_registries() {
+async fn release_preserves_per_package_registries() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
     // `one` is published to the test registry, `two` to the sparse one.
     let manifest_path = context.package_path("two").join("Cargo.toml");
@@ -243,8 +243,8 @@ async fn release_dry_run_preserves_per_package_registries() {
         .assert()
         .success();
 
-    // The real release used to run `cargo publish -p two` without `--registry`, so
-    // Cargo picked the default registry, which isn't in the `publish` field of `two`.
+    // The real release must pass each package's registry: without `--registry`, Cargo
+    // picks the default registry, which isn't in the `publish` field of `two`.
     context
         .release_command_without_registry()
         .env(
