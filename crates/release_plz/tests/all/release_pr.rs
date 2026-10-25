@@ -1,6 +1,7 @@
 use crate::helpers::{
-    TEST_REGISTRY,
+    TEST_REGISTRY, assert_cargo_semver_checks_is_installed, assert_locked_versions,
     package::{PackageType, TestPackage},
+    release_pr_stdout, release_stdout,
     test_context::TestContext,
     today,
 };
@@ -8,10 +9,140 @@ use assert_cmd::Command;
 use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 
-fn assert_cargo_semver_checks_is_installed() {
+/// Tag a git-only workspace at 1.0.0, with package manifests that can inherit
+/// the workspace version. `config` adds package overrides to release-plz.toml.
+async fn released_workspace_with_shared_version(
+    packages: &[(&str, &str)],
+    config: &str,
+) -> TestContext {
+    let members: Vec<_> = packages
+        .iter()
+        .map(|(name, _)| TestPackage::new(name).with_type(PackageType::Lib))
+        .collect();
+    let context = TestContext::new_workspace_with_packages(&members).await;
+    let mut root = LocalManifest::try_new(&context.repo_dir().join(CARGO_TOML)).unwrap();
+    root.data["workspace"]["package"]["version"] = "1.0.0".into();
+    root.write().unwrap();
+    for (name, manifest) in packages {
+        fs_err::write(
+            context.package_path(name).join(CARGO_TOML),
+            format!("[package]\nname = {name:?}\nedition = \"2024\"\n{manifest}"),
+        )
+        .unwrap();
+    }
+    context.run_cargo_check();
+    context.write_release_plz_toml(&format!(
+        "[workspace]\ngit_only = true\npublish = false\nsemver_check = false\n{config}"
+    ));
+    for (name, _) in packages {
+        context
+            .repo
+            .tag_lightweight(&format!("{name}-v1.0.0"))
+            .unwrap();
+    }
+    context.repo.git(&["push", "--tags"]).unwrap();
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
+    let context = released_workspace_with_shared_version(
+        &[
+            ("support", "version = \"1.0.0\"\n"),
+            (
+                "consumer",
+                "version.workspace = true\n[dependencies]\nsupport = { path = \"../support\", version = \"=1.0.0\" }\n",
+            ),
+            ("sibling", "version.workspace = true\n"),
+            (
+                "downstream",
+                "version = \"1.0.0\"\n[dependencies]\nsibling = { path = \"../sibling\", version = \"=1.0.0\" }\n",
+            ),
+        ],
+        "\n[[package]]\nname = \"sibling\"\nrelease = false\n",
+    )
+    .await;
+    // Only support changes. Its minor bump breaks consumer's exact requirement,
+    // so consumer needs a dependency-only patch release of the shared version.
+    fs_err::write(
+        context.package_path("support").join("src/lib.rs"),
+        "pub fn new() {}\n",
+    )
+    .unwrap();
+    context.push_all_changes("feat: update support");
+
+    // release-pr relocates the checkout while retaining the original Cargo metadata.
+    // The disabled sibling must still be resolved in that copy to find downstream.
+    context.run_release_pr().success();
+    // Preparing the PR must leave the original checkout clean.
+    context.repo.is_clean().unwrap();
+    context.merge_release_pr().await;
+
+    // The shared version change requires a downstream release, but sibling's
+    // disabled release must not produce a changelog of its own.
+    let changelog =
+        fs_err::read_to_string(context.package_path("downstream").join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("## [1.0.1]"), "{changelog}");
+    assert!(changelog.contains("sibling"), "{changelog}");
     assert!(
-        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
-        "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
+        !context
+            .package_path("sibling")
+            .join("CHANGELOG.md")
+            .exists()
+    );
+    // sibling still inherits the bumped version. Checking with --locked also
+    // verifies that the merged manifests and lockfile agree on every version.
+    assert_locked_versions(
+        &context.repo_dir(),
+        &[
+            ("support", "1.1.0"),
+            ("consumer", "1.0.1"),
+            ("sibling", "1.0.1"),
+            ("downstream", "1.0.1"),
+        ],
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_pre_bumped_shared_versions_update_dependency_requirements() {
+    let context = released_workspace_with_shared_version(
+        &[
+            ("upstream", "version.workspace = true\n"),
+            (
+                "downstream",
+                "version = \"1.0.0\"\n[dependencies]\nupstream = { path = \"../upstream\", version = \"^1.0.0\" }\n",
+            ),
+        ],
+        "",
+    )
+    .await;
+    let path = context.repo_dir().join(CARGO_TOML);
+    let manifest = fs_err::read_to_string(&path).unwrap();
+    fs_err::write(path, manifest.replace("1.0.0", "1.1.0")).unwrap();
+    fs_err::write(
+        context.package_path("upstream").join("src/lib.rs"),
+        "pub fn new() {}\n",
+    )
+    .unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("feat: update upstream and bump workspace version");
+
+    context.run_release_pr().success();
+    context.repo.is_clean().unwrap();
+    context.merge_release_pr().await;
+
+    let downstream =
+        fs_err::read_to_string(context.package_path("downstream").join(CARGO_TOML)).unwrap();
+    // The old caret requirement still resolves, but its lower bound must advance.
+    assert!(downstream.contains("version = \"^1.1.0\""), "{downstream}");
+    let changelog =
+        fs_err::read_to_string(context.package_path("upstream").join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("## [1.1.0]"), "{changelog}");
+    assert_locked_versions(
+        &context.repo_dir(),
+        &[("upstream", "1.1.0"), ("downstream", "1.0.1")],
     );
 }
 
@@ -56,6 +187,21 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         )
         .trim()
     );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_ignores_forge_errors_when_nothing_to_release() {
+    let context = TestContext::new().await;
+    context.run_release().success();
+
+    // release-pr lists the open PRs while it analyzes the packages. With nothing to release,
+    // the listing isn't needed, so its failure (caused by the invalid token) must not fail the command.
+    context
+        .release_pr_command("invalid-token")
+        .assert()
+        .success()
+        .stdout("{\"prs\":[]}\n");
 }
 
 #[tokio::test]
@@ -130,18 +276,7 @@ async fn release_plz_can_do_backport_prs() {
 
     // Running `release` the first time, releases the project
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 
     // Publish a new breaking release
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
@@ -149,18 +284,7 @@ async fn release_plz_can_do_backport_prs() {
     context.run_cargo_check();
     context.push_all_changes("breaking release");
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.2.0",
-                "version": "0.2.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.2.0", "0.2.0"));
 
     // Open a release PR for a backport
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 1, 0));
@@ -213,18 +337,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     context.merge_release_pr().await;
 
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.1", "0.1.1"));
 }
 
 #[tokio::test]
@@ -528,6 +641,51 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_pr_legacy_prefix_requires_explicit_configuration() {
+    let legacy_prefix = "release-plz/";
+    let legacy_config = format!("[workspace]\npr_branch_prefix = \"{legacy_prefix}\"\n");
+    let context = TestContext::new().await;
+    context.write_release_plz_toml(&legacy_config);
+    context.run_release_pr().success();
+    let legacy_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(legacy_prs.len(), 1);
+    let legacy_pr = &legacy_prs[0];
+
+    // An explicitly configured legacy prefix still updates the existing PR.
+    fs_err::write(context.repo_dir().join("README.md"), "# Updated\n").unwrap();
+    context.push_all_changes("fix: update readme");
+    context.run_release_pr().success();
+    let updated_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(updated_prs.len(), 1);
+    let updated_pr = &updated_prs[0];
+    assert_eq!(updated_pr.number, legacy_pr.number);
+    assert_eq!(
+        context
+            .gitea
+            .get_file_content(updated_pr.branch(), "README.md")
+            .await,
+        "# Updated\n"
+    );
+
+    // With the default prefix, leave the legacy PR alone and open a new one.
+    context.write_release_plz_toml("[workspace]\n");
+    context.run_release_pr().success();
+    assert_eq!(context.opened_release_prs().await.len(), 1);
+    let legacy_prs = context.opened_prs(legacy_prefix).await;
+    assert_eq!(legacy_prs.len(), 1);
+    assert_eq!(legacy_prs[0].number, legacy_pr.number);
+    // The legacy branch wasn't updated from main, which now has the default config.
+    assert_eq!(
+        context
+            .gitea
+            .get_file_content(legacy_pr.branch(), "release-plz.toml")
+            .await,
+        legacy_config
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_should_set_custom_pr_details() {
     let context = TestContext::new().await;
 
@@ -663,19 +821,7 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 
     let opened_prs = context.opened_release_prs().await;
     let open_pr = &opened_prs[0];
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.2.0"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.2.0"));
     context.merge_release_pr().await;
 
     let expected_tag = "v0.2.0";
@@ -728,19 +874,7 @@ async fn release_plz_detects_symlink_package_changes() {
 
     let opened_prs = context.opened_release_prs().await;
     let open_pr = &opened_prs[0];
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.1"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.1.1"));
     context.merge_release_pr().await;
 
     let expected_tag = "v0.1.1";
@@ -1399,19 +1533,7 @@ async fn release_plz_handles_invalid_readme_path_gracefully() {
     assert_eq!(open_pr.title, "chore: release v0.1.0");
 
     // Verify the PR was created successfully
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "head_branch": open_pr.branch(),
-            "base_branch": "main",
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.0"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.1.0"));
 
     // Additional test: Make a change and ensure subsequent operations work
     let new_file = context.repo_dir().join("src").join("new.rs");

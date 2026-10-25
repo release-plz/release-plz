@@ -4,13 +4,9 @@ on:
   schedule:
     # Runs at 00:00 UTC everyday
     - cron: "0 0 * * *"
-  push:
-    branches:
-      - main
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
   pull_request:
+  merge_group:
+    types: [checks_requested]
 
 permissions: {}
 
@@ -30,7 +26,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
       - name: Install cargo-deny
-        uses: taiki-e/install-action@94c31af3204a9f15ab40b35ad084410b905bbc73 # v2.87.17
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-deny
       - name: Audit dependencies

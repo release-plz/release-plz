@@ -1,19 +1,19 @@
 use std::path::Path;
 
 use anyhow::Context as _;
-use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use release_plz_core::fs_utils::to_utf8_path;
+use cargo_metadata::camino::Utf8PathBuf;
+use cargo_utils::CARGO_TOML;
+use release_plz_core::fs_utils::{current_directory, to_utf8_path};
 
 /// Command that acts on a manifest.
 pub trait ManifestCommand {
     fn optional_manifest(&self) -> Option<&Path>;
 
-    fn optional_manifest_path(&self) -> Option<&Utf8Path> {
-        self.optional_manifest().map(|p| to_utf8_path(p).unwrap())
-    }
-
     fn manifest_path(&self) -> Utf8PathBuf {
-        super::local_manifest(self.optional_manifest_path())
+        match self.optional_manifest() {
+            Some(manifest) => to_utf8_path(manifest).unwrap().to_path_buf(),
+            None => current_directory().unwrap().join(CARGO_TOML),
+        }
     }
 
     fn cargo_metadata(&self) -> anyhow::Result<cargo_metadata::Metadata> {
