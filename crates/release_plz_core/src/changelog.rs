@@ -1,6 +1,10 @@
 use std::sync::LazyLock;
 
 use anyhow::Context;
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use chrono::{NaiveDate, TimeZone, Utc};
 use git_cliff_core::{
     changelog::Changelog as GitCliffChangelog,
@@ -13,7 +17,7 @@ use regex::Regex;
 use serde::Serialize;
 use tracing::warn;
 
-use crate::changelog_parser;
+use crate::{PackagePath as _, changelog_parser};
 
 pub const CHANGELOG_HEADER: &str = r"# Changelog
 
@@ -28,6 +32,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 pub const CHANGELOG_FILENAME: &str = "CHANGELOG.md";
 pub const RELEASE_LINK: &str = "release_link";
 pub const REMOTE: &str = "remote";
+
+/// Path of the changelog of `package`.
+/// `configured_path` is relative to `workspace_root`.
+/// If it's not set, the changelog is in the package directory.
+pub(crate) fn changelog_path(
+    package: &Package,
+    workspace_root: &Utf8Path,
+    configured_path: Option<&Utf8Path>,
+) -> Utf8PathBuf {
+    match configured_path {
+        Some(path) => workspace_root.join(path),
+        None => package
+            .package_path()
+            .expect("can't determine package path")
+            .join(CHANGELOG_FILENAME),
+    }
+}
 
 #[derive(Debug)]
 pub struct Changelog<'a> {
@@ -58,11 +79,7 @@ impl<'a> Changelog<'a> {
     pub fn generate(mut self) -> anyhow::Result<String> {
         let config = self.changelog_config(None);
         let changelog = self.get_changelog(config)?;
-        let mut out = Vec::new();
-        changelog
-            .generate(&mut out)
-            .context("cannot generate changelog")?;
-        String::from_utf8(out).context("cannot convert bytes to string")
+        render(|out| changelog.generate(out), "cannot generate changelog")
     }
 
     /// Update an existing changelog.
@@ -83,19 +100,22 @@ impl<'a> Changelog<'a> {
         }
 
         // Fallback: let git-cliff handle the prepend.
-        let mut out = Vec::new();
-        changelog
-            .prepend(old_changelog, &mut out)
-            .context("cannot update changelog")?;
-        String::from_utf8(out).context("cannot convert bytes to string")
+        render(
+            |out| changelog.prepend(old_changelog, out),
+            "cannot update changelog",
+        )
     }
 
     fn get_changelog(self, config: Config) -> Result<GitCliffChangelog<'a>, anyhow::Error> {
         let mut changelog = GitCliffChangelog::new(vec![self.release], config, None)
             .context("error while building changelog")?;
-        add_package_context(&mut changelog, &self.package)?;
-        add_release_link_context(&mut changelog, self.release_link.as_deref())?;
-        add_remote_context(&mut changelog, self.remote.as_ref())?;
+        add_context(&mut changelog, "package", &self.package)?;
+        if let Some(release_link) = &self.release_link {
+            add_context(&mut changelog, RELEASE_LINK, release_link)?;
+        }
+        if let Some(remote) = &self.remote {
+            add_context(&mut changelog, REMOTE, remote)?;
+        }
         Ok(changelog)
     }
 
@@ -117,26 +137,29 @@ fn compose_changelog(
     changelog: &GitCliffChangelog<'_>,
     header: &str,
 ) -> Result<String, anyhow::Error> {
-    let generated = {
-        let mut new_out = Vec::new();
-        changelog
-            .generate(&mut new_out)
-            .context("cannot generate updated changelog")?;
-        String::from_utf8(new_out).context("cannot convert bytes to string")?
-    };
+    let generated = render(
+        |out| changelog.generate(out),
+        "cannot generate updated changelog",
+    )?;
     // Parse the header so we can remove it later
-    let generated_header = crate::changelog_parser::parse_header(&generated);
-    let header_to_strip = if let Some(gen_h) = generated_header {
-        gen_h
-    } else {
-        header.to_string()
-    };
+    let header_to_strip =
+        changelog_parser::parse_header(&generated).unwrap_or_else(|| header.to_string());
     // Remove the header to get the changelog body
     let generated_body = generated
         .strip_prefix(&header_to_strip)
         .unwrap_or(generated.as_str());
     let old_body = old_changelog.strip_prefix(header).unwrap_or(old_changelog);
     Ok(format!("{header}{generated_body}{old_body}"))
+}
+
+/// Collect the changelog that `write` renders into a string.
+fn render(
+    write: impl FnOnce(&mut Vec<u8>) -> git_cliff_core::error::Result<()>,
+    error_context: &'static str,
+) -> anyhow::Result<String> {
+    let mut out = Vec::new();
+    write(&mut out).context(error_context)?;
+    String::from_utf8(out).context("cannot convert bytes to string")
 }
 
 /// Apply release-plz defaults to git config
@@ -179,42 +202,6 @@ fn apply_defaults_to_git_config(git_config: GitConfig, pr_link: Option<&str>) ->
         include_paths: git_config.include_paths,
         fail_on_unmatched_commit: git_config.fail_on_unmatched_commit,
     }
-}
-
-fn add_package_context(
-    changelog: &mut GitCliffChangelog,
-    package: &str,
-) -> Result<(), anyhow::Error> {
-    changelog
-        .add_context("package", package)
-        .with_context(|| format!("failed to add `{package}` to the `package` changelog context"))?;
-    Ok(())
-}
-
-fn add_release_link_context(
-    changelog: &mut GitCliffChangelog,
-    release_link: Option<&str>,
-) -> Result<(), anyhow::Error> {
-    if let Some(release_link) = release_link {
-        changelog
-            .add_context(RELEASE_LINK, release_link)
-            .with_context(|| {
-                format!(
-                    "failed to add `{release_link:?}` to the `{RELEASE_LINK}` changelog context"
-                )
-            })?;
-    }
-    Ok(())
-}
-
-fn add_remote_context(
-    changelog: &mut GitCliffChangelog,
-    remote: Option<&Remote>,
-) -> Result<(), anyhow::Error> {
-    if let Some(remote) = remote {
-        add_context(changelog, REMOTE, remote)?;
-    }
-    Ok(())
 }
 
 fn add_context(

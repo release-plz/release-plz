@@ -3,6 +3,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 use crate::helpers::{
     TEST_REGISTRY,
     package::{PackageType, TestPackage},
+    release_stdout,
     test_context::TestContext,
     today,
 };
@@ -843,18 +844,7 @@ publish = false
     let outcome = context.run_release().success();
 
     // Verify JSON output shows the release
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": expected_tag,
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, expected_tag, "0.1.1"));
 
     // Verify the tag was created
     assert!(is_tag_created(), "Tag should exist after release");

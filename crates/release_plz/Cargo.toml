@@ -1,6 +1,6 @@
 [package]
 name = "release-plz"
-version = "0.3.172"
+version = "0.4.1"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository = "https://github.com/release-plz/release-plz"
@@ -20,9 +20,9 @@ docker-tests = []
 all-static = ["release_plz_core/all-static"]
 
 [dependencies]
-git_cmd = { path = "../git_cmd", version = "0.9.0" }
-release_plz_core = { path = "../release_plz_core", version = "0.40.0", default-features = false }
-cargo_utils = { path = "../cargo_utils", version = "0.1" }
+git_cmd = { path = "../git_cmd", version = "0.9.1" }
+release_plz_core = { path = "../release_plz_core", version = "0.42.1", default-features = false }
+cargo_utils = { path = "../cargo_utils", version = "0.3" }
 
 anyhow.workspace = true
 base64.workspace = true
@@ -54,7 +54,9 @@ assert_cmd.workspace = true
 expect-test.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
 toml_edit.workspace = true
+wiremock.workspace = true
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/release-plz-v{ version }/{ name }-{ target }{ archive-suffix }"

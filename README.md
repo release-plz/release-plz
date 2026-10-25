@@ -41,6 +41,14 @@ There are two ways to run release-plz:
 - [GitHub Action](https://release-plz.dev/docs/github): Run Release-plz from CI. The action both updates and releases your packages.
 - [CLI](https://release-plz.dev/docs/usage): Run release-plz from your terminal or other CI systems (Gitea and GitLab supported).
 
+## 🤝 Sponsors
+
+Release-plz is supported by:
+
+<a href="https://encore.dev/?utm_source=release-plz&utm_medium=sponsorship&utm_content=readme"><img src="website/static/img/sponsors/encore.svg" alt="Encore" height="40"></a>
+
+Want to support release-plz too? [Become a sponsor](https://github.com/sponsors/release-plz). ❤️
+
 ## 💖 Users
 
 Here you can find the public repositories using the release-plz GitHub action in CI:

@@ -73,6 +73,7 @@ the following sections:
 - [`[workspace]`](#the-workspace-section) — Configuration applied to all packages by default.
   - [`allow_dirty`](#the-allow_dirty-field) — Update dirty working directories.
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
+  - [`changelog_path`](#the-changelog_path-field) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
   - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field)
@@ -213,6 +214,27 @@ containing only the options it uses.
 Ideally, release-plz users shouldn't need to read the `git-cliff` documentation
 to customize their changelog.
 :::
+
+#### The `changelog_path` field
+
+By default, release-plz looks for the changelog in the `CHANGELOG.md` file
+of the same directory of the `Cargo.toml` of the package:
+
+```txt
+.
+├── src/
+├── CHANGELOG.md
+└── Cargo.toml
+```
+
+If the changelog is in a different location, you can specify it with this field.
+For example, use it to [share a single changelog](./extra/single-changelog.md#all-packages)
+between all packages.
+
+This field is relative to the root `Cargo.toml` file.
+In GitHub Actions, this is the root of the repository.
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `changelog_update` field
 
@@ -814,6 +836,10 @@ For example, the changelog of the `release-plz` package of this repository
 includes commits of the `release_plz_core` package, because they affect the
 `release-plz` package, too.
 
+The included commits release the package, but bump its version at most by a
+patch (a prerelease increment for prerelease versions), as when a local
+dependency of the package changes.
+
 Example:
 
 ```toml
@@ -822,22 +848,7 @@ changelog_include = ["release_plz_core"]
 
 #### The `changelog_path` field (`package` section)
 
-By default, release-plz looks for the changelog in the `CHANGELOG.md` file
-of the same directory of the `Cargo.toml` of the package:
-
-```txt
-.
-├── src/
-├── CHANGELOG.md
-└── Cargo.toml
-```
-
-If the changelog of a package is in a different location, you can specify it with this field.
-
-This field is relative to the root `Cargo.toml` file.
-In GitHub Actions, this is the root of the repository.
-
-This field cannot be set in the `[workspace]` section.
+Overrides the [`workspace.changelog_path`](#the-changelog_path-field) field.
 
 #### The `changelog_update` field (`package` section)
 

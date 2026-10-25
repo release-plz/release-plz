@@ -1,4 +1,5 @@
 use cargo_metadata::{Metadata, camino::Utf8Path};
+use release_plz_core::GitPr;
 
 pub mod cmd;
 mod fake_utils;
@@ -8,10 +9,48 @@ mod reqwest_utils;
 pub mod test_context;
 
 pub const TEST_REGISTRY: &str = "test-registry";
+pub const TEST_SPARSE_REGISTRY: &str = "test-registry-sparse";
 
 pub fn today() -> String {
     // The changelogs specify the release date in UTC.
     chrono::Utc::now().format("%Y-%m-%d").to_string()
+}
+
+/// Expected stdout of `release-plz release` when it releases only `package`.
+pub fn release_stdout(package: &str, tag: &str, version: &str) -> String {
+    let output = serde_json::json!({
+        "releases": [{
+            "package_name": package,
+            "prs": [],
+            "tag": tag,
+            "version": version,
+        }]
+    });
+    format!("{output}\n")
+}
+
+/// Expected stdout of `release-plz release-pr` when it opens `pr` to release only `package`.
+pub fn release_pr_stdout(pr: &GitPr, package: &str, version: &str) -> String {
+    let output = serde_json::json!({
+        "prs": [{
+            "base_branch": "main",
+            "head_branch": pr.branch(),
+            "html_url": pr.html_url,
+            "number": pr.number,
+            "releases": [{
+                "package_name": package,
+                "version": version,
+            }]
+        }]
+    });
+    format!("{output}\n")
+}
+
+pub fn assert_cargo_semver_checks_is_installed() {
+    assert!(
+        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
+        "cargo-semver-checks is not installed. Please install it to run tests: https://github.com/obi1kenobi/cargo-semver-checks"
+    );
 }
 
 /// Check resolved versions with `--locked`, which also rejects stale lockfiles.
