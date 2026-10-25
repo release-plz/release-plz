@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::Context as _;
 use cargo_metadata::{
     Package,
@@ -77,7 +79,13 @@ impl PublishBatches {
                  packages fail the check."
             );
         }
-        let package_count = self.batches.iter().map(|batch| batch.packages.len()).sum();
+        // A package published to multiple registries is in multiple batches.
+        let package_count = self
+            .batches
+            .iter()
+            .flat_map(|batch| &batch.packages)
+            .collect::<HashSet<_>>()
+            .len();
         for batch in &self.batches {
             batch.check(input, combine, package_count)?;
         }

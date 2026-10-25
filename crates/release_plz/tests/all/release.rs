@@ -298,6 +298,32 @@ publish_no_verify = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
+    let context = TestContext::new_workspace(&["only"]).await;
+    // Release-plz checks `only` once per registry.
+    let manifest_path = context.package_path("only").join("Cargo.toml");
+    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+    let registries = toml_edit::Array::from_iter([TEST_REGISTRY, TEST_SPARSE_REGISTRY]);
+    manifest.data["package"]["publish"] = toml_edit::value(registries);
+    manifest.write().unwrap();
+    break_compilation(&context, "only", "only fails to compile");
+    context.push_all_changes("publish to two registries");
+    let output = context
+        .release_command_without_registry()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("only fails to compile"), "{stderr}");
+    // `only` is the only unpublished package, so no unpublished dependency can be missing.
+    assert!(
+        !stderr.contains("If a package depends on an unpublished workspace package"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_checks_dev_dependency_cycles_individually() {
     // Like a crate and its proc-macro crate, which dev-depends on the crate to test it.
     let context = TestContext::new_workspace_with_packages(&[
