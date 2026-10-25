@@ -52,6 +52,25 @@ async fn unpublished_workspace() -> TestContext {
     context
 }
 
+/// Make the compilation of the `package` binary fail with `message`.
+fn break_compilation(context: &TestContext, package: &str, message: &str) {
+    fs_err::write(
+        context.package_path(package).join("src/main.rs"),
+        format!("compile_error!({message:?});"),
+    )
+    .unwrap();
+}
+
+/// Assert that `cargo publish` packaged version 0.1.0 of the `packages`.
+fn assert_packaged(context: &TestContext, packages: &[&str]) {
+    for package in packages {
+        let manifest = context
+            .cargo_target_dir()
+            .join(format!("package/{package}-0.1.0/Cargo.toml"));
+        assert!(manifest.exists(), "{package} wasn't packaged");
+    }
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_checks_unpublished_workspace_dependencies() {
@@ -75,14 +94,7 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
         .assert()
         .success()
         .stdout("{\"releases\":[]}\n");
-    for package in ["dependency", "dependent"] {
-        assert!(
-            context
-                .cargo_target_dir()
-                .join(format!("package/{package}-0.1.0/Cargo.toml"))
-                .exists()
-        );
-    }
+    assert_packaged(&context, &["dependency", "dependent"]);
     let downloaded = Utf8TempDir::new().unwrap();
     let packages = context
         .package_downloader(["dependency", "dependent"], downloaded.path())
@@ -93,11 +105,7 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
     assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
     context.repo.is_clean().unwrap();
 
-    fs_err::write(
-        context.package_path("dependent").join("src/main.rs"),
-        "compile_error!(\"verification must still run\");",
-    )
-    .unwrap();
+    break_compilation(&context, "dependent", "verification must still run");
     context.push_all_changes("break dependent compilation");
     let output = context
         .release_command()
@@ -125,11 +133,7 @@ async fn release_dry_run_preserves_package_selection() {
     context.repo.tag_lightweight("tagged-v0.1.0").unwrap();
     // Including any skipped package in Cargo's batch would fail verification.
     for name in ["published", "tagged", "disabled", "unpublished", "git-only"] {
-        fs_err::write(
-            context.package_path(name).join("src/main.rs"),
-            "compile_error!(\"this package must not be verified\");",
-        )
-        .unwrap();
+        break_compilation(&context, name, "this package must not be verified");
     }
     context.write_release_plz_toml(
         r#"
@@ -150,14 +154,7 @@ git_only = true
         .assert()
         .success()
         .stdout("{\"releases\":[]}\n");
-    for name in ["selected", "selected-too"] {
-        assert!(
-            context
-                .cargo_target_dir()
-                .join(format!("package/{name}-0.1.0/Cargo.toml"))
-                .exists()
-        );
-    }
+    assert_packaged(&context, &["selected", "selected-too"]);
     assert_eq!(
         context.repo.git(&["tag", "--list"]).unwrap(),
         "tagged-v0.1.0"
@@ -195,11 +192,7 @@ publish_no_verify = true
 publish_allow_dirty = true
 "#,
     );
-    fs_err::write(
-        context.package_path("unchecked").join("src/main.rs"),
-        "compile_error!(\"do not compile this dirty package\");",
-    )
-    .unwrap();
+    break_compilation(&context, "unchecked", "do not compile this dirty package");
     context
         .release_command()
         .arg("--dry-run")
@@ -334,14 +327,7 @@ exec "$REAL_CARGO" "$@"
     let stderr = String::from_utf8_lossy(&output.get_output().stderr);
     assert!(stderr.contains("requires Cargo 1.90 or newer"), "{stderr}");
     // The packages are independent, so release-plz can check them individually.
-    for package in ["one", "two"] {
-        assert!(
-            context
-                .cargo_target_dir()
-                .join(format!("package/{package}-0.1.0/Cargo.toml"))
-                .exists()
-        );
-    }
+    assert_packaged(&context, &["one", "two"]);
 }
 
 #[tokio::test]
