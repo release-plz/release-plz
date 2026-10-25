@@ -326,9 +326,12 @@ async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
     );
 }
 
-/// `lib` depends on `macros`, which dev-depends on `lib` to test it, like a crate and its
-/// proc-macro crate. Both are published in version 0.1.0 and bumped to 0.1.1.
-async fn dev_dependency_cycle_workspace() -> TestContext {
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_dev_dependency_cycles_individually() {
+    // `lib` depends on `macros`, which dev-depends on `lib` to test it, like a crate and its
+    // proc-macro crate.
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("lib").with_type(PackageType::Lib),
         TestPackage::new("macros").with_type(PackageType::Lib),
@@ -353,28 +356,17 @@ async fn dev_dependency_cycle_workspace() -> TestContext {
     }
     context.run_cargo_check();
     context.push_all_changes("bump versions");
-    context
-}
 
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_dry_run_checks_dev_dependency_cycles_individually() {
-    let context = dev_dependency_cycle_workspace().await;
     // Cargo rejects the cycle if it checks both packages together, while the real
     // release publishes them one at a time, resolving the dev-dependency to `lib` 0.1.0.
+    // Cargo 1.96 and newer report the cycle as a circular dependency.
     context
         .release_command()
         .arg("--dry-run")
         .assert()
         .success();
-}
 
-#[cfg(unix)]
-#[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_dry_run_recognizes_cycles_reported_as_timeouts() {
-    let context = dev_dependency_cycle_workspace().await;
-    // Cargo 1.90 to 1.95 report a cycle between the selected packages as a timeout.
+    // Cargo 1.90 to 1.95 report the cycle as a timeout instead.
     // Simulate them, so that the dry run only passes if release-plz recognizes the
     // timeout and checks the packages individually.
     let cargo_dir = fake_cargo(
