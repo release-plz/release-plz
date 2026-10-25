@@ -51,6 +51,13 @@ fn break_compilation(context: &TestContext, package: &str, message: &str) {
     .unwrap();
 }
 
+/// List the tags, including the ones of the remote repository: without tag signing,
+/// release-plz creates tags through the forge API.
+fn remote_tags(context: &TestContext) -> String {
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    context.repo.git(&["tag", "--list"]).unwrap()
+}
+
 /// Assert that `cargo publish` packaged version 0.1.0 of the `packages`.
 fn assert_packaged(context: &TestContext, packages: &[&str]) {
     for package in packages {
@@ -91,7 +98,7 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
         .await
         .unwrap();
     assert!(packages.is_empty(), "a dry run must not upload packages");
-    assert!(context.repo.git(&["tag", "--list"]).unwrap().is_empty());
+    assert!(remote_tags(&context).is_empty());
     context.repo.is_clean().unwrap();
 
     break_compilation(&context, "dependent", "verification must still run");
@@ -144,10 +151,7 @@ git_only = true
         .success()
         .stdout("{\"releases\":[]}\n");
     assert_packaged(&context, &["selected", "selected-too"]);
-    assert_eq!(
-        context.repo.git(&["tag", "--list"]).unwrap(),
-        "tagged-v0.1.0"
-    );
+    assert_eq!(remote_tags(&context), "tagged-v0.1.0");
 }
 
 #[tokio::test]
