@@ -30,6 +30,12 @@ fn gitea_endpoint(endpoint: &str) -> String {
     format!("{api_url}/{endpoint}")
 }
 
+/// Base URL of the Cargo registry that gitea hosts for the user.
+/// See <https://docs.gitea.com/usage/packages/cargo>.
+fn cargo_registry_url(username: &str) -> String {
+    format!("http://{}/api/packages/{username}/cargo", gitea_address())
+}
+
 pub fn gitea_address() -> &'static str {
     "localhost:3000"
 }

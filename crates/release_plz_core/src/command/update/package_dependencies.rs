@@ -24,6 +24,25 @@ impl PackageDependencies for Package {
         workspace_dir: &Utf8Path,
         include_versionless: bool,
     ) -> anyhow::Result<Vec<&'a Package>> {
+        // Metadata resolves inherited, renamed and target-specific dependencies.
+        // Without a path dependency, none can refer to an updated workspace member.
+        if !self.dependencies.iter().any(|dep| dep.path.is_some()) {
+            return Ok(Vec::new());
+        }
+
+        // Only path dependencies with the updated package's actual name can match.
+        let mut updated_packages = updated_packages
+            .iter()
+            .filter(|(package, _)| {
+                self.dependencies
+                    .iter()
+                    .any(|dep| dep.path.is_some() && dep.name == package.name.as_str())
+            })
+            .peekable();
+        if updated_packages.peek().is_none() {
+            return Ok(Vec::new());
+        }
+
         // Look into the toml manifest because `cargo_metadata` doesn't distinguish between
         // empty `version` in Cargo.toml and `version = "*"`
         let package_manifest = LocalManifest::try_new(&self.manifest_path)?;
@@ -45,23 +64,26 @@ impl PackageDependencies for Package {
                                     // The dependency of the package Cargo.toml is inherited from the workspace,
                                     // so we find the dependency of the workspace and use it instead.
                                     let dep = workspace_dependencies
-                                        .iter()
-                                        .find(|(n, _)| n == &name)
-                                        .and_then(|(_, d)| d.as_table_like())
+                                        .get(name)
+                                        .and_then(|d| d.as_table_like())
                                         .unwrap_or(d);
                                     // Return also the path of the Cargo.toml so that we can resolve the
                                     // relative path of the dependency later.
-                                    (kind, workspace_dir, dep)
+                                    (name, kind, workspace_dir, dep)
                                 }
-                                _ => (kind, package_dir, d),
+                                _ => (name, kind, package_dir, d),
                             }
                         })
                     })
                 })
-                .filter(|(_, toml_base_path, d)| {
+                .filter(|(name, _, _, d)| {
+                    let dependency_name = d.get("package").and_then(|p| p.as_str()).unwrap_or(name);
+                    dependency_name == p.name.as_str()
+                })
+                .filter(|(_, _, toml_base_path, d)| {
                     crate::is_dependency_referred_to_package(*d, toml_base_path, &canonical_path)
                 })
-                .map(|(kind, _, dep)| (kind, dep));
+                .map(|(_, kind, _, dep)| (kind, dep));
 
             for (kind, dep) in matching_deps {
                 if should_update_dependency(dep, kind, next_ver, include_versionless)? {

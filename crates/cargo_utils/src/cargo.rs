@@ -38,9 +38,11 @@ pub fn workspace_package<'a>(
     package_name: &str,
 ) -> anyhow::Result<&'a Package> {
     metadata
-        .workspace_packages()
-        .into_iter()
-        .find(|package| package.name == package_name)
+        .packages
+        .iter()
+        .find(|package| {
+            package.name == package_name && metadata.workspace_members.contains(&package.id)
+        })
         .with_context(|| {
             format!(
                 "cannot find package {package_name:?} in workspace {:?}",

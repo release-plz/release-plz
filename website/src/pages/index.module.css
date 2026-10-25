@@ -49,3 +49,13 @@
     margin-bottom: 0;
   }
 }
+
+/* Color the logo from the site theme: Safari styles SVG images with the OS theme instead. */
+.sponsorLogo {
+  height: 48px;
+  filter: brightness(0);
+}
+
+[data-theme="dark"] .sponsorLogo {
+  filter: brightness(0) invert(1);
+}
