@@ -39,10 +39,11 @@ Only packages selected for publication are included; already published packages
 and packages excluded by the release-plz configuration are skipped.
 
 Packages are checked in separate batches when their registry or any of these
-settings differ: `publish_allow_dirty`, `publish_no_verify`, `publish_features`,
-and `publish_all_features`. An unpublished workspace dependency must be in the
-same batch as its dependent packages. Give those packages matching settings to
-check them together. `--no-verify` skips compilation but still requires dependency
+settings differ: `publish_allow_dirty`, `publish_no_verify`, and
+`publish_all_features`. Packages with `publish_features` are checked individually,
+because Cargo applies `--features` differently when it checks multiple packages.
+An unpublished workspace dependency must be in the same batch as its dependent
+packages. Give those packages matching settings to check them together. `--no-verify` skips compilation but still requires dependency
 resolution during packaging.
 
 ## Git Forges

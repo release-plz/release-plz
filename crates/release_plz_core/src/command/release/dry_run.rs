@@ -42,19 +42,23 @@ impl PublishBatches {
         // same registry named explicitly must share their unpublished packages.
         let registry = registry.unwrap_or_else(|| self.default_registry.clone());
         let options = PublishOptions::new(input, &package.name);
-        if let Some(batch) = self
+        let existing_batch = self
             .batches
             .iter_mut()
-            .find(|batch| batch.registry == registry && batch.options == options)
-        {
-            batch.packages.push(package.name.to_string());
-        } else {
-            self.batches.push(PublishBatch {
+            .find(|batch| batch.registry == registry && batch.options == options);
+        match existing_batch {
+            // Selecting multiple packages changes the meaning of `--features`: Cargo
+            // only requires one of the selected packages to define each feature, and
+            // with resolver 1 it enables them only for the package of the manifest.
+            Some(batch) if options.features.is_empty() => {
+                batch.packages.push(package.name.to_string());
+            }
+            _ => self.batches.push(PublishBatch {
                 registry,
                 options,
                 manifest_path: package.manifest_path.clone(),
                 packages: vec![package.name.to_string()],
-            });
+            }),
         }
     }
 

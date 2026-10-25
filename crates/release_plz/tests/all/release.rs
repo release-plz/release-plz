@@ -192,6 +192,30 @@ publish_allow_dirty = true
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_packages_with_features_individually() {
+    let context = TestContext::new_workspace(&["featured", "plain"]).await;
+    let manifest_path = context.package_path("featured").join("Cargo.toml");
+    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+    manifest.data["features"]["extra"] = toml_edit::value(toml_edit::Array::new());
+    manifest.write().unwrap();
+    context.write_release_plz_toml("[workspace]\npublish_features = [\"extra\"]\n");
+    // The real release fails on `cargo publish -p plain --features extra` because
+    // `plain` doesn't define `extra`. Checking both packages together would pass,
+    // because Cargo only requires one of the selected packages to define the feature.
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("failed to dry-run publishing plain:"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_preserves_per_package_registries() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
     let other_registry = TestContext::new().await;
