@@ -16,10 +16,9 @@ const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished wor
     publish_no_verify or publish_all_features differ, if they set publish_features, \
     or if Cargo is older than 1.90.";
 
+#[derive(Default)]
 pub(super) struct PublishBatches {
     batches: Vec<PublishBatch>,
-    /// Whether Cargo can check multiple packages with a single `cargo publish`.
-    can_combine_packages: bool,
 }
 
 struct PublishBatch {
@@ -38,13 +37,6 @@ struct PublishBatch {
 }
 
 impl PublishBatches {
-    pub(super) fn new(input: &ReleaseRequest) -> anyhow::Result<Self> {
-        Ok(Self {
-            batches: vec![],
-            can_combine_packages: can_publish_multiple_packages(&input.metadata.workspace_root)?,
-        })
-    }
-
     pub(super) fn add(
         &mut self,
         package: &Package,
@@ -60,7 +52,7 @@ impl PublishBatches {
             // Selecting multiple packages changes the meaning of `--features`: Cargo
             // only requires one of the selected packages to define each feature, and
             // with resolver 1 it enables them only for the package of the manifest.
-            Some(batch) if self.can_combine_packages && options.features.is_empty() => {
+            Some(batch) if options.features.is_empty() => {
                 batch.packages.push(package.name.to_string());
             }
             _ => self.batches.push(PublishBatch {
@@ -74,7 +66,11 @@ impl PublishBatches {
 
     /// Run `cargo publish --dry-run` for every batch.
     pub(super) fn check(&self, input: &ReleaseRequest) -> anyhow::Result<()> {
-        if !self.can_combine_packages && self.batches.len() > 1 {
+        let has_combined_packages = self.batches.iter().any(|batch| batch.packages.len() > 1);
+        // Only query the Cargo version when it matters, so that it can't break other dry runs.
+        let check_individually = has_combined_packages
+            && !can_publish_multiple_packages(&input.metadata.workspace_root)?;
+        if check_individually {
             warn!(
                 "checking each package individually, because checking packages together \
                  requires Cargo 1.90 or newer. Packages that depend on unpublished workspace \
@@ -82,29 +78,48 @@ impl PublishBatches {
             );
         }
         for batch in &self.batches {
-            let registry = batch.registry.as_deref();
-            let token = input.find_registry_token(registry)?;
-            let output = run_cargo_publish(
-                input,
-                &batch.manifest_path,
-                &batch.packages,
-                &batch.options,
-                registry,
-                token.as_ref(),
-            )
-            .context("failed to run cargo publish --dry-run")?;
-            if !output.status.success() {
-                let hint = if self.batches.len() > 1 {
-                    SEPARATE_CHECKS_HINT
-                } else {
-                    ""
-                };
-                anyhow::bail!(
-                    "failed to dry-run publishing {}: {}{hint}",
-                    batch.packages.join(", "),
-                    output.stderr
-                );
+            if check_individually {
+                for package in &batch.packages {
+                    self.dry_run(input, batch, std::slice::from_ref(package))?;
+                }
+            } else {
+                self.dry_run(input, batch, &batch.packages)?;
             }
+        }
+        Ok(())
+    }
+
+    /// Run `cargo publish --dry-run` for `packages` of `batch`.
+    fn dry_run(
+        &self,
+        input: &ReleaseRequest,
+        batch: &PublishBatch,
+        packages: &[String],
+    ) -> anyhow::Result<()> {
+        let registry = batch.registry.as_deref();
+        let token = input.find_registry_token(registry)?;
+        let output = run_cargo_publish(
+            input,
+            &batch.manifest_path,
+            packages,
+            &batch.options,
+            registry,
+            token.as_ref(),
+        )
+        .context("failed to run cargo publish --dry-run")?;
+        if !output.status.success() {
+            // Only hint if some unpublished packages weren't part of this check.
+            let package_count: usize = self.batches.iter().map(|b| b.packages.len()).sum();
+            let hint = if packages.len() < package_count {
+                SEPARATE_CHECKS_HINT
+            } else {
+                ""
+            };
+            anyhow::bail!(
+                "failed to dry-run publishing {}: {}{hint}",
+                packages.join(", "),
+                output.stderr
+            );
         }
         Ok(())
     }

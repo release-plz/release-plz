@@ -661,10 +661,7 @@ async fn release_packages(
         git_client,
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
-        dry_run_batches: input
-            .dry_run
-            .then(|| dry_run::PublishBatches::new(input))
-            .transpose()?,
+        dry_run_batches: input.dry_run.then(dry_run::PublishBatches::default),
     };
     for package in packages {
         if let Some(pkg_release) =
