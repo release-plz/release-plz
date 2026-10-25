@@ -25,6 +25,17 @@ pub struct SetVersionRequest {
 }
 
 impl SetVersionRequest {
+    pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
+        let manifest = cargo_utils::workspace_manifest(&metadata);
+        let manifest = canonical_local_manifest(manifest.as_ref())?;
+        Ok(Self {
+            version_changes,
+            metadata,
+            manifest,
+            packages_config: PackagesConfig::default(),
+        })
+    }
+
     /// Set update config for all packages.
     pub fn with_default_package_config(mut self, config: UpdateConfig) -> Self {
         self.packages_config.set_default(config);
@@ -50,19 +61,6 @@ pub enum SetVersionSpec {
     /// <package name, new version>
     /// Used for multiple packages in a workspace.
     Workspace(BTreeMap<String, Version>),
-}
-
-impl SetVersionRequest {
-    pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
-        let manifest = cargo_utils::workspace_manifest(&metadata);
-        let manifest = canonical_local_manifest(manifest.as_ref())?;
-        Ok(Self {
-            version_changes,
-            metadata,
-            manifest,
-            packages_config: PackagesConfig::default(),
-        })
-    }
 }
 
 pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
