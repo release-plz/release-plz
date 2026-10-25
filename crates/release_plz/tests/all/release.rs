@@ -1,7 +1,7 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    TEST_REGISTRY,
+    TEST_REGISTRY, TEST_SPARSE_REGISTRY,
     package::{PackageType, TestPackage},
     release_stdout,
     test_context::TestContext,
@@ -228,18 +228,16 @@ async fn release_dry_run_checks_packages_with_features_individually() {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_preserves_per_package_registries() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
-    let other_registry = TestContext::new().await;
-    context.append_cargo_config(&format!(
-        "\n[registries.other]\nindex = {:?}\n",
-        other_registry.gitea.cargo_index_url()
-    ));
+    // `one` is published to the test registry, `two` to the sparse one.
     let manifest_path = context.package_path("two").join("Cargo.toml");
     let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
     let mut registries = toml_edit::Array::new();
-    registries.push("other");
+    registries.push(TEST_SPARSE_REGISTRY);
     manifest.data["package"]["publish"] = toml_edit::value(registries);
     manifest.write().unwrap();
     context.push_all_changes("use different registries");
+    // If release-plz checked both packages with the registry of `one`, Cargo would
+    // reject `two`, because that registry isn't in its `publish` field.
     context
         .release_command_without_registry()
         .arg("--dry-run")
@@ -251,12 +249,12 @@ async fn release_dry_run_preserves_per_package_registries() {
     context
         .release_command_without_registry()
         .env(
-            cargo_utils::cargo_registries_token_env_var_name("other").unwrap(),
-            format!("Bearer {}", other_registry.gitea.token),
+            cargo_utils::cargo_registries_token_env_var_name(TEST_SPARSE_REGISTRY).unwrap(),
+            format!("Bearer {}", context.gitea.token),
         )
         .assert()
         .success();
-    for (package, registry) in [("one", TEST_REGISTRY), ("two", "other")] {
+    for (package, registry) in [("one", TEST_REGISTRY), ("two", TEST_SPARSE_REGISTRY)] {
         let downloaded = Utf8TempDir::new().unwrap();
         let packages = context
             .package_downloader([package], downloaded.path())
