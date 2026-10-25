@@ -32,20 +32,25 @@ To learn more, run `release-plz release --help`.
 Run `release-plz release --dry-run` to check a release without uploading packages
 or creating tags and git releases.
 
-Release-plz checks unpublished workspace packages together with Cargo, so a package
-can depend on a version that would be published earlier in the same release.
-Checking multiple packages together requires Cargo 1.90 or newer: with older
-versions, release-plz warns and checks each package individually.
-Only packages selected for publication are included; already published packages
-and packages excluded by the release-plz configuration are skipped.
+Release-plz runs `cargo publish --dry-run` once for all unpublished packages that
+can be checked together, so a package can depend on a workspace package that the
+same release would publish first.
+Already published packages and packages excluded by the release-plz configuration
+are skipped.
 
-Packages are checked in separate batches when their registry or any of these
-settings differ: `publish_allow_dirty`, `publish_no_verify`, and
-`publish_all_features`. Packages with `publish_features` are checked individually,
-because Cargo applies `--features` differently when it checks multiple packages.
-An unpublished workspace dependency must be in the same batch as its dependent
-packages. Give those packages matching settings to check them together. `--no-verify` skips compilation but still requires dependency
-resolution during packaging.
+Release-plz checks packages separately when:
+
+- Their registry or any of these settings differ: `publish_allow_dirty`,
+  `publish_no_verify`, and `publish_all_features`.
+- They set `publish_features`: Cargo applies `--features` differently when it
+  checks multiple packages, so these packages are checked individually.
+- Cargo is older than 1.90, which can't check multiple packages together:
+  release-plz warns and checks each package individually.
+
+A package that depends on an unpublished workspace package only passes the check
+if both packages are checked together.
+`publish_no_verify` and `--no-verify` don't avoid this: they skip compilation,
+but packaging still resolves dependencies.
 
 ## Git Forges
 
