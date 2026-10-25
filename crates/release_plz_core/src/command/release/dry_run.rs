@@ -7,7 +7,7 @@ use cargo_metadata::{
 use tracing::warn;
 
 use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
-use crate::cargo::{new_cargo_config, run_cargo};
+use crate::cargo::run_cargo;
 
 /// Possible cause of a failed check when packages are checked separately.
 const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished workspace package, \
@@ -18,14 +18,16 @@ const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished wor
 
 pub(super) struct PublishBatches {
     batches: Vec<PublishBatch>,
-    /// Registry that Cargo uses for packages that don't select one.
-    default_registry: String,
     /// Whether Cargo can check multiple packages with a single `cargo publish`.
     can_combine_packages: bool,
 }
 
 struct PublishBatch {
-    registry: String,
+    /// `--registry` of `cargo publish`, as in the real release.
+    /// [`None`] lets Cargo select the registry.
+    /// Don't resolve [`None`] to the registry Cargo selects: Cargo behaves differently
+    /// without `--registry`, e.g. it refuses to publish if crates.io is source-replaced.
+    registry: Option<String>,
     /// Cargo applies these options to every selected package. Don't combine
     /// packages when doing so would change their configured verification behavior.
     options: PublishOptions,
@@ -37,14 +39,9 @@ struct PublishBatch {
 
 impl PublishBatches {
     pub(super) fn new(input: &ReleaseRequest) -> anyhow::Result<Self> {
-        let workspace_root = &input.metadata.workspace_root;
-        let default_registry = new_cargo_config(Some(workspace_root.clone()))?
-            .default_registry()?
-            .unwrap_or_else(|| "crates-io".to_string());
         Ok(Self {
             batches: vec![],
-            default_registry,
-            can_combine_packages: can_publish_multiple_packages(workspace_root)?,
+            can_combine_packages: can_publish_multiple_packages(&input.metadata.workspace_root)?,
         })
     }
 
@@ -54,9 +51,6 @@ impl PublishBatches {
         registry: Option<String>,
         input: &ReleaseRequest,
     ) {
-        // Resolve Cargo's default before grouping: an implicit registry and the
-        // same registry named explicitly must share their unpublished packages.
-        let registry = registry.unwrap_or_else(|| self.default_registry.clone());
         let options = PublishOptions::new(input, &package.name);
         let existing_batch = self
             .batches
@@ -88,7 +82,7 @@ impl PublishBatches {
             );
         }
         for batch in &self.batches {
-            let registry = Some(batch.registry.as_str());
+            let registry = batch.registry.as_deref();
             let token = input.find_registry_token(registry)?;
             let output = run_cargo_publish(
                 input,

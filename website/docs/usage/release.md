@@ -42,6 +42,8 @@ Release-plz checks packages separately when:
 
 - Their registry or any of these settings differ: `publish_allow_dirty`,
   `publish_no_verify`, and `publish_all_features`.
+  Without `--registry`, a package that doesn't set `publish` (Cargo's default
+  registry) is checked separately from packages that name a registry in `publish`.
 - They set `publish_features`: Cargo applies `--features` differently when it
   checks multiple packages, so these packages are checked individually.
 - Cargo is older than 1.90, which can't check multiple packages together:
