@@ -211,6 +211,27 @@ async fn release_dry_run_preserves_per_package_registries() {
         .arg("--dry-run")
         .assert()
         .success();
+
+    // The real release used to run `cargo publish -p two` without `--registry`, so
+    // Cargo picked the default registry, which isn't in the `publish` field of `two`.
+    context
+        .release_command_without_registry()
+        .env(
+            cargo_utils::cargo_registries_token_env_var_name("other").unwrap(),
+            format!("Bearer {}", other_registry.gitea.token),
+        )
+        .assert()
+        .success();
+    for (package, registry) in [("one", TEST_REGISTRY), ("two", "other")] {
+        let downloaded = Utf8TempDir::new().unwrap();
+        let packages = context
+            .package_downloader([package], downloaded.path())
+            .with_registry(registry.to_string())
+            .download()
+            .await
+            .unwrap();
+        assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
+    }
 }
 
 #[tokio::test]

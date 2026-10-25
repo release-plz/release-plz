@@ -1261,14 +1261,7 @@ fn run_cargo_publish(
         args.push("--package");
         args.push(&package.name);
     }
-    // A dry-run batch can contain packages whose manifests select the registry.
-    // Select that registry explicitly for the entire batch.
-    let publish_registry = if input.dry_run {
-        registry
-    } else {
-        input.registry.as_deref()
-    };
-    if let Some(registry) = publish_registry {
+    if let Some(registry) = registry {
         args.push("--registry");
         args.push(registry);
     }
