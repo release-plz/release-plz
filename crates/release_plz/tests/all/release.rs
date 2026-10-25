@@ -165,6 +165,8 @@ git_only = true
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_preserves_per_package_options() {
     let context = TestContext::new_workspace(&["one", "two", "unchecked"]).await;
+    // `one` and `two` only compile with their own feature, so `one` depends on
+    // `publish_features` and `two` on `publish_all_features`.
     for (name, feature) in [("one", "only_one"), ("two", "only_two")] {
         let manifest_path = context.package_path(name).join("Cargo.toml");
         let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
@@ -192,7 +194,11 @@ publish_no_verify = true
 publish_allow_dirty = true
 "#,
     );
+    // `unchecked` doesn't compile, so it depends on `publish_no_verify`. It's dirty
+    // only because this change comes after `write_release_plz_toml` commits, so it
+    // also depends on `publish_allow_dirty`.
     break_compilation(&context, "unchecked", "do not compile this dirty package");
+    // The dry run only passes if release-plz checks each package with its own options.
     context
         .release_command()
         .arg("--dry-run")
