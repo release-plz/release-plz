@@ -102,10 +102,10 @@ fn update_workspace_without_publishable_packages() {
 
 #[test]
 fn update_ignores_inherited_dev_dependency_requirement_changes() {
-    for (kind, expected_version) in [
-        ("dev-dependencies", "1.0.0"),
-        ("dependencies", "1.0.1"),
-        ("build-dependencies", "1.0.1"),
+    for (kind, released) in [
+        ("dev-dependencies", false),
+        ("dependencies", true),
+        ("build-dependencies", true),
     ] {
         let package = format!("version = \"1.0.0\"\n[{kind}]\nanyhow.workspace = true\n");
         let (temp_dir, repo) = released_workspace(
@@ -123,17 +123,17 @@ fn update_ignores_inherited_dev_dependency_requirement_changes() {
 
         run_workspace_update(&temp_dir, &repo, None);
 
-        assert_locked_versions(repo.directory(), &[("one", expected_version)]);
-        let changelog_path = repo.directory().join("one/CHANGELOG.md");
-        if kind == "dev-dependencies" {
-            repo.is_clean().unwrap();
-            assert!(!changelog_path.exists());
-        } else {
-            let changelog = fs_err::read_to_string(changelog_path).unwrap();
+        if released {
+            assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+            let changelog =
+                fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
             assert!(
                 changelog.contains("update Cargo.toml dependencies"),
                 "{changelog}"
             );
+        } else {
+            // No version bump and no changelog: release-plz didn't touch the repository.
+            repo.is_clean().unwrap();
         }
     }
 }
