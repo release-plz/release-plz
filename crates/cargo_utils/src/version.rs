@@ -1,8 +1,7 @@
 /// Upgrade an existing requirement to a new version
 pub fn upgrade_requirement(req: &str, version: &semver::Version) -> anyhow::Result<Option<String>> {
-    let req_text = req.to_string();
-    let raw_req = semver::VersionReq::parse(&req_text)
-        .expect("semver to generate valid version requirements");
+    let raw_req =
+        semver::VersionReq::parse(req).expect("semver to generate valid version requirements");
     if raw_req.comparators.is_empty() {
         // Empty matches everything, no-change.
         Ok(None)
@@ -18,7 +17,7 @@ pub fn upgrade_requirement(req: &str, version: &semver::Version) -> anyhow::Resu
         if new_req_text.starts_with('^') && !req.starts_with('^') {
             new_req_text.remove(0);
         }
-        if new_req_text == req_text {
+        if new_req_text == req {
             Ok(None)
         } else {
             Ok(Some(new_req_text))

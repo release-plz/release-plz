@@ -9,15 +9,10 @@ use tracing::debug;
 
 use crate::{
     PackagePath as _,
-    cargo::{read_package_metadata, run_cargo_with_env},
+    cargo::{CmdOutput, read_package_metadata, run_cargo, run_cargo_with_env},
     fs_utils,
 };
-use std::{
-    cell::OnceCell,
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    io::{self, Read},
-};
+use std::{cell::OnceCell, io::Read};
 
 /// Cargo stores the original manifest under this name when it packages a crate,
 /// so its presence tells an extracted registry package from a plain source tree.
@@ -53,24 +48,24 @@ fn is_extracted_registry_package(package: &Utf8Path) -> bool {
     package.join(CARGO_TOML_ORIG).is_file()
 }
 
-/// The packaged files of the released package, computed at most once.
-///
-/// While walking the git history, the local package is checked out at a different
-/// commit on every iteration, but the released package never changes. Listing its
-/// files can mean running `cargo package --list`, which resolves dependencies and
-/// can reach the registry index, so it must not run once per analyzed commit.
+/// The packaged files of a package, computed at most once. Recreate this cache
+/// whenever the package's file paths or Cargo's file selection may change.
 #[derive(Default)]
-pub(crate) struct ReleasedPackageFiles(OnceCell<Vec<Utf8PathBuf>>);
+pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
 
-impl ReleasedPackageFiles {
-    /// The files of the released `package`, relative to its directory.
+impl PackageFiles {
+    /// Whether the file list has already been computed.
+    pub(crate) fn is_cached(&self) -> bool {
+        self.0.get().is_some()
+    }
+
+    /// The files of `package`, relative to its directory.
     pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
         if let Some(files) = self.0.get() {
             return Ok(files);
         }
-        let files = get_cargo_package_files(package).with_context(|| {
-            format!("cannot determine packaged files of registry package {package:?}")
-        })?;
+        let files = get_cargo_package_files(package)
+            .with_context(|| format!("cannot determine packaged files of package {package:?}"))?;
         Ok(self.0.get_or_init(|| files))
     }
 }
@@ -83,16 +78,18 @@ pub fn are_packages_equal(
     are_packages_equal_cached(
         local_package,
         registry_package,
-        &ReleasedPackageFiles::default(),
+        &PackageFiles::default(),
+        &PackageFiles::default(),
     )
 }
 
-/// Same as [`are_packages_equal`], reusing the released package's file list
-/// across the commits of a single history walk.
+/// Same as [`are_packages_equal`], reusing file lists for the current snapshot
+/// and the released package across the commits of a single history walk.
 pub(crate) fn are_packages_equal_cached(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
-    released_package_files: &ReleasedPackageFiles,
+    local_package_files: &PackageFiles,
+    released_package_files: &PackageFiles,
 ) -> anyhow::Result<bool> {
     debug!(
         "compare local package {:?} with registry package {:?}",
@@ -103,7 +100,7 @@ pub(crate) fn are_packages_equal_cached(
         return Ok(false);
     }
 
-    let local_package_files = get_cargo_package_files(local_package).with_context(|| {
+    let local_package_files = local_package_files.get(local_package).with_context(|| {
         format!("cannot determine packaged files of local package {local_package:?}")
     })?;
     let released_package_files = released_package_files.get(registry_package)?;
@@ -128,12 +125,10 @@ pub(crate) fn are_packages_equal_cached(
     let local_files = local_files
         .map(|file| local_package.join(file))
         .filter(|file| {
-            !(file.is_symlink()
-            // `cargo package --list` can return files that don't exist locally,
-            // such as the `README.md` file if the `Cargo.toml` specified a different path.
-            || !file.exists()
-            // Ignore `Cargo.toml` because we already checked it before.
-            || file.file_name() == Some(CARGO_TOML))
+            // The manifest was checked above; nested metadata contents are ordinary sources.
+            file.file_name() != Some(CARGO_TOML)
+                // Cargo may list generated paths that do not exist locally.
+                && file.symlink_metadata().is_ok_and(|metadata| !metadata.is_symlink())
         });
 
     for local_path in local_files {
@@ -166,9 +161,9 @@ pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8Pat
     }
 }
 
+/// List the files Cargo packages for `package`, leaving the package and its
+/// workspace unchanged.
 fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
-    // Local packages can contain uncommitted changes during an update.
-    let args = ["package", "--list", "--quiet", "--allow-dirty"];
     // Cargo writes scratch state (e.g. `target/CACHEDIR.TAG`) to the target dir
     // even when only listing files. Use a throwaway directory so that neither a
     // shared target dir nor the listed package (which may be a user-supplied
@@ -179,16 +174,73 @@ fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow
         "CARGO_TARGET_DIR".to_owned(),
         SecretString::from(target_dir.path().to_string()),
     )];
-    let output = run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")?;
+    let list = |extra_args: &[&str]| {
+        // Local packages can contain uncommitted changes during an update.
+        let args = [
+            ["package", "--list", "--quiet", "--allow-dirty"].as_slice(),
+            extra_args,
+        ]
+        .concat();
+        run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")
+    };
+    // To package a lockfile, Cargo first resolves the workspace dependencies.
+    // That takes most of the listing time, can query the registry, and rewrites
+    // a stale workspace `Cargo.lock`.
+    let output = list(&["--exclude-lockfile"])?;
+    if !output.status.success() && output.stderr.contains("--exclude-lockfile") {
+        // Cargo before 1.87 rejects the flag. Check every listing: during a
+        // history walk, rustup selects the toolchain of each checked-out commit
+        // from its `rust-toolchain.toml`.
+        return with_workspace_lockfile_restored(package, || parse_package_list(&list(&[])?));
+    }
+    let mut files = parse_package_list(&output)?;
+    // Cargo 1.84 and later, which includes every Cargo accepting the flag,
+    // package a lockfile for every package, even for workspace members without
+    // one in their directory. Insert it where Cargo sorts it, so the list is
+    // still what Cargo packages.
+    let lockfile = Utf8PathBuf::from("Cargo.lock");
+    if let Err(index) = files.binary_search(&lockfile) {
+        files.insert(index, lockfile);
+    }
+    Ok(files)
+}
 
+fn parse_package_list(output: &CmdOutput) -> anyhow::Result<Vec<Utf8PathBuf>> {
     anyhow::ensure!(
         output.status.success(),
         "error while running `cargo package`: {}",
         output.stderr
     );
+    Ok(output.stdout.lines().map(Utf8PathBuf::from).collect())
+}
 
-    let files = output.stdout.lines().map(Utf8PathBuf::from).collect();
-    Ok(files)
+/// Run `list`, which lists `package` with a Cargo that packages a lockfile,
+/// then restore the workspace `Cargo.lock` that Cargo rewrites if it is stale.
+///
+/// A rewritten lockfile would make the listed checkout dirty, which can stop
+/// a history walk from checking out the next commit.
+fn with_workspace_lockfile_restored<T>(
+    package: &Utf8Path,
+    list: impl FnOnce() -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let args = ["locate-project", "--workspace", "--message-format", "plain"];
+    let output = run_cargo(package, &args).context("cannot run `cargo locate-project`")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "error while running `cargo locate-project`: {}",
+        output.stderr
+    );
+    let lockfile = Utf8Path::new(output.stdout.trim_end()).with_file_name("Cargo.lock");
+    // Cargo doesn't write a lockfile when there is none.
+    if !lockfile.exists() {
+        return list();
+    }
+    let original = fs_err::read(&lockfile)?;
+    let result = list();
+    if fs_err::read(&lockfile)? != original {
+        fs_err::write(&lockfile, original)?;
+    }
+    result
 }
 
 fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
@@ -335,26 +387,72 @@ pub(crate) fn existing_readme_path(
 }
 
 fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {
-    let hash1 = file_hash(first).with_context(|| format!("cannot determine hash of {first:?}"))?;
-    let hash2 =
-        file_hash(second).with_context(|| format!("cannot determine hash of {second:?}"))?;
-    Ok(hash1 == hash2)
-}
-
-fn file_hash(file: &Utf8Path) -> io::Result<u64> {
-    let buffer = &mut vec![];
-    fs_err::File::open(file)?.read_to_end(buffer)?;
-    let mut hasher = DefaultHasher::new();
-    buffer.hash(&mut hasher);
-    let hash = hasher.finish();
-    Ok(hash)
+    const BUFFER_SIZE: usize = 8192;
+    let mut first = fs_err::File::open(first)?;
+    let mut second = fs_err::File::open(second)?;
+    let mut first_bytes = Vec::with_capacity(BUFFER_SIZE);
+    let mut second_bytes = Vec::with_capacity(BUFFER_SIZE);
+    loop {
+        // Fill each chunk despite short or interrupted reads.
+        first
+            .by_ref()
+            .take(BUFFER_SIZE as u64)
+            .read_to_end(&mut first_bytes)?;
+        second
+            .by_ref()
+            .take(BUFFER_SIZE as u64)
+            .read_to_end(&mut second_bytes)?;
+        if first_bytes != second_bytes {
+            return Ok(false);
+        }
+        if first_bytes.is_empty() {
+            return Ok(true);
+        }
+        first_bytes.clear();
+        second_bytes.clear();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cargo::run_cargo;
     use crate::fs_utils::Utf8TempDir;
+
+    #[test]
+    fn compare_files_handles_empty_files_and_buffer_boundaries() {
+        let dir = Utf8TempDir::new().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        for len in [0, 1, 8191, 8192, 8193, 24_593] {
+            let contents = vec![b'a'; len];
+            fs_err::write(&first, &contents).unwrap();
+            fs_err::write(&second, &contents).unwrap();
+            assert!(are_files_equal(&first, &second).unwrap());
+
+            for offset in [0, len / 2, len.saturating_sub(1)] {
+                if offset < len {
+                    let mut changed = contents.clone();
+                    changed[offset] = b'b';
+                    fs_err::write(&second, changed).unwrap();
+                    assert!(!are_files_equal(&first, &second).unwrap());
+                }
+            }
+            fs_err::write(&second, [contents.as_slice(), b"a"].concat()).unwrap();
+            assert!(!are_files_equal(&first, &second).unwrap());
+            assert!(!are_files_equal(&second, &first).unwrap());
+        }
+    }
+
+    #[test]
+    fn compare_files_reports_missing_files() {
+        let dir = Utf8TempDir::new().unwrap();
+        let existing = dir.path().join("existing");
+        let missing = dir.path().join("missing");
+        fs_err::write(&existing, "content").unwrap();
+
+        assert!(are_files_equal(&existing, &missing).is_err());
+        assert!(are_files_equal(&missing, &existing).is_err());
+    }
 
     #[test]
     fn unpacked_package_is_listed_without_running_cargo() {
@@ -396,9 +494,19 @@ mod tests {
         fs_err::write(package.path().join("another_file"), "file").unwrap();
         let files = get_cargo_package_files(package.path()).unwrap();
 
-        assert!(files.contains(&Utf8PathBuf::from("src/lib.rs")));
-        assert!(files.contains(&Utf8PathBuf::from("another_file")));
-        assert!(!files.contains(&Utf8PathBuf::from("excluded.txt")));
+        // Like `cargo package --list`, the list includes the lockfile Cargo
+        // packages even though the package has none, and omits the excluded file.
+        assert_eq!(
+            files,
+            [
+                "Cargo.lock",
+                "Cargo.toml",
+                "Cargo.toml.orig",
+                "another_file",
+                "src/lib.rs",
+            ]
+            .map(Utf8PathBuf::from)
+        );
         assert!(!package.path().join("Cargo.toml.orig").exists());
     }
 
@@ -495,6 +603,44 @@ mod tests {
         assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
         fs_err::write(local.path().join("src/Cargo.lock"), "local lockfile").unwrap();
         assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compare_packaged_files_skips_symlinks_and_missing_files() {
+        let local = test_package();
+        let registry = test_package();
+        for package in [&local, &registry] {
+            fs_err::copy(
+                package.path().join(CARGO_TOML),
+                package.path().join(CARGO_TOML_ORIG),
+            )
+            .unwrap();
+        }
+        let link = local.path().join("src/link.rs");
+        std::os::unix::fs::symlink("lib.rs", &link).unwrap();
+        fs_err::write(registry.path().join("src/link.rs"), "different content").unwrap();
+
+        let local_files = PackageFiles::default();
+        let registry_files = PackageFiles::default();
+        let equal = || {
+            are_packages_equal_cached(local.path(), registry.path(), &local_files, &registry_files)
+                .unwrap()
+        };
+        assert!(equal());
+
+        fs_err::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("missing.rs", &link).unwrap();
+        assert!(equal(), "broken symlinks are also skipped");
+
+        fs_err::remove_file(&link).unwrap();
+        assert!(
+            equal(),
+            "Cargo's file list may include files absent locally"
+        );
+
+        fs_err::write(&link, "local content").unwrap();
+        assert!(!equal(), "regular files are still compared");
     }
 
     #[test]

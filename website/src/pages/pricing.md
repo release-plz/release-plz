@@ -13,7 +13,7 @@ Here’s how you can help:
 - **Star**: Give Release-plz a star on [GitHub](https://github.com/release-plz/release-plz). ⭐
 - **Become a Sponsor**: Your financial support helps to dedicate more time to improve
   Release-plz and develop new features. Sponsor Release-plz development on
-  [GitHub](https://github.com/sponsors/MarcoIeni). ❤️
+  [GitHub](https://github.com/sponsors/release-plz). ❤️
 - **Contribute**: Get involved by fixing
   [issues](https://github.com/release-plz/release-plz/issues). 🚀
 
@@ -22,7 +22,7 @@ Here’s how you can help:
 If you are using Release-plz at your organization to improve your engineering team's productivity,
 please reflect on the hours Release-plz saves your team every month
 and consider
-investing a portion of these savings to [sponsor](https://github.com/sponsors/MarcoIeni) the author.
+investing a portion of these savings to [sponsor](https://github.com/sponsors/release-plz) the author.
 
 By sponsoring, you're enabling the author to focus more on the development of Release-plz, ensuring
 it remains sustainable, up-to-date and secure.

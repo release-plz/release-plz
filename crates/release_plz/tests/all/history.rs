@@ -370,19 +370,13 @@ fn assert_retained_changes_with_executable_bit(
     breaking_api: &str,
     prior_changes: &[&str],
 ) {
-    use std::os::unix::fs::PermissionsExt;
-
     // Record the executable bit.
     history
         .repo
         .git(&["config", "core.filemode", "true"])
         .unwrap();
     // Combine the mode and API changes in one commit so replay has to distinguish them.
-    fs_err::set_permissions(
-        history.repo.directory().join("src/lib.rs"),
-        std::fs::Permissions::from_mode(0o755),
-    )
-    .unwrap();
+    crate::helpers::make_executable(&history.repo.directory().join("src/lib.rs"));
     let breaking = history.write_commit(
         "src/lib.rs",
         breaking_api,
