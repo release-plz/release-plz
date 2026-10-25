@@ -17,11 +17,11 @@ jobs:
     steps:
       - ...
       - name: Run release-plz
-        uses: MarcoIeni/release-plz-action@v0.5
+        uses: release-plz/action@v0.5
 ```
 
-[This](https://github.com/MarcoIeni/release-plz-action/blob/main/.github/workflows/update_main_version.yml)
-script updates this tag to whatever the latest `0.5.x` version is.
+The [updater](https://github.com/release-plz/action/blob/main/updater/src/release.rs)
+updates this tag to whatever the latest `0.5.x` version is.
 This means that if the latest version of release-plz is 0.5.34, with `v0.5` you will use that version.
 If tomorrow, release-plz 0.5.35 is released, you will use that version without the
 need to update your workflow file.
@@ -31,7 +31,7 @@ While this is great for new features and bug fixes, it can also be a security ri
 ### ⚠️ Risk: malicious code published on your crates.io crate
 
 An attacker who manages to push and tag malicious code to the GitHub action
-[repository](https://github.com/MarcoIeni/release-plz-action)
+[repository](https://github.com/release-plz/action)
 could use your cargo registry token to push malicious code to
 your crate on crates.io.
 This means you or your users could download and run the malicious code.
@@ -51,9 +51,31 @@ jobs:
     steps:
       - ...
       - name: Run release-plz
-        uses: MarcoIeni/release-plz-action@63ab0c2746bedc448370bad4b0b3d536458398b0 # v0.5.50
+# highlight-next-line
+        uses: release-plz/action@63ab0c2746bedc448370bad4b0b3d536458398b0 # v0.5.50
 
 ```
 
 This is the same approach used in the crates.io
 [repository](https://github.com/rust-lang/crates.io/blob/7e52e11c5ddeb33db70f0000bbcdfb01e9b43b0d/.github/workflows/ci.yml#L30C32-L31C1).
+
+## Pass environment variables
+
+When using release-plz locally, you might need to pass environment
+variables such as `GITHUB_TOKEN` or other sensitive data.
+
+### ⚠️ Risk: the environment variable is stolen
+
+If you pass the environment variable directly in the command line, it can be
+stolen by an attacker who gets access to your terminal history.
+
+### ✅ Solution: Use a password manager
+
+Store the token in a password manager and retrieve it when needed.
+For example, [here's](https://developer.1password.com/docs/cli/secrets-environment-variables/)
+how to do it with 1password.
+
+An alternative is storing the token in a `.env` file and adding this file to the `.gitignore`.
+To export the variables, `source` this file or use an external tool like
+[dotenvx](https://github.com/dotenvx/dotenvx), which also supports encryption, so that an
+attacker who has access to the `.env` file cannot read the token easily.

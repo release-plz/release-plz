@@ -1,4 +1,5 @@
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -6,263 +7,497 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.51](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.50...cargo_utils-v0.1.51) - 2024-07-12
+## [0.3.1](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.3.0...cargo_utils-v0.3.1) - 2026-10-24
+
+### Fixed
+
+- *(release)* use the token of each package's registry ([#3279](https://github.com/release-plz/release-plz/pull/3279))
+
+## [0.3.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.2.0...cargo_utils-v0.3.0) - 2026-10-22
+
+### Other
+
+- *(cargo_utils)* [**breaking**] remove unused manifest helpers ([#3257](https://github.com/release-plz/release-plz/pull/3257))
+
+## [0.2.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.87...cargo_utils-v0.2.0) - 2026-10-19
+
+### Performance
+
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+
+## [0.1.87](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.86...cargo_utils-v0.1.87) - 2026-10-12
+
+### Performance
+
+- find workspace packages without collecting all members ([#3211](https://github.com/release-plz/release-plz/pull/3211))
+- collect mutable dependency tables into one buffer ([#3214](https://github.com/release-plz/release-plz/pull/3214))
+
+## [0.1.86](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.85...cargo_utils-v0.1.86) - 2026-10-10
+
+### Performance
+
+- iterate package dependency tables lazily ([#3186](https://github.com/release-plz/release-plz/pull/3186))
+- clone only selected workspace packages ([#3176](https://github.com/release-plz/release-plz/pull/3176))
+- borrow version requirements while upgrading ([#3177](https://github.com/release-plz/release-plz/pull/3177))
+
+## [0.1.85](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.84...cargo_utils-v0.1.85) - 2026-10-07
+
+### Other
+
+- Update to cargo 0.100.0 ([#3118](https://github.com/release-plz/release-plz/pull/3118))
+
+## [0.1.84](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.83...cargo_utils-v0.1.84) - 2026-09-13
+
+### Fixed
+
+- compare released source trees with Cargo file selection ([#3056](https://github.com/release-plz/release-plz/pull/3056))
+
+## [0.1.83](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.82...cargo_utils-v0.1.83) - 2026-09-13
+
+### Fixed
+
+- propagate versionless git-only dependency updates ([#3055](https://github.com/release-plz/release-plz/pull/3055))
+
+## [0.1.82](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.81...cargo_utils-v0.1.82) - 2026-09-09
+
+### Other
+
+- remove dirs dependency ([#3038](https://github.com/release-plz/release-plz/pull/3038))
+
+## [0.1.81](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.80...cargo_utils-v0.1.81) - 2026-09-05
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.80](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.79...cargo_utils-v0.1.80) - 2026-07-13
+
+### Fixed
+
+- fix clippy lint of rust 1.97 ([#2932](https://github.com/release-plz/release-plz/pull/2932))
+
+## [0.1.79](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.78...cargo_utils-v0.1.79) - 2026-06-09
+
+### Other
+
+- force cargo quiet to false ([#2889](https://github.com/release-plz/release-plz/pull/2889))
+
+## [0.1.78](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.77...cargo_utils-v0.1.78) - 2026-02-16
+
+### Other
+
+- use cargo info to understand if package was published ([#2645](https://github.com/release-plz/release-plz/pull/2645))
+
+## [0.1.77](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.76...cargo_utils-v0.1.77) - 2026-02-05
+
+### Fixed
+
+- read cargo registry token from env var correctly ([#2647](https://github.com/release-plz/release-plz/pull/2647))
+
+## [0.1.76](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.75...cargo_utils-v0.1.76) - 2026-01-17
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.75](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.74...cargo_utils-v0.1.75) - 2025-11-24
+
+### Other
+
+- address code quality issues ([#2498](https://github.com/release-plz/release-plz/pull/2498))
+
+## [0.1.74](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.73...cargo_utils-v0.1.74) - 2025-10-10
+
+### Other
+
+- cargo update and fix clippy lints ([#2450](https://github.com/release-plz/release-plz/pull/2450))
+
+## [0.1.73](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.72...cargo_utils-v0.1.73) - 2025-09-13
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.72](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.71...cargo_utils-v0.1.72) - 2025-08-31
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.71](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.70...cargo_utils-v0.1.71) - 2025-08-13
+
+### Other
+
+- update dependencies and fix lints ([#2336](https://github.com/release-plz/release-plz/pull/2336))
+
+## [0.1.70](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.69...cargo_utils-v0.1.70) - 2025-07-19
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.69](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.68...cargo_utils-v0.1.69) - 2025-07-09
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.68](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.67...cargo_utils-v0.1.68) - 2025-06-19
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.67](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.66...cargo_utils-v0.1.67) - 2025-05-08
+
+### Fixed
+
+- align registry env var name generation with Cargo ([#2210](https://github.com/release-plz/release-plz/pull/2210))
+
+## [0.1.66](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.65...cargo_utils-v0.1.66) - 2025-03-01
+
+### Other
+
+- add new line to changelog header (#2098)
+
+## [0.1.65](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.64...cargo_utils-v0.1.65) - 2025-02-22
+
+### Other
+
+- use edition 2024 (#2086)
+
+## [0.1.64](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.63...cargo_utils-v0.1.64) - 2025-02-22
+
+### Fixed
+
+- support env var override for registry index (#2033)
+
+## [0.1.63](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.62...cargo_utils-v0.1.63) - 2025-01-23
+
+### Other
+
+- update Cargo.lock dependencies
+
+## [0.1.62](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.61...cargo_utils-v0.1.62) - 2025-01-14
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.61](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.60...cargo_utils-v0.1.61) - 2024-12-07
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.60](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.59...cargo_utils-v0.1.60) - 2024-11-21
+
+### Other
+
+- move `MarcoIeni/release-plz` to `release-plz/release-plz` ([#1850](https://github.com/release-plz/release-plz/pull/1850))
+
+## [0.1.59](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.58...cargo_utils-v0.1.59) - 2024-10-25
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.58](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.57...cargo_utils-v0.1.58) - 2024-10-05
+
+### Other
+
+- fix `unnecessary_lazy_evaluations`lint ([#1734](https://github.com/release-plz/release-plz/pull/1734))
+
+## [0.1.57](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.56...cargo_utils-v0.1.57) - 2024-09-30
+
+### Fixed
+
+- retrieve token for each package's registry ala `cargo:token` ([#1669](https://github.com/release-plz/release-plz/pull/1669))
+
+## [0.1.56](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.55...cargo_utils-v0.1.56) - 2024-09-28
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.55](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.54...cargo_utils-v0.1.55) - 2024-09-17
 
 ### Added
-- add `canonical_local_manifest` function ([#1546](https://github.com/MarcoIeni/release-plz/pull/1546))
 
-### Other
-- add missing READMEs ([#1551](https://github.com/MarcoIeni/release-plz/pull/1551))
+- support local dependencies in workspace manifest ([#1695](https://github.com/release-plz/release-plz/pull/1695))
 
-## [0.1.50](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.49...cargo_utils-v0.1.50) - 2024-06-18
-
-### Other
-- update Cargo.toml dependencies
-
-## [0.1.49](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.48...cargo_utils-v0.1.49) - 2024-06-09
+## [0.1.54](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.53...cargo_utils-v0.1.54) - 2024-08-25
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.48](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.47...cargo_utils-v0.1.48) - 2024-05-27
+## [0.1.53](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.52...cargo_utils-v0.1.53) - 2024-08-18
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.47](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.46...cargo_utils-v0.1.47) - 2024-05-12
-
-### Other
-- add more error contexts ([#1455](https://github.com/MarcoIeni/release-plz/pull/1455))
-
-## [0.1.46](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.45...cargo_utils-v0.1.46) - 2024-05-08
-
-### Other
-- more descriptive file system error messages ([#1450](https://github.com/MarcoIeni/release-plz/pull/1450))
-
-## [0.1.45](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.44...cargo_utils-v0.1.45) - 2024-05-05
-
-### Other
-- add `uninlined_format_args` ([#1440](https://github.com/MarcoIeni/release-plz/pull/1440))
-- add clippy lints ([#1439](https://github.com/MarcoIeni/release-plz/pull/1439))
-
-## [0.1.44](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.43...cargo_utils-v0.1.44) - 2024-04-14
+## [0.1.52](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.51...cargo_utils-v0.1.52) - 2024-08-04
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.43](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.42...cargo_utils-v0.1.43) - 2024-03-24
+## [0.1.51](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.50...cargo_utils-v0.1.51) - 2024-07-12
+
+### Added
+- add `canonical_local_manifest` function ([#1546](https://github.com/release-plz/release-plz/pull/1546))
+
+### Other
+- add missing READMEs ([#1551](https://github.com/release-plz/release-plz/pull/1551))
+
+## [0.1.50](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.49...cargo_utils-v0.1.50) - 2024-06-18
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.42](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.41...cargo_utils-v0.1.42) - 2024-03-14
-
-### Other
-- update dependencies ([#1342](https://github.com/MarcoIeni/release-plz/pull/1342))
-
-## [0.1.41](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.40...cargo_utils-v0.1.41) - 2024-03-10
-
-### Other
-- use `camino` ([#1337](https://github.com/MarcoIeni/release-plz/pull/1337))
-- improve error message to suggest `--project-manifest` ([#1334](https://github.com/MarcoIeni/release-plz/pull/1334))
-
-## [0.1.40](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.39...cargo_utils-v0.1.40) - 2024-03-08
-
-### Other
-- use edition and license workspace ([#1329](https://github.com/MarcoIeni/release-plz/pull/1329))
-
-## [0.1.39](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.38...cargo_utils-v0.1.39) - 2024-02-27
+## [0.1.49](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.48...cargo_utils-v0.1.49) - 2024-06-09
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.38](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.37...cargo_utils-v0.1.38) - 2024-02-23
+## [0.1.48](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.47...cargo_utils-v0.1.48) - 2024-05-27
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.37](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.36...cargo_utils-v0.1.37) - 2024-02-06
+## [0.1.47](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.46...cargo_utils-v0.1.47) - 2024-05-12
+
+### Other
+- add more error contexts ([#1455](https://github.com/release-plz/release-plz/pull/1455))
+
+## [0.1.46](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.45...cargo_utils-v0.1.46) - 2024-05-08
+
+### Other
+- more descriptive file system error messages ([#1450](https://github.com/release-plz/release-plz/pull/1450))
+
+## [0.1.45](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.44...cargo_utils-v0.1.45) - 2024-05-05
+
+### Other
+- add `uninlined_format_args` ([#1440](https://github.com/release-plz/release-plz/pull/1440))
+- add clippy lints ([#1439](https://github.com/release-plz/release-plz/pull/1439))
+
+## [0.1.44](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.43...cargo_utils-v0.1.44) - 2024-04-14
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.36](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.35...cargo_utils-v0.1.36) - 2024-01-16
+## [0.1.43](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.42...cargo_utils-v0.1.43) - 2024-03-24
 
 ### Other
-- read cargo metadata in release-plz crate ([#1167](https://github.com/MarcoIeni/release-plz/pull/1167))
+- update Cargo.toml dependencies
 
-## [0.1.35](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.34...cargo_utils-v0.1.35) - 2023-12-30
-
-### Other
-- remove unuseful function ([#1166](https://github.com/MarcoIeni/release-plz/pull/1166))
-- simplify code ([#1165](https://github.com/MarcoIeni/release-plz/pull/1165))
-
-## [0.1.34](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.33...cargo_utils-v0.1.34) - 2023-12-16
+## [0.1.42](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.41...cargo_utils-v0.1.42) - 2024-03-14
 
 ### Other
-- update dependencies
+- update dependencies ([#1342](https://github.com/release-plz/release-plz/pull/1342))
 
-## [0.1.33](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.32...cargo_utils-v0.1.33) - 2023-11-30
-
-### Other
-- remove unuseful todo item ([#1079](https://github.com/MarcoIeni/release-plz/pull/1079))
-
-## [0.1.32](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.31...cargo_utils-v0.1.32) - 2023-10-15
+## [0.1.41](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.40...cargo_utils-v0.1.41) - 2024-03-10
 
 ### Other
-- update dependencies
+- use `camino` ([#1337](https://github.com/release-plz/release-plz/pull/1337))
+- improve error message to suggest `--project-manifest` ([#1334](https://github.com/release-plz/release-plz/pull/1334))
 
-## [0.1.31](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.30...cargo_utils-v0.1.31) - 2023-09-30
-
-### Other
-- update dependencies
-
-## [0.1.30](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.29...cargo_utils-v0.1.30) - 2023-09-16
+## [0.1.40](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.39...cargo_utils-v0.1.40) - 2024-03-08
 
 ### Other
-- add additional clippy lints ([#965](https://github.com/MarcoIeni/release-plz/pull/965))
+- use edition and license workspace ([#1329](https://github.com/release-plz/release-plz/pull/1329))
 
-## [0.1.29](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.28...cargo_utils-v0.1.29) - 2023-09-08
-
-### Other
-- *(ci)* check links ([#941](https://github.com/MarcoIeni/release-plz/pull/941))
-
-## [0.1.28](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.27...cargo_utils-v0.1.28) - 2023-08-22
+## [0.1.39](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.38...cargo_utils-v0.1.39) - 2024-02-27
 
 ### Other
-- improve error message ([#892](https://github.com/MarcoIeni/release-plz/pull/892))
+- update Cargo.toml dependencies
 
-## [0.1.27](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.26...cargo_utils-v0.1.27) - 2023-08-16
+## [0.1.38](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.37...cargo_utils-v0.1.38) - 2024-02-23
 
 ### Other
-- update dependencies
+- update Cargo.toml dependencies
 
-## [0.1.26](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.25...cargo_utils-v0.1.26) - 2023-08-14
+## [0.1.37](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.36...cargo_utils-v0.1.37) - 2024-02-06
+
+### Other
+- update Cargo.toml dependencies
+
+## [0.1.36](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.35...cargo_utils-v0.1.36) - 2024-01-16
+
+### Other
+- read cargo metadata in release-plz crate ([#1167](https://github.com/release-plz/release-plz/pull/1167))
+
+## [0.1.35](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.34...cargo_utils-v0.1.35) - 2023-12-30
+
+### Other
+- remove unuseful function ([#1166](https://github.com/release-plz/release-plz/pull/1166))
+- simplify code ([#1165](https://github.com/release-plz/release-plz/pull/1165))
+
+## [0.1.34](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.33...cargo_utils-v0.1.34) - 2023-12-16
 
 ### Other
 - update dependencies
 
-## [0.1.25](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.24...cargo_utils-v0.1.25) - 2023-08-02
+## [0.1.33](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.32...cargo_utils-v0.1.33) - 2023-11-30
+
+### Other
+- remove unuseful todo item ([#1079](https://github.com/release-plz/release-plz/pull/1079))
+
+## [0.1.32](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.31...cargo_utils-v0.1.32) - 2023-10-15
 
 ### Other
 - update dependencies
 
-## [0.1.24](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.23...cargo_utils-v0.1.24) - 2023-07-25
+## [0.1.31](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.30...cargo_utils-v0.1.31) - 2023-09-30
 
 ### Other
 - update dependencies
 
-## [0.1.23](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.22...cargo_utils-v0.1.23) - 2023-06-26
+## [0.1.30](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.29...cargo_utils-v0.1.30) - 2023-09-16
+
+### Other
+- add additional clippy lints ([#965](https://github.com/release-plz/release-plz/pull/965))
+
+## [0.1.29](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.28...cargo_utils-v0.1.29) - 2023-09-08
+
+### Other
+- *(ci)* check links ([#941](https://github.com/release-plz/release-plz/pull/941))
+
+## [0.1.28](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.27...cargo_utils-v0.1.28) - 2023-08-22
+
+### Other
+- improve error message ([#892](https://github.com/release-plz/release-plz/pull/892))
+
+## [0.1.27](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.26...cargo_utils-v0.1.27) - 2023-08-16
 
 ### Other
 - update dependencies
 
-## [0.1.22](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.21...cargo_utils-v0.1.22) - 2023-06-09
+## [0.1.26](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.25...cargo_utils-v0.1.26) - 2023-08-14
 
 ### Other
 - update dependencies
 
-## [0.1.21](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.20...cargo_utils-v0.1.21) - 2023-05-24
+## [0.1.25](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.24...cargo_utils-v0.1.25) - 2023-08-02
 
 ### Other
 - update dependencies
 
-## [0.1.20](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.19...cargo_utils-v0.1.20) - 2023-05-21
+## [0.1.24](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.23...cargo_utils-v0.1.24) - 2023-07-25
 
 ### Other
 - update dependencies
 
-## [0.1.19](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.18...cargo_utils-v0.1.19) - 2023-05-05
+## [0.1.23](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.22...cargo_utils-v0.1.23) - 2023-06-26
 
 ### Other
 - update dependencies
 
-## [0.1.18](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.17...cargo_utils-v0.1.18) - 2023-04-24
+## [0.1.22](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.21...cargo_utils-v0.1.22) - 2023-06-09
 
 ### Other
 - update dependencies
 
-## [0.1.17](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.16...cargo_utils-v0.1.17) - 2023-04-16
+## [0.1.21](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.20...cargo_utils-v0.1.21) - 2023-05-24
 
 ### Other
 - update dependencies
 
-## [0.1.16](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.15...cargo_utils-v0.1.16) - 2023-04-05
+## [0.1.20](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.19...cargo_utils-v0.1.20) - 2023-05-21
 
 ### Other
 - update dependencies
 
-## [0.1.15](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.14...cargo_utils-v0.1.15) - 2023-03-27
+## [0.1.19](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.18...cargo_utils-v0.1.19) - 2023-05-05
+
+### Other
+- update dependencies
+
+## [0.1.18](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.17...cargo_utils-v0.1.18) - 2023-04-24
+
+### Other
+- update dependencies
+
+## [0.1.17](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.16...cargo_utils-v0.1.17) - 2023-04-16
+
+### Other
+- update dependencies
+
+## [0.1.16](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.15...cargo_utils-v0.1.16) - 2023-04-05
+
+### Other
+- update dependencies
+
+## [0.1.15](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.14...cargo_utils-v0.1.15) - 2023-03-27
 
 ### Other
 - remove assert under feature flag (#638)
 
-## [0.1.14](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.13...cargo_utils-v0.1.14) - 2023-03-13
+## [0.1.14](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.13...cargo_utils-v0.1.14) - 2023-03-13
 
 ### Other
 - update dependencies
 
-## [0.1.13](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.12...cargo_utils-v0.1.13) - 2023-03-10
+## [0.1.13](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.12...cargo_utils-v0.1.13) - 2023-03-10
 
 ### Other
 - update to cargo v0.69
 
-## [0.1.12](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.11...cargo_utils-v0.1.12) - 2023-02-26
+## [0.1.12](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.11...cargo_utils-v0.1.12) - 2023-02-26
 
 ### Other
 - remove allocation (#568)
 
-## [0.1.11](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.10...cargo_utils-v0.1.11) - 2023-02-20
+## [0.1.11](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.10...cargo_utils-v0.1.11) - 2023-02-20
 
 ### Other
 - update dependencies (#566)
 
-## [0.1.10](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.9...cargo_utils-v0.1.10) - 2023-02-08
+## [0.1.10](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.9...cargo_utils-v0.1.10) - 2023-02-08
 
 ### Other
 - update dependencies
 
-## [0.1.9](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.8...cargo_utils-v0.1.9) - 2023-01-31
+## [0.1.9](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.8...cargo_utils-v0.1.9) - 2023-01-31
 
 ### Other
 - update dependencies
 
-## [0.1.8](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.7...cargo_utils-v0.1.8) - 2023-01-26
+## [0.1.8](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.7...cargo_utils-v0.1.8) - 2023-01-26
 
 ### Other
 - fix cargo clippy (#489)
 
-## [0.1.7](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.6...cargo_utils-v0.1.7) - 2023-01-17
+## [0.1.7](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.6...cargo_utils-v0.1.7) - 2023-01-17
 
 ### Other
 - update dependencies
 
-## [0.1.6](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.5...cargo_utils-v0.1.6) - 2023-01-15
+## [0.1.6](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.5...cargo_utils-v0.1.6) - 2023-01-15
 
 ### Other
 - add links to changelogs (#442)
 
-## [0.1.5](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.4...cargo_utils-v0.1.5) - 2023-01-13
+## [0.1.5](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.4...cargo_utils-v0.1.5) - 2023-01-13
 
 ### Other
 - update dependencies
 
-## [0.1.4](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.3...cargo_utils-v0.1.4) - 2022-12-26
+## [0.1.4](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.3...cargo_utils-v0.1.4) - 2022-12-26
 
 ### Other
 - fix additional clippy lints (#379)
 
-## [0.1.3](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.2...cargo_utils-v0.1.3) - 2022-12-16
+## [0.1.3](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.2...cargo_utils-v0.1.3) - 2022-12-16
 
 ### Added
 - add functionalities extracted from `cargo-edit` (#375)
 
-## [0.1.2](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.1...cargo_utils-v0.1.2) - 2022-11-04
+## [0.1.2](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.1...cargo_utils-v0.1.2) - 2022-11-04
 
 ### Other
 - use workspace dependencies (#333)
 
-## [0.1.1](https://github.com/MarcoIeni/release-plz/compare/cargo_utils-v0.1.0...cargo_utils-v0.1.1) - 2022-10-24
+## [0.1.1](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.0...cargo_utils-v0.1.1) - 2022-10-24
 
 ### Other
 - *(deps)* bump anyhow from 1.0.65 to 1.0.66 (#319)

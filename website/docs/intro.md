@@ -16,7 +16,7 @@ For every package you want to release, you need to:
 - Publish the package in the cargo registry (for example, [crates.io](https://crates.io)).
 - Create and push a git tag.
 
-Meet [release-plz](https://github.com/MarcoIeni/release-plz), a Rust open-source
+Meet [release-plz](https://github.com/release-plz/release-plz), a Rust open-source
 project that automates these tasks, allowing developers to release Rust packages
 without the command line.
 
@@ -40,7 +40,7 @@ Here's an example of a release Pull Request created on the release-plz repositor
 - Optional `cargo update` before releasing.
 - Git tag created for every released package.
 - Package published to any cargo registry.
-- GitHub/Gitea releases.
+- GitHub/Gitea/GitLab releases.
 
 ## Releases made easy
 
@@ -54,5 +54,5 @@ Release-plz makes releasing Rust packages child's play:
 In short, release-plz makes releasing Rust packages as easy as clicking the pull
 request "merge" button.
 
-Additionally, publishing creates with release-plz from CI adds visibility and
+Additionally, publishing crates with release-plz from CI adds visibility and
 transparency to the release process.

@@ -8,6 +8,9 @@ MD013:
   line_length: 100
   code_block_line_length: 500
 
+MD033:
+  allowed_elements: ['summary', 'details']
+
 # Use `---` for horizontal rule
 MD035:
   style: ---

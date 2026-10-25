@@ -1,6 +1,28 @@
 [workspace]
 git_release_enable = false
-dependencies_update = true # run `cargo update` in the release PR
+dependencies_update = false # TODO: re-enable when `cargo update` works in this project
+
+git_release_body = """
+{{ changelog }}
+{% if remote.contributors %}
+### Contributors
+{% for contributor in remote.contributors %}
+* @{{ contributor.username }}
+{% endfor %}
+{% endif %}
+"""
+
+[changelog]
+commit_parsers = [
+    { message = "^feat", group = "added" },
+    { message = "^changed", group = "changed" },
+    { message = "^deprecated", group = "deprecated" },
+    { message = "^removed", group = "removed" },
+    { message = "^fix", group = "fixed" },
+    { message = "^perf", group = "performance" },
+    { message = "^security", group = "security" },
+    { message = ".*", group = "other" },
+]
 
 [[package]] # the double square brackets define a TOML table array
 name = "release-plz" # name of the package to configure

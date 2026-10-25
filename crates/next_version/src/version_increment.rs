@@ -1,4 +1,4 @@
-use conventional_commit_parser::commit::{CommitType, ConventionalCommit};
+use git_conventional::Commit;
 use regex::Regex;
 use semver::Version;
 
@@ -10,24 +10,6 @@ pub enum VersionIncrement {
     Minor,
     Patch,
     Prerelease,
-}
-
-fn is_there_a_custom_match(regex_option: Option<&Regex>, commits: &[ConventionalCommit]) -> bool {
-    if let Some(regex) = regex_option {
-        commits
-            .iter()
-            .any(|commit| custom_commit_matches_regex(regex, commit))
-    } else {
-        false
-    }
-}
-
-fn custom_commit_matches_regex(regex: &Regex, commit: &ConventionalCommit) -> bool {
-    if let CommitType::Custom(custom_type) = &commit.commit_type {
-        regex.is_match(custom_type)
-    } else {
-        false
-    }
 }
 
 impl VersionIncrement {
@@ -59,25 +41,66 @@ impl VersionIncrement {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let mut commits = commits.into_iter().peekable();
-        let are_commits_present = commits.peek().is_some();
-        if are_commits_present {
-            if !current_version.pre.is_empty() {
-                return Some(VersionIncrement::Prerelease);
-            }
-            // Parse commits and keep only the ones that follow conventional commits specification.
-            let commits: Vec<ConventionalCommit> = commits
-                .filter_map(|c| conventional_commit_parser::parse(c.as_ref()).ok())
-                .collect();
+        let breaking_increment_major =
+            current_version.major != 0 || updater.breaking_always_increment_major;
+        let features_increment_minor =
+            current_version.major != 0 || updater.features_always_increment_minor;
+        let mut increment = None;
 
-            Some(Self::from_conventional_commits(
-                current_version,
-                &commits,
-                updater,
-            ))
-        } else {
-            None
+        for msg in commits {
+            let msg = msg.as_ref();
+            let commit = Commit::parse(msg).ok();
+            // Custom regexes match conventional commit types, or the whole message otherwise.
+            let regex_input = commit
+                .as_ref()
+                .map_or(msg, |commit| commit.type_().as_str());
+            let matches =
+                |regex: Option<&Regex>| regex.is_some_and(|regex| regex.is_match(regex_input));
+            if matches(updater.no_increment_regex.as_ref()) {
+                continue;
+            }
+            if !current_version.pre.is_empty() {
+                return Some(Self::Prerelease);
+            }
+            increment.get_or_insert(Self::Patch);
+
+            if let Some(commit) = &commit
+                && commit.breaking()
+            {
+                if breaking_increment_major {
+                    // No other commit can request a larger increment.
+                    return Some(Self::Major);
+                }
+                if current_version.minor != 0 {
+                    increment = Some(Self::Minor);
+                }
+                // In 0.0.x, breaking changes only increment the patch,
+                // but this or other commits can still request a larger increment.
+            }
+
+            if matches(updater.custom_major_increment_regex.as_ref()) {
+                return Some(Self::Major);
+            }
+            if increment != Some(Self::Minor) {
+                let is_feature = features_increment_minor
+                    && commit
+                        .as_ref()
+                        .is_some_and(|commit| commit.type_() == git_conventional::Type::FEAT);
+                if is_feature || matches(updater.custom_minor_increment_regex.as_ref()) {
+                    increment = Some(Self::Minor);
+                }
+            }
+
+            if !breaking_increment_major
+                && updater.custom_major_increment_regex.is_none()
+                && increment == Some(Self::Minor)
+            {
+                // No other commit can request a larger increment.
+                return increment;
+            }
         }
+
+        increment
     }
 
     /// Increments the version to take into account breaking changes.
@@ -105,47 +128,6 @@ impl VersionIncrement {
             Self::Major
         }
     }
-
-    /// If no conventional commits are present, the version is incremented as a Patch
-    fn from_conventional_commits(
-        current: &Version,
-        commits: &[ConventionalCommit],
-        updater: &VersionUpdater,
-    ) -> Self {
-        let is_there_a_feature = || {
-            commits
-                .iter()
-                .any(|commit| commit.commit_type == CommitType::Feature)
-        };
-
-        let is_there_a_breaking_change = commits.iter().any(|commit| commit.is_breaking_change);
-
-        let is_major_bump = || {
-            (is_there_a_breaking_change
-                || is_there_a_custom_match(updater.custom_major_increment_regex.as_ref(), commits))
-                && (current.major != 0 || updater.breaking_always_increment_major)
-        };
-
-        let is_minor_bump = || {
-            let is_feat_bump = || {
-                is_there_a_feature()
-                    && (current.major != 0 || updater.features_always_increment_minor)
-            };
-            let is_breaking_bump =
-                || current.major == 0 && current.minor != 0 && is_there_a_breaking_change;
-            is_feat_bump()
-                || is_breaking_bump()
-                || is_there_a_custom_match(updater.custom_minor_increment_regex.as_ref(), commits)
-        };
-
-        if is_major_bump() {
-            Self::Major
-        } else if is_minor_bump() {
-            Self::Minor
-        } else {
-            Self::Patch
-        }
-    }
 }
 
 impl VersionIncrement {
@@ -156,64 +138,5 @@ impl VersionIncrement {
             Self::Patch => version.increment_patch(),
             Self::Prerelease => version.increment_prerelease(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use conventional_commit_parser::commit::{CommitType, ConventionalCommit};
-    use regex::Regex;
-    #[test]
-    fn returns_true_for_matching_custom_type() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![ConventionalCommit {
-            commit_type: CommitType::Custom("custom".to_string()),
-            is_breaking_change: false,
-            summary: "A custom commit".to_string(),
-            body: None,
-            scope: None,
-            footers: vec![],
-        }];
-
-        assert!(is_there_a_custom_match(Some(&regex), &commits));
-    }
-
-    #[test]
-    fn returns_false_for_non_custom_commit_types() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![ConventionalCommit {
-            commit_type: CommitType::Feature,
-            is_breaking_change: false,
-            summary: "A feature commit".to_string(),
-            body: None,
-            scope: None,
-            footers: vec![],
-        }];
-
-        assert!(!is_there_a_custom_match(Some(&regex), &commits));
-    }
-
-    #[test]
-    fn returns_false_for_empty_commits_list() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits: Vec<ConventionalCommit> = Vec::new();
-
-        assert!(!is_there_a_custom_match(Some(&regex), &commits));
-    }
-
-    #[test]
-    fn handles_commits_with_empty_custom_types() {
-        let regex = Regex::new(r"custom").unwrap();
-        let commits = vec![ConventionalCommit {
-            commit_type: CommitType::Custom("".to_string()),
-            is_breaking_change: false,
-            summary: "A custom commit".to_string(),
-            body: None,
-            scope: None,
-            footers: vec![],
-        }];
-
-        assert!(!is_there_a_custom_match(Some(&regex), &commits));
     }
 }

@@ -1,29 +1,43 @@
 name: Website CI # Continuous Integration
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  merge_group:
+    types: [checks_requested]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   website:
     name: Website Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 18
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
           cache: npm
           cache-dependency-path: "website/package-lock.json"
 
       - name: Install dependencies
         run: npm ci
         working-directory: ./website
+
+      - name: Check formatting
+        run: npm run format:check
+        working-directory: ./website
+
       - name: Markdown lint
         run: npm run mdlint
         working-directory: ./website
+
       - name: Build website
         run: npm run build
         working-directory: ./website

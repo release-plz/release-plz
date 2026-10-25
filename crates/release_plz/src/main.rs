@@ -6,19 +6,18 @@ pub mod init;
 mod log;
 mod update_checker;
 
-use anyhow::Context;
-use args::{config_command::ConfigCommand as _, OutputType};
+use args::OutputType;
 use clap::Parser;
-use release_plz_core::{ReleasePrRequest, ReleaseRequest};
+use release_plz_core::ReleaseRequest;
 use serde::Serialize;
 use tracing::error;
 
-use crate::args::{manifest_command::ManifestCommand as _, CliArgs, Command};
+use crate::args::{CliArgs, Command, manifest_command::ManifestCommand as _};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
-    log::init(args.verbose);
+    log::init(args.verbosity()?);
     run(args).await.map_err(|e| {
         error!("{:?}", e);
         e
@@ -31,26 +30,19 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
     match args.command {
         Command::Update(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
-            let config = cmd_args.config()?;
-            let update_request = cmd_args.update_request(config, cargo_metadata)?;
-            let updates = release_plz_core::update(&update_request)?;
-            println!("{}", updates.0.summary());
+            let config = cmd_args.config.load()?;
+            let update_request = cmd_args.update_request(&config, cargo_metadata)?;
+            let (packages_update, _temp_repo) = release_plz_core::update(&update_request).await?;
+            println!("{}", packages_update.summary());
         }
         Command::ReleasePr(cmd_args) => {
+            anyhow::ensure!(
+                cmd_args.update.git_token.is_some(),
+                "please provide the git token with the --git-token cli argument."
+            );
             let cargo_metadata = cmd_args.update.cargo_metadata()?;
-            let config = cmd_args.update.config()?;
-            let pr_labels = config.workspace.pr_labels.clone();
-            let pr_draft = config.workspace.pr_draft;
-            let update_request = cmd_args.update.update_request(config, cargo_metadata)?;
-            let repo_url = update_request
-                .repo_url()
-                .context("can't determine repo url")?;
-            let git = cmd_args
-                .git_backend(repo_url.clone())
-                .context("invalid git backend settings")?;
-            let request = ReleasePrRequest::new(git, update_request)
-                .mark_as_draft(pr_draft)
-                .with_labels(pr_labels);
+            let config = cmd_args.update.config.load()?;
+            let request = cmd_args.release_pr_req(&config, cargo_metadata)?;
             let release_pr = release_plz_core::release_pr(&request).await?;
             if let Some(output_type) = cmd_args.output {
                 let prs = match release_pr {
@@ -65,7 +57,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
         }
         Command::Release(cmd_args) => {
             let cargo_metadata = cmd_args.cargo_metadata()?;
-            let config = cmd_args.config()?;
+            let config = cmd_args.config.load()?;
             let cmd_args_output = cmd_args.output;
             let request: ReleaseRequest = cmd_args.release_request(&config, cargo_metadata)?;
             let output = release_plz_core::release(&request)
@@ -78,9 +70,9 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
         Command::GenerateCompletions(cmd_args) => cmd_args.print(),
         Command::CheckUpdates => update_checker::check_update().await?,
         Command::GenerateSchema => generate_schema::generate_schema_to_disk()?,
-        Command::Init => init::init()?,
+        Command::Init(cmd_args) => init::init(&cmd_args.manifest_path(), !cmd_args.no_toml_check)?,
         Command::SetVersion(cmd_args) => {
-            let config = cmd_args.config()?;
+            let config = cmd_args.config.load()?;
             let request = cmd_args.set_version_request(&config)?;
             release_plz_core::set_version::set_version(&request)?;
         }

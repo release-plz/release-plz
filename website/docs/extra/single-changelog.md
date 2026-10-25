@@ -20,7 +20,8 @@ changelog_path = "./CHANGELOG.md"
 ```
 
 To include commits of other packages in the changelog of
-your main package, use the [changelog_include](../config.md#the-changelog_include-field) field.
+your main package, use the
+[changelog_include](../config.md#the-changelog_include-field) field.
 
 ## All packages
 
@@ -36,7 +37,7 @@ changelog_path = "./CHANGELOG.md"
 [changelog]
 body = """
 
-## `{{ package }}` - [{{ version | trim_start_matches(pat="v") }}]{%- if release_link -%}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+## `{{ package }}` - [{{ version }}]{%- if release_link -%}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}
 {% for commit in commits %}
@@ -53,6 +54,11 @@ body = """
 The difference with the default changelog body configuration is that the header now also contains
 the `{{package}}`.
 
+The entries will be order depending on the release order: if `package_a` depends on `package_b`,
+the changes of `package_a` are listed after `package_b`.
+For example, if you have a workspace with various libraries and one binary that depends on all the
+libraries, the changes of the binary will be placed first.
+
 In this way, `package_a` and `package_b` changelogs are in the same file.
 Note that the changelog will contain duplicate changes.
 If you want to merge updates of different packages into one, check
@@ -62,6 +68,7 @@ Here's an example of the changelog output:
 
 ```md
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

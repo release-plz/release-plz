@@ -22,7 +22,7 @@ pub trait RepoCommand: ManifestCommand {
     }
 
     /// Repo url specified by user
-    fn user_repo_url<'a>(&'a self, config: &'a Config) -> Option<&str> {
+    fn user_repo_url<'a>(&'a self, config: &'a Config) -> Option<&'a str> {
         self.repo_url()
             .or_else(|| config.workspace.repo_url.as_ref().map(|u| u.as_str()))
     }

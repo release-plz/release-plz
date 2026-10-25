@@ -1,13 +1,13 @@
-![release-plz-logo](website/static/img/release-plz-social-card.png)
+https://github.com/user-attachments/assets/99e9941b-f47c-4c18-aac2-6dbad412f0e7
 
 [![Crates.io](https://img.shields.io/crates/v/release-plz.svg)](https://crates.io/crates/release-plz)
-[![CI](https://github.com/MarcoIeni/release-plz/workflows/CI/badge.svg)](https://github.com/MarcoIeni/release-plz/actions)
+[![CI](https://github.com/release-plz/release-plz/workflows/CI/badge.svg)](https://github.com/release-plz/release-plz/actions)
 [![Docker](https://badgen.net/badge/icon/docker?icon=docker&label)](https://hub.docker.com/r/marcoieni/release-plz)
 
 Release-plz helps you release your Rust packages by automating:
 
 - CHANGELOG generation (with [git-cliff](https://git-cliff.org)).
-- Creation of GitHub/Gitea releases.
+- Creation of GitHub/Gitea/GitLab releases.
 - Publishing to a cargo registry (`crates.io` by default).
 - Version bumps in `Cargo.toml`.
 
@@ -28,31 +28,41 @@ release-plz:
 
 - Creates a git tag named `<package_name>-v<version>` (e.g. `tokio-v1.8.1`).
 - Publishes the package to the cargo registry by running `cargo publish`.
-- Publishes a GitHub/Gitea release based on the git tag.
+- Publishes a GitHub/Gitea/GitLab release based on the git tag.
 
 ## 📚 Docs
 
-Learn how to use release-plz in the [docs](https://release-plz.ieni.dev/).
+Learn how to use release-plz in the [docs](https://release-plz.dev/).
 
 ## 🤖 Running release-plz
 
 There are two ways to run release-plz:
 
-- [GitHub Action](https://release-plz.ieni.dev/docs/github): Run Release-plz from CI. The action both updates and releases your packages.
-- [CLI](https://release-plz.ieni.dev/docs/usage): Run release-plz from your terminal or other CI systems (Gitea supported).
+- [GitHub Action](https://release-plz.dev/docs/github): Run Release-plz from CI. The action both updates and releases your packages.
+- [CLI](https://release-plz.dev/docs/usage): Run release-plz from your terminal or other CI systems (Gitea and GitLab supported).
+
+## 🤝 Sponsors
+
+Release-plz is supported by:
+
+<a href="https://encore.dev/?utm_source=release-plz&utm_medium=sponsorship&utm_content=readme"><img src="website/static/img/sponsors/encore.svg" alt="Encore" height="40"></a>
+
+Want to support release-plz too? [Become a sponsor](https://github.com/sponsors/release-plz). ❤️
 
 ## 💖 Users
 
 Here you can find the public repositories using the release-plz GitHub action in CI:
 
-- [GitHub search](https://github.com/search?type=code&q=path%3A*.yml+OR+path%3A*.yaml+MarcoIeni%2Frelease-plz-action%40)
-- [Dependency graph](https://github.com/MarcoIeni/release-plz-action/network/dependents)
+- GitHub search [1](https://github.com/search?type=code&q=path%3A*.yml+OR+path%3A*.yaml+MarcoIeni%2Frelease-plz-action%40)
+  and [2](https://github.com/search?type=code&q=path%3A*.yml+OR+path%3A*.yaml+release-plz%2Faction%40)
+- Dependency graph [1](https://github.com/release-plz/action/network/dependents?package_id=UGFja2FnZS0zMDY0NDU2NDU0)
+  and [2](https://github.com/release-plz/action/network/dependents?package_id=UGFja2FnZS01NTY5MDk1NDUw)
 
 ## 📽️ RustLab 23 talk
 
 In RustLab 23, I showed how release-plz simplifies releasing Rust packages, why I created it, and what lessons I learned:
 
-[![RustLab 23 talk](https://github.com/MarcoIeni/release-plz/assets/11428655/30e94b65-9077-454d-8ced-6f77d0344f0c)](https://www.youtube.com/watch?v=kXPBVGDkQSs)
+[![RustLab 23 talk](https://github.com/release-plz/release-plz/assets/11428655/30e94b65-9077-454d-8ced-6f77d0344f0c)](https://www.youtube.com/watch?v=kXPBVGDkQSs)
 
 ## 🌓 Similar projects
 

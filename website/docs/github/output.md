@@ -1,6 +1,6 @@
 # Output
 
-After the action runs, it outputs the following properties:
+When the action runs with `command: release-pr`, it outputs the following properties:
 
 - `prs`: The release PRs opened by release-plz.
   It's an array of objects with the properties of `pr`.
@@ -12,6 +12,14 @@ After the action runs, it outputs the following properties:
     It is the default branch of the repository. E.g. `main`.
   - `html_url`: The URL of the PR.
   - `number`: The number of the PR.
+  - `releases`: Array of packages edited in the PR.
+    Each entry is an object containing:
+    - `package_name`: The name of the edited package.
+    - `version`: The next version of the package. The PR updates the package to this version.
+- `prs_created`: Whether release-plz created any release PR. *"true" or "false".*
+
+When the action runs with `command: release`, it outputs the following properties:
+
 - `releases`: The JSON output of the `release` command.
   It's an array of JSON objects with the following properties:
   - `package_name`: The name of the package that was released.
@@ -24,41 +32,44 @@ After the action runs, it outputs the following properties:
     [git_tag_enable](../config.md#the-git_tag_enable-field) set to `false`, so that
     you can use this to create the git tag yourself.
   - `version`: The version of the package that was released.
-- `prs_created`: Whether release-plz created any release PR. *Boolean.*
-- `releases_created`: Whether release-plz released any package. *Boolean.*
+- `releases_created`: Whether release-plz released any package. *"true" or "false".*
 
 ## Example: read the output
 
 ```yaml
 jobs:
-  test:
+
+  release-plz-release:
+    name: Release-plz release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install Rust toolchain
+          persist-credentials: false
+      - &install-rust
+        name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+# highlight-next-line
         id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
-        uses: MarcoIeni/release-plz-action@v0.5
+        uses: release-plz/action@v0.5
+        with:
+          command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Read release output
         env:
           RELEASES: ${{ steps.release-plz.outputs.releases }}
-          PRS: ${{ steps.release-plz.outputs.prs }}
-          PR: ${{ steps.release-plz.outputs.pr }}
-          PRS_CREATED: ${{ steps.release-plz.outputs.prs_created }}
           RELEASES_CREATED: ${{ steps.release-plz.outputs.releases_created }}
         run: |
           set -e
           echo "releases: $RELEASES" # example: [{"package_name":"my-package","prs":[{"html_url":"https://github.com/user/proj/pull/1439","number":1439}],"tag":"v0.1.0","version":"0.1.0"}]
-          echo "prs: $PRS" # example: [{"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198}]
-          echo "pr: $PR" # example: {"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198}
-          echo "prs_created: $PRS_CREATED" # example: true
           echo "releases_created: $RELEASES_CREATED" # example: true
 
           # get the number of releases with jq
@@ -87,6 +98,38 @@ jobs:
               echo "released $package_name"
           done
 
+  release-plz-pr:
+    name: Release-plz PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - *checkout
+      - *install-rust
+      - name: Run release-plz
+# highlight-next-line
+        id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Read release-pr output
+        env:
+          PRS: ${{ steps.release-plz.outputs.prs }}
+          PR: ${{ steps.release-plz.outputs.pr }}
+          PRS_CREATED: ${{ steps.release-plz.outputs.prs_created }}
+        run: |
+          set -e
+          echo "prs: $PRS" # example: [{"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198, "releases":[{"package_name":"my-package","version":"0.1.0"}]}]
+          echo "pr: $PR" # example: {"base_branch":"main","head_branch":"release-plz-2024-05-01T20-38-05Z","html_url":"https://github.com/MarcoIeni/rust-workspace-example/pull/198","number":198}
+          echo "prs_created: $PRS_CREATED" # example: true
+
           echo "pr_number: ${{ fromJSON(steps.release-plz.outputs.pr).number }}"
           echo "pr_html_url: ${{ fromJSON(steps.release-plz.outputs.pr).html_url }}"
           echo "pr_head_branch: ${{ fromJSON(steps.release-plz.outputs.pr).head_branch }}"
@@ -109,18 +152,28 @@ configuration field.
 
 ```yaml
 jobs:
-  test:
+  release-plz-pr:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+# highlight-next-line
         id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
-        uses: MarcoIeni/release-plz-action@v0.5
+        uses: release-plz/action@v0.5
+        with:
+          command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -159,4 +212,59 @@ You can also add a milestone with `gh pr edit $pr_number --milestone <MILESTONE_
 
 :::tip
 Make sure your GitHub token has permission to do all the operations you need.
+:::
+
+## Example: commit files to the release PR
+
+You can commit files to the release PR opened by release-plz.
+
+```yaml
+jobs:
+  release-plz-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+# highlight-next-line
+          persist-credentials: true
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz
+# highlight-next-line
+        id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Update README in the release PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.release-plz.outputs.pr }}
+        run: |
+          set -e
+
+          pr_number=${{ fromJSON(steps.release-plz.outputs.pr).number }}
+          if [[ -n "$pr_number" ]]; then
+            gh pr checkout $pr_number
+            # change "echo" with your commands
+            echo "new readme" > README.md
+            git add .
+            git commit -m "Update README"
+            git push
+          fi
+```
+
+:::info
+To learn why we set `persist-credentials: true`, see
+[Persist credentials](../github/persist-credentials.md).
 :::

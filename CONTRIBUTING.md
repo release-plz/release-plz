@@ -8,7 +8,7 @@ wish to make by creating a new issue before making the change.
 ## Reporting issues
 
 Before reporting an issue on the
-[issue tracker](https://github.com/MarcoIeni/release-plz/issues),
+[issue tracker](https://github.com/release-plz/release-plz/issues),
 please check that it has not already been reported by searching for some related
 keywords.
 
@@ -16,17 +16,11 @@ keywords.
 
 Try to do one pull request per change.
 
+## AI Policy
+
+Read our [AI policy](https://github.com/release-plz/.github/blob/main/AI_POLICY.md).
+
 ## Developing
-
-### Set up
-
-This is no different than other Rust projects.
-
-```shell
-git clone https://github.com/MarcoIeni/release-plz
-cd release-plz
-cargo test
-```
 
 ### Useful Commands
 
@@ -72,7 +66,7 @@ cargo test
 
 We use Gitea as a Git server for our integration tests.
 
-- Start the Gitea server with `cd tests && docker-compose up`.
+- Start the Gitea server with `cd tests && docker compose up`.
 - See their OpenAPI documentation at `http://localhost:3000/api/swagger`.
 
 If you don't want to run tests that need docker, you can run `cargo test --no-default-features`.

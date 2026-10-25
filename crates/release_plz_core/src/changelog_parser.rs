@@ -1,6 +1,7 @@
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use regex::Regex;
+use std::sync::LazyLock;
 
 /// Parse the header from a changelog.
 /// The changelog header is a string at the begin of the changelog that:
@@ -8,17 +9,56 @@ use regex::Regex;
 /// - ends with `## Unreleased`, `## [Unreleased]` or `## ..anything..`
 ///   (in the ..anything.. case, `## ..anything..` is not included in the header)
 pub fn parse_header(changelog: &str) -> Option<String> {
-    lazy_static::lazy_static! {
-        static ref FIRST_RE: Regex = Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*)(## Unreleased|## \[Unreleased\]|## unreleased|## \[unreleased\])(.*?)(\n)").unwrap();
-        static ref SECOND_RE: Regex = Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*?)(\n## )").unwrap();
+    static FIRST_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*)(## Unreleased|## \[Unreleased\]|## unreleased|## \[unreleased\])(.*?)(\n)").unwrap()
+    });
+    static SECOND_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)^(# Changelog|# CHANGELOG|# changelog)(.*?)(\n## )").unwrap()
+    });
+
+    if let Some(header) = FIRST_RE.find(changelog) {
+        return Some(header.as_str().to_string());
     }
 
-    if let Some(captures) = FIRST_RE.captures(changelog) {
-        return Some(captures[0].to_string());
+    if let Some(header) = SECOND_RE.find(changelog) {
+        return Some(changelog[..header.end() - "\n## ".len()].to_string());
     }
 
-    if let Some(captures) = SECOND_RE.captures(changelog) {
-        return Some(format!("{}{}", &captures[1], &captures[2]));
+    parse_header_fallback_strategy(changelog)
+}
+
+/// Fallback: be tolerant with formatting (e.g., no blank line after `# Changelog`).
+/// Strategy:
+/// - Ensure file starts with a Changelog H1 (case-insensitive).
+/// - If an Unreleased H2 exists, include it (line inclusive) in the header.
+/// - Otherwise, include everything up to (but not including) the first H2.
+fn parse_header_fallback_strategy(changelog: &str) -> Option<String> {
+    static START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#\s*changelog").unwrap());
+    static H2_UNRELEASED_RE: LazyLock<Regex> = LazyLock::new(|| {
+        // Multiline: match an H2 whose title is (case-insensitive) [Unreleased] or Unreleased
+        Regex::new(r"(?mi)^##\s*(?:\[?unreleased\]?)(?:\s*)$").unwrap()
+    });
+    static H2_ANY_RE: LazyLock<Regex> = LazyLock::new(|| {
+        // First H2 of any kind
+        Regex::new(r"(?m)^##\s+").unwrap()
+    });
+
+    if !START_RE.is_match(changelog) {
+        return None;
+    }
+
+    if let Some(m) = H2_UNRELEASED_RE.find(changelog) {
+        // Include the entire Unreleased line plus a trailing newline if present
+        let end = match changelog[m.end()..].find('\n') {
+            Some(_) => m.end() + 1, // include exactly one trailing "\n"
+            None => m.end(),        // no trailing newline
+        };
+        return Some(changelog[..end].to_string());
+    }
+
+    if let Some(m) = H2_ANY_RE.find(changelog) {
+        // Header is everything up to (but not including) the first H2
+        return Some(changelog[..m.start()].to_string());
     }
 
     None
@@ -30,23 +70,32 @@ pub fn last_changes(changelog: &Utf8Path) -> anyhow::Result<Option<String>> {
 }
 
 pub fn last_changes_from_str(changelog: &str) -> anyhow::Result<Option<String>> {
-    let parser = ChangelogParser::new(changelog)?;
-    let last_release = parser.last_release().map(|r| r.notes.to_string());
-    Ok(last_release)
+    map_last_release(changelog, |release| release.notes.to_string())
 }
 
 pub fn last_version_from_str(changelog: &str) -> anyhow::Result<Option<String>> {
-    let parser = ChangelogParser::new(changelog)?;
-    let last_release = parser.last_release().map(|r| r.version.to_string());
-    Ok(last_release)
+    map_last_release(changelog, |release| release.version.to_string())
 }
 
 pub fn last_release_from_str(changelog: &str) -> anyhow::Result<Option<ChangelogRelease>> {
-    let parser = ChangelogParser::new(changelog)?;
-    let last_release = parser.last_release().map(ChangelogRelease::from_release);
-    Ok(last_release)
+    map_last_release(changelog, ChangelogRelease::from_release)
 }
 
+/// Parse the changelog and map its last release, skipping the "Unreleased" section.
+fn map_last_release<T>(
+    changelog: &str,
+    f: impl FnOnce(&parse_changelog::Release<'_>) -> T,
+) -> anyhow::Result<Option<T>> {
+    let changelog = parse_changelog::parse(changelog).context("can't parse changelog")?;
+    let mut releases = changelog.values();
+    let last_release = match releases.next() {
+        Some(release) if release.version.to_lowercase().contains("unreleased") => releases.next(),
+        release => release,
+    };
+    Ok(last_release.map(f))
+}
+
+#[derive(Debug)]
 pub struct ChangelogRelease {
     title: String,
     notes: String,
@@ -67,35 +116,6 @@ impl ChangelogRelease {
     pub fn notes(&self) -> &str {
         &self.notes
     }
-}
-
-pub struct ChangelogParser<'a> {
-    changelog: parse_changelog::Changelog<'a>,
-}
-
-impl<'a> ChangelogParser<'a> {
-    pub fn new(changelog_text: &'a str) -> anyhow::Result<Self> {
-        let changelog = parse_changelog::parse(changelog_text).context("can't parse changelog")?;
-        Ok(Self { changelog })
-    }
-
-    fn last_release(&self) -> Option<&parse_changelog::Release> {
-        let last_release = release_at(&self.changelog, 0)?;
-        let last_release = if last_release.version.to_lowercase().contains("unreleased") {
-            release_at(&self.changelog, 1)?
-        } else {
-            last_release
-        };
-        Some(last_release)
-    }
-}
-
-fn release_at<'a>(
-    changelog: &'a parse_changelog::Changelog,
-    index: usize,
-) -> Option<&'a parse_changelog::Release<'a>> {
-    let release = changelog.get_index(index)?.1;
-    Some(release)
 }
 
 #[cfg(test)]
@@ -141,6 +161,7 @@ My custom changelog header
 My custom changelog header
 
 ## [0.2.5] - 2022-12-16
+
 ";
         let header = parse_header(changelog).unwrap();
         let expected_header = "\
@@ -161,11 +182,13 @@ My custom changelog header
 ## [0.2.5] - 2022-12-16
 
 ### Added
+
 - Incredible feature
 
 ## [0.2.5] - 2022-12-16
 
 ### Fixed
+
 - Incredible bug
 ";
         let header = parse_header(changelog).unwrap();
@@ -225,16 +248,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.5] - 2022-12-16
 
 ### Added
+
 - Add function to retrieve default branch (#372)
 
 ## [0.2.4] - 2022-12-12
 
 ### Changed
+
 - improved error message
 ";
         let changes = last_changes_from_str_test(changelog);
         let expected_changes = "\
 ### Added
+
 - Add function to retrieve default branch (#372)";
         assert_eq!(changes, expected_changes);
     }
@@ -243,24 +269,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fn changelog_without_unreleased_section_is_parsed() {
         let changelog = "\
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.5](https://github.com/MarcoIeni/release-plz/compare/git_cmd-v0.2.4...git_cmd-v0.2.5) - 2022-12-16
+## [0.2.5](https://github.com/release-plz/release-plz/compare/git_cmd-v0.2.4...git_cmd-v0.2.5) - 2022-12-16
 
 ### Added
+
 - Add function to retrieve default branch (#372)
 
 ## [0.2.4] - 2022-12-12
 
 ### Changed
+
 - improved error message
 ";
         let changes = last_changes_from_str_test(changelog);
         let expected_changes = "\
 ### Added
+
 - Add function to retrieve default branch (#372)";
         assert_eq!(changes, expected_changes);
     }

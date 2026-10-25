@@ -46,8 +46,8 @@ If release-plz uses the default GitHub token, CI checks on the release PR
 
 ### Actions after release
 
-You can further trigger workflows after `release-plz release` runs,
-in the following ways:
+After `release-plz release` released the packages (typically after running on the `main` branch),
+you can further trigger workflows, in the following ways:
 
 - When a GitHub release is published:
 
@@ -86,12 +86,14 @@ created on an account with write access to the repository.
 This is the standard method
 [recommended by GitHub](https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow).
 
-Note that the account that owns the PAT will be the author of the release pull
+:::info
+The account that owns the PAT will be the author of the release pull
 request and the commit itself.
 If you don't want release-plz to open release pull requests and commit with
 your account, consider creating a
-[machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#personal-accounts).
-If your machine user needs a cool avatar, you can use the release-plz [logo](/img/robot_head.jpeg).
+[machine user](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#user-accounts).
+If your machine user needs a cool avatar, you can use the release-plz [logo](https://release-plz.dev/img/robot_head.jpeg).
+:::
 
 Create the PAT, choosing one of the two types:
 
@@ -114,37 +116,49 @@ Once you generated your token, save it in the
 and pass it to both the `actions/checkout` and `release-plz` steps:
 
 ```yaml
-jobs:
-  release-plz:
-    name: Release-plz
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_PLZ_TOKEN }} # <-- PAT secret name
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Run release-plz
-        uses: MarcoIeni/release-plz-action@v0.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }} # <-- PAT secret name
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v6
+    with:
+      fetch-depth: 0
+      persist-credentials: false
+  - name: Install Rust toolchain
+    uses: dtolnay/rust-toolchain@stable
+  - name: Run release-plz
+    uses: release-plz/action@v0.5
+    env:
+      # highlight-next-line
+      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }} # <-- PAT secret name
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    with:
+      ...
 ```
 
-:::warning
-As shown in the example below,
-you need to add the `token` field to the `actions/checkout` step, too.
-This allows release-plz to use the PAT also when spawning `git` commands,
-such as `git tag`.
+:::caution
+If you configured git to sign the tags or you run `git push` in your workflow,
+your checkout step needs to look like this:
+
+```yaml
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v6
+    with:
+      fetch-depth: 0
+      # Let the git CLI use the RELEASE_PLZ_TOKEN, so that it can push the signed tags.
+# highlight-next-line
+      persist-credentials: true
+# highlight-next-line
+      token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+```
+
+For more information, see [Persist credentials](./persist-credentials.md).
 :::
 
 ### Use a GitHub App
 
 Generate a GitHub token with a GitHub App.
 This is the approach used by the
-[release-plz](https://github.com/MarcoIeni/release-plz/blob/main/.github/workflows/release-plz.yml)
+[release-plz](https://github.com/release-plz/release-plz/blob/main/.github/workflows/release-plz.yml)
 repo itself. With this approach, the GitHub App will be the author of the release pull request,
 e.g. `release-plz[bot]`.
 
@@ -160,7 +174,7 @@ Here's how to use a GitHub App to generate a GitHub token:
    - If you use [protected tags](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/configuring-tag-protection-rules):
      Under `Repository permissions: Administration` select `Access: Read & write`.
    - (Optional) Under `Where can this GitHub App be installed?` select `Only on this account`.
-   - (Optional) Set the release-plz [logo](/img/robot_head.jpeg).
+   - (Optional) Set the release-plz [logo](https://release-plz.dev/img/robot_head.jpeg).
 
 2. Create a Private key from the App settings page and store it securely.
 
@@ -177,24 +191,31 @@ Here's how to use a GitHub App to generate a GitHub token:
 
    ```yaml
    steps:
+     - name: Checkout repository
+       uses: actions/checkout@v6
+       with:
+         fetch-depth: 0
+         persist-credentials: false
+     - name: Install Rust toolchain
+       uses: dtolnay/rust-toolchain@stable
+   # highlight-start
      # Generating a GitHub token, so that PRs and tags created by
      # the release-plz-action can trigger actions workflows.
      - name: Generate GitHub token
-       uses: actions/create-github-app-token@v1
+       uses: actions/create-github-app-token@v2
        id: generate-token
        with:
-         app-id: ${{ secrets.APP_ID }} # <-- GitHub App ID secret name
-         private-key: ${{ secrets.APP_PRIVATE_KEY }} # <-- GitHub App private key secret name
-     - name: Checkout repository
-       uses: actions/checkout@v4
-       with:
-         fetch-depth: 0
-         token: ${{ steps.generate-token.outputs.token }}
-     - name: Install Rust toolchain
-       uses: dtolnay/rust-toolchain@stable
+         # GitHub App ID secret name
+         app-id: ${{ secrets.APP_ID }}
+         # GitHub App private key secret name
+         private-key: ${{ secrets.APP_PRIVATE_KEY }}
+   # highlight-end
      - name: Run release-plz
-       uses: MarcoIeni/release-plz-action@main
+       uses: release-plz/action@v0.5
        env:
+   # highlight-next-line
          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+       with:
+         ...
    ```

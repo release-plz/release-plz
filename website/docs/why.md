@@ -77,5 +77,5 @@ the CLI use case, while release-plz focuses mainly on CI.
 - [cargo-smart-release](https://github.com/Byron/cargo-smart-release):
   - Updates and publishes packages from the CLI.
   - It's very similar to release-plz, but it is not meant to be run in CI (see
-    [this](https://github.com/MarcoIeni/release-plz/issues/13#issuecomment-1065790846)
+    [this](https://github.com/release-plz/release-plz/issues/13#issuecomment-1065790846)
     comment from the author).

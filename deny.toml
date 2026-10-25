@@ -70,8 +70,11 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    # Waiting for a fix in cargo
-    "RUSTSEC-2024-0335"
+    "RUSTSEC-2025-0141",
+    "RUSTSEC-2026-0247",
+    "RUSTSEC-2026-0250",
+    "RUSTSEC-2026-0251",
+    "RUSTSEC-2026-0387",
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
@@ -91,11 +94,13 @@ allow = [
     "ISC",
     "Apache-2.0",
     "BSD-3-Clause",
+    "BSD-2-Clause",
     "CC0-1.0",
-    "Unicode-DFS-2016",
+    "Unicode-3.0",
     "MPL-2.0",
     "Zlib",
-    "Unicode-3.0"
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -229,11 +234,3 @@ unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
 allow-git = []
-
-[sources.allow-org]
-# 1 or more github.com organizations to allow git sources for
-github = [""]
-# 1 or more gitlab.com organizations to allow git sources for
-gitlab = [""]
-# 1 or more bitbucket.org organizations to allow git sources for
-bitbucket = [""]

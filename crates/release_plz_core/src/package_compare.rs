@@ -1,26 +1,90 @@
 use anyhow::Context;
 use cargo_metadata::{
-    camino::{Utf8Path, Utf8PathBuf},
     Package,
+    camino::{Utf8Path, Utf8PathBuf},
 };
-use cargo_utils::{get_manifest_metadata, CARGO_TOML};
+use cargo_utils::CARGO_TOML;
+use secrecy::SecretString;
 use tracing::debug;
 
-use crate::cargo::run_cargo;
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    io::{self, Read},
-    path::Path,
+use crate::{
+    PackagePath as _,
+    cargo::{CmdOutput, read_package_metadata, run_cargo, run_cargo_with_env},
+    fs_utils,
 };
+use std::{cell::OnceCell, io::Read};
+
+/// Cargo stores the original manifest under this name when it packages a crate,
+/// so its presence tells an extracted registry package from a plain source tree.
+pub(crate) const CARGO_TOML_ORIG: &str = "Cargo.toml.orig";
+
+/// Cargo records the packaged commit under this name when it packages a crate
+/// from a Git checkout.
+pub(crate) const CARGO_VCS_INFO: &str = ".cargo_vcs_info.json";
+
+/// Whether a file name is one Cargo generates while packaging rather than a
+/// source file: the packaging markers and Cargo.lock.
+///
+/// Older published libraries may lack Cargo.lock, but modern `cargo package --list`
+/// includes it even when absent, and its contents can differ in workspaces. The
+/// updater separately checks dependency versions for executables when both
+/// lockfiles exist, so content comparisons ignore all three names.
+pub(crate) fn is_generated_package_file(name: &str) -> bool {
+    matches!(name, CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock")
+}
+
+/// Return true if `package` is an extracted registry package rather than a source tree.
+///
+/// The two are compared differently: an extracted package already contains exactly
+/// the published files and its pre-packaging manifest, while a source tree (a Git-only
+/// release, or `--registry-manifest-path`) keeps its original manifest and needs
+/// Cargo's file selection to decide what belongs to the package.
+fn is_extracted_registry_package(package: &Utf8Path) -> bool {
+    package.join(CARGO_TOML_ORIG).is_file()
+}
+
+/// The packaged files of a package, computed at most once. Recreate this cache
+/// whenever the package's file paths or Cargo's file selection may change.
+#[derive(Default)]
+pub(crate) struct PackageFiles(OnceCell<Vec<Utf8PathBuf>>);
+
+impl PackageFiles {
+    /// Whether the file list has already been computed.
+    pub(crate) fn is_cached(&self) -> bool {
+        self.0.get().is_some()
+    }
+
+    /// The files of `package`, relative to its directory.
+    pub(crate) fn get(&self, package: &Utf8Path) -> anyhow::Result<&[Utf8PathBuf]> {
+        if let Some(files) = self.0.get() {
+            return Ok(files);
+        }
+        let files = get_cargo_package_files(package)
+            .with_context(|| format!("cannot determine packaged files of package {package:?}"))?;
+        Ok(self.0.get_or_init(|| files))
+    }
+}
 
 /// Check if two packages are equal.
-///
-/// ## Args
-/// - `ignored_dirs`: Directories of the `local_package` to ignore when comparing packages.
 pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
+) -> anyhow::Result<bool> {
+    are_packages_equal_cached(
+        local_package,
+        registry_package,
+        &PackageFiles::default(),
+        &PackageFiles::default(),
+    )
+}
+
+/// Same as [`are_packages_equal`], reusing file lists for the current snapshot
+/// and the released package across the commits of a single history walk.
+pub(crate) fn are_packages_equal_cached(
+    local_package: &Utf8Path,
+    registry_package: &Utf8Path,
+    local_package_files: &PackageFiles,
+    released_package_files: &PackageFiles,
 ) -> anyhow::Result<bool> {
     debug!(
         "compare local package {:?} with registry package {:?}",
@@ -31,35 +95,21 @@ pub fn are_packages_equal(
         return Ok(false);
     }
 
-    // When a package is published to a cargo registry, the original `Cargo.toml` file is stored as `Cargo.toml.orig`.
-    // We need to rename it to `Cargo.toml.orig.orig`, because this name is reserved, and `cargo package` will fail if it exists.
-    rename(
-        registry_package.join("Cargo.toml.orig"),
-        registry_package.join("Cargo.toml.orig.orig"),
-    )?;
-
-    let local_package_stdout = run_cargo_package(local_package).with_context(|| {
+    let local_package_files = local_package_files.get(local_package).with_context(|| {
         format!("cannot determine packaged files of local package {local_package:?}")
     })?;
-    let registry_package_stdout = run_cargo_package(registry_package).with_context(|| {
-        format!("cannot determine packaged files of registry package {registry_package:?}")
-    })?;
+    let released_package_files = released_package_files.get(registry_package)?;
 
-    // Rename the file to the original name.
-    rename(
-        registry_package.join("Cargo.toml.orig.orig"),
-        registry_package.join("Cargo.toml.orig"),
-    )?;
+    // Ignoring Cargo.lock's presence preserves the comparison behavior from when
+    // both sides used Cargo's file list.
+    let is_comparable_file = |file: &&Utf8PathBuf| !is_generated_package_file(file.as_str());
+    let local_files = local_package_files.iter().filter(is_comparable_file);
 
-    let local_files = local_package_stdout
-        .lines()
-        .filter(|file| *file != "Cargo.toml.orig" && *file != ".cargo_vcs_info.json");
-
-    let registry_files = registry_package_stdout.lines().filter(|file| {
-        *file != "Cargo.toml.orig"
-            && *file != "Cargo.toml.orig.orig"
-            && *file != ".cargo_vcs_info.json"
-    });
+    let registry_files = released_package_files
+        .iter()
+        .filter(is_comparable_file)
+        // Cargo creates this marker when extracting a registry package.
+        .filter(|file| *file != ".cargo-ok");
 
     if !local_files.clone().eq(registry_files) {
         // New files were added or removed.
@@ -70,16 +120,15 @@ pub fn are_packages_equal(
     let local_files = local_files
         .map(|file| local_package.join(file))
         .filter(|file| {
-            !(file.is_symlink()
-            // `cargo package --list` can return files that don't exist locally,
-            // such as the `README.md` file if the `Cargo.toml` specified a different path.
-            || !file.exists()
-            // Ignore `Cargo.lock` because the local one is different from the published one in workspaces.
-            || file.file_name() == Some("Cargo.lock")
-            // Ignore `Cargo.toml` because we already checked it before.
-            || file.file_name() == Some(CARGO_TOML)
-            // Ignore `Cargo.toml.orig` because it's auto generated.
-            || file.file_name() == Some("Cargo.toml.orig"))
+            // The manifest was checked above; lockfiles and original manifests
+            // are generated by Cargo and can differ in published packages.
+            !matches!(
+                file.file_name(),
+                Some("Cargo.lock" | CARGO_TOML | CARGO_TOML_ORIG)
+            )
+                // `cargo package --list` can return files that don't exist locally,
+                // such as `README.md` when Cargo.toml specifies a different path.
+                && file.symlink_metadata().is_ok_and(|metadata| !metadata.is_symlink())
         });
 
     for local_path in local_files {
@@ -96,49 +145,189 @@ pub fn are_packages_equal(
     Ok(true)
 }
 
-fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> anyhow::Result<()> {
-    let from = from.as_ref();
-    let to = to.as_ref();
-    fs_err::rename(from, to).with_context(|| format!("cannot rename {from:?} to {to:?}"))
+pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    // Downloaded and locally unpacked crates already contain the packaged files.
+    debug!("Getting packaged files for crate at {}", package);
+    if is_extracted_registry_package(package) {
+        let list =
+            list_packaged_files(package).context("cannot list packaged files from directory")?;
+        debug!("Packaged files: {:?}", list);
+        Ok(list)
+    } else {
+        let list = get_cargo_package_list(package)
+            .context("cannot get packaged files from cargo package list")?;
+        debug!("Cargo Packaged files: {:?}", list);
+        Ok(list)
+    }
 }
 
-fn run_cargo_package(package: &Utf8Path) -> anyhow::Result<String> {
-    // we use `--allow-dirty` because we have `Cargo.toml.orig.orig`, which is an uncommitted change.
-    let args = ["package", "--list", "--quiet", "--allow-dirty"];
-    let output = run_cargo(package, &args).context("cannot run `cargo package`")?;
+/// List the files Cargo packages for `package`, leaving the package and its
+/// workspace unchanged.
+fn get_cargo_package_list(package: &Utf8Path) -> Result<Vec<Utf8PathBuf>, anyhow::Error> {
+    // Cargo writes scratch state (e.g. `target/CACHEDIR.TAG`) to the target dir
+    // even when only listing files. Use a throwaway directory so that neither a
+    // shared target dir nor the listed package (which may be a user-supplied
+    // `--registry-manifest-path` tree) is touched; it's deleted on return.
+    let target_dir = fs_utils::Utf8TempDir::new()
+        .context("cannot create temporary target directory for `cargo package`")?;
+    let envs = [(
+        "CARGO_TARGET_DIR".to_owned(),
+        SecretString::from(target_dir.path().to_string()),
+    )];
+    let list = |extra_args: &[&str]| {
+        // Local packages can contain uncommitted changes during an update.
+        let args = [
+            ["package", "--list", "--quiet", "--allow-dirty"].as_slice(),
+            extra_args,
+        ]
+        .concat();
+        run_cargo_with_env(package, &args, &envs).context("cannot run `cargo package`")
+    };
+    // To package a lockfile, Cargo first resolves the workspace dependencies.
+    // That takes most of the listing time, can query the registry, and rewrites
+    // a stale workspace `Cargo.lock`.
+    let output = list(&["--exclude-lockfile"])?;
+    if !output.status.success() && output.stderr.contains("--exclude-lockfile") {
+        // Cargo before 1.87 rejects the flag. Check every listing: during a
+        // history walk, rustup selects the toolchain of each checked-out commit
+        // from its `rust-toolchain.toml`.
+        return with_workspace_lockfile_restored(package, || parse_package_list(&list(&[])?));
+    }
+    let mut files = parse_package_list(&output)?;
+    // Cargo 1.84 and later, which includes every Cargo accepting the flag,
+    // package a lockfile for every package, even for workspace members without
+    // one in their directory. Insert it where Cargo sorts it, so the list is
+    // still what Cargo packages.
+    let lockfile = Utf8PathBuf::from("Cargo.lock");
+    if let Err(index) = files.binary_search(&lockfile) {
+        files.insert(index, lockfile);
+    }
+    Ok(files)
+}
 
+fn parse_package_list(output: &CmdOutput) -> anyhow::Result<Vec<Utf8PathBuf>> {
     anyhow::ensure!(
         output.status.success(),
         "error while running `cargo package`: {}",
         output.stderr
     );
+    Ok(output.stdout.lines().map(Utf8PathBuf::from).collect())
+}
 
-    Ok(output.stdout)
+/// Run `list`, which lists `package` with a Cargo that packages a lockfile,
+/// then restore the workspace `Cargo.lock` that Cargo rewrites if it is stale.
+///
+/// A rewritten lockfile would make the listed checkout dirty, which can stop
+/// a history walk from checking out the next commit.
+fn with_workspace_lockfile_restored<T>(
+    package: &Utf8Path,
+    list: impl FnOnce() -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let args = ["locate-project", "--workspace", "--message-format", "plain"];
+    let output = run_cargo(package, &args).context("cannot run `cargo locate-project`")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "error while running `cargo locate-project`: {}",
+        output.stderr
+    );
+    let lockfile = Utf8Path::new(output.stdout.trim_end()).with_file_name("Cargo.lock");
+    // Cargo doesn't write a lockfile when there is none.
+    if !lockfile.exists() {
+        return list();
+    }
+    let original = fs_err::read(&lockfile)?;
+    let result = list();
+    if fs_err::read(&lockfile)? != original {
+        fs_err::write(&lockfile, original)?;
+    }
+    result
+}
+
+fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
+    let mut files = Vec::new();
+    let mut dirs = vec![package.to_path_buf()];
+
+    while let Some(dir) = dirs.pop() {
+        for entry in fs_err::read_dir(&dir).with_context(|| format!("cannot read dir {dir:?}"))? {
+            let entry = entry.with_context(|| format!("cannot read dir entry in {dir:?}"))?;
+            let path = Utf8PathBuf::from_path_buf(entry.path())
+                .map_err(|path| anyhow::anyhow!("non-utf8 path in package: {path:?}"))?;
+            // Git metadata isn't part of the package, including nested repositories
+            // and worktrees whose `.git` entry is a file.
+            if path.file_name() == Some(".git") {
+                continue;
+            }
+            let file_type = entry
+                .file_type()
+                .with_context(|| format!("cannot read file type for {path:?}"))?;
+
+            if file_type.is_dir() {
+                dirs.push(path);
+            } else {
+                let rel_path = path
+                    .strip_prefix(package)
+                    .with_context(|| format!("can't find {package:?} prefix in {path:?}"))?;
+                files.push(rel_path.to_path_buf());
+            }
+        }
+    }
+
+    files.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    Ok(files)
 }
 
 fn are_cargo_toml_equal(local_package: &Utf8Path, registry_package: &Utf8Path) -> bool {
-    // When a package is published to a cargo registry, the original `Cargo.toml` file is stored as
-    // `Cargo.toml.orig`
-    let cargo_orig = format!("{CARGO_TOML}.orig");
-    are_files_equal(
-        &local_package.join(CARGO_TOML),
-        &registry_package.join(cargo_orig),
-    )
-    .unwrap_or(false)
+    let released_manifest = if is_extracted_registry_package(registry_package) {
+        registry_package.join(CARGO_TOML_ORIG)
+    } else {
+        // Source trees retain their original manifests.
+        registry_package.join(CARGO_TOML)
+    };
+    are_files_equal(&local_package.join(CARGO_TOML), &released_manifest).unwrap_or(false)
 }
 
-/// Returns true if the README file of the local package is the same as the one in the registry.
-/// Returns false if:
-/// - the README is the same
-/// - the local package doesn't have a `readme` field in the `Cargo.toml`.
-/// - the package doesn't have a README at all.
+/// Check whether the local README differs from an extracted registry package's README.
+/// Returns false if the local package has no README.
 pub fn is_readme_updated(
     package_name: &str,
     local_package_path: &Utf8Path,
     registry_package_path: &Utf8Path,
 ) -> anyhow::Result<bool> {
+    compare_readme(
+        package_name,
+        local_package_path,
+        Some(registry_package_path.join("README.md")),
+    )
+}
+
+/// Compare READMEs using the available metadata for a released source workspace.
+pub(crate) fn is_readme_updated_with_released_package(
+    package_name: &str,
+    local_package_path: &Utf8Path,
+    released_package: &Package,
+) -> anyhow::Result<bool> {
+    let released_package_path = released_package.package_path()?;
+    let released_readme = if is_extracted_registry_package(released_package_path) {
+        Some(released_package_path.join("README.md"))
+    } else {
+        // Unpackaged sources keep their original README path, which can point
+        // outside the package directory.
+        local_readme_override(released_package, released_package_path)?
+    };
+    compare_readme(package_name, local_package_path, released_readme)
+}
+
+/// Whether the local README differs from `released_readme`.
+///
+/// Without a local README there is nothing to release, so it counts as unchanged.
+/// A local README that is missing on the released side counts as updated.
+fn compare_readme(
+    package_name: &str,
+    local_package_path: &Utf8Path,
+    released_readme: Option<Utf8PathBuf>,
+) -> anyhow::Result<bool> {
     // Read again manifest metadata because the Cargo.toml might change on every commit.
-    let package = match read_package_metadata(package_name, local_package_path) {
+    let package = match read_package_metadata(&local_package_path.join(CARGO_TOML), package_name) {
         Ok(package) => package,
         Err(e) => {
             tracing::warn!(
@@ -149,9 +338,11 @@ pub fn is_readme_updated(
     };
 
     let local_package_readme_path = local_readme_override(&package, local_package_path);
-    let are_readmes_equal = match local_package_readme_path {
+    let are_readmes_equal = match local_package_readme_path? {
         Some(local_package_readme_path) => {
-            let registry_package_readme_path = registry_package_path.join("README.md");
+            let Some(registry_package_readme_path) = released_readme else {
+                return Ok(true);
+            };
             if !registry_package_readme_path.exists() {
                 return Ok(true);
             }
@@ -171,39 +362,340 @@ pub fn is_readme_updated(
 pub fn local_readme_override(
     package: &Package,
     local_package_path: &Utf8Path,
+) -> anyhow::Result<Option<Utf8PathBuf>> {
+    existing_readme_path(package, local_package_path)
+        .map(|readme_path| fs_utils::canonicalize_utf8(&readme_path))
+        .transpose()
+}
+
+/// The README path configured in `Cargo.toml`, joined to `local_package_path`
+/// but not canonicalized, when it exists.
+pub(crate) fn existing_readme_path(
+    package: &Package,
+    local_package_path: &Utf8Path,
 ) -> Option<Utf8PathBuf> {
-    package
-        .readme
-        .as_ref()
-        .map(|readme| local_package_path.join(readme))
+    let readme_path = local_package_path.join(package.readme.as_ref()?);
+    if !readme_path.exists() {
+        tracing::warn!(
+            "README path '{}' doesn't exist for package '{}'. Hint: ensure the path set in Cargo.toml points to a file that exists and is included in the crate.",
+            readme_path,
+            package.name
+        );
+        return None;
+    }
+    Some(readme_path)
 }
 
 fn are_files_equal(first: &Utf8Path, second: &Utf8Path) -> anyhow::Result<bool> {
-    let hash1 = file_hash(first).with_context(|| format!("cannot determine hash of {first:?}"))?;
-    let hash2 =
-        file_hash(second).with_context(|| format!("cannot determine hash of {second:?}"))?;
-    Ok(hash1 == hash2)
+    const BUFFER_SIZE: usize = 8192;
+    let mut first = fs_err::File::open(first)?;
+    let mut second = fs_err::File::open(second)?;
+    let mut first_bytes = Vec::with_capacity(BUFFER_SIZE);
+    let mut second_bytes = Vec::with_capacity(BUFFER_SIZE);
+    loop {
+        // Fill each chunk despite short or interrupted reads.
+        first
+            .by_ref()
+            .take(BUFFER_SIZE as u64)
+            .read_to_end(&mut first_bytes)?;
+        second
+            .by_ref()
+            .take(BUFFER_SIZE as u64)
+            .read_to_end(&mut second_bytes)?;
+        if first_bytes != second_bytes {
+            return Ok(false);
+        }
+        if first_bytes.is_empty() {
+            return Ok(true);
+        }
+        first_bytes.clear();
+        second_bytes.clear();
+    }
 }
 
-fn file_hash(file: &Utf8Path) -> io::Result<u64> {
-    let buffer = &mut vec![];
-    fs_err::File::open(file)?.read_to_end(buffer)?;
-    let mut hasher = DefaultHasher::new();
-    buffer.hash(&mut hasher);
-    let hash = hasher.finish();
-    Ok(hash)
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fs_utils::Utf8TempDir;
 
-fn read_package_metadata(
-    package_name: &str,
-    local_package_path: &Utf8Path,
-) -> anyhow::Result<Package> {
-    let package = get_manifest_metadata(&local_package_path.join(CARGO_TOML))
-        .context("cannot read Cargo.toml")?
-        .workspace_packages()
-        .into_iter()
-        .find(|&p| p.name == package_name)
-        .cloned()
-        .context("cannot find package in Cargo.toml")?;
-    Ok(package)
+    #[test]
+    fn compare_files_handles_empty_files_and_buffer_boundaries() {
+        let dir = Utf8TempDir::new().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        for len in [0, 1, 8191, 8192, 8193, 24_593] {
+            let contents = vec![b'a'; len];
+            fs_err::write(&first, &contents).unwrap();
+            fs_err::write(&second, &contents).unwrap();
+            assert!(are_files_equal(&first, &second).unwrap());
+
+            for offset in [0, len / 2, len.saturating_sub(1)] {
+                if offset < len {
+                    let mut changed = contents.clone();
+                    changed[offset] = b'b';
+                    fs_err::write(&second, changed).unwrap();
+                    assert!(!are_files_equal(&first, &second).unwrap());
+                }
+            }
+            fs_err::write(&second, [contents.as_slice(), b"a"].concat()).unwrap();
+            assert!(!are_files_equal(&first, &second).unwrap());
+            assert!(!are_files_equal(&second, &first).unwrap());
+        }
+    }
+
+    #[test]
+    fn compare_files_reports_missing_files() {
+        let dir = Utf8TempDir::new().unwrap();
+        let existing = dir.path().join("existing");
+        let missing = dir.path().join("missing");
+        fs_err::write(&existing, "content").unwrap();
+
+        assert!(are_files_equal(&existing, &missing).is_err());
+        assert!(are_files_equal(&missing, &existing).is_err());
+    }
+
+    #[test]
+    fn unpacked_package_is_listed_without_running_cargo() {
+        let package = Utf8TempDir::new().unwrap();
+        let package = package.path();
+        fs_err::create_dir_all(package.join("src/nested")).unwrap();
+        fs_err::create_dir(package.join(".git")).unwrap();
+        fs_err::create_dir_all(package.join("src/nested/.git/objects")).unwrap();
+        for file in [
+            "Cargo.toml",
+            "Cargo.toml.orig",
+            ".hidden",
+            "src/nested/lib.rs",
+            "src/nested.rs",
+            ".git/config",
+            "src/nested/.git/objects/metadata",
+            "src/.git",
+        ] {
+            // In particular, Cargo.toml is invalid, so invoking Cargo would fail.
+            fs_err::write(package.join(file), "packaged content").unwrap();
+        }
+
+        assert_eq!(
+            get_cargo_package_files(package).unwrap(),
+            [
+                ".hidden",
+                "Cargo.toml",
+                "Cargo.toml.orig",
+                "src/nested.rs",
+                "src/nested/lib.rs",
+            ]
+            .map(Utf8PathBuf::from)
+        );
+    }
+
+    #[test]
+    fn package_without_original_manifest_uses_cargo_file_selection() {
+        let package = test_package();
+        fs_err::write(package.path().join("another_file"), "file").unwrap();
+        let files = get_cargo_package_files(package.path()).unwrap();
+
+        // Like `cargo package --list`, the list includes the lockfile Cargo
+        // packages even though the package has none, and omits the excluded file.
+        assert_eq!(
+            files,
+            [
+                "Cargo.lock",
+                "Cargo.toml",
+                "Cargo.toml.orig",
+                "another_file",
+                "src/lib.rs",
+            ]
+            .map(Utf8PathBuf::from)
+        );
+        assert!(!package.path().join("Cargo.toml.orig").exists());
+    }
+
+    #[test]
+    fn compare_downloaded_package_ignores_git_metadata_and_detects_changes() {
+        let local = test_package();
+        let repo = git_cmd::Repo::init(local.path());
+        fs_err::write(local.path().join(".hidden"), "hidden content").unwrap();
+        repo.add_all_and_commit("initial package").unwrap();
+        let output = run_cargo(local.path(), &["package", "--no-verify", "--quiet"]).unwrap();
+        assert!(output.status.success(), "{}", output.stderr);
+
+        let registry = Utf8TempDir::new().unwrap();
+        let archive =
+            fs_err::File::open(local.path().join("target/package/example-0.1.0.crate")).unwrap();
+        tar::Archive::new(flate2::read::GzDecoder::new(archive))
+            .unpack(registry.path())
+            .unwrap();
+        let registry = registry.path().join("example-0.1.0");
+        // Downloaded packages are initialized as Git repositories by release-plz.
+        git_cmd::Repo::init(&registry);
+
+        assert!(are_packages_equal(local.path(), &registry).unwrap());
+        assert!(registry.join("Cargo.toml.orig").is_file());
+
+        // Exercise registry metadata while the local side still uses Cargo's file list.
+        fs_err::write(registry.join(".cargo-ok"), "{}").unwrap();
+        fs_err::write(registry.join("Cargo.lock"), "released lockfile").unwrap();
+        fs_err::remove_dir_all(registry.join(".git")).unwrap();
+        fs_err::write(registry.join(".git"), "gitdir: /elsewhere/worktrees/crate").unwrap();
+        assert!(are_packages_equal(local.path(), &registry).unwrap());
+
+        // Libraries published before Cargo 1.84 may not contain a lockfile, even
+        // though modern `cargo package --list` includes it on the local side.
+        fs_err::remove_file(registry.join("Cargo.lock")).unwrap();
+        assert!(are_packages_equal(local.path(), &registry).unwrap());
+
+        fs_err::write(registry.join("src/lib.rs"), "pub fn changed() {}\n").unwrap();
+        assert!(!are_packages_equal(local.path(), &registry).unwrap());
+        fs_err::copy(local.path().join("src/lib.rs"), registry.join("src/lib.rs")).unwrap();
+
+        fs_err::write(registry.join("extra.txt"), "added file").unwrap();
+        assert!(!are_packages_equal(local.path(), &registry).unwrap());
+        fs_err::remove_file(registry.join("extra.txt")).unwrap();
+        fs_err::remove_file(registry.join(".hidden")).unwrap();
+        assert!(!are_packages_equal(local.path(), &registry).unwrap());
+    }
+
+    #[test]
+    fn compare_packaged_files_ignores_extraction_marker() {
+        let local = test_package();
+        let registry = test_package();
+        // Use the disk-listing path on both sides to isolate comparison filtering.
+        for package in [&local, &registry] {
+            fs_err::copy(
+                package.path().join(CARGO_TOML),
+                package.path().join("Cargo.toml.orig"),
+            )
+            .unwrap();
+        }
+        fs_err::write(registry.path().join(".cargo-ok"), "{}").unwrap();
+
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        // A similarly named file inside the package is still compared.
+        fs_err::write(registry.path().join("src/.cargo-ok"), "content").unwrap();
+        assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+    }
+
+    #[test]
+    fn compare_packaged_files_ignores_lockfile_presence_and_contents() {
+        let local = test_package();
+        let registry = test_package();
+        for package in [&local, &registry] {
+            fs_err::copy(
+                package.path().join(CARGO_TOML),
+                package.path().join("Cargo.toml.orig"),
+            )
+            .unwrap();
+        }
+
+        fs_err::write(local.path().join("Cargo.lock"), "local lockfile").unwrap();
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        fs_err::write(registry.path().join("Cargo.lock"), "published lockfile").unwrap();
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        fs_err::remove_file(local.path().join("Cargo.lock")).unwrap();
+        assert!(are_packages_equal(local.path(), registry.path()).unwrap());
+
+        // Nested lockfiles remain part of the packaged file list.
+        fs_err::write(registry.path().join("src/Cargo.lock"), "nested lockfile").unwrap();
+        assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compare_packaged_files_skips_symlinks_and_missing_files() {
+        let local = test_package();
+        let registry = test_package();
+        for package in [&local, &registry] {
+            fs_err::copy(
+                package.path().join(CARGO_TOML),
+                package.path().join(CARGO_TOML_ORIG),
+            )
+            .unwrap();
+        }
+        let link = local.path().join("src/link.rs");
+        std::os::unix::fs::symlink("lib.rs", &link).unwrap();
+        fs_err::write(registry.path().join("src/link.rs"), "different content").unwrap();
+
+        let local_files = PackageFiles::default();
+        let registry_files = PackageFiles::default();
+        let equal = || {
+            are_packages_equal_cached(local.path(), registry.path(), &local_files, &registry_files)
+                .unwrap()
+        };
+        assert!(equal());
+
+        fs_err::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("missing.rs", &link).unwrap();
+        assert!(equal(), "broken symlinks are also skipped");
+
+        fs_err::remove_file(&link).unwrap();
+        assert!(
+            equal(),
+            "Cargo's file list may include files absent locally"
+        );
+
+        fs_err::write(&link, "local content").unwrap();
+        assert!(!equal(), "regular files are still compared");
+    }
+
+    #[test]
+    fn compare_source_packages_uses_cargo_file_selection() {
+        let local = test_package();
+        let released = test_package();
+        assert!(are_packages_equal(local.path(), released.path()).unwrap());
+
+        // Source packages have no Cargo.toml.orig; manifest-only changes still count.
+        let manifest_path = released.path().join(CARGO_TOML);
+        let original_manifest = fs_err::read_to_string(&manifest_path).unwrap();
+        fs_err::write(
+            &manifest_path,
+            format!("{original_manifest}description = \"Updated description\"\n"),
+        )
+        .unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::write(&manifest_path, original_manifest).unwrap();
+        assert!(are_packages_equal(local.path(), released.path()).unwrap());
+
+        fs_err::write(released.path().join("excluded.txt"), "ignored change").unwrap();
+        assert!(are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::write(released.path().join("src/lib.rs"), "pub fn changed() {}\n").unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::copy(
+            local.path().join("src/lib.rs"),
+            released.path().join("src/lib.rs"),
+        )
+        .unwrap();
+        fs_err::write(released.path().join("extra.txt"), "new file").unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+        fs_err::remove_file(released.path().join("extra.txt")).unwrap();
+        fs_err::remove_file(released.path().join("src/lib.rs")).unwrap();
+        // Keep the target valid while testing a removed packaged file.
+        fs_err::write(released.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        assert!(!are_packages_equal(local.path(), released.path()).unwrap());
+
+        // Listing the packaged files must not leave cargo scratch state in the
+        // compared packages, which may live in a user-supplied directory.
+        assert!(!local.path().join("target").exists());
+        assert!(!released.path().join("target").exists());
+    }
+
+    fn test_package() -> Utf8TempDir {
+        let package = Utf8TempDir::new().unwrap();
+        fs_err::create_dir(package.path().join("src")).unwrap();
+        fs_err::write(
+            package.path().join("Cargo.toml"),
+            r#"[package]
+name = "example"
+version = "0.1.0"
+edition = "2024"
+exclude = ["excluded.txt"]
+"#,
+        )
+        .unwrap();
+        fs_err::write(package.path().join("src/lib.rs"), "pub fn example() {}\n").unwrap();
+        fs_err::write(package.path().join("excluded.txt"), "not packaged").unwrap();
+        package
+    }
 }
