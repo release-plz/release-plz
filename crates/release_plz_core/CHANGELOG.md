@@ -7,6 +7,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.42.0...release_plz_core-v0.42.1) - 2026-10-24
+
+### Fixed
+
+- *(release)* use the token of each package's registry ([#3279](https://github.com/release-plz/release-plz/pull/3279))
+- *(update)* bump the version at most by a patch for `changelog_include` commits ([#3282](https://github.com/release-plz/release-plz/pull/3282))
+- *(forge)* report failed pull request edits ([#3277](https://github.com/release-plz/release-plz/pull/3277))
+
+### Other
+
+- *(clone)* drop options the vendored cargo-clone code never uses ([#3270](https://github.com/release-plz/release-plz/pull/3270))
+- *(update)* take a plain ChangelogRequest in get_changelog ([#3273](https://github.com/release-plz/release-plz/pull/3273))
+- *(release_pr)* pass ReleasePrRequest instead of copying it into ReleasePrOptions ([#3274](https://github.com/release-plz/release-plz/pull/3274))
+- *(forge)* reuse the PR response parsers ([#3276](https://github.com/release-plz/release-plz/pull/3276))
+
+## [0.42.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.41.1...release_plz_core-v0.42.0) - 2026-10-22
+
+### Other
+
+- *(repo_url)* [**breaking**] share host and port formatting ([#3263](https://github.com/release-plz/release-plz/pull/3263))
+- *(clone)* remove the unused git clone path ([#3256](https://github.com/release-plz/release-plz/pull/3256))
+- *(changelog)* replace ChangelogParser with a single helper ([#3262](https://github.com/release-plz/release-plz/pull/3262))
+- *(changelog)* deduplicate context and rendering helpers ([#3264](https://github.com/release-plz/release-plz/pull/3264))
+- share Cargo workspace and lockfile loading ([#3265](https://github.com/release-plz/release-plz/pull/3265))
+
+### Performance
+
+- list package files without resolving the lockfile ([#3247](https://github.com/release-plz/release-plz/pull/3247))
+
+## [0.41.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.41.0...release_plz_core-v0.41.1) - 2026-10-21
+
+### Performance
+
+- speed up the temporary copies of the repository ([#3248](https://github.com/release-plz/release-plz/pull/3248))
+- query registry packages concurrently ([#3240](https://github.com/release-plz/release-plz/pull/3240))
+
+## [0.41.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.40.0...release_plz_core-v0.41.0) - 2026-10-19
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+- reuse dependency builds between current and baseline semver checks ([#3243](https://github.com/release-plz/release-plz/pull/3243))
+- list open PRs while release-pr analyzes the packages ([#3249](https://github.com/release-plz/release-plz/pull/3249))
+- read downloaded registry packages in parallel ([#3246](https://github.com/release-plz/release-plz/pull/3246))
+
+## [0.40.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.39.0...release_plz_core-v0.40.0) - 2026-10-12
+
+### Performance
+
+- reuse package file lists across source-only history ([#3221](https://github.com/release-plz/release-plz/pull/3221))
+- batch registry package downloads through Cargo ([#3219](https://github.com/release-plz/release-plz/pull/3219))
+- reuse contributor PR lookups within a release ([#3218](https://github.com/release-plz/release-plz/pull/3218))
+- skip contributor requests for default release bodies ([#3216](https://github.com/release-plz/release-plz/pull/3216))
+- skip inheritance scans without a workspace version ([#3215](https://github.com/release-plz/release-plz/pull/3215))
+- avoid captures when parsing release-only changelog headers ([#3212](https://github.com/release-plz/release-plz/pull/3212))
+- initialize Git changelog defaults only when needed ([#3213](https://github.com/release-plz/release-plz/pull/3213))
+- filter manifest dependencies before resolving paths ([#3203](https://github.com/release-plz/release-plz/pull/3203))
+- filter dependency paths before release propagation ([#3204](https://github.com/release-plz/release-plz/pull/3204))
+- move releases into the changelog renderer ([#3206](https://github.com/release-plz/release-plz/pull/3206))
+- inspect package file metadata once ([#3205](https://github.com/release-plz/release-plz/pull/3205))
+- move commits into changelog builder ([#3207](https://github.com/release-plz/release-plz/pull/3207))
+
+### Removed
+
+- drop legacy release PR branch fallback ([#3224](https://github.com/release-plz/release-plz/pull/3224))
+
+## [0.39.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.7...release_plz_core-v0.39.0) - 2026-10-10
+
+### Fixed
+
+- *(deps)* update rust crate git-conventional to v1 ([#3168](https://github.com/release-plz/release-plz/pull/3168))
+- *(changelog)* retain changes to nested Cargo VCS metadata ([#3138](https://github.com/release-plz/release-plz/pull/3138))
+- *(changelog)* ignore executable bits in retained changes ([#3136](https://github.com/release-plz/release-plz/pull/3136))
+
+### Other
+
+- extract configured README path lookup ([#3133](https://github.com/release-plz/release-plz/pull/3133))
+
+### Performance
+
+- resolve the history tip once per workspace update ([#3184](https://github.com/release-plz/release-plz/pull/3184))
+- borrow planned updates while editing manifests ([#3197](https://github.com/release-plz/release-plz/pull/3197))
+- filter dependency release checks by package name ([#3196](https://github.com/release-plz/release-plz/pull/3196))
+- snapshot commits only for changelog includes ([#3194](https://github.com/release-plz/release-plz/pull/3194))
+- compile version group rules only for grouped packages ([#3193](https://github.com/release-plz/release-plz/pull/3193))
+- construct default changelog configuration once ([#3192](https://github.com/release-plz/release-plz/pull/3192))
+- format changelog context errors lazily ([#3191](https://github.com/release-plz/release-plz/pull/3191))
+- build Git client only for remote changelog data ([#3195](https://github.com/release-plz/release-plz/pull/3195))
+- scan workspace root dependency manifest once ([#3187](https://github.com/release-plz/release-plz/pull/3187))
+- track pending packages while ordering large releases ([#3189](https://github.com/release-plz/release-plz/pull/3189))
+- skip unused changelog commit metadata cache ([#3188](https://github.com/release-plz/release-plz/pull/3188))
+- return the changelog directly for default release bodies ([#3185](https://github.com/release-plz/release-plz/pull/3185))
+- move package diffs into commit enrichment ([#3190](https://github.com/release-plz/release-plz/pull/3190))
+- skip restoring HEAD after empty history walks ([#3183](https://github.com/release-plz/release-plz/pull/3183))
+- move changelog configuration into the renderer ([#3182](https://github.com/release-plz/release-plz/pull/3182))
+- skip manifests unrelated to the updated package ([#3175](https://github.com/release-plz/release-plz/pull/3175))
+- read commit signatures with one git command ([#3178](https://github.com/release-plz/release-plz/pull/3178))
+- skip semver tool probes for unchanged packages ([#3180](https://github.com/release-plz/release-plz/pull/3180))
+- clone only unique changelog contributors ([#3179](https://github.com/release-plz/release-plz/pull/3179))
+- reuse restored HEAD between workspace packages ([#3171](https://github.com/release-plz/release-plz/pull/3171))
+- skip lockfile checkout for cached package file lists ([#3172](https://github.com/release-plz/release-plz/pull/3172))
+- select inherited package versions with a single scan ([#3174](https://github.com/release-plz/release-plz/pull/3174))
+- lazily clone fallback package update configuration ([#3173](https://github.com/release-plz/release-plz/pull/3173))
+- borrow configured git settings when building changelogs ([#3170](https://github.com/release-plz/release-plz/pull/3170))
+- borrow messages when checking conventional commits ([#3161](https://github.com/release-plz/release-plz/pull/3161))
+- format default release names and tags directly ([#3166](https://github.com/release-plz/release-plz/pull/3166))
+- avoid unused changelog header captures ([#3163](https://github.com/release-plz/release-plz/pull/3163))
+- skip dependency propagation without path dependencies ([#3165](https://github.com/release-plz/release-plz/pull/3165))
+- reuse the changelog PR-number regex ([#3162](https://github.com/release-plz/release-plz/pull/3162))
+- compare file contents in bounded chunks ([#3167](https://github.com/release-plz/release-plz/pull/3167))
+- look up inherited dependencies by name ([#3164](https://github.com/release-plz/release-plz/pull/3164))
+- index packages when computing release order ([#3159](https://github.com/release-plz/release-plz/pull/3159))
+- skip metadata reads for files already copied ([#3158](https://github.com/release-plz/release-plz/pull/3158))
+- skip dependency scans for members without path dependencies ([#3157](https://github.com/release-plz/release-plz/pull/3157))
+- defer README metadata for changed package snapshots ([#3156](https://github.com/release-plz/release-plz/pull/3156))
+- reuse default changelog commit parser regexes ([#3155](https://github.com/release-plz/release-plz/pull/3155))
+- reuse package file lists within each history snapshot ([#3150](https://github.com/release-plz/release-plz/pull/3150))
+- skip writing unchanged dependency manifests ([#3149](https://github.com/release-plz/release-plz/pull/3149))
+- reuse Cargo metadata when applying updates ([#3151](https://github.com/release-plz/release-plz/pull/3151))
+- build default changelog configuration lazily ([#3148](https://github.com/release-plz/release-plz/pull/3148))
+
 ## [0.38.7](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.38.6...release_plz_core-v0.38.7) - 2026-10-07
 
 ### Added

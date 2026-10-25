@@ -370,19 +370,13 @@ fn assert_retained_changes_with_executable_bit(
     breaking_api: &str,
     prior_changes: &[&str],
 ) {
-    use std::os::unix::fs::PermissionsExt;
-
     // Record the executable bit.
     history
         .repo
         .git(&["config", "core.filemode", "true"])
         .unwrap();
     // Combine the mode and API changes in one commit so replay has to distinguish them.
-    fs_err::set_permissions(
-        history.repo.directory().join("src/lib.rs"),
-        std::fs::Permissions::from_mode(0o755),
-    )
-    .unwrap();
+    crate::helpers::make_executable(&history.repo.directory().join("src/lib.rs"));
     let breaking = history.write_commit(
         "src/lib.rs",
         breaking_api,
@@ -398,6 +392,19 @@ fn assert_retained_changes_with_executable_bit(
     // All content changes should disappear, leaving only a patch bump.
     let restore = history.write_commit("src/lib.rs", BASE_API, "fix: restore API");
     history.assert_release(&[&restore, &sibling], "0.1.1");
+}
+
+#[tokio::test]
+async fn nested_cargo_vcs_info_changes_keep_their_breaking_change_marker() {
+    // Cargo generates this file at the package root, but under src/ it is
+    // an ordinary packaged file whose contents affect the release.
+    let path = "src/.cargo_vcs_info.json";
+    let history = unpublished_history("").await;
+    history.write_commit(path, "{}\n", "chore: add fixture");
+    history.publish_snapshot(&[]);
+    let breaking = history.write_commit(path, "{\"breaking\":true}\n", "feat!: fixture format");
+    let sibling = history.merge_ignored_revert(path, "{}\n");
+    history.assert_release(&[&breaking, &sibling], "0.2.0");
 }
 
 /// In a `history` equal to the release, add a breaking change and revert it on

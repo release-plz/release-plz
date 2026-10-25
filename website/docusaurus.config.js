@@ -103,7 +103,7 @@ const config = {
           },
           {
             label: "💖 Sponsor",
-            href: "https://github.com/sponsors/MarcoIeni",
+            href: "https://github.com/sponsors/release-plz",
             position: "right",
           },
           {

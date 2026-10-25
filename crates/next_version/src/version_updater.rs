@@ -141,8 +141,8 @@ impl VersionUpdater {
     /// - For non-conventional commits, this will check the entire commit message against the given pattern.
     ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
     ///
-    /// Even if this field is set, major increments are still
-    /// triggered by conventional breaking-change commits, subject to
+    /// A match triggers a major increment even when the major version is 0.
+    /// Conventional breaking-change commits also trigger major increments, subject to
     /// [`Self::with_breaking_always_increment_major`].
     ///
     /// By default, no regex is configured.
@@ -295,12 +295,12 @@ impl VersionUpdater {
     }
 
     /// Analyze commits and determine the next version.
-    pub fn increment<I>(self, version: &Version, commits: I) -> Version
+    pub fn increment<I>(&self, version: &Version, commits: I) -> Version
     where
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let increment = VersionIncrement::from_commits_with_updater(&self, version, commits);
+        let increment = VersionIncrement::from_commits_with_updater(self, version, commits);
         match increment {
             Some(increment) => increment.bump(version),
             None => version.clone(),
