@@ -263,7 +263,6 @@ publish = true
 
 [[package]]
 name = "private"
-changelog_update = false
 "#,
     );
     let outcome = context.run_release().success();
