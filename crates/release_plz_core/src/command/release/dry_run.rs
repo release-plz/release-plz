@@ -68,80 +68,58 @@ impl PublishBatches {
     pub(super) fn check(&self, input: &ReleaseRequest) -> anyhow::Result<()> {
         let has_combined_packages = self.batches.iter().any(|batch| batch.packages.len() > 1);
         // Only query the Cargo version when it matters, so that it can't break other dry runs.
-        let check_individually = has_combined_packages
-            && !can_publish_multiple_packages(&input.metadata.workspace_root)?;
-        if check_individually {
+        let combine =
+            has_combined_packages && can_publish_multiple_packages(&input.metadata.workspace_root)?;
+        if has_combined_packages && !combine {
             warn!(
                 "checking each package individually, because checking packages together \
                  requires Cargo 1.90 or newer. Packages that depend on unpublished workspace \
                  packages fail the check."
             );
         }
+        let package_count = self.batches.iter().map(|batch| batch.packages.len()).sum();
         for batch in &self.batches {
-            if check_individually {
-                self.check_individually(input, batch)?;
-            } else {
-                self.check_together(input, batch)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn check_together(&self, input: &ReleaseRequest, batch: &PublishBatch) -> anyhow::Result<()> {
-        let output = batch.dry_run(input, &batch.packages)?;
-        // Cargo rejects selected packages that form a cycle, e.g. a proc-macro crate that
-        // dev-depends on the crate depending on it. The real release publishes them one at
-        // a time, so Cargo resolves the dev-dependency to the version in the registry.
-        if batch.packages.len() > 1
-            && !output.status.success()
-            && output
-                .stderr
-                .contains("circular dependency detected while publishing")
-        {
-            info!(
-                "checking {} individually, because Cargo can't check packages with a \
-                 dependency cycle together",
-                batch.packages.join(", ")
-            );
-            return self.check_individually(input, batch);
-        }
-        self.ensure_success(&output, &batch.packages)
-    }
-
-    fn check_individually(
-        &self,
-        input: &ReleaseRequest,
-        batch: &PublishBatch,
-    ) -> anyhow::Result<()> {
-        for package in &batch.packages {
-            let packages = std::slice::from_ref(package);
-            let output = batch.dry_run(input, packages)?;
-            self.ensure_success(&output, packages)?;
-        }
-        Ok(())
-    }
-
-    /// Return an error with the output of Cargo if the check of `packages` failed.
-    fn ensure_success(&self, output: &CmdOutput, packages: &[String]) -> anyhow::Result<()> {
-        if !output.status.success() {
-            // Only hint if some unpublished packages weren't part of this check.
-            let package_count: usize = self.batches.iter().map(|b| b.packages.len()).sum();
-            let hint = if packages.len() < package_count {
-                SEPARATE_CHECKS_HINT
-            } else {
-                ""
-            };
-            anyhow::bail!(
-                "failed to dry-run publishing {}: {}{hint}",
-                packages.join(", "),
-                output.stderr
-            );
+            batch.check(input, combine, package_count)?;
         }
         Ok(())
     }
 }
 
 impl PublishBatch {
+    /// Run `cargo publish --dry-run` for the packages of this batch: together if
+    /// `combine` is true, otherwise one at a time.
+    /// `package_count` is the number of unpublished packages of the release.
+    fn check(
+        &self,
+        input: &ReleaseRequest,
+        combine: bool,
+        package_count: usize,
+    ) -> anyhow::Result<()> {
+        if combine && self.packages.len() > 1 {
+            let output = self.dry_run(input, &self.packages)?;
+            // Cargo rejects selected packages that form a cycle, e.g. a proc-macro crate that
+            // dev-depends on the crate depending on it. The real release publishes them one at
+            // a time, so Cargo resolves the dev-dependency to the version in the registry.
+            if output.status.success()
+                || !output
+                    .stderr
+                    .contains("circular dependency detected while publishing")
+            {
+                return ensure_success(&output, &self.packages, package_count);
+            }
+            info!(
+                "checking {} individually, because Cargo can't check packages with a \
+                 dependency cycle together",
+                self.packages.join(", ")
+            );
+        }
+        for package in &self.packages {
+            let packages = std::slice::from_ref(package);
+            ensure_success(&self.dry_run(input, packages)?, packages, package_count)?;
+        }
+        Ok(())
+    }
+
     /// Run `cargo publish --dry-run` for `packages` of this batch.
     fn dry_run(&self, input: &ReleaseRequest, packages: &[String]) -> anyhow::Result<CmdOutput> {
         let registry = self.registry.as_deref();
@@ -156,6 +134,29 @@ impl PublishBatch {
         )
         .context("failed to run cargo publish --dry-run")
     }
+}
+
+/// Return an error with the output of Cargo if the check of `packages` failed.
+/// `package_count` is the number of unpublished packages of the release.
+fn ensure_success(
+    output: &CmdOutput,
+    packages: &[String],
+    package_count: usize,
+) -> anyhow::Result<()> {
+    if !output.status.success() {
+        // Only hint if some unpublished packages weren't part of this check.
+        let hint = if packages.len() < package_count {
+            SEPARATE_CHECKS_HINT
+        } else {
+            ""
+        };
+        anyhow::bail!(
+            "failed to dry-run publishing {}: {}{hint}",
+            packages.join(", "),
+            output.stderr
+        );
+    }
+    Ok(())
 }
 
 /// Whether Cargo can publish multiple packages with a single `cargo publish`,
