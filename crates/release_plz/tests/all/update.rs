@@ -108,9 +108,14 @@ fn update_ignores_inherited_dev_dependency_requirement_changes() {
         ("build-dependencies", true),
     ] {
         let package = format!("version = \"1.0.0\"\n[{kind}]\nanyhow.workspace = true\n");
+        // Patch the registry dependency `anyhow` with a local stub, so cargo resolves it offline.
         let (temp_dir, repo) = released_workspace(
-            &[("one", &package)],
-            "[workspace.dependencies]\nanyhow = \"1.0.0\"\n",
+            &[
+                ("one", &package),
+                ("anyhow", "version = \"1.0.5\"\npublish = false\n"),
+            ],
+            "[workspace.dependencies]\nanyhow = \"1.0.0\"\n\
+             [patch.crates-io]\nanyhow = { path = \"anyhow\" }\n",
             "[workspace]\nsemver_check = false\n",
         );
         // Only the workspace manifest changes: the package has no commits of its own.
@@ -1361,6 +1366,8 @@ fn workspace_update_command(temp_dir: &Utf8TempDir, repo: &Repo) -> assert_cmd::
     let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
     cmd.current_dir(repo.directory())
         .args(["update", "--registry-manifest-path"])
-        .arg(temp_dir.path().join("registry/Cargo.toml"));
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        // The fixtures resolve only local or patched packages, so cargo never needs the network.
+        .env("CARGO_NET_OFFLINE", "true");
     cmd
 }
