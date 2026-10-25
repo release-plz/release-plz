@@ -932,11 +932,12 @@ async fn release_package(
 
     if should_publish {
         let output = run_cargo_publish(
-            std::slice::from_ref(release_info.package),
             input,
-            workspace_root,
-            &publish_token,
+            &release_info.package.manifest_path,
+            &[release_info.package.name.as_str()],
+            &PublishOptions::new(input, &release_info.package.name),
             registry_name,
+            publish_token.as_ref(),
         )
         .context("failed to run cargo publish")?;
         if !output.status.success()
@@ -1236,61 +1237,76 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
     }
 }
 
+/// `cargo publish` options configured for a package.
+#[derive(PartialEq, Eq)]
+struct PublishOptions {
+    allow_dirty: bool,
+    no_verify: bool,
+    features: Vec<String>,
+    all_features: bool,
+}
+
+impl PublishOptions {
+    fn new(input: &ReleaseRequest, package: &str) -> Self {
+        Self {
+            allow_dirty: input.allow_dirty(package),
+            no_verify: input.no_verify(package),
+            features: input.features(package),
+            all_features: input.all_features(package),
+        }
+    }
+}
+
+/// Run `cargo publish` for `packages`, which belong to the workspace of `manifest_path`.
 fn run_cargo_publish(
-    packages: &[Package],
     input: &ReleaseRequest,
-    workspace_root: &Utf8Path,
-    token: &Option<SecretString>,
+    manifest_path: &Utf8Path,
+    packages: &[impl AsRef<str>],
+    options: &PublishOptions,
     registry: Option<&str>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<CmdOutput> {
-    // All packages in a batch have the same publish options.
-    let package = &packages[0];
-    let manifest = if packages.len() == 1 {
-        package.manifest_path.clone()
-    } else {
-        input.local_manifest()
-    };
     let mut args = vec!["publish"];
     args.push("--color");
     args.push("always");
     args.push("--manifest-path");
-    args.push(manifest.as_ref());
+    args.push(manifest_path.as_str());
     // We specify the package name to allow publishing root packages.
     // See https://github.com/release-plz/release-plz/issues/1545
     for package in packages {
         args.push("--package");
-        args.push(&package.name);
+        args.push(package.as_ref());
     }
     if let Some(registry) = registry {
         args.push("--registry");
         args.push(registry);
     }
     let token_env_var = cargo_registry_token_env_var(registry)?;
-    let token = token.as_ref().or(input.token.as_ref());
+    let token = token.or(input.token.as_ref());
     if token.is_none() {
         verify_ci_cargo_registry_token(&token_env_var)?;
     }
     if input.dry_run {
         args.push("--dry-run");
     }
-    if input.allow_dirty(&package.name) {
+    if options.allow_dirty {
         args.push("--allow-dirty");
     }
-    if input.no_verify(&package.name) {
+    if options.no_verify {
         args.push("--no-verify");
     }
-    let features = input.features(&package.name).join(",");
+    let features = options.features.join(",");
     if !features.is_empty() {
         args.push("--features");
         args.push(&features);
     }
-    if input.all_features(&package.name) {
+    if options.all_features {
         args.push("--all-features");
     }
     let envs = token
         .map(|token| vec![(token_env_var, token.clone())])
         .unwrap_or_default();
-    run_cargo_with_env(workspace_root, &args, &envs)
+    run_cargo_with_env(&input.metadata.workspace_root, &args, &envs)
 }
 
 /// Return an empty string if the changelog cannot be parsed.

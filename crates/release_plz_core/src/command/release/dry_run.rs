@@ -1,7 +1,7 @@
 use anyhow::Context as _;
-use cargo_metadata::{Package, semver::Version};
+use cargo_metadata::{Package, camino::Utf8PathBuf, semver::Version};
 
-use super::{ReleaseRequest, run_cargo_publish};
+use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
 use crate::cargo::{new_cargo_config, run_cargo};
 
 #[derive(Default)]
@@ -9,18 +9,13 @@ pub(super) struct PublishBatches(Vec<PublishBatch>);
 
 struct PublishBatch {
     registry: String,
+    /// Cargo applies these options to every selected package. Don't combine
+    /// packages when doing so would change their configured verification behavior.
     options: PublishOptions,
-    packages: Vec<Package>,
-}
-
-/// Cargo applies these options to every selected package. Do not combine
-/// packages when doing so would change their configured verification behavior.
-#[derive(PartialEq, Eq)]
-struct PublishOptions {
-    allow_dirty: bool,
-    no_verify: bool,
-    features: Vec<String>,
-    all_features: bool,
+    /// Manifest of the first package, as in the real release.
+    /// Cargo finds the other packages in the same workspace.
+    manifest_path: Utf8PathBuf,
+    packages: Vec<String>,
 }
 
 impl PublishBatches {
@@ -38,23 +33,19 @@ impl PublishBatches {
                 .default_registry()?
                 .unwrap_or_else(|| "crates-io".to_string()),
         };
-        let options = PublishOptions {
-            allow_dirty: input.allow_dirty(&package.name),
-            no_verify: input.no_verify(&package.name),
-            features: input.features(&package.name),
-            all_features: input.all_features(&package.name),
-        };
+        let options = PublishOptions::new(input, &package.name);
         if let Some(batch) = self
             .0
             .iter_mut()
             .find(|batch| batch.registry == registry && batch.options == options)
         {
-            batch.packages.push(package.clone());
+            batch.packages.push(package.name.to_string());
         } else {
             self.0.push(PublishBatch {
                 registry,
                 options,
-                packages: vec![package.clone()],
+                manifest_path: package.manifest_path.clone(),
+                packages: vec![package.name.to_string()],
             });
         }
         Ok(())
@@ -79,11 +70,12 @@ impl PublishBatches {
             let registry = Some(batch.registry.as_str());
             let token = input.find_registry_token(registry)?;
             let output = run_cargo_publish(
-                &batch.packages,
                 input,
-                &input.metadata.workspace_root,
-                &token,
+                &batch.manifest_path,
+                &batch.packages,
+                &batch.options,
                 registry,
+                token.as_ref(),
             )
             .context("failed to run cargo publish --dry-run")?;
             // Cargo's exit status covers the whole batch. In particular, do not
@@ -98,12 +90,7 @@ impl PublishBatches {
             anyhow::ensure!(
                 output.status.success(),
                 "failed to dry-run publishing {}: {}{hint}",
-                batch
-                    .packages
-                    .iter()
-                    .map(|package| package.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
+                batch.packages.join(", "),
                 output.stderr
             );
         }
