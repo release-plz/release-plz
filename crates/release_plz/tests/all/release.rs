@@ -61,13 +61,14 @@ fn all_tags(context: &TestContext) -> String {
     context.repo.git(&["tag", "--list"]).unwrap()
 }
 
-/// Assert that `cargo publish` packaged version 0.1.0 of the `packages`.
+/// Assert that `cargo publish` packaged and verified version 0.1.0 of the `packages`:
+/// Cargo only extracts a package to `target/package` to verify it.
 fn assert_packaged(context: &TestContext, packages: &[&str]) {
     for package in packages {
         let manifest = context
             .cargo_target_dir()
             .join(format!("package/{package}-0.1.0/Cargo.toml"));
-        assert!(manifest.exists(), "{package} wasn't packaged");
+        assert!(manifest.exists(), "{package} wasn't packaged and verified");
     }
 }
 
@@ -83,6 +84,7 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
         .assert()
         .success()
         .stdout("{\"releases\":[]}\n");
+    assert_packaged(&context, &["dependency", "dependent"]);
     // Issue #2878 used `--no-verify`, which skips compilation but not packaging:
     // Cargo still needs to resolve `dependency` to package `dependent`.
     // This run also covers selecting the registry with `--registry`.
@@ -93,7 +95,6 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
         .assert()
         .success()
         .stdout("{\"releases\":[]}\n");
-    assert_packaged(&context, &["dependency", "dependent"]);
     let downloaded = Utf8TempDir::new().unwrap();
     let packages = context
         .package_downloader(["dependency", "dependent"], downloaded.path())
