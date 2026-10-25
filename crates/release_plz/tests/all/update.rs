@@ -117,7 +117,6 @@ fn update_ignores_inherited_dev_dependency_requirement_changes() {
         let manifest_path = repo.directory().join("Cargo.toml");
         let manifest = fs_err::read_to_string(&manifest_path).unwrap();
         fs_err::write(manifest_path, manifest.replace("1.0.0", "1.0.1")).unwrap();
-        generate_lockfile(repo.directory());
         repo.add_all_and_commit("chore: update workspace dependency")
             .unwrap();
 
