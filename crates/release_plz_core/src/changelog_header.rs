@@ -2,7 +2,7 @@ use regex::Regex;
 
 pub fn replace_unreleased(header: &str, unreleased_link: &str) -> String {
     let re = Regex::new(r"#\s*\[Unreleased\](\(.*\))?").unwrap();
-    let result = re.replace(header, &format!("# [Unreleased]({})", unreleased_link));
+    let result = re.replace(header, &format!("# [Unreleased]({unreleased_link})"));
     result.into_owned()
 }
 
