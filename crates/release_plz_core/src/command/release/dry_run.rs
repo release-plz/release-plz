@@ -27,11 +27,13 @@ struct PublishBatch {
     /// Don't resolve [`None`] to the registry Cargo selects: Cargo behaves differently
     /// without `--registry`, e.g. it refuses to publish if crates.io is source-replaced.
     registry: Option<String>,
-    /// Cargo applies these options to every selected package. Don't combine
-    /// packages when doing so would change their configured verification behavior.
+    /// Cargo applies these options to every selected package, so only packages
+    /// with equal options share a batch.
     options: PublishOptions,
-    /// Manifest of the first package, as in the real release.
-    /// Cargo finds the other packages in the same workspace.
+    /// `--manifest-path` of `cargo publish`: the manifest of the first package of the batch.
+    /// The checks of the other packages can reuse it, because Cargo resolves `--package`
+    /// across the workspace. Packages with `--features`, whose meaning depends on the
+    /// manifest under resolver 1, never share a batch.
     manifest_path: Utf8PathBuf,
     packages: Vec<String>,
 }
