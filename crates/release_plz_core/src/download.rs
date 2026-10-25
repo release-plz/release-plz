@@ -1,15 +1,13 @@
 //! Download packages from cargo registry, similar to the `git clone` behavior.
 
-use std::path::Path;
+use std::{path::Path, thread};
 
-use anyhow::{anyhow, Context};
-use cargo_metadata::{camino::Utf8PathBuf, Package};
-use tracing::{info, instrument, warn};
+use anyhow::{Context, anyhow};
+use cargo_metadata::{Package, camino::Utf8PathBuf};
+use cargo_utils::CARGO_TOML;
+use tracing::{info, instrument};
 
-use crate::{
-    clone::{Cloner, ClonerSource, Crate},
-    CARGO_TOML,
-};
+use crate::clone::Cloner;
 
 #[derive(Debug)]
 pub struct PackageDownloader {
@@ -47,94 +45,72 @@ impl PackageDownloader {
     }
 
     #[instrument]
-    pub fn download(&self) -> anyhow::Result<Vec<Package>> {
-        info!("downloading packages from cargo registry");
-        let source: ClonerSource = match &self.registry {
-            Some(registry) => ClonerSource::registry(registry),
-            None => ClonerSource::crates_io(),
-        };
-        let crates: Vec<Crate> = self
-            .packages
-            .iter()
-            .map(|package_name| Crate::new(package_name.to_string(), None))
-            .collect();
-        let mut cloner_builder = Cloner::builder()
-            .with_directory(&self.directory)
-            .with_source(source);
-        if let Some(cwd) = &self.cargo_cwd {
-            cloner_builder = cloner_builder.with_cargo_cwd(cwd.clone());
-        }
-        let downloaded_packages = cloner_builder
-            .build()
-            .context("can't build cloner")?
-            .clone(&crates)
-            .context("error while downloading packages")?;
+    pub async fn download(&self) -> anyhow::Result<Vec<Package>> {
+        info!(
+            "downloading packages from cargo registry {}",
+            self.registry.as_deref().unwrap_or("crates.io")
+        );
+        let cloner = Cloner::new(
+            &self.directory,
+            self.registry.as_deref(),
+            self.cargo_cwd.clone(),
+        )
+        .context("can't build cloner")?;
+        let result = cloner.clone(&self.packages).await;
+        // Dropping Cargo's context waits for its HTTP worker to finish the requests still
+        // in flight, like the queries after a failed one. Don't make the caller wait.
+        // If the thread can't start, `spawn` drops the cloner here instead.
+        drop(
+            thread::Builder::new()
+                .name("release-plz-download".to_string())
+                .spawn(move || drop(cloner)),
+        );
+        let package_dirs = result.context("error while downloading packages")?;
 
-        downloaded_packages
-            .iter()
-            .map(|(_package, path)| read_package(path))
-            .collect()
+        read_packages(&package_dirs)
     }
+}
+
+/// Read the packages in `directories`, preserving their order.
+///
+/// Reading a package runs `cargo metadata`, so spread the reads across threads
+/// instead of waiting for each subprocess in turn.
+fn read_packages(directories: &[Utf8PathBuf]) -> anyhow::Result<Vec<Package>> {
+    let parallelism = thread::available_parallelism().map_or(1, usize::from);
+    // `chunks` panics on a size of 0, which an empty list would produce.
+    let chunk_size = directories.len().div_ceil(parallelism).max(1);
+    thread::scope(|scope| {
+        let workers: Vec<_> = directories
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(|| {
+                    chunk
+                        .iter()
+                        .map(read_package)
+                        .collect::<anyhow::Result<Vec<_>>>()
+                })
+            })
+            .collect();
+        let mut packages = Vec::with_capacity(directories.len());
+        // Joining in order returns the error of the first package that can't be
+        // read, like reading the packages sequentially.
+        for worker in workers {
+            packages.extend(worker.join().expect("package reading thread panicked")?);
+        }
+        Ok(packages)
+    })
 }
 
 /// Read a package from file system
 pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
     let manifest_path = directory.as_ref().join(CARGO_TOML);
-    let metadata = cargo_metadata::MetadataCommand::new()
-        .no_deps()
-        .manifest_path(manifest_path)
-        .exec()
+    let manifest_path = cargo_metadata::camino::Utf8PathBuf::from_path_buf(manifest_path)
+        .map_err(|path| anyhow!("non-utf8 manifest path: {path:?}"))?;
+    let metadata = cargo_utils::get_manifest_metadata(&manifest_path)
         .context("failed to execute cargo_metadata")?;
     let package = metadata
         .packages
         .first()
         .ok_or_else(|| anyhow!("cannot retrieve package at {:?}", directory.as_ref()))?;
     Ok(package.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use fake::Fake;
-    use tempfile::tempdir;
-
-    use super::*;
-
-    #[test]
-    #[ignore]
-    fn one_package_is_downloaded() {
-        let package_name = "rand";
-        let temp_dir = tempdir().unwrap();
-        let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
-        let packages = PackageDownloader::new([package_name], directory)
-            .download()
-            .unwrap();
-        let rand = &packages[0];
-        assert_eq!(rand.name, package_name);
-    }
-
-    #[test]
-    #[ignore]
-    fn two_packages_are_downloaded() {
-        let first_package = "rand";
-        let second_package = "rust-gh-example";
-        let temp_dir = tempdir().unwrap();
-        let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
-        let packages = PackageDownloader::new([first_package, second_package], directory)
-            .download()
-            .unwrap();
-        assert_eq!(&packages[0].name, first_package);
-        assert_eq!(&packages[1].name, second_package);
-    }
-
-    #[test]
-    #[ignore]
-    fn downloading_non_existing_package_does_not_error() {
-        // Generate random string 15 characters long.
-        let package: String = 15.fake();
-        let temp_dir = tempdir().unwrap();
-        let directory = temp_dir.as_ref().to_str().expect("invalid tempdir path");
-        PackageDownloader::new([&package], directory)
-            .download()
-            .unwrap();
-    }
 }

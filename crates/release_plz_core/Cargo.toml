@@ -1,9 +1,9 @@
 [package]
 name = "release_plz_core"
-version = "0.21.0"
+version = "0.42.1"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
-repository = "https://github.com/MarcoIeni/release-plz/tree/main/crates/release_plz_core"
+repository = "https://github.com/release-plz/release-plz/tree/main/crates/release_plz_core"
 license.workspace = true
 keywords = ["release", "please", "semver", "conventional", "commits"]
 categories = ["development-tools"]
@@ -17,26 +17,25 @@ all-static = ["cargo/vendored-libgit2", "cargo/all-static"]
 
 [dependencies]
 base64.workspace = true
-cargo_utils = { path = "../cargo_utils", version = "0.1.44" }
-git_cmd = { path = "../git_cmd", version = "0.6.3" }
-next_version = { path = "../next_version", version = "0.2" }
+cargo_utils = { path = "../cargo_utils", version = "0.3.1" }
+git_cmd = { path = "../git_cmd", version = "0.9.1" }
+next_version = { path = "../next_version", version = "0.3.5" }
 
 anyhow.workspace = true
 cargo_metadata.workspace = true
 cargo = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
-crates-index.workspace = true
 dunce.workspace = true
-fs-err.workspace = true
+fs-err = { workspace = true, features = ["tokio"] }
+futures.workspace = true
 git-cliff-core.workspace = true
-git-url-parse.workspace = true
+# Match the parser used by git-cliff-core.
+git-conventional = "1.0.0"
 ignore.workspace = true
-lazy_static.workspace = true
 parse-changelog.workspace = true
-rayon.workspace = true
 regex.workspace = true
 # native-tls-alpn is needed for http2 support. https://doc.rust-lang.org/cargo/reference/registry-index.html#sparse-protocol
-reqwest = { workspace = true, features = ["json", "gzip", "native-tls-alpn"] }
+reqwest = { workspace = true, features = ["json", "gzip", "rustls"] }
 reqwest-middleware.workspace = true
 reqwest-retry.workspace = true
 secrecy.workspace = true
@@ -48,10 +47,10 @@ url = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 toml_edit.workspace = true
 serde_json.workspace = true
-strip-ansi-escapes.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "macros", "rt"] }
+tokio-util = { workspace = true, features = ["rt"] }
 tera.workspace = true
-http.workspace = true
+git2.workspace = true
 
 [dev-dependencies]
 git_cmd = { path = "../git_cmd", features = ["test_fixture"] }
@@ -59,6 +58,8 @@ test_logs = { path = "../test_logs" }
 fake_package = { path = "../fake_package" }
 
 expect-test.workspace = true
-fake.workspace = true
+flate2.workspace = true
+same-file.workspace = true
+tar.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 wiremock.workspace = true

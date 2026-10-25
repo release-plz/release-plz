@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use cargo_metadata::{Dependency, DependencyKind, Package};
 use tracing::debug;
 
@@ -5,10 +7,19 @@ use tracing::debug;
 /// In the result, the packages are placed after all their dependencies.
 /// Return an error if a circular dependency is detected.
 pub fn release_order<'a>(packages: &'a [&Package]) -> anyhow::Result<Vec<&'a Package>> {
+    if packages.len() <= 1 {
+        return Ok(packages.to_vec());
+    }
     let mut order = vec![];
     let mut passed = vec![];
+    let mut packages_by_name = HashMap::with_capacity(packages.len());
+    for &package in packages {
+        packages_by_name
+            .entry(package.name.as_str())
+            .or_insert(package);
+    }
     for p in packages {
-        release_order_inner(packages, p, &mut order, &mut passed)?;
+        release_order_inner(&mut packages_by_name, p, &mut order, &mut passed)?;
     }
     debug!(
         "Release order: {:?}",
@@ -20,24 +31,24 @@ pub fn release_order<'a>(packages: &'a [&Package]) -> anyhow::Result<Vec<&'a Pac
 /// The `passed` argument is used to track packages that you already visited to
 /// detect circular dependencies.
 fn release_order_inner<'a>(
-    packages: &[&'a Package],
+    packages: &mut HashMap<&str, &'a Package>,
     pkg: &'a Package,
     order: &mut Vec<&'a Package>,
     passed: &mut Vec<&'a Package>,
 ) -> anyhow::Result<()> {
-    if is_package_in(pkg, order) {
+    // Completed packages have been removed from the map.
+    if !packages.contains_key(pkg.name.as_str()) {
         return Ok(());
     }
     passed.push(pkg);
 
     for d in &pkg.dependencies {
         // Check if the dependency is part of the packages we are releasing.
-        if let Some(dep) = packages.iter().find(|p| {
-            d.name == p.name
-              // Exclude the current package.
-              && p.name != pkg.name
-              && should_dep_be_released_before(d, pkg)
-        }) {
+        if let Some(&dep) = packages.get(d.name.as_str())
+            // Exclude the current package.
+            && dep.name != pkg.name
+            && should_dep_be_released_before(d, pkg)
+        {
             anyhow::ensure!(
                 !is_package_in(dep, passed),
                 "Circular dependency detected: {} -> {}",
@@ -49,6 +60,7 @@ fn release_order_inner<'a>(
     }
 
     order.push(pkg);
+    packages.remove(pkg.name.as_str());
     passed.clear();
     Ok(())
 }
@@ -197,6 +209,18 @@ mod tests {
             &pkg("c", &[]),
         ];
         assert_eq!(order(&pkgs), ["c", "b", "a"]);
+    }
+
+    /// Shared dependencies are emitted once, preserving traversal order.
+    #[test]
+    fn shared_dependency_is_released_once() {
+        let pkgs = [
+            &pkg("a", &[dep("b"), dep("c")]),
+            &pkg("b", &[dep("d")]),
+            &pkg("c", &[dep("d")]),
+            &pkg("d", &[]),
+        ];
+        assert_eq!(order(&pkgs), ["d", "b", "c", "a"]);
     }
 
     /// ┌──┐

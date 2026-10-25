@@ -12,24 +12,28 @@
         "serve": "docusaurus serve",
         "write-translations": "docusaurus write-translations",
         "write-heading-ids": "docusaurus write-heading-ids",
-        "mdlint": "markdownlint '**/*.md' --config .markdownlint.yaml --ignore node_modules --ignore docs/keybindings.md --ignore docs/config.md",
+        "mdlint": "markdownlint '**/*.md' --config .markdownlint.yaml --ignore node_modules",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "fetch-assets": "npx tsx ./src/fetch-assets"
     },
     "dependencies": {
-        "@docusaurus/core": "3.2.1",
-        "@docusaurus/preset-classic": "3.2.1",
-        "@easyops-cn/docusaurus-search-local": "^0.40.1",
+        "@docusaurus/core": "^3.6.1",
+        "@docusaurus/preset-classic": "^3.6.1",
+        "@docusaurus/theme-mermaid": "^3.9.2",
+        "@easyops-cn/docusaurus-search-local": "^0.55.0",
         "@mdx-js/react": "^3.0.1",
-        "clsx": "^2.1.0",
-        "prettier": "^3.2.5",
+        "clsx": "^2.1.1",
+        "prettier": "^3.3.3",
         "prism-react-renderer": "^2.3.1",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0"
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0"
     },
     "devDependencies": {
-        "@docusaurus/module-type-aliases": "3.2.1",
-        "markdownlint-cli": "^0.39.0"
+        "@docusaurus/module-type-aliases": "^3.6.1",
+        "markdownlint-cli": "^0.50.0",
+        "sharp": "0.35.5",
+        "tsx": "4.23.15"
     },
     "browserslist": {
         "production": [

@@ -1,0 +1,236 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+use anyhow::Context;
+use cargo_metadata::{
+    Metadata, Package,
+    camino::{Utf8Path, Utf8PathBuf},
+    semver::Version,
+};
+use cargo_utils::{LocalManifest, canonical_local_manifest, workspace_members};
+
+use crate::{
+    PackagePath as _, PackageUpdateConfig, UpdateConfig, changelog_parser::last_release_from_str,
+    update_request::PackagesConfig,
+};
+
+#[derive(Debug)]
+pub struct SetVersionRequest {
+    /// The manifest of the project you want to update.
+    manifest: Utf8PathBuf,
+    /// Cargo metadata.
+    metadata: Metadata,
+    version_changes: SetVersionSpec,
+    /// Package-specific configurations. Only `changelog_path` and `changelog_update` are used.
+    packages_config: PackagesConfig,
+}
+
+impl SetVersionRequest {
+    /// Set update config for all packages.
+    pub fn with_default_package_config(mut self, config: UpdateConfig) -> Self {
+        self.packages_config.set_default(config);
+        self
+    }
+
+    /// Set update config for a specific package.
+    pub fn with_package_config(
+        mut self,
+        package: impl Into<String>,
+        config: PackageUpdateConfig,
+    ) -> Self {
+        self.packages_config.set(package.into(), config);
+        self
+    }
+}
+
+#[derive(Debug)]
+pub enum SetVersionSpec {
+    /// Set the workspace version, or the package version in a single-package project.
+    /// In these cases there's no need to specify the package name.
+    Single(VersionChange),
+    /// <package name, version change>
+    /// Used for multiple packages in a workspace.
+    Workspace(BTreeMap<String, VersionChange>),
+}
+
+#[derive(Debug)]
+pub struct VersionChange {
+    version: Version,
+    /// This path needs to be a relative path to the Cargo.toml of the project.
+    /// I.e. if you have a workspace, it needs to be relative to the workspace root.
+    pub changelog_path: Option<Utf8PathBuf>,
+}
+
+impl VersionChange {
+    pub fn new(version: Version) -> Self {
+        Self {
+            version,
+            changelog_path: None,
+        }
+    }
+
+    pub fn with_changelog_path(&mut self, changelog_path: Utf8PathBuf) {
+        self.changelog_path = Some(changelog_path);
+    }
+}
+
+impl SetVersionRequest {
+    pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
+        let manifest = cargo_utils::workspace_manifest(&metadata);
+        let manifest = canonical_local_manifest(manifest.as_ref())?;
+        Ok(Self {
+            version_changes,
+            metadata,
+            manifest,
+            packages_config: PackagesConfig::default(),
+        })
+    }
+}
+
+pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
+    let mut workspace_manifest = LocalManifest::try_new(&input.manifest)?;
+    let workspace_dir = crate::manifest_dir(&workspace_manifest.path)?.to_owned();
+    let cargo_lock = workspace_dir.join("Cargo.lock");
+    let packages: BTreeMap<String, Package> = workspace_members(&input.metadata)?
+        .map(|p| {
+            let package_name = p.name.to_string();
+            (package_name, p)
+        })
+        .collect();
+    let all_packages: Vec<&Package> = packages.values().collect();
+    let workspace_version = match &input.version_changes {
+        SetVersionSpec::Single(change) if workspace_manifest.get_workspace_version().is_some() => {
+            Some(&change.version)
+        }
+        _ => None,
+    };
+    let updating_workspace = workspace_version.is_some();
+    let changes = prepare_version_changes(&input.version_changes, &packages, updating_workspace)?;
+    if let Some(version) = workspace_version {
+        // Keep version.workspace = true in the inheriting packages.
+        workspace_manifest.set_workspace_version(version);
+        workspace_manifest
+            .write()
+            .context("can't update workspace version")?;
+    }
+    let mut updated_changelogs = BTreeSet::new();
+    for (package, change) in changes {
+        let package_path = package.package_path()?;
+        if updating_workspace {
+            super::update::update_dependencies(
+                &all_packages,
+                &change.version,
+                package.name.as_str(),
+                package_path,
+                &workspace_manifest.path,
+            )?;
+        } else {
+            super::update::set_version(
+                &all_packages,
+                package_path,
+                &change.version,
+                &workspace_manifest.path,
+            )?;
+        }
+        update_package_changelog(
+            input,
+            package,
+            change,
+            updating_workspace,
+            &mut updated_changelogs,
+        )?;
+    }
+    if cargo_lock.exists() {
+        super::update::update_cargo_lock(&workspace_dir, false)?;
+    }
+    Ok(())
+}
+
+fn prepare_version_changes<'a>(
+    version_changes: &'a SetVersionSpec,
+    packages: &'a BTreeMap<String, Package>,
+    updating_workspace: bool,
+) -> anyhow::Result<Vec<(&'a Package, &'a VersionChange)>> {
+    let changes = match version_changes {
+        SetVersionSpec::Single(change) if updating_workspace => {
+            let mut changes = Vec::new();
+            for package in packages.values() {
+                let manifest = LocalManifest::try_new(&package.manifest_path)?;
+                if manifest.version_is_inherited() {
+                    changes.push((package, change));
+                }
+            }
+            changes
+        }
+        SetVersionSpec::Single(change) => {
+            anyhow::ensure!(
+                packages.len() == 1,
+                "Your workspace contains multiple packages and no workspace version. Please specify which package you want to update."
+            );
+            vec![(packages.values().next().unwrap(), change)]
+        }
+        SetVersionSpec::Workspace(changes) => changes
+            .iter()
+            .map(|(name, change)| {
+                let package = packages
+                    .get(name)
+                    .with_context(|| format!("package {name} not found"))?;
+                Ok((package, change))
+            })
+            .collect::<anyhow::Result<_>>()?,
+    };
+    Ok(changes)
+}
+
+fn update_package_changelog(
+    input: &SetVersionRequest,
+    package: &Package,
+    change: &VersionChange,
+    updating_workspace: bool,
+    updated_changelogs: &mut BTreeSet<Utf8PathBuf>,
+) -> anyhow::Result<()> {
+    let config = input.packages_config.get(&package.name);
+    if !config.should_update_changelog() {
+        return Ok(());
+    }
+    let changelog_path = crate::changelog_path(
+        package,
+        &input.metadata.workspace_root,
+        config
+            .generic
+            .changelog_path
+            .as_deref()
+            .or(change.changelog_path.as_deref()),
+    );
+    if updating_workspace {
+        let resolved_path = crate::fs_utils::canonicalize_utf8(&changelog_path)
+            .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
+        // Several packages can share a changelog, including through different relative paths.
+        if !updated_changelogs.insert(resolved_path) {
+            return Ok(());
+        }
+    }
+    update_changelog(&changelog_path, &package.version, &change.version)
+        .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
+    Ok(())
+}
+
+fn update_changelog(
+    changelog_path: &Utf8Path,
+    old_version: &Version,
+    new_version: &Version,
+) -> anyhow::Result<()> {
+    let changelog_content = fs_err::read_to_string(changelog_path)?;
+    let last_release = last_release_from_str(&changelog_content)?.context("no release found")?;
+
+    let new_changelog_content = {
+        let old_title = last_release.title();
+        // replace the new version. `replacen` doesn't work, because we
+        // also want to replace the version in the release link.
+        let new_title = old_title.replace(&old_version.to_string(), &new_version.to_string());
+        changelog_content.replacen(old_title, &new_title, 1)
+    };
+
+    fs_err::write(changelog_path, new_changelog_content)?;
+
+    Ok(())
+}

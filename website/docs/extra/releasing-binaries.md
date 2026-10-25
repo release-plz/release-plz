@@ -27,13 +27,20 @@ release-plz released the new version of your project.
 If you are using release-plz to release your project, you can
 run a CI job on the "tag" or "release" events to build and release the binaries.
 
-Here is an example:
+Here is an example based on release-plz's own
+[`cd.yml` workflow](https://github.com/release-plz/release-plz/blob/main/.github/workflows/cd.yml):
+
+:::info
+To use this in your project, change:
+
+- the repository owner from `"MyOwner"` to your username/organisation.
+- the release name from `"my-bin-v"` to the release name of your binary according to
+  [`git_release_name`](../config.md#the-git_release_name-field).
+
+:::
 
 ```yaml
 name: CD # Continuous Deployment
-
-permissions:
-  contents: write
 
 on:
   release:
@@ -57,6 +64,8 @@ jobs:
     name: ${{ matrix.target }}
     if: github.repository_owner == 'MyOwner' && startsWith(github.event.release.name, 'my-bin-v')
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
@@ -65,15 +74,13 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
           - target: aarch64-apple-darwin
-            os: macos-12
+            os: macos-15
           - target: aarch64-pc-windows-msvc
             os: windows-2022
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
-          - target: x86_64-apple-darwin
-            os: macos-12
           - target: x86_64-pc-windows-msvc
             os: windows-2022
           - target: x86_64-unknown-freebsd
@@ -81,14 +88,18 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/setup-cross-toolchain-action@v1
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@cross
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cross
         if: contains(matrix.target, '-musl')
       - run: echo "RUSTFLAGS=${RUSTFLAGS} -C target-feature=+crt-static" >> "${GITHUB_ENV}"
         if: endsWith(matrix.target, 'windows-msvc')

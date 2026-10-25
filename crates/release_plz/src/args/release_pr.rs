@@ -1,50 +1,38 @@
-use std::str::FromStr;
+use release_plz_core::ReleasePrRequest;
 
-use anyhow::Context;
-use clap::builder::NonEmptyStringValueParser;
-use clap::ValueEnum;
-use release_plz_core::{GitBackend, GitHub, Gitea, RepoUrl};
-use secrecy::SecretString;
+use crate::config::Config;
 
-use super::{update::Update, OutputType};
+use super::{OutputType, update::Update};
 
 #[derive(clap::Parser, Debug)]
 pub struct ReleasePr {
     #[command(flatten)]
     pub update: Update,
-    /// Git token used to create the pull request.
-    #[arg(long, value_parser = NonEmptyStringValueParser::new(), visible_alias = "github-token", env, hide_env_values=true)]
-    git_token: String,
-    /// Kind of git host where your project is hosted.
-    #[arg(long, value_enum, default_value_t = GitBackendKind::Github)]
-    backend: GitBackendKind,
     /// Output format. If specified, prints the branch, URL and number of
     /// the release PR, if any.
     #[arg(short, long, value_enum)]
     pub output: Option<OutputType>,
 }
 
-#[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GitBackendKind {
-    #[value(name = "github")]
-    Github,
-    #[value(name = "gitea")]
-    Gitea,
-}
-
 impl ReleasePr {
-    pub fn git_backend(&self, repo: RepoUrl) -> anyhow::Result<GitBackend> {
-        let token = SecretString::from_str(&self.git_token).context("Invalid git backend token")?;
-        Ok(match self.backend {
-            GitBackendKind::Github => {
-                anyhow::ensure!(
-                    repo.is_on_github(),
-                    "Can't create PR: the repository is not hosted in GitHub. Please select a different backend."
-                );
-                GitBackend::Github(GitHub::new(repo.owner, repo.name, token))
-            }
-            GitBackendKind::Gitea => GitBackend::Gitea(Gitea::new(repo, token)?),
-        })
+    pub fn release_pr_req(
+        &self,
+        config: &Config,
+        cargo_metadata: cargo_metadata::Metadata,
+    ) -> anyhow::Result<ReleasePrRequest> {
+        let pr_branch_prefix = config.workspace.pr_branch_prefix.clone();
+        let pr_name = config.workspace.pr_name.clone();
+        let pr_body = config.workspace.pr_body.clone();
+        let pr_labels = config.workspace.pr_labels.clone();
+        let pr_draft = config.workspace.pr_draft;
+        let update_request = self.update.update_request(config, cargo_metadata)?;
+        let request = ReleasePrRequest::new(update_request)
+            .mark_as_draft(pr_draft)
+            .with_labels(pr_labels)
+            .with_branch_prefix(pr_branch_prefix)
+            .with_pr_name_template(pr_name)
+            .with_pr_body_template(pr_body);
+        Ok(request)
     }
 }
 
@@ -63,7 +51,7 @@ mod tests {
         assert_eq!(expected_owner, repo.owner);
         assert_eq!(expected_repo, repo.name);
         assert_eq!(GITHUB_COM, repo.host);
-        assert!(repo.is_on_github())
+        assert!(repo.is_on_github());
     }
 
     #[test]
@@ -75,7 +63,7 @@ mod tests {
         assert_eq!(expected_owner, repo.owner);
         assert_eq!(expected_repo, repo.name);
         assert_eq!(GITHUB_COM, repo.host);
-        assert!(repo.is_on_github())
+        assert!(repo.is_on_github());
     }
 
     #[test]

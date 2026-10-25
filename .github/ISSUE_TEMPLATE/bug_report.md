@@ -15,14 +15,21 @@ assignees: ''
 
 ## To Reproduce
 
+<!--
+Make sure you are able to reproduce the bug in the main branch, too.
+Please try to reproduce the bug in a small example repository.
+Even better, you can write an integration test in `crates/release-plz/tests` and check if it fails.
+
+Also, sometimes you don't need to run release-plz in CI to reproduce a bug
+because certain bugs can be reproduced locally running `release-plz update`.
+-->
+
 Steps to reproduce the behavior:
 
 1. ...
 2. ...
 3. ...
 4. ...
-
-<!-- Make sure you are able to reproduce the bug in the main branch, too. -->
 
 ## Expected behavior
 

@@ -1,9 +1,9 @@
 [package]
 name = "cargo_utils"
-version = "0.1.44"
+version = "0.3.1"
 edition.workspace = true
 description = "Utilities around cargo and Rust workspaces"
-repository = "https://github.com/MarcoIeni/release-plz/tree/main/crates/cargo_utils"
+repository = "https://github.com/release-plz/release-plz/tree/main/crates/cargo_utils"
 license.workspace = true
 keywords = ["cargo", "utilities", "utils", "workspace"]
 categories = ["development-tools"]
@@ -14,10 +14,13 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 cargo_metadata.workspace = true
-dirs.workspace = true
 dunce.workspace = true
+fs-err.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 semver.workspace = true
-url.workspace = true
 serde.workspace = true
+secrecy.workspace = true
+
+[dev-dependencies]
+expect-test.workspace = true

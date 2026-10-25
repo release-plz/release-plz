@@ -1,10 +1,9 @@
-use crate::git::backend::Remote;
 use crate::RepoUrl;
-use anyhow::{bail, Context};
+use crate::git::forge::Remote;
+use anyhow::{Context, bail};
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderValue;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct Gitea {
@@ -36,27 +35,11 @@ impl Gitea {
 
     pub fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
-        let auth_header: HeaderValue = format!("token {}", self.remote.token.expose_secret())
+        let mut auth_header: HeaderValue = format!("token {}", self.remote.token.expose_secret())
             .parse()
             .context("invalid Gitea token")?;
+        auth_header.set_sensitive(true);
         headers.insert(reqwest::header::AUTHORIZATION, auth_header);
         Ok(headers)
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct RepoPr {
-    pub id: u64,
-    pub head: Commit,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Commit {
-    #[serde(rename = "ref")]
-    pub ref_field: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct EditPullRequest {
-    state: &'static str,
 }

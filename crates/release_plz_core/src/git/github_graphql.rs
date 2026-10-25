@@ -1,27 +1,29 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use base64::prelude::*;
 use cargo_metadata::camino::Utf8PathBuf;
 use git_cmd::Repo;
-use serde_json::{json, Value};
-use tokio::fs;
+use serde_json::{Value, json};
 use tracing::{debug, trace};
 use url::Url;
 
-use crate::git::backend::Remote;
 use crate::GitClient;
 
 /// Commit all the changes (except typestates) that are present in the repository
 /// using GitHub's [GraphQL api](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch).
+/// We use this API, because it gives the "Verified" status to the commit without a GPG key.
 pub async fn commit_changes(
     client: &GitClient,
     repo: &Repo,
     message: &str,
     branch: &str,
-) -> Result<()> {
+) -> Result<String> {
     let commit = GithubCommit::new(&client.remote.owner_slash_repo(), repo, message, branch)?;
-    let graphql_endpoint = get_graphql_endpoint(&client.remote);
+    let graphql_endpoint = graphql_endpoint_from_rest_base(&client.remote.base_url);
 
-    let commit_query = commit.to_query_json().await?;
+    let commit_query = commit
+        .to_query_json()
+        .await
+        .context("failed to build GitHub commit query")?;
     debug!("Sending createCommitOnBranch to {}", graphql_endpoint);
     trace!("{}", commit_query);
 
@@ -41,14 +43,23 @@ pub async fn commit_changes(
         );
     }
 
-    Ok(())
+    let commit_sha = res
+        .pointer("/data/createCommitOnBranch/commit/oid")
+        .and_then(Value::as_str)
+        .with_context(|| format!("createCommitOnBranch did not return commit object: {res}"))?
+        .to_owned();
+
+    Ok(commit_sha)
 }
 
-fn get_graphql_endpoint(remote: &Remote) -> Url {
-    let mut base_url = remote.base_url.clone();
-    base_url.set_path("graphql");
-
-    base_url
+fn graphql_endpoint_from_rest_base(rest_base: &Url) -> Url {
+    let mut graphql = rest_base.clone();
+    if rest_base.host_str() == Some("api.github.com") {
+        graphql.set_path("/graphql");
+    } else {
+        graphql.set_path("/api/graphql");
+    }
+    graphql
 }
 
 // get the list of changes in repository excluding typechanges and removed files
@@ -86,7 +97,7 @@ impl GithubCommit {
 
     // format a graphql query json payload to create commit on branch
     async fn to_query_json(&self) -> Result<serde_json::Value> {
-        let GithubCommit {
+        let Self {
             owner_slash_repo,
             branch,
             message,
@@ -100,7 +111,10 @@ impl GithubCommit {
             .map(|path| json!({"path": path}))
             .collect::<Vec<_>>();
 
-        let additions = self.get_additions().await?;
+        let additions = self
+            .get_additions()
+            .await
+            .context("failed to get git additions")?;
 
         let input = json!({
             "branch": {
@@ -122,26 +136,30 @@ impl GithubCommit {
         let mut additions = vec![];
         for path in &self.additions {
             let realpath = self.repo_dir.join(path);
-            let contents = BASE64_STANDARD.encode(fs::read(realpath).await?);
-
-            additions.push(json!({"path": path, "contents": contents}));
+            // In https://github.com/release-plz/release-plz/issues/1360#issuecomment-2095871195
+            // there was a case where an addition was a directory.
+            // In that case, the directory was a git submodule.
+            if realpath.is_dir() {
+                debug!("skipping directory `{realpath}` in git additions");
+            } else {
+                let realpath_content = fs_err::tokio::read(realpath).await?;
+                let contents = BASE64_STANDARD.encode(realpath_content);
+                additions.push(json!({"path": path, "contents": contents}));
+            }
         }
         Ok(additions)
     }
 }
 
 fn mutation() -> String {
-    const MUTATION: &str = r#"
+    const MUTATION: &str = r"
             mutation($input: CreateCommitOnBranchInput!) {
               createCommitOnBranch(input: $input) {
                 commit {
-                  author {
-                    name,
-                    email
-                  }
+                  oid
                 }
               }
-            }"#;
+            }";
 
     MUTATION.replace(|c: char| c.is_whitespace(), "")
 }
@@ -154,6 +172,30 @@ mod tests {
 
     use crate::copy_dir::create_symlink;
 
+    #[test]
+    fn graphql_endpoint_from_rest_base_dotcom() {
+        let rest: Url = "https://api.github.com/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(graphql.as_str(), "https://api.github.com/graphql");
+    }
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_ghes() {
+        let rest: Url = "https://github.example.com/api/v3/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(graphql.as_str(), "https://github.example.com/api/graphql");
+    }
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_ghes_with_port() {
+        let rest: Url = "https://github.example.com:8443/api/v3/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(
+            graphql.as_str(),
+            "https://github.example.com:8443/api/graphql"
+        );
+    }
+
     #[tokio::test]
     async fn github_commit_query() {
         let temporary = tempdir().unwrap();
@@ -162,15 +204,21 @@ mod tests {
 
         // make the initial commit on top which we'll make changes
         let unchanged_path = repo_dir.join("unchanged.txt");
-        fs::write(&unchanged_path, b"unchanged").await.unwrap();
+        fs_err::tokio::write(&unchanged_path, b"unchanged")
+            .await
+            .unwrap();
 
         let changed = "changed.txt";
         let changed_path = repo_dir.join(changed);
-        fs::write(&changed_path, b"changed").await.unwrap();
+        fs_err::tokio::write(&changed_path, b"changed")
+            .await
+            .unwrap();
 
         let removed = "removed.txt";
         let removed_path = repo_dir.join(removed);
-        fs::write(&removed_path, b"removed").await.unwrap();
+        fs_err::tokio::write(&removed_path, b"removed")
+            .await
+            .unwrap();
 
         let type_changed_path = repo_dir.join("type_changed.txt");
         create_symlink(&unchanged_path, &type_changed_path).unwrap();
@@ -183,18 +231,24 @@ mod tests {
         let added = "added.txt";
         let added_path = repo_dir.join(added);
         let added_base64_content = BASE64_STANDARD.encode(b"added");
-        fs::write(&added_path, b"added").await.unwrap();
+        fs_err::tokio::write(&added_path, b"added").await.unwrap();
 
         // file change
         let changed_base64_content = BASE64_STANDARD.encode(b"file changed");
-        fs::write(&changed_path, b"file changed").await.unwrap();
+        fs_err::tokio::write(&changed_path, b"file changed")
+            .await
+            .unwrap();
 
         // file removal
-        fs::remove_file(&removed_path).await.unwrap();
+        fs_err::tokio::remove_file(&removed_path).await.unwrap();
 
         // type change (replace symlink with a content it pointed to)
-        fs::remove_file(&type_changed_path).await.unwrap();
-        fs::write(&type_changed_path, b"unchanged").await.unwrap();
+        fs_err::tokio::remove_file(&type_changed_path)
+            .await
+            .unwrap();
+        fs_err::tokio::write(&type_changed_path, b"unchanged")
+            .await
+            .unwrap();
 
         // check if the commit query is correctly created
         let owner_slash_repo = "owner/repo";
@@ -228,7 +282,7 @@ mod tests {
 
         assert_eq!(expected_variables, query["variables"]);
 
-        expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{author{name,email}}}}""#]]
+        expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}""#]]
         .assert_eq(&query["query"].to_string());
     }
 }

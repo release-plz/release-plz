@@ -1,4 +1,5 @@
 # Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -6,88 +7,204 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.15](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.14...next_version-v0.2.15) - 2024-03-08
+## [0.3.5](https://github.com/release-plz/release-plz/compare/next_version-v0.3.4...next_version-v0.3.5) - 2026-10-24
 
-### Other
-- use edition and license workspace ([#1329](https://github.com/MarcoIeni/release-plz/pull/1329))
+### Fixed
 
-## [0.2.14](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.13...next_version-v0.2.14) - 2024-02-23
+- *(update)* bump the version at most by a patch for `changelog_include` commits ([#3282](https://github.com/release-plz/release-plz/pull/3282))
 
-### Other
-- update Cargo.toml dependencies
+## [0.3.4](https://github.com/release-plz/release-plz/compare/next_version-v0.3.3...next_version-v0.3.4) - 2026-10-12
 
-## [0.2.13](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.12...next_version-v0.2.13) - 2024-01-16
+### Performance
 
-### Other
-- update Cargo.toml dependencies
+- stop scanning after a decisive minor increment ([#3202](https://github.com/release-plz/release-plz/pull/3202))
 
-## [0.2.12](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.11...next_version-v0.2.12) - 2023-12-30
+## [0.3.3](https://github.com/release-plz/release-plz/compare/next_version-v0.3.2...next_version-v0.3.3) - 2026-10-10
+
+### Fixed
+
+- honor custom major increment regex for 0.x versions ([#3169](https://github.com/release-plz/release-plz/pull/3169))
+
+### Performance
+
+- determine version increments in a single pass ([#3181](https://github.com/release-plz/release-plz/pull/3181))
+- stop parsing commits after a decisive breaking change ([#3160](https://github.com/release-plz/release-plz/pull/3160))
+- avoid copying commit messages when calculating versions ([#3154](https://github.com/release-plz/release-plz/pull/3154))
+- stop scanning commits once a prerelease bump is determined ([#3147](https://github.com/release-plz/release-plz/pull/3147))
+
+## [0.3.2](https://github.com/release-plz/release-plz/compare/next_version-v0.3.1...next_version-v0.3.2) - 2026-05-10
 
 ### Added
-- *(next_version)* support configuration ([#1168](https://github.com/MarcoIeni/release-plz/pull/1168))
 
-## [0.2.11](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.10...next_version-v0.2.11) - 2023-12-13
-
-### Other
-- better document bump strategy ([#1132](https://github.com/MarcoIeni/release-plz/pull/1132))
-
-## [0.2.10](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.9...next_version-v0.2.10) - 2023-11-08
+- *(set-version)* add no-increment regex ([#2830](https://github.com/release-plz/release-plz/pull/2830))
 
 ### Other
-- *(next-version)* clarify patch increment ([#1065](https://github.com/MarcoIeni/release-plz/pull/1065))
 
-## [0.2.9](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.8...next_version-v0.2.9) - 2023-10-15
+- *(set-version)* improve custom regex docs ([#2829](https://github.com/release-plz/release-plz/pull/2829))
+
+## [0.3.1](https://github.com/release-plz/release-plz/compare/next_version-v0.3.0...next_version-v0.3.1) - 2026-02-16
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.3.0](https://github.com/release-plz/release-plz/compare/next_version-v0.2.26...next_version-v0.3.0) - 2026-01-17
+
+### Changed
+
+- \[**breaking**\] ([#2574](https://github.com/release-plz/release-plz/pull/2574)) edits
+  how `with_custom_major_increment_regex` and `with_custom_major_increment_regex` behave:
+
+  - If the commit message is a conventional commit, the regex is matched against the commit type
+    (the part before the `:` in a commit message).
+  - If the commit message is not a conventional commit, the regex is matched against the entire commit message.
+
+
+## [0.2.26](https://github.com/release-plz/release-plz/compare/next_version-v0.2.25...next_version-v0.2.26) - 2025-11-24
+
+### Other
+
+- address code quality issues ([#2498](https://github.com/release-plz/release-plz/pull/2498))
+
+## [0.2.25](https://github.com/release-plz/release-plz/compare/next_version-v0.2.24...next_version-v0.2.25) - 2025-09-13
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.2.24](https://github.com/release-plz/release-plz/compare/next_version-v0.2.23...next_version-v0.2.24) - 2025-03-17
+
+### Other
+
+- add more rust lints ([#2135](https://github.com/release-plz/release-plz/pull/2135))
+
+## [0.2.23](https://github.com/release-plz/release-plz/compare/next_version-v0.2.22...next_version-v0.2.23) - 2025-03-01
+
+### Other
+
+- add new line to changelog header (#2098)
+
+## [0.2.22](https://github.com/release-plz/release-plz/compare/next_version-v0.2.21...next_version-v0.2.22) - 2025-02-02
+
+### Other
+
+- *(next-version)* add test for scope with whitespace (#1997)
+- use `git-conventional` library to parse commits (#2021)
+
+## [0.2.21](https://github.com/release-plz/release-plz/compare/next_version-v0.2.20...next_version-v0.2.21) - 2024-12-07
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.2.20](https://github.com/release-plz/release-plz/compare/next_version-v0.2.19...next_version-v0.2.20) - 2024-11-21
+
+### Other
+
+- move `MarcoIeni/release-plz` to `release-plz/release-plz` ([#1850](https://github.com/release-plz/release-plz/pull/1850))
+
+## [0.2.19](https://github.com/release-plz/release-plz/compare/next_version-v0.2.18...next_version-v0.2.19) - 2024-08-04
+
+### Other
+- update Cargo.toml dependencies
+
+## [0.2.18](https://github.com/release-plz/release-plz/compare/next_version-v0.2.17...next_version-v0.2.18) - 2024-06-18
+
+### Added
+- support bumping version based on configurable custom pattern ([#1511](https://github.com/release-plz/release-plz/pull/1511))
+
+## [0.2.17](https://github.com/release-plz/release-plz/compare/next_version-v0.2.16...next_version-v0.2.17) - 2024-05-27
+
+### Other
+- update Cargo.toml dependencies
+
+## [0.2.16](https://github.com/release-plz/release-plz/compare/next_version-v0.2.15...next_version-v0.2.16) - 2024-05-05
+
+### Other
+- add `if_not_else` clippy lint ([#1438](https://github.com/release-plz/release-plz/pull/1438))
+
+## [0.2.15](https://github.com/release-plz/release-plz/compare/next_version-v0.2.14...next_version-v0.2.15) - 2024-03-08
+
+### Other
+- use edition and license workspace ([#1329](https://github.com/release-plz/release-plz/pull/1329))
+
+## [0.2.14](https://github.com/release-plz/release-plz/compare/next_version-v0.2.13...next_version-v0.2.14) - 2024-02-23
+
+### Other
+- update Cargo.toml dependencies
+
+## [0.2.13](https://github.com/release-plz/release-plz/compare/next_version-v0.2.12...next_version-v0.2.13) - 2024-01-16
+
+### Other
+- update Cargo.toml dependencies
+
+## [0.2.12](https://github.com/release-plz/release-plz/compare/next_version-v0.2.11...next_version-v0.2.12) - 2023-12-30
+
+### Added
+- *(next_version)* support configuration ([#1168](https://github.com/release-plz/release-plz/pull/1168))
+
+## [0.2.11](https://github.com/release-plz/release-plz/compare/next_version-v0.2.10...next_version-v0.2.11) - 2023-12-13
+
+### Other
+- better document bump strategy ([#1132](https://github.com/release-plz/release-plz/pull/1132))
+
+## [0.2.10](https://github.com/release-plz/release-plz/compare/next_version-v0.2.9...next_version-v0.2.10) - 2023-11-08
+
+### Other
+- *(next-version)* clarify patch increment ([#1065](https://github.com/release-plz/release-plz/pull/1065))
+
+## [0.2.9](https://github.com/release-plz/release-plz/compare/next_version-v0.2.8...next_version-v0.2.9) - 2023-10-15
 
 ### Other
 - update dependencies
 
-## [0.2.8](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.7...next_version-v0.2.8) - 2023-09-30
+## [0.2.8](https://github.com/release-plz/release-plz/compare/next_version-v0.2.7...next_version-v0.2.8) - 2023-09-30
 
 ### Other
 - update dependencies
 
-## [0.2.7](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.6...next_version-v0.2.7) - 2023-09-16
+## [0.2.7](https://github.com/release-plz/release-plz/compare/next_version-v0.2.6...next_version-v0.2.7) - 2023-09-16
 
 ### Other
-- add additional clippy lints ([#965](https://github.com/MarcoIeni/release-plz/pull/965))
+- add additional clippy lints ([#965](https://github.com/release-plz/release-plz/pull/965))
 
-## [0.2.6](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.5...next_version-v0.2.6) - 2023-09-08
+## [0.2.6](https://github.com/release-plz/release-plz/compare/next_version-v0.2.5...next_version-v0.2.6) - 2023-09-08
 
 ### Other
-- *(ci)* check links ([#941](https://github.com/MarcoIeni/release-plz/pull/941))
+- *(ci)* check links ([#941](https://github.com/release-plz/release-plz/pull/941))
 
-## [0.2.5](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.4...next_version-v0.2.5) - 2023-07-25
+## [0.2.5](https://github.com/release-plz/release-plz/compare/next_version-v0.2.4...next_version-v0.2.5) - 2023-07-25
 
 ### Other
 - update dependencies
 
-## [0.2.4](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.3...next_version-v0.2.4) - 2023-04-16
+## [0.2.4](https://github.com/release-plz/release-plz/compare/next_version-v0.2.3...next_version-v0.2.4) - 2023-04-16
 
 ### Other
 - add test for breaking change in footer (#690)
 
-## [0.2.3](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.2...next_version-v0.2.3) - 2023-03-13
+## [0.2.3](https://github.com/release-plz/release-plz/compare/next_version-v0.2.2...next_version-v0.2.3) - 2023-03-13
 
 ### Other
 - update dependencies
 
-## [0.2.2](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.1...next_version-v0.2.2) - 2023-03-04
+## [0.2.2](https://github.com/release-plz/release-plz/compare/next_version-v0.2.1...next_version-v0.2.2) - 2023-03-04
 
 ### Fixed
 - always bump patch in 0.0.x versions (#578)
 
-## [0.2.1](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.2.0...next_version-v0.2.1) - 2023-02-26
+## [0.2.1](https://github.com/release-plz/release-plz/compare/next_version-v0.2.0...next_version-v0.2.1) - 2023-02-26
 
 ### Added
 - add function to force breaking changes (#568)
 
-## [0.2.0](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.1.10...next_version-v0.2.0) - 2023-01-11
+## [0.2.0](https://github.com/release-plz/release-plz/compare/next_version-v0.1.10...next_version-v0.2.0) - 2023-01-11
 
 ### Added
 - [**breaking**] don't remove build metadata (#433)
 - [**breaking**] handle pre-releases (#425)
 
-## [0.1.10](https://github.com/MarcoIeni/release-plz/compare/next_version-v0.1.9...next_version-v0.1.10) - 2022-12-16
+## [0.1.10](https://github.com/release-plz/release-plz/compare/next_version-v0.1.9...next_version-v0.1.10) - 2022-12-16
 
 ### Other
 - Add functions to increment major, minor and patch version (#375)

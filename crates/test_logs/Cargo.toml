@@ -1,10 +1,10 @@
 [package]
 name = "test_logs"
-version = "0.1.26"
+version = "0.1.34"
 edition.workspace = true
 description = "Library to see logs in tests"
 license.workspace = true
-repository = "https://github.com/MarcoIeni/release-plz/tree/main/crates/test_logs"
+repository = "https://github.com/release-plz/release-plz/tree/main/crates/test_logs"
 keywords = ["test", "logs", "tracing"]
 categories = ["development-tools", "development-tools::testing"]
 
@@ -12,7 +12,4 @@ categories = ["development-tools", "development-tools::testing"]
 workspace = true
 
 [dependencies]
-once_cell.workspace = true
-tracing-log.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tracing.workspace = true

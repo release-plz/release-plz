@@ -6,7 +6,7 @@ opens a GitHub Pull Request that prepares the next release.
 When the project maintainer merges the release pull request, the packages are
 ready to be published.
 
-Here's an example of a [PR](https://github.com/MarcoIeni/release-plz/pull/377)
+Here's an example of a [PR](https://github.com/release-plz/release-plz/pull/377)
 opened by release-plz in the release-plz GitHub project itself.
 
 In the following example, I run `release-plz` on the `release-plz` project
@@ -26,7 +26,7 @@ If there's already an open release PR:
   release-plz closes the PR to preserve the git history.
   The update mechanism is simple: overwrite everything and force-push. 💥
   Reasoning: changes done by bots are not valuable, so we can overwrite them.
-  (Not available on Gitea).
+  (Not available on Gitea and GitLab).
 - Otherwise, release-plz closes the old PR and opens a new one.
   This is done to preserve the git history of maintainers' changes.
   Release-plz also closes the release PR when it cannot update it
@@ -40,9 +40,14 @@ Instead, release-plz overrides the existing release PR with the changes of the s
 ## Gitea
 
 `release-plz release-pr` also supports creating PRs for repositories hosted on
-Gitea with the `--backend` flag:
+Gitea with the `--forge` option:
 
-`release-plz release-pr --git-token <gitea application token> --backend gitea`
+`release-plz release-pr --git-token <gitea application token> --forge gitea`
+
+The token needs to have the following permissions:
+
+- `read:repository`, `write:repository`: to create the release PR.
+- `read:issue`, `write:issue`: to add labels to the release PR.
 
 ## Github
 
@@ -51,6 +56,30 @@ through the [GraphQL API](https://docs.github.com/en/graphql) rather
 than making a commit locally and pushing the changes.
 This allows having a [Verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
 commit without specifying a GPG signature.
+This works on both github.com and self-hosted
+[GitHub Enterprise Server](https://docs.github.com/en/enterprise-server),
+release-plz derives the API host from your git remote. For GitHub Enterprise
+Server, explicitly select GitHub with `--forge github`.
+
+## GitLab
+
+`release-plz release-pr` also supports creating PRs for repositories hosted on GitLab with
+the `--forge gitlab` option.
+
+You need to create a token in your GitLab repo (Settings/Access Tokens) with the following
+permissions:
+
+- Role: `Maintainer` or higher
+- Scopes:
+  - `api` (to read/create/update a release-pr)
+  - `write_repository` (to push the release-plz branch)
+
+See the GitLab [project access tokens](https://docs.gitlab.com/ee/user/project/settings/project_access_tokens.html)
+docs.
+
+Then you can run `release-plz release-pr` with the following arguments:
+
+`release-plz release-pr --forge gitlab --git-token <gitlab_token>`
 
 ## Json output
 
@@ -64,7 +93,14 @@ Stdout will contain info about the release PR:
       "head_branch": "<head_branch>",
       "base_branch": "<base_branch>",
       "html_url": "<html_url>",
-      "number": <pr_number>
+      "number": <pr_number>,
+      "releases": [
+        {
+          "package_name": "<package_name>",
+          "version": "<package_version>"
+        }
+      ]
+
     }
   ]
 }
@@ -79,7 +115,13 @@ Example:
       "head_branch": "release-plz-2024-04-03T21-57-37Z",
       "base_branch": "main",
       "html_url": "http://localhost:3000/zodpwlgr/xcpayeoa/pulls/1",
-      "number": 1
+      "number": 1,
+      "releases": [
+        {
+          "package_name": "my_package",
+          "version": "1.0.3"
+        }
+      ]
     }
   ]
 }

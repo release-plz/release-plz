@@ -1,0 +1,52 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // Extend everything from config:recommended, except for ignoreModulesAndTests,
+  // which disables docker-compose updates.
+  extends: [
+    ':dependencyDashboard',
+    ':semanticPrefixFixDepsChoreOthers',
+    'group:monorepos',
+    'group:recommended',
+    'replacements:all',
+    'workarounds:all',
+    'helpers:pinGitHubActionDigestsToSemver',
+    ':maintainLockFilesWeekly',
+  ],
+  automerge: true,
+  packageRules: [
+    {
+      matchManagers: [
+        'github-actions',
+      ],
+      extends: ['schedule:weekly'],
+      groupName: 'Github Actions',
+    },
+    {
+      matchCategories: [
+        'rust',
+      ],
+      matchJsonata: [
+        'isBreaking != true'
+      ],
+      // Disable non-breaking change updates because they
+      // are updated periodically with lockfile maintainance.
+      enabled: false,
+    },
+    {
+      matchManagers: [
+        'docker-compose',
+      ],
+      groupName: 'Docker Compose',
+      // Every weekend
+      schedule: '* * * * 0,6',
+    },
+  ],
+  // Receive any update that fixes security vulnerabilities.
+  // We need this because we disabled "patch" updates for Rust.
+  // Note: You need to enable "Dependabot alerts" in "Code security" GitHub
+  // Settings to receive security updates.
+  // See https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts
+  vulnerabilityAlerts: {
+    enabled: true,
+  },
+}

@@ -1,23 +1,44 @@
-use tracing_log::LogTracer;
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use tracing::{Level, level_filters::LevelFilter};
+use tracing_subscriber::{
+    EnvFilter, filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
-/// Use `info` level by default, but you can customize it with `RUST_LOG` environment variable.
-pub fn init(verbose: bool) {
-    let subscriber = {
-        let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"));
-        let mut event_fmt = tracing_subscriber::fmt::format().pretty();
-        if !verbose {
-            event_fmt = event_fmt.with_target(false).with_source_location(false);
-        }
-        FmtSubscriber::builder()
-            .with_env_filter(env_filter)
-            .with_writer(std::io::stderr)
-            .event_format(event_fmt)
-            .finish()
-    };
+/// Intialize the logging using the tracing crate.
+///
+/// You can customize the log level with the `RELEASE_PLZ_LOG` environment
+/// variable. If the `RELEASE_PLZ_LOG` environment variable is not set, falls back to the `RUST_LOG`
+/// environment variable.
+///
+/// If verbosity is set, the logs will show more information.
+///
+/// To maximize logs readability in CI, logs are written in one line
+/// (we don't split them in multiple lines).
+pub fn init(verbosity: Option<LevelFilter>) {
+    let env_filter = EnvFilter::try_from_env("RELEASE_PLZ_LOG").unwrap_or_else(|_| {
+        EnvFilter::builder()
+            .with_default_directive(verbosity.unwrap_or(LevelFilter::INFO).into())
+            .from_env_lossy()
+    });
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Setting default subscriber failed.");
-    LogTracer::init().expect("Failed to initialise log tracer capturing.");
+    let verbose = verbosity.is_some();
+
+    let ignore_info_spans = filter_fn(move |metadata| {
+        let is_trace_or_debug = || metadata.level() < &Level::INFO;
+        // If it's not a span, it's an event. We keep events.
+        verbose || !metadata.is_span() || is_trace_or_debug()
+    });
+
+    let ansi =
+        std::env::var_os("RELEASE_PLZ_NO_ANSI").is_none() && std::env::var_os("NO_COLOR").is_none();
+
+    fmt()
+        .with_env_filter(env_filter)
+        .with_writer(std::io::stderr)
+        .with_ansi(ansi)
+        .with_target(verbose)
+        .with_file(verbose)
+        .with_line_number(verbose)
+        .finish()
+        .with(ignore_info_spans)
+        .init();
 }

@@ -6,13 +6,13 @@ Make sure you have `git` installed when running `release-plz`.
 
 ## Download prebuilt binary
 
-The latest release is on [GitHub](https://github.com/MarcoIeni/release-plz/releases/latest).
+The latest release is on [GitHub](https://github.com/release-plz/release-plz/releases/latest).
 
 ## Cargo
 
 * Install the rust toolchain in order to have cargo installed by following
   [this](https://www.rust-lang.org/tools/install) guide.
-* Run `cargo install release-plz --locked`.
+* Run `cargo install --locked release-plz`.
 
 ## Docker
 

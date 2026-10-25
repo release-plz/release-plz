@@ -30,18 +30,19 @@ Here are some reasons why you might want to edit the release PR:
   [breaking change](https://www.conventionalcommits.org/en/v1.0.0/#commit-message-with-description-and-breaking-change-footer),
   or if cargo-semver-checks
   [failed](https://github.com/obi1kenobi/cargo-semver-checks#will-cargo-semver-checks-catch-every-semver-violation)
-  to detect a breaking change, you can manually edit the version of the package.
+  to detect a breaking change, you can edit the version of the package manually or with the
+  [set-version](./usage/set-version.md) command.
 
 ## Does the changelog include the commits from the whole repo?
 
-The changelog of each crate includes the commit that changed one of the
+The changelog of each crate includes the commits that changed one of the
 files of the crate or one of its dependencies.
 
 ## What if a commit doesn't follow the conventional-commits format?
 
 By default, it will be listed under the section `### Other`.
-Remember you can customize the changelog format by providing a
-[git-cliff](https://git-cliff.org) config file.
+You can customize the changelog format with the
+[`[changelog]`](./config.md#the-changelog-section) configuration section.
 
 ## How do I know the branch of the release PR?
 
@@ -53,7 +54,7 @@ To do so, you can:
 - Query the `/pulls` GitHub
   [endpoint](https://docs.github.com/en/free-pro-team@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests).
   For example, release-plz does it
-  [here](https://github.com/MarcoIeni/release-plz/blob/a92629ed10b8bb42dde426c0f0001aebbb6fa70e/crates/release_plz_core/src/git/backend.rs#L238).
+  in its [code](https://github.com/release-plz/release-plz/blob/a92629ed10b8bb42dde426c0f0001aebbb6fa70e/crates/release_plz_core/src/git/backend.rs#L238).
 - Use `git tag | grep release-plz`.
 
 If none of these options work for you or you want release-plz to output
@@ -82,3 +83,20 @@ Release-plz uses the [next_version](https://crates.io/crates/next_version)
 crate to determine the next version.
 Please read the [documentation](https://docs.rs/next_version/latest/next_version/),
 and open an issue if it's not clear enough.
+
+## Does release-plz support repositories with the SHA-256 object format?
+
+Yes, with one limitation.
+
+When a commit is reverted on a branch and a later merge discards that revert
+(for example with `git merge -s ours`), release-plz checks whether the commit's
+changes are absent from the last release and still present at `HEAD`.
+
+This check isn't available in repositories using Git's
+[SHA-256 object format](https://git-scm.com/docs/hash-function-transition).
+Release-plz treats these commits as already released, so they don't appear in
+the changelog and don't affect the version bump.
+
+This check relies on libgit2, whose SHA-256 support is experimental in the version
+release-plz uses. We plan to support this check for SHA-256 repositories once
+stable support is available by default through our `git2` dependency.

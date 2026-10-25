@@ -76,7 +76,7 @@ impl NextVersion for Version {
 
     fn increment_prerelease(&self) -> Self {
         let next_pre = increment_last_identifier(self.pre.as_str());
-        let next_pre = semver::Prerelease::new(&next_pre).expect("pre release increment failed. Please report this issue to https://github.com/MarcoIeni/release-plz/issues");
+        let next_pre = semver::Prerelease::new(&next_pre).expect("pre release increment failed. Please report this issue to https://github.com/release-plz/release-plz/issues");
         Self {
             pre: next_pre,
             ..self.clone()

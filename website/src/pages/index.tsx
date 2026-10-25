@@ -1,17 +1,18 @@
 import React from "react";
-import Tweets, {type TweetItem} from '@site/src/data/feedback';
+import Tweets from "@site/src/data/feedback";
 import clsx from "clsx";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
-import Heading from '@theme/Heading';
+import Heading from "@theme/Heading";
 import HomepageFeatures from "@site/src/components/HomepageFeatures";
 
 import styles from "./index.module.css";
-import Tweet from "../components/Tweet";
+import type { Props as Tweet } from "../components/tweet";
+import GetTweet from "../components/tweet";
 import Translate from "@docusaurus/Translate";
 import Link from "@docusaurus/Link";
-import QuickStartCode from "./quickstart_code.mdx"
-import MDXContent from '@theme/MDXContent';
+import QuickStartCode from "./quickstart_code.mdx";
+import MDXContent from "@theme/MDXContent";
 
 function HomepageHeader() {
   return (
@@ -42,16 +43,16 @@ function HomepageHeader() {
 
 function QuickStartSection() {
   return (
-      <div className={clsx(styles.section, styles.sectionAlt)}>
-        <div className="container">
-          <Heading as="h2" className={clsx('margin-bottom--lg', 'text--center')}>
-            It works locally, too 👩‍💻
-          </Heading>
-            <MDXContent>
-              <QuickStartCode />
-            </MDXContent>
-        </div>
+    <div className={clsx(styles.section, styles.sectionAlt)}>
+      <div className="container">
+        <Heading as="h2" className={clsx("margin-bottom--lg", "text--center")}>
+          It works locally, too 👩‍💻
+        </Heading>
+        <MDXContent>
+          <QuickStartCode />
+        </MDXContent>
       </div>
+    </div>
   );
 }
 
@@ -67,28 +68,46 @@ export default function Home() {
         <HomepageFeatures />
       </main>
       <QuickStartSection />
+      <SponsorsSection />
       <TweetsSection />
     </Layout>
   );
 }
 
-function TweetsSection() {
-  const tweetColumns: TweetItem[][] = [[], [], []];
-  Tweets.filter((tweet) => tweet.showOnHomepage).forEach((tweet, i) =>
-    tweetColumns[i % 3]!.push(tweet),
+function SponsorsSection() {
+  return (
+    <div className={styles.section}>
+      <div className="container text--center">
+        <Heading as="h2" className="margin-bottom--lg">
+          Sponsored by 🤝
+        </Heading>
+        <a href="https://encore.dev/?utm_source=release-plz&utm_medium=sponsorship&utm_content=website">
+          <img className={styles.sponsorLogo} alt="Encore" src="img/sponsors/encore.svg" />
+        </a>
+        <p className="margin-top--lg margin-bottom--none">
+          Want to support Release-plz too?{" "}
+          <a href="https://github.com/sponsors/release-plz">Become a sponsor</a>. ❤️
+        </p>
+      </div>
+    </div>
   );
+}
+
+function TweetsSection() {
+  const tweetColumns: Tweet[][] = [[], [], []];
+  Tweets.forEach((tweet, i) => tweetColumns[i % 3]!.push(tweet));
 
   return (
     <div className={clsx(styles.section, styles.sectionAlt)}>
       <div className="container">
-        <Heading as="h2" className={clsx('margin-bottom--lg', 'text--center')}>
+        <Heading as="h2" className={clsx("margin-bottom--lg", "text--center")}>
           Loved by many Rustaceans 🦀
         </Heading>
-        <div className={clsx('row', styles.tweetsSection)}>
+        <div className={clsx("row", styles.tweetsSection)}>
           {tweetColumns.map((tweetItems, i) => (
             <div className="col col--4" key={i}>
               {tweetItems.map((tweet) => (
-                <Tweet {...tweet} key={tweet.url} />
+                <GetTweet {...tweet} key={tweet.url} />
               ))}
             </div>
           ))}

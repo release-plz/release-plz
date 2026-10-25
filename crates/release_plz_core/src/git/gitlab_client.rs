@@ -1,8 +1,9 @@
 use anyhow::Context;
 use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
+use tracing::debug;
 
-use crate::git::backend::Remote;
+use crate::{RepoUrl, git::forge::Remote};
 
 #[derive(Debug, Clone)]
 pub struct GitLab {
@@ -10,33 +11,40 @@ pub struct GitLab {
 }
 
 impl GitLab {
-    pub fn new(owner: String, repo: String, token: SecretString) -> Self {
-        Self {
+    pub fn new(url: RepoUrl, token: SecretString) -> anyhow::Result<Self> {
+        let base_url = url
+            .gitlab_api_url()
+            .parse()
+            .context("invalid GitLab API URL")?;
+
+        debug!("GitLab API URL: {base_url}");
+
+        Ok(Self {
             remote: Remote {
-                owner,
-                repo,
+                base_url,
+                owner: url.owner,
+                repo: url.name,
                 token,
-                base_url: "https://gitlab.com/api/v4".parse().unwrap(),
             },
-        }
+        })
     }
 
     pub fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         headers.insert(
-            reqwest::header::HeaderName::from_static("content-type"),
-            reqwest::header::HeaderValue::from_static("application/json"),
+            reqwest::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
         );
-        let auth_header: HeaderValue = self
+
+        let mut private_token: HeaderValue = self
             .remote
             .token
             .expose_secret()
             .parse()
             .context("Invalid Gitlab token")?;
-        headers.insert(
-            reqwest::header::HeaderName::from_static("private-token"),
-            auth_header,
-        );
+        private_token.set_sensitive(true);
+        headers.insert("PRIVATE-TOKEN", private_token);
+
         Ok(headers)
     }
 }
