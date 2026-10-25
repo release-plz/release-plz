@@ -234,6 +234,14 @@ impl TestContext {
     }
 
     pub fn release_command(&self) -> assert_cmd::Command {
+        let mut command = self.release_command_without_registry();
+        command.arg("--registry").arg(TEST_REGISTRY);
+        command
+    }
+
+    /// `release` command without `--registry`, so packages are published
+    /// to the registries of their `publish` field.
+    pub fn release_command_without_registry(&self) -> assert_cmd::Command {
         let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
         let mut command = super::cmd::release_plz_cmd(&self.cargo_target_dir());
         command
@@ -246,8 +254,6 @@ impl TestContext {
             .arg(&self.gitea.token)
             .arg("--forge")
             .arg("gitea")
-            .arg("--registry")
-            .arg(TEST_REGISTRY)
             .arg("--output")
             .arg("json")
             .timeout(Duration::from_secs(300));
@@ -308,14 +314,14 @@ impl TestContext {
     }
 }
 
-pub fn run_set_version(directory: &Utf8Path, change: &str) {
-    let change: Vec<_> = change.split(' ').collect();
+pub fn run_set_version(directory: &Utf8Path, args: &str) {
+    let args: Vec<_> = args.split(' ').collect();
     let target_dir = Utf8PathBuf::from("target");
     super::cmd::release_plz_cmd(&target_dir)
         .current_dir(directory)
         .env(RELEASE_PLZ_LOG, log_level())
         .arg("set-version")
-        .args(&change)
+        .args(&args)
         .assert()
         .success();
 }
