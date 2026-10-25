@@ -764,12 +764,7 @@ async fn release_package_if_needed(
             }
             if let Some(batches) = &mut context.dry_run_batches {
                 batches.add(package, registry.name, input);
-                log_dry_run_info(
-                    &release_info,
-                    true,
-                    input.is_git_tag_enabled(&package.name),
-                    input.is_git_release_enabled(&package.name),
-                );
+                log_dry_run_info(input, &release_info);
                 continue;
             }
             let package_was_released_at_index = release_package(
@@ -1038,18 +1033,12 @@ async fn release_package_git_only(
     context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
 ) -> anyhow::Result<bool> {
-    let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
-
     if input.dry_run {
-        log_dry_run_info(
-            release_info,
-            false, // should_publish is always false in git-only mode
-            should_create_git_tag,
-            should_create_git_release,
-        );
+        log_dry_run_info(input, release_info);
         Ok(false)
     } else {
+        let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
+        let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
         create_git_tag_and_release(
             input,
             repo,
@@ -1143,28 +1132,21 @@ async fn create_git_tag_and_release(
 }
 
 /// Traces the steps that would have been taken had release been run without dry-run.
-fn log_dry_run_info(
-    release_info: &ReleaseInfo,
-    should_publish: bool,
-    should_create_git_tag: bool,
-    should_create_git_release: bool,
-) {
-    let prefix = format!(
-        "{} {}:",
-        release_info.package.name, release_info.package.version
-    );
+fn log_dry_run_info(input: &ReleaseRequest, release_info: &ReleaseInfo) {
+    let package = &release_info.package.name;
+    let prefix = format!("{package} {}:", release_info.package.version);
 
     let mut items_to_skip = vec![];
 
-    if should_publish {
+    if input.is_publish_enabled(package) {
         items_to_skip.push("cargo registry upload".to_string());
     }
 
-    if should_create_git_tag {
+    if input.is_git_tag_enabled(package) {
         items_to_skip.push(format!("creation of tag '{}'", release_info.git_tag));
     }
 
-    if should_create_git_release {
+    if input.is_git_release_enabled(package) {
         items_to_skip.push("creation of git release".to_string());
     }
 
