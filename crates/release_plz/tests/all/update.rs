@@ -187,6 +187,49 @@ changelog_include = ["three"]
     }
 }
 
+#[test]
+fn changelog_include_commits_bump_the_version_at_most_by_a_patch() {
+    let config = r#"
+[workspace]
+semver_check = false
+[[package]]
+name = "without_commits"
+changelog_include = ["core"]
+[[package]]
+name = "with_feature"
+changelog_include = ["core"]
+"#;
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("without_commits", "version = \"1.0.0\"\n"),
+            ("with_feature", "version = \"1.0.0\"\n"),
+            ("core", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        config,
+    );
+    change_package(&repo, "core", "feat!: break core");
+    change_package(&repo, "with_feature", "feat: update with_feature");
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    // The breaking change of `core` doesn't break the packages that include its commits.
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            // Only the included commits release it, as if `core` was a dependency.
+            ("without_commits", "1.0.1"),
+            // Its own `feat` commit requires a bigger increment than the included commits.
+            ("with_feature", "1.1.0"),
+            ("core", "2.0.0"),
+        ],
+    );
+    // The changelog lists the breaking change, even if it only bumps the patch.
+    let changelog =
+        fs_err::read_to_string(repo.directory().join("without_commits/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("break core"), "{changelog}");
+}
+
 #[tokio::test]
 async fn update_relocated_workspace_preserves_original_manifests() {
     let (temp_dir, repo) = released_workspace(

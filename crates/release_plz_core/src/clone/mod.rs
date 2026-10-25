@@ -1,80 +1,67 @@
 // Copied from [cargo-clone](https://github.com/JanLikar/cargo-clone/blob/89ba4da215663ffb3b8c93a674f3002937eafec4/cargo-clone-core/src/lib.rs)
 //! Fetch the source code of a Rust crate from a registry.
 
-#![warn(missing_docs)]
-
-mod cloner_builder;
-mod source;
-
 use cargo::util::cache_lock::CacheLockMode;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::camino::Utf8PathBuf;
-pub use cloner_builder::*;
 use futures::StreamExt as _;
 use futures::stream::FuturesOrdered;
-pub use source::*;
 use tracing::warn;
 
 use anyhow::{Context, bail};
 
 use cargo::sources::source::{QueryKind, Source, SourceMap};
-use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
-use cargo::workspace::{Dependency, Package, PackageId, PackageSet};
+use cargo::sources::{IndexSummary, SourceConfigMap};
+use cargo::util::{CargoResult, GlobalContext};
+use cargo::workspace::{Dependency, Package, PackageId, PackageSet, SourceId};
 
 use walkdir::WalkDir;
 
-// Re-export cargo types.
-pub use cargo::{
-    util::{CargoResult, GlobalContext},
-    workspace::SourceId,
-};
-
+use crate::cargo::new_cargo_config;
 use crate::fs_utils::strip_prefix;
 use crate::fs_utils::to_utf8_path;
-
-/// Rust crate.
-#[derive(PartialEq, Eq, Debug)]
-pub struct Crate {
-    name: String,
-    version: Option<String>,
-}
-
-impl Crate {
-    /// Create a new [`Crate`].
-    /// If `version` is not specified, the latest version is chosen.
-    pub fn new(name: String, version: Option<String>) -> Self {
-        Self { name, version }
-    }
-}
 
 /// Clones a crate.
 pub struct Cloner {
     /// Cargo configuration.
-    pub(crate) config: GlobalContext,
+    config: GlobalContext,
     /// Directory where the crates will be cloned.
     /// Each crate is cloned into a subdirectory of this directory.
-    pub(crate) directory: Utf8PathBuf,
+    directory: Utf8PathBuf,
     /// Where the crates will be cloned from.
-    pub(crate) srcid: SourceId,
+    srcid: SourceId,
 }
 
 impl Cloner {
-    /// Creates a new [`ClonerBuilder`] that:
-    /// - Uses crates.io as source.
-    /// - Clones the crates into the current directory.
-    pub fn builder() -> ClonerBuilder {
-        ClonerBuilder::new()
+    /// Creates a [`Cloner`] that clones crates from `registry`, or from crates.io if `None`.
+    /// `cargo_cwd` is the Cargo working directory: use it to point to the right `.cargo/config.toml`.
+    pub fn new(
+        directory: impl Into<Utf8PathBuf>,
+        registry: Option<&str>,
+        cargo_cwd: Option<Utf8PathBuf>,
+    ) -> CargoResult<Self> {
+        let config = new_cargo_config(cargo_cwd).context("Unable to get cargo config.")?;
+        let srcid = match registry {
+            Some(registry) => SourceId::alt_registry(&config, registry),
+            None => SourceId::crates_io(&config),
+        }
+        .context("can't determine the source id")?;
+        Ok(Self {
+            config,
+            directory: directory.into(),
+            srcid,
+        })
     }
 
     /// Clone the specified crates from the registry.
     /// Each crate is cloned in a subdirectory named as the crate name.
     /// Returns the paths where the crates are cloned.
     /// If a crate doesn't exist, its path is not returned.
-    pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<Utf8PathBuf>> {
+    pub async fn clone(&self, names: &[String]) -> CargoResult<Vec<Utf8PathBuf>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
 
-        let destinations = self.query_destinations(src.as_ref(), crates).await?;
+        let destinations = self.query_destinations(src.as_ref(), names).await?;
         if destinations.is_empty() {
             return Ok(vec![]);
         }
@@ -105,7 +92,7 @@ impl Cloner {
     async fn query_destinations(
         &self,
         src: &dyn Source,
-        crates: &[Crate],
+        names: &[String],
     ) -> CargoResult<Vec<(PackageId, Utf8PathBuf)>> {
         // `get_source` invalidated the index cache, so sparse registries revalidate every
         // index file with the server. Cargo runs these requests in parallel, so poll the
@@ -113,19 +100,13 @@ impl Cloner {
         // Stop at the first error in request order: Cargo doesn't keep a failed sparse
         // `config.json`, so without a copy on disk every pending query would fetch it
         // again, one after another.
-        let mut summaries: FuturesOrdered<_> = crates
+        let mut summaries: FuturesOrdered<_> = names
             .iter()
-            .map(async |crate_| {
-                let summary =
-                    query_latest_package_summary(src, &crate_.name, crate_.version.as_deref())
-                        .await;
-                (crate_, summary)
-            })
+            .map(async |name| (name, query_latest_package_summary(src, name).await))
             .collect();
 
         let mut destinations = vec![];
-        while let Some((crate_, summary)) = summaries.next().await {
-            let name = &crate_.name;
+        while let Some((name, summary)) = summaries.next().await {
             match summary.with_context(|| format!("failed to query package {name}"))? {
                 Some(summary) => {
                     let dest_path = self.directory.join(name);
@@ -134,10 +115,7 @@ impl Cloner {
                     })?;
                     destinations.push((summary.package_id(), dest_path));
                 }
-                None => warn!(
-                    "Package `{name}@{}` not found",
-                    crate_.version.as_deref().unwrap_or("*.*.*")
-                ),
+                None => warn!("Package `{name}` not found"),
             }
         }
         Ok(destinations)
@@ -151,14 +129,8 @@ impl Cloner {
     }
 
     fn get_source(&self) -> CargoResult<Box<dyn Source + '_>> {
-        let source = if self.srcid.is_path() {
-            let path = self.srcid.url().to_file_path().expect("path must be valid");
-            Box::new(PathSource::new(&path, self.srcid, &self.config))
-        } else {
-            let map = SourceConfigMap::new(&self.config)?;
-            map.load(self.srcid)?
-        };
-
+        let map = SourceConfigMap::new(&self.config)?;
+        let source = map.load(self.srcid)?;
         source.invalidate_cache();
         Ok(source)
     }
@@ -182,9 +154,8 @@ fn check_destination(dest_path: &Utf8Path) -> CargoResult<()> {
 async fn query_latest_package_summary(
     src: &dyn Source,
     name: &str,
-    vers: Option<&str>,
 ) -> CargoResult<Option<IndexSummary>> {
-    let dep = Dependency::parse(name, vers, src.source_id())?;
+    let dep = Dependency::parse(name, None, src.source_id())?;
     let summaries = match src.query_vec(&dep, QueryKind::Exact).await {
         Ok(summaries) => summaries,
         Err(err) => return none_or_query_err(err),

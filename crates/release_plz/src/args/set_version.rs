@@ -58,9 +58,8 @@ impl SetVersion {
     pub fn set_version_request(self, config: &Config) -> anyhow::Result<SetVersionRequest> {
         let cargo_metadata = self.cargo_metadata()?;
         let version_changes = self.parse_versions()?;
-        let mut request = SetVersionRequest::new(version_changes, cargo_metadata)?;
-        config.fill_set_version_config(&mut request)?;
-        Ok(request)
+        let request = SetVersionRequest::new(version_changes, cargo_metadata)?;
+        config.fill_set_version_config(request)
     }
 }
 
