@@ -116,7 +116,11 @@ fn update_ignores_inherited_dev_dependency_requirement_changes() {
         // Only the workspace manifest changes: the package has no commits of its own.
         let manifest_path = repo.directory().join("Cargo.toml");
         let manifest = fs_err::read_to_string(&manifest_path).unwrap();
-        fs_err::write(manifest_path, manifest.replace("1.0.0", "1.0.1")).unwrap();
+        fs_err::write(
+            manifest_path,
+            manifest.replace("anyhow = \"1.0.0\"", "anyhow = \"1.0.1\""),
+        )
+        .unwrap();
         repo.add_all_and_commit("chore: update workspace dependency")
             .unwrap();
 
