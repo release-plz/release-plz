@@ -289,6 +289,49 @@ publish_no_verify = true
     assert!(stderr.contains("publish_no_verify"), "{stderr}");
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_dev_dependency_cycles_individually() {
+    // Like a crate and its proc-macro crate, which dev-depends on the crate to test it.
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("lib").with_type(PackageType::Lib),
+        TestPackage::new("macros").with_type(PackageType::Lib),
+    ])
+    .await;
+    let add_dependency = |package: &str, table: &str, dependency: &str| {
+        let manifest_path = context.package_path(package).join("Cargo.toml");
+        let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+        manifest.data[table][dependency] = toml_edit::value({
+            let mut dependency_table = toml_edit::InlineTable::new();
+            dependency_table.insert("path", format!("../{dependency}").into());
+            dependency_table.insert("version", "0.1".into());
+            dependency_table.insert("registry", TEST_REGISTRY.into());
+            dependency_table
+        });
+        manifest.write().unwrap();
+    };
+    add_dependency("lib", "dependencies", "macros");
+    context.run_cargo_check();
+    context.push_all_changes("depend on macros");
+    // Until `lib` is published, Cargo can't resolve the dev-dependency of `macros`,
+    // so publish both packages before adding it.
+    context.run_cargo_publish("macros");
+    context.run_cargo_publish("lib");
+    add_dependency("macros", "dev-dependencies", "lib");
+    for package in ["lib", "macros"] {
+        context.set_package_version(package, &cargo_metadata::semver::Version::new(0, 1, 1));
+    }
+    context.run_cargo_check();
+    context.push_all_changes("bump versions");
+    // Cargo rejects the cycle if it checks both packages together, while the real
+    // release publishes them one at a time, resolving the dev-dependency to `lib` 0.1.0.
+    context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .success();
+}
+
 #[cfg(unix)]
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]

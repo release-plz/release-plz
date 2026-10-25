@@ -48,6 +48,8 @@ Release-plz checks packages separately when:
   checks multiple packages, so these packages are checked individually.
 - Cargo is older than 1.90, which can't check multiple packages together:
   release-plz warns and checks each package individually.
+- Cargo can't check them together because of a dependency cycle, e.g. when a
+  package dev-depends on a package that depends on it.
 
 A package that depends on an unpublished workspace package only passes the check
 if both packages are checked together.

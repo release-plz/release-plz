@@ -4,10 +4,10 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
-use tracing::warn;
+use tracing::{info, warn};
 
 use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
-use crate::cargo::run_cargo;
+use crate::cargo::{CmdOutput, run_cargo};
 
 /// Possible cause of a failed check when packages are checked separately.
 const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished workspace package, \
@@ -81,34 +81,50 @@ impl PublishBatches {
         }
         for batch in &self.batches {
             if check_individually {
-                for package in &batch.packages {
-                    self.dry_run(input, batch, std::slice::from_ref(package))?;
-                }
+                self.check_individually(input, batch)?;
             } else {
-                self.dry_run(input, batch, &batch.packages)?;
+                self.check_together(input, batch)?;
             }
         }
         Ok(())
     }
 
-    /// Run `cargo publish --dry-run` for `packages` of `batch`.
-    fn dry_run(
+    fn check_together(&self, input: &ReleaseRequest, batch: &PublishBatch) -> anyhow::Result<()> {
+        let output = batch.dry_run(input, &batch.packages)?;
+        // Cargo rejects selected packages that form a cycle, e.g. a proc-macro crate that
+        // dev-depends on the crate depending on it. The real release publishes them one at
+        // a time, so Cargo resolves the dev-dependency to the version in the registry.
+        if batch.packages.len() > 1
+            && !output.status.success()
+            && output
+                .stderr
+                .contains("circular dependency detected while publishing")
+        {
+            info!(
+                "checking {} individually, because Cargo can't check packages with a \
+                 dependency cycle together",
+                batch.packages.join(", ")
+            );
+            return self.check_individually(input, batch);
+        }
+        self.ensure_success(&output, &batch.packages)
+    }
+
+    fn check_individually(
         &self,
         input: &ReleaseRequest,
         batch: &PublishBatch,
-        packages: &[String],
     ) -> anyhow::Result<()> {
-        let registry = batch.registry.as_deref();
-        let token = input.find_registry_token(registry)?;
-        let output = run_cargo_publish(
-            input,
-            &batch.manifest_path,
-            packages,
-            &batch.options,
-            registry,
-            token.as_ref(),
-        )
-        .context("failed to run cargo publish --dry-run")?;
+        for package in &batch.packages {
+            let packages = std::slice::from_ref(package);
+            let output = batch.dry_run(input, packages)?;
+            self.ensure_success(&output, packages)?;
+        }
+        Ok(())
+    }
+
+    /// Return an error with the output of Cargo if the check of `packages` failed.
+    fn ensure_success(&self, output: &CmdOutput, packages: &[String]) -> anyhow::Result<()> {
         if !output.status.success() {
             // Only hint if some unpublished packages weren't part of this check.
             let package_count: usize = self.batches.iter().map(|b| b.packages.len()).sum();
@@ -124,6 +140,23 @@ impl PublishBatches {
             );
         }
         Ok(())
+    }
+}
+
+impl PublishBatch {
+    /// Run `cargo publish --dry-run` for `packages` of this batch.
+    fn dry_run(&self, input: &ReleaseRequest, packages: &[String]) -> anyhow::Result<CmdOutput> {
+        let registry = self.registry.as_deref();
+        let token = input.find_registry_token(registry)?;
+        run_cargo_publish(
+            input,
+            &self.manifest_path,
+            packages,
+            &self.options,
+            registry,
+            token.as_ref(),
+        )
+        .context("failed to run cargo publish --dry-run")
     }
 }
 
