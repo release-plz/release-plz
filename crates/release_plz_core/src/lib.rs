@@ -1,5 +1,4 @@
 mod cargo;
-mod cargo_hash_kind;
 mod cargo_vcs_info;
 mod changelog;
 mod changelog_filler;
@@ -11,6 +10,7 @@ mod diff;
 mod download;
 pub mod fs_utils;
 mod git;
+pub mod http_client;
 mod lock_compare;
 mod next_ver;
 mod package_compare;
@@ -20,17 +20,22 @@ mod pr_parser;
 mod project;
 mod registry_packages;
 mod release_order;
+pub(crate) mod release_regex;
 mod repo_url;
+mod response_ext;
 pub mod semver_check;
 mod tera;
+#[cfg(test)]
+mod test_utils;
 mod tmp_repo;
 mod toml_compare;
+mod url_utils;
 mod version;
 
 pub use changelog::*;
 pub use command::*;
 pub use download::{PackageDownloader, read_package};
-pub use git::forge::{GitClient, GitForge, GitPr};
+pub use git::forge::{ForgeType, GitClient, GitForge, GitPr};
 pub use git::gitea_client::Gitea;
 pub use git::github_client::GitHub;
 pub use git::gitlab_client::GitLab;

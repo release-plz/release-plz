@@ -22,11 +22,8 @@ impl PackagePath for Package {
 }
 
 pub fn manifest_dir(manifest: &Utf8Path) -> anyhow::Result<&Utf8Path> {
-    let manifest_dir = manifest.parent().ok_or_else(|| {
-        anyhow!(
-            "Cannot find directory where manifest {:?} is located",
-            manifest
-        )
-    })?;
+    let manifest_dir = manifest
+        .parent()
+        .ok_or_else(|| anyhow!("Cannot find directory where manifest {manifest:?} is located"))?;
     Ok(manifest_dir)
 }

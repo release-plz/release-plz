@@ -13,6 +13,12 @@ env:
   RUSTFLAGS: -D warnings
   RUSTUP_MAX_RETRIES: 10
 
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 defaults:
   run:
     shell: bash
@@ -21,7 +27,7 @@ jobs:
   upload-assets:
     name: ${{ matrix.target }}
     permissions:
-      contents: write
+      contents: write # to upload release assets
     if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
     runs-on: ${{ matrix.os }}
     strategy:
@@ -34,8 +40,6 @@ jobs:
             os: windows-2022
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
-          - target: x86_64-apple-darwin
-            os: macos-13
           - target: x86_64-pc-windows-msvc
             os: windows-2022
           - target: x86_64-unknown-linux-musl
@@ -45,28 +49,35 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
           - target: aarch64-apple-darwin
-            os: macos-13
+            os: macos-15
           - target: x86_64-unknown-freebsd
             os: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Don't cache when uploading artifacts for security.
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9
-      - uses: taiki-e/setup-cross-toolchain-action@0123528f956f923e7a476f4cc04882bc005e7c89 # v1.29.1
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+          # Set build-warnings to warn for aarch64-unknown-linux-musl.
+          # Cross's ARM64 musl linker wrapper emits shell traces as linker warnings.
+          # RUSTFLAGS still denies compiler warnings for this target.
+          build-warnings: ${{ matrix.target == 'aarch64-unknown-linux-musl' && 'warn' || 'deny' }}
+      - uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@735e5933943122c5ac182670a935f54a949265c1 # v2.52.4
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cross
         if: contains(matrix.target, '-musl')
       - run: echo "RUSTFLAGS=${RUSTFLAGS} -C target-feature=+crt-static" >> "${GITHUB_ENV}"
         if: endsWith(matrix.target, 'windows-msvc')
-      - uses: taiki-e/upload-rust-binary-action@db101489b509ad1c7acce163e118eb36a1650f98 # v1.26.0
+      - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: release-plz
           target: ${{ matrix.target }}
@@ -78,7 +89,8 @@ jobs:
     name: Draft social media announcement
     needs: upload-assets
     if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
+    environment: announce
     steps:
       # We use typefully to cross-post the release announcement
       # to release-plz social media accounts.
@@ -88,11 +100,30 @@ jobs:
         env:
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_BODY: ${{ github.event.release.body }}
-        run: >-
-          curl -X POST "https://api.typefully.com/v1/drafts/"
-          -H "Content-Type: application/json"
-          -H "X-API-KEY: ${{ secrets.TYPEFULLY_API_KEY }}"
-          -d "{
-            \"content\": \"🤖 New release: ${RELEASE_NAME}\n\n${RELEASE_BODY}\",
-            \"threadify\": true
-          }"
+          TYPEFULLY_API_KEY: ${{ secrets.TYPEFULLY_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Typefully v2 API expects explicit per-platform payloads.
+          long_text=$(printf '🤖 New release: %s\n\n%s\n' "$RELEASE_NAME" "$RELEASE_BODY")
+
+          payload=$(jq -n \
+            --arg long_text "$long_text" \
+            '{
+              platforms: {
+                x: { enabled: true, posts: [{ text: $long_text }] },
+                linkedin: { enabled: true, posts: [{ text: $long_text }] },
+                mastodon: { enabled: true, posts: [{ text: $long_text }] },
+                bluesky: { enabled: true, posts: [{ text: $long_text }] }
+              }
+            }')
+
+          response=$(curl -sS --fail \
+            --request POST "https://api.typefully.com/v2/social-sets/201880/drafts" \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer ${TYPEFULLY_API_KEY}" \
+            --data "$payload")
+
+          draft_id=$(printf '%s' "$response" | jq -r '.id // empty')
+
+          echo "Typefully draft created: id=${draft_id}"

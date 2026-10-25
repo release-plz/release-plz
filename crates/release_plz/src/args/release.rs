@@ -1,17 +1,16 @@
 use std::path::{Path, PathBuf};
 
-use cargo_metadata::camino::Utf8Path;
-use clap::{
-    ValueEnum,
-    builder::{NonEmptyStringValueParser, PathBufValueParser},
-};
-use release_plz_core::{GitForge, GitHub, GitLab, Gitea, ReleaseRequest};
+use clap::builder::NonEmptyStringValueParser;
+use release_plz_core::ReleaseRequest;
 use secrecy::SecretString;
 
 use crate::config::Config;
 
 use super::{
-    OutputType, config_command::ConfigCommand, manifest_command::ManifestCommand,
+    OutputType,
+    config_path::ConfigPath,
+    git_forge::{GitForgeKind, git_forge},
+    manifest_command::ManifestCommand,
     repo_command::RepoCommand,
 };
 
@@ -20,70 +19,58 @@ pub struct Release {
     /// Path to the Cargo.toml of the project you want to release.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
     /// Both Cargo workspaces and single packages are supported.
-    #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
+    #[arg(long, alias = "project-manifest")]
     manifest_path: Option<PathBuf>,
+
     /// Registry where you want to publish the packages.
     /// The registry name needs to be present in the Cargo config.
     /// If unspecified, the `publish` field of the package manifest is used.
     /// If the `publish` field is empty, crates.io is used.
     #[arg(long)]
     registry: Option<String>,
+
     /// Token used to publish to the cargo registry.
     /// Override the `CARGO_REGISTRY_TOKEN` environment variable, or the `CARGO_REGISTRIES_<NAME>_TOKEN`
     /// environment variable, used for registry specified in the `registry` input variable.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     token: Option<String>,
+
     /// Perform all checks without uploading.
     #[arg(long)]
     pub dry_run: bool,
+
     /// Don't verify the contents by building them.
     /// When you pass this flag, `release-plz` adds the `--no-verify` flag to `cargo publish`.
     #[arg(long)]
     pub no_verify: bool,
+
     /// Allow dirty working directories to be packaged.
     /// When you pass this flag, `release-plz` adds the `--allow-dirty` flag to `cargo publish`.
     #[arg(long)]
     pub allow_dirty: bool,
+
     /// GitHub/Gitea/GitLab repository url where your project is hosted.
     /// It is used to create the git release.
     /// It defaults to the url of the default remote.
     #[arg(long, value_parser = NonEmptyStringValueParser::new())]
     pub repo_url: Option<String>,
+
     /// Git token used to publish the GitHub/Gitea/GitLab release.
     #[arg(long, value_parser = NonEmptyStringValueParser::new(), env, hide_env_values=true)]
     pub git_token: Option<String>,
-    /// Kind of git forge
-    #[arg(long, visible_alias = "backend", value_enum, default_value_t = ReleaseGitForgeKind::Github)]
-    forge: ReleaseGitForgeKind,
+
+    /// Kind of git forge.
+    #[arg(long, visible_alias = "backend", value_enum)]
+    forge: Option<GitForgeKind>,
+
     /// Path to the release-plz config file.
-    /// Default: `./release-plz.toml`.
-    /// If no config file is found, the default configuration is used.
-    #[arg(
-        long,
-        value_name = "PATH",
-        value_parser = PathBufValueParser::new()
-    )]
-    config: Option<PathBuf>,
+    #[command(flatten)]
+    pub config: ConfigPath,
+
     /// Output format. If specified, prints the version and the tag of the
     /// released packages.
     #[arg(short, long, value_enum)]
     pub output: Option<OutputType>,
-}
-
-#[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReleaseGitForgeKind {
-    #[value(name = "github")]
-    Github,
-    #[value(name = "gitea")]
-    Gitea,
-    #[value(name = "gitlab")]
-    Gitlab,
-}
-
-impl ConfigCommand for Release {
-    fn config_path(&self) -> Option<&Utf8Path> {
-        self.config.as_deref().and_then(|p| Utf8Path::from_path(p))
-    }
 }
 
 impl Release {
@@ -96,15 +83,7 @@ impl Release {
             let git_token = SecretString::from(git_token.clone());
             let repo_url = self.get_repo_url(config)?;
             let release = release_plz_core::GitRelease {
-                forge: match self.forge {
-                    ReleaseGitForgeKind::Gitea => GitForge::Gitea(Gitea::new(repo_url, git_token)?),
-                    ReleaseGitForgeKind::Github => {
-                        GitForge::Github(GitHub::new(repo_url.owner, repo_url.name, git_token))
-                    }
-                    ReleaseGitForgeKind::Gitlab => {
-                        GitForge::Gitlab(GitLab::new(repo_url, git_token)?)
-                    }
-                },
+                forge: git_forge(repo_url, git_token, self.forge, "create release")?,
             };
             Some(release)
         } else {
@@ -130,7 +109,7 @@ impl Release {
 
         req = req.with_publish_timeout(config.workspace.publish_timeout()?);
 
-        req = config.fill_release_config(self.allow_dirty, self.no_verify, req);
+        req = config.fill_release_config(self.allow_dirty, self.no_verify, req)?;
 
         req = req.with_branch_prefix(config.workspace.pr_branch_prefix.clone());
 
@@ -213,8 +192,8 @@ mod tests {
             dry_run: false,
             repo_url: None,
             git_token: None,
-            forge: ReleaseGitForgeKind::Github,
-            config: None,
+            forge: None,
+            config: ConfigPath::default(),
             output: None,
         }
     }

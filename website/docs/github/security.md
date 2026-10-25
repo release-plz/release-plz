@@ -20,8 +20,8 @@ jobs:
         uses: release-plz/action@v0.5
 ```
 
-[This](https://github.com/release-plz/action/blob/main/.github/workflows/update_main_version.yml)
-script updates this tag to whatever the latest `0.5.x` version is.
+The [updater](https://github.com/release-plz/action/blob/main/updater/src/release.rs)
+updates this tag to whatever the latest `0.5.x` version is.
 This means that if the latest version of release-plz is 0.5.34, with `v0.5` you will use that version.
 If tomorrow, release-plz 0.5.35 is released, you will use that version without the
 need to update your workflow file.
@@ -79,44 +79,3 @@ An alternative is storing the token in a `.env` file and adding this file to the
 To export the variables, `source` this file or use an external tool like
 [dotenvx](https://github.com/dotenvx/dotenvx), which also supports encryption, so that an
 attacker who has access to the `.env` file cannot read the token easily.
-
-## `zizmor` warning
-
-[zizmor](https://github.com/woodruffw/zizmor) is a static analysis tool for GitHub Actions.
-When you run it on the release-plz [workflow](./quickstart.md#3-setup-the-workflow), it will
-emit the [artipacked](https://woodruffw.github.io/zizmor/audits/#artipacked) warning:
-
-```text
-warning[artipacked]: credential persistence through GitHub Actions artifacts
-  --> .github/workflows/release-plz.yml:24:9
-   |
-24 |         - name: Checkout repository
-   |  _________-
-25 | |         uses: actions/checkout@v4
-26 | |         with:
-27 | |           fetch-depth: 0
-   | |________________________- does not set persist-credentials: false
-   |
-   = note: audit confidence → Low
-```
-
-This warning is emitted because the `actions/checkout` action does not set
-`persist-credentials: false` in the `with` section.
-
-Unfortunately, `persist-credentials` needs to be set to `true` (which is the default)
-for the release-plz action to work because release-plz needs the token generated
-by the `actions/checkout` action to run git commands like `git tag` and `git push`.
-
-To solve the warning, set `persist-credentials: true` in the `with` section
-of the `actions/checkout` action:
-
-```yaml
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-# highlight-start
-          persist-credentials: true
-# highlight-end
-```

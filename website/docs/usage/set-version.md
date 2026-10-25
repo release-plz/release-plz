@@ -2,8 +2,18 @@
 
 Edit the version of a package in Cargo.toml and changelog.
 
+Like [`release-plz update`](update.md), this command looks for the changelog of each package
+at the [`changelog_path`](../config.md#the-changelog_path-field) and doesn't edit the changelog
+of packages with [`changelog_update`](../config.md#the-changelog_update-field) set to `false`.
+
 - In a project containing a single package pass the version you want to set.
   E.g. `release-plz set-version 1.2.3`
+
+- In a workspace with `[workspace.package].version`, pass a version without a package name
+  to update the workspace version. E.g. `release-plz set-version 1.2.3`.
+  This updates the changelogs of all packages with `version.workspace = true`,
+  preserving their version inheritance. Packages with their own version keep it.
+  Local dependency requirements and an existing `Cargo.lock` are updated as well.
 
 - In a workspace, specify a version with the syntax `<package_name>@<version>`.
   E.g. `release-plz set-version my_crate@1.2.3`.

@@ -12,9 +12,10 @@ For example:
 ```yaml
 steps:
   - name: Checkout repository
-    uses: actions/checkout@v4
+    uses: actions/checkout@v6
     with:
       fetch-depth: 0
+      persist-credentials: false
 # highlight-next-line
       submodules: recursive
 ```
@@ -56,9 +57,10 @@ If you want to run other checks before releasing (e.g. `cargo test`), you have t
          cancel-in-progress: false
        steps:
          - name: Checkout repository
-           uses: actions/checkout@v4
+           uses: actions/checkout@v6
            with:
              fetch-depth: 0
+             persist-credentials: false
          - name: Install Rust toolchain
            uses: dtolnay/rust-toolchain@stable
    # highlight-next-line
@@ -91,9 +93,10 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Close old release PR

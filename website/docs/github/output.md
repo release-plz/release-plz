@@ -16,7 +16,7 @@ When the action runs with `command: release-pr`, it outputs the following proper
     Each entry is an object containing:
     - `package_name`: The name of the edited package.
     - `version`: The next version of the package. The PR updates the package to this version.
-- `prs_created`: Whether release-plz created any release PR. *Boolean.*
+- `prs_created`: Whether release-plz created any release PR. *"true" or "false".*
 
 When the action runs with `command: release`, it outputs the following properties:
 
@@ -32,7 +32,7 @@ When the action runs with `command: release`, it outputs the following propertie
     [git_tag_enable](../config.md#the-git_tag_enable-field) set to `false`, so that
     you can use this to create the git tag yourself.
   - `version`: The version of the package that was released.
-- `releases_created`: Whether release-plz released any package. *Boolean.*
+- `releases_created`: Whether release-plz released any package. *"true" or "false".*
 
 ## Example: read the output
 
@@ -45,11 +45,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install Rust toolchain
+          persist-credentials: false
+      - &install-rust
+        name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
 # highlight-next-line
@@ -105,12 +108,8 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - *checkout
+      - *install-rust
       - name: Run release-plz
 # highlight-next-line
         id: release-plz # <--- ID used to refer to the outputs. Don't forget it.
@@ -163,9 +162,10 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
@@ -230,9 +230,11 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+# highlight-next-line
+          persist-credentials: true
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
@@ -261,3 +263,8 @@ jobs:
             git push
           fi
 ```
+
+:::info
+To learn why we set `persist-credentials: true`, see
+[Persist credentials](../github/persist-credentials.md).
+:::

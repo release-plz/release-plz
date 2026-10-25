@@ -7,7 +7,6 @@ use tracing::{debug, trace};
 use url::Url;
 
 use crate::GitClient;
-use crate::git::forge::Remote;
 
 /// Commit all the changes (except typestates) that are present in the repository
 /// using GitHub's [GraphQL api](https://docs.github.com/en/graphql/reference/mutations#createcommitonbranch).
@@ -17,9 +16,9 @@ pub async fn commit_changes(
     repo: &Repo,
     message: &str,
     branch: &str,
-) -> Result<()> {
+) -> Result<String> {
     let commit = GithubCommit::new(&client.remote.owner_slash_repo(), repo, message, branch)?;
-    let graphql_endpoint = get_graphql_endpoint(&client.remote);
+    let graphql_endpoint = graphql_endpoint_from_rest_base(&client.remote.base_url);
 
     let commit_query = commit
         .to_query_json()
@@ -44,14 +43,23 @@ pub async fn commit_changes(
         );
     }
 
-    Ok(())
+    let commit_sha = res
+        .pointer("/data/createCommitOnBranch/commit/oid")
+        .and_then(Value::as_str)
+        .with_context(|| format!("createCommitOnBranch did not return commit object: {res}"))?
+        .to_owned();
+
+    Ok(commit_sha)
 }
 
-fn get_graphql_endpoint(remote: &Remote) -> Url {
-    let mut base_url = remote.base_url.clone();
-    base_url.set_path("graphql");
-
-    base_url
+fn graphql_endpoint_from_rest_base(rest_base: &Url) -> Url {
+    let mut graphql = rest_base.clone();
+    if rest_base.host_str() == Some("api.github.com") {
+        graphql.set_path("/graphql");
+    } else {
+        graphql.set_path("/api/graphql");
+    }
+    graphql
 }
 
 // get the list of changes in repository excluding typechanges and removed files
@@ -89,7 +97,7 @@ impl GithubCommit {
 
     // format a graphql query json payload to create commit on branch
     async fn to_query_json(&self) -> Result<serde_json::Value> {
-        let GithubCommit {
+        let Self {
             owner_slash_repo,
             branch,
             message,
@@ -144,17 +152,14 @@ impl GithubCommit {
 }
 
 fn mutation() -> String {
-    const MUTATION: &str = r#"
+    const MUTATION: &str = r"
             mutation($input: CreateCommitOnBranchInput!) {
               createCommitOnBranch(input: $input) {
                 commit {
-                  author {
-                    name,
-                    email
-                  }
+                  oid
                 }
               }
-            }"#;
+            }";
 
     MUTATION.replace(|c: char| c.is_whitespace(), "")
 }
@@ -166,6 +171,30 @@ mod tests {
     use super::*;
 
     use crate::copy_dir::create_symlink;
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_dotcom() {
+        let rest: Url = "https://api.github.com/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(graphql.as_str(), "https://api.github.com/graphql");
+    }
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_ghes() {
+        let rest: Url = "https://github.example.com/api/v3/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(graphql.as_str(), "https://github.example.com/api/graphql");
+    }
+
+    #[test]
+    fn graphql_endpoint_from_rest_base_ghes_with_port() {
+        let rest: Url = "https://github.example.com:8443/api/v3/".parse().unwrap();
+        let graphql = graphql_endpoint_from_rest_base(&rest);
+        assert_eq!(
+            graphql.as_str(),
+            "https://github.example.com:8443/api/graphql"
+        );
+    }
 
     #[tokio::test]
     async fn github_commit_query() {
@@ -253,7 +282,7 @@ mod tests {
 
         assert_eq!(expected_variables, query["variables"]);
 
-        expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{author{name,email}}}}""#]]
+        expect_test::expect![[r#""mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}""#]]
         .assert_eq(&query["query"].to_string());
     }
 }

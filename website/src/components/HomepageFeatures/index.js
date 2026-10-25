@@ -7,8 +7,7 @@ const FeatureList = [
     title: "Changelog generation 📝",
     description: (
       <>
-        Release-plz updates your changelogs with{" "}
-        <a href="https://git-cliff.org">git-cliff</a> using{" "}
+        Release-plz updates your changelogs with <a href="https://git-cliff.org">git-cliff</a> using{" "}
         <a href="https://keepachangelog.com/en/1.0.0/">Keep a changelog</a> format by default.
       </>
     ),
@@ -30,9 +29,8 @@ const FeatureList = [
     description: (
       <>
         Release-plz opens a PR with the changes to <code>CHANGELOG.md</code>,{" "}
-        <code>Cargo.toml</code>{" "}
-        and <code>Cargo.lock</code>. When you merge the PR, release-plz creates the tag and the
-        release on GitHub/Gitea/GitLab and publishes the crate to crates.io.
+        <code>Cargo.toml</code> and <code>Cargo.lock</code>. When you merge the PR, release-plz
+        creates the tag and the release on GitHub/Gitea/GitLab and publishes the crate to crates.io.
       </>
     ),
   },

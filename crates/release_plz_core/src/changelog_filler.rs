@@ -17,7 +17,11 @@ pub struct RequiredInfo {
 }
 
 impl RequiredInfo {
-    fn is_remote_required(&self) -> bool {
+    fn is_local_required(&self) -> bool {
+        self.author_name || self.author_email || self.committer_name || self.committer_email
+    }
+
+    pub(crate) fn is_remote_required(&self) -> bool {
         self.remote_username || self.remote_pr_number
     }
 }
@@ -29,22 +33,28 @@ pub async fn fill_commit<'a>(
     all_commits: &mut HashMap<String, &'a Commit>,
     git_client: Option<&GitClient>,
 ) -> anyhow::Result<()> {
+    if !required_info.is_local_required() && !required_info.is_remote_required() {
+        return Ok(());
+    }
     if let Some(existing_commit) = all_commits.get(&commit.id) {
         commit.author = existing_commit.author.clone();
         commit.committer = existing_commit.committer.clone();
         commit.remote = existing_commit.remote.clone();
     } else {
-        if required_info.author_name {
-            commit.author.name = Some(repository.get_author_name(&commit.id)?);
-        }
-        if required_info.author_email {
-            commit.author.email = Some(repository.get_author_email(&commit.id)?);
-        }
-        if required_info.committer_name {
-            commit.committer.name = Some(repository.get_committer_name(&commit.id)?);
-        }
-        if required_info.committer_email {
-            commit.committer.email = Some(repository.get_committer_email(&commit.id)?);
+        if required_info.is_local_required() {
+            let signatures = repository.get_commit_signatures(&commit.id)?;
+            if required_info.author_name {
+                commit.author.name = Some(signatures.author_name);
+            }
+            if required_info.author_email {
+                commit.author.email = Some(signatures.author_email);
+            }
+            if required_info.committer_name {
+                commit.committer.name = Some(signatures.committer_name);
+            }
+            if required_info.committer_email {
+                commit.committer.email = Some(signatures.committer_email);
+            }
         }
         if required_info.is_remote_required() {
             let git_client = git_client
@@ -82,14 +92,12 @@ pub fn get_required_info(changelog_config: &ChangelogConfig) -> RequiredInfo {
         remote_pr_number: false,
     };
 
-    if let Some(body) = changelog_config.body.as_ref() {
-        required_info.author_name = body.contains("author.name");
-        required_info.author_email = body.contains("author.email");
-        required_info.committer_name = body.contains("committer.name");
-        required_info.committer_email = body.contains("committer.email");
-        required_info.remote_username = body.contains("remote.username");
-        required_info.remote_pr_number = body.contains("remote.pr_number");
-    }
+    required_info.author_name = changelog_config.body.contains("author.name");
+    required_info.author_email = changelog_config.body.contains("author.email");
+    required_info.committer_name = changelog_config.body.contains("committer.name");
+    required_info.committer_email = changelog_config.body.contains("committer.email");
+    required_info.remote_username = changelog_config.body.contains("remote.username");
+    required_info.remote_pr_number = changelog_config.body.contains("remote.pr_number");
 
     required_info
 }

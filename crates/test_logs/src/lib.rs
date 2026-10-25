@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-use tracing_log::LogTracer;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 pub fn init() {
@@ -15,14 +14,11 @@ fn _init() {
         let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new("debug,hyper=info"));
 
-        let subscriber = FmtSubscriber::builder()
+        FmtSubscriber::builder()
             .with_env_filter(env_filter)
             .pretty()
-            .finish();
-
-        tracing::subscriber::set_global_default(subscriber)
+            .try_init()
             .expect("setting default subscriber failed");
-        LogTracer::init().expect("Failed to initialise log tracer capturing.");
     }
 }
 

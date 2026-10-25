@@ -1,14 +1,16 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context;
-use cargo_metadata::{Package, camino::Utf8Path};
+use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
-use itertools::Itertools;
 use tempfile::{TempDir, tempdir};
 
-use crate::{PackagePath, cargo_vcs_info, download, next_ver};
+use crate::{
+    PackagePath, cargo_vcs_info, download, lock_compare::WorkspaceLockfile, next_ver,
+    package_compare::CARGO_VCS_INFO,
+};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PackagesCollection {
     packages: BTreeMap<String, RegistryPackage>,
     /// Packages might be downloaded and stored in a temporary directory.
@@ -21,9 +23,60 @@ pub struct RegistryPackage {
     pub package: Package,
     /// The SHA1 hash of the commit when the package was published.
     sha1: Option<String>,
+    /// Immutable workspace shared by packages released from the same Git worktree.
+    released_workspace: Option<Arc<ReleasedWorkspace>>,
+}
+
+/// The workspace of a git-only package, reconstructed at the commit it was released from.
+#[derive(Debug)]
+pub(crate) struct ReleasedWorkspace {
+    pub(crate) metadata: Metadata,
+    /// The parsed `Cargo.lock` committed at the release, if any.
+    ///
+    /// Parsed as soon as the workspace is reconstructed, so it keeps the
+    /// committed contents even if a later cargo command rewrites a stale
+    /// lockfile on disk.
+    lockfile: Option<WorkspaceLockfile>,
+    /// The commit the workspace was reconstructed from.
+    pub(crate) commit: String,
+}
+
+impl ReleasedWorkspace {
+    pub(crate) fn new(metadata: Metadata, commit: String) -> anyhow::Result<Self> {
+        let lockfile = WorkspaceLockfile::load_committed(&metadata, &commit)?;
+        Ok(Self {
+            metadata,
+            lockfile,
+            commit,
+        })
+    }
+
+    /// The dependency graph of the `Cargo.lock` committed at the release.
+    ///
+    /// Returns `None` when no lockfile was committed.
+    pub(crate) fn lockfile(&self) -> Option<&WorkspaceLockfile> {
+        self.lockfile.as_ref()
+    }
 }
 
 impl RegistryPackage {
+    pub fn new(package: Package, sha1: Option<String>) -> Self {
+        Self {
+            package,
+            sha1,
+            released_workspace: None,
+        }
+    }
+
+    pub(crate) fn with_released_workspace(mut self, workspace: Arc<ReleasedWorkspace>) -> Self {
+        self.released_workspace = Some(workspace);
+        self
+    }
+
+    pub(crate) fn released_workspace(&self) -> Option<&ReleasedWorkspace> {
+        self.released_workspace.as_deref()
+    }
+
     pub fn published_at_sha1(&self) -> Option<&str> {
         self.sha1.as_deref()
     }
@@ -37,6 +90,11 @@ impl PackagesCollection {
     pub fn get_registry_package(&self, package_name: &str) -> Option<&RegistryPackage> {
         self.packages.get(package_name)
     }
+
+    pub fn with_packages(mut self, packages: BTreeMap<String, RegistryPackage>) -> Self {
+        self.packages = packages;
+        self
+    }
 }
 
 /// Retrieve the latest version of the packages.
@@ -47,7 +105,7 @@ impl PackagesCollection {
 ///
 /// - If `registry` is provided, the packages are downloaded from the specified registry.
 /// - Otherwise, the packages are downloaded from crates.io.
-pub fn get_registry_packages(
+pub async fn get_registry_packages(
     registry_manifest: Option<&Utf8Path>,
     local_packages: &[&Package],
     registry: Option<&str>,
@@ -57,10 +115,7 @@ pub fn get_registry_packages(
             None,
             next_ver::publishable_packages_from_manifest(manifest)?
                 .into_iter()
-                .map(|p| RegistryPackage {
-                    package: p,
-                    sha1: None,
-                })
+                .map(|p| RegistryPackage::new(p, None))
                 .collect(),
         ),
         None => {
@@ -68,7 +123,7 @@ pub fn get_registry_packages(
             let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
 
             let registry_packages =
-                download_packages_from_registry(local_packages, registry, directory)?;
+                download_packages_from_registry(local_packages, registry, directory).await?;
 
             // After downloading the package, we initialize a git repo in the package.
             // This is because if cargo doesn't find a git repo in the package, it doesn't
@@ -91,12 +146,12 @@ pub fn get_registry_packages(
     })
 }
 
-fn download_packages_from_registry(
+async fn download_packages_from_registry(
     local_packages: &[&Package],
     registry: Option<&str>,
     directory: &str,
 ) -> anyhow::Result<Vec<Package>> {
-    let packages_grouped_by_registry = local_packages.iter().chunk_by(|p| {
+    fn package_registry<'a>(p: &'a Package, registry: Option<&'a str>) -> Option<&'a str> {
         // If registry is not provided, fallback to the Cargo.toml `publish` field.
         registry.or_else(|| {
             p.publish
@@ -105,38 +160,41 @@ fn download_packages_from_registry(
                 .and_then(|p| p.first())
                 .map(|x| x.as_str())
         })
-    });
+    }
+    let packages_grouped_by_registry = local_packages
+        .chunk_by(|a, b| package_registry(a, registry) == package_registry(b, registry));
 
-    // Clone from the different registries in parallel
-    std::thread::scope(|scope| {
-        let mut registry_packages: Vec<Package> = vec![];
-        let mut handles = Vec::new();
-        for (registry, packages) in &packages_grouped_by_registry {
-            let packages_names: Vec<&str> = packages.map(|p| p.name.as_str()).collect();
-            let mut downloader = download::PackageDownloader::new(packages_names, directory);
-            if let Some(registry) = registry {
-                downloader = downloader.with_registry(registry.to_string());
-            }
-            let handle = scope.spawn(move || downloader.download());
-            handles.push(handle);
+    let mut downloaders = Vec::new();
+    for packages in packages_grouped_by_registry {
+        let registry = package_registry(packages[0], registry);
+        let packages_names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+        let mut downloader = download::PackageDownloader::new(packages_names, directory);
+        if let Some(registry) = registry {
+            downloader = downloader.with_registry(registry.to_string());
         }
+        downloaders.push(downloader);
+    }
 
-        for handle in handles {
-            let downloaded_packages = handle
-                .join()
-                .expect("Panicked while downloading packages")
-                .context("Failed to download packages")?;
-            registry_packages.extend(downloaded_packages);
-        }
-        Ok(registry_packages)
-    })
+    let mut registry_packages = Vec::new();
+    for downloader in &downloaders {
+        // Download registry groups sequentially. `Cloner::clone` holds Cargo's
+        // blocking package-cache lock while awaiting registry queries, so polling
+        // multiple downloads in the same async task can deadlock.
+        let packages = downloader
+            .download()
+            .await
+            .context("Failed to download packages")?;
+        registry_packages.extend(packages);
+    }
+
+    Ok(registry_packages)
 }
 
 fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<RegistryPackage>> {
     let mut registry_packages = vec![];
     for p in packages {
         let package_path = p.package_path().unwrap();
-        let cargo_vcs_info_path = package_path.join(".cargo_vcs_info.json");
+        let cargo_vcs_info_path = package_path.join(CARGO_VCS_INFO);
         // cargo_vcs_info is only present if `cargo publish` wasn't used with
         // the `--allow-dirty` flag inside a git repo.
         let sha1 = if cargo_vcs_info_path.exists() {
@@ -152,17 +210,17 @@ fn initialize_registry_package(packages: Vec<Package>) -> anyhow::Result<Vec<Reg
         if !git_repo.exists() {
             git_in_dir(package_path, &["init"])?;
             git_in_dir(package_path, &["add", "."])?;
-            if let Err(e) = commit_init() {
-                if e.to_string().trim().starts_with("Author identity unknown") {
-                    // we can use any email and name here, as this repository is only used
-                    // to compare packages
-                    git_in_dir(package_path, &["config", "user.email", "test@registry"])?;
-                    git_in_dir(package_path, &["config", "user.name", "test"])?;
-                    commit_init()?;
-                }
+            if let Err(e) = commit_init()
+                && e.to_string().trim().starts_with("Author identity unknown")
+            {
+                // we can use any email and name here, as this repository is only used
+                // to compare packages
+                git_in_dir(package_path, &["config", "user.email", "test@registry"])?;
+                git_in_dir(package_path, &["config", "user.name", "test"])?;
+                commit_init()?;
             }
         }
-        registry_packages.push(RegistryPackage { package: p, sha1 });
+        registry_packages.push(RegistryPackage::new(p, sha1));
     }
     Ok(registry_packages)
 }

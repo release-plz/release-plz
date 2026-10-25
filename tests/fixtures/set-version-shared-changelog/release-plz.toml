@@ -1,0 +1,7 @@
+[[package]]
+name = "one"
+changelog_path = "./CHANGELOG.md"
+
+[[package]]
+name = "two"
+changelog_path = "crates/../CHANGELOG.md"

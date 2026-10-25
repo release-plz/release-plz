@@ -16,7 +16,12 @@ If you are using release-plz to release important projects, make sure to check t
 [`release_always`](#the-release_always-field) field.
 :::
 
-Put your `release-plz.toml` (or `.release-plz.toml`) file in the same directory of your root `Cargo.toml`.
+Release-plz looks for the configuration file in the directory where you run it,
+checking these paths in order and using the first one that exists:
+
+1. `release-plz.toml`
+2. `.release-plz.toml`
+3. `.config/release-plz.toml`
 
 ## Example
 
@@ -68,8 +73,13 @@ the following sections:
 - [`[workspace]`](#the-workspace-section) — Configuration applied to all packages by default.
   - [`allow_dirty`](#the-allow_dirty-field) — Update dirty working directories.
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
+  - [`changelog_path`](#the-changelog_path-field) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
+  - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field)
+    — Custom regex for major version increments.
+  - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
+    — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field)
     — Features increment minor in `0.x` versions.
   - [`git_release_body`](#the-git_release_body-field) — Customize git release body pattern.
@@ -80,7 +90,8 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field) — Customize git tag pattern.
-  - [`pr_body`](#the-pr_body-field) — Customize the body of the release Pull Request.
+  - [`git_release_generate_notes`](#the-git_release_generate_notes-field) — Generate release notes server-side.
+  - [`git_only`](#the-git_only-field) — Use git tags instead of cargo registry.
   - [`pr_branch_prefix`](#the-pr_branch_prefix-field) — Release PR branch prefix.
   - [`pr_draft`](#the-pr_draft-field) — Open the release Pull Request as a draft.
   - [`pr_name`](#the-pr_name-field) — Customize the name of the release Pull Request.
@@ -92,8 +103,11 @@ the following sections:
   - [`publish_all_features`](#the-publish_all_features-field) — Pass `--all-features` to `cargo publish`.
   - [`publish_timeout`](#the-publish_timeout-field) — `cargo publish` timeout.
   - [`release`](#the-release-field) - Enable the processing of the packages.
-  - [`release_always`](#the-release_always-field) - Release always or when you merge the release PR only.
+  - [`release_always`](#the-release_always-field) - Release always or when you merge the release PR
+    only.
   - [`release_commits`](#the-release_commits-field) - Customize which commits trigger a release.
+  - [`max_analyze_commits`](#the-max_analyze_commits-field) - Limit commit analysis for unpublished
+    packages.
   - [`repo_url`](#the-repo_url-field) — Repository URL.
   - [`semver_check`](#the-semver_check-field) — Run [cargo-semver-checks].
 - [`[[package]]`](#the-package-section) — Package-specific configurations.
@@ -101,6 +115,10 @@ the following sections:
   - [`changelog_include`](#the-changelog_include-field) — Include commits from other packages.
   - [`changelog_path`](#the-changelog_path-field-package-section) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field-package-section) — Update changelog.
+  - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field-package-section)
+    — Custom regex for major version increments.
+  - [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field-package-section)
+    — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field-package-section)
     — Features increment minor in `0.x` versions.
   - [`git_release_body`](#the-git_release_body-field-package-section) — Customize git release body pattern.
@@ -111,6 +129,9 @@ the following sections:
   - [`git_release_latest`](#the-git_release_latest-field-package-section) — Publish git release as latest.
   - [`git_tag_enable`](#the-git_tag_enable-field-package-section) — Enable git tag.
   - [`git_tag_name`](#the-git_tag_name-field-package-section) — Customize git tag pattern.
+  - [`git_release_generate_notes`](#the-git_release_generate_notes-field-package-section) — Generate
+    release notes server-side.
+  - [`git_only`](#the-git_only-field-package-section) — Use git tags instead of cargo registry.
   - [`publish`](#the-publish-field-package-section) — Publish to cargo registry.
   - [`publish_allow_dirty`](#the-publish_allow_dirty-field-package-section) — Package dirty directories.
   - [`publish_no_verify`](#the-publish_no_verify-field-package-section) — Don't verify package build.
@@ -132,6 +153,12 @@ the following sections:
   - [`commit_preprocessors`](#the-commit_preprocessors-field) — Manipulate commit messages.
   - [`link_parsers`](#the-link_parsers-field) — Parse links in commit messages.
   - [`commit_parsers`](#the-commit_parsers-field) — Organize commits into sections.
+
+:::note
+The release-plz-rendered template fields `git_release_name`, `git_release_body`,
+`git_tag_name`, `pr_name`, and `pr_body` use Tera 2. Changelog templates configured
+through `changelog` or `changelog_config` are rendered by git-cliff, which still uses Tera 1.
+:::
 
 ### The `[workspace]` section
 
@@ -187,6 +214,27 @@ Ideally, release-plz users shouldn't need to read the `git-cliff` documentation
 to customize their changelog.
 :::
 
+#### The `changelog_path` field
+
+By default, release-plz looks for the changelog in the `CHANGELOG.md` file
+of the same directory of the `Cargo.toml` of the package:
+
+```txt
+.
+├── src/
+├── CHANGELOG.md
+└── Cargo.toml
+```
+
+If the changelog is in a different location, you can specify it with this field.
+For example, use it to [share a single changelog](./extra/single-changelog.md#all-packages)
+between all packages.
+
+This field is relative to the root `Cargo.toml` file.
+In GitHub Actions, this is the root of the repository.
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
+
 #### The `changelog_update` field
 
 - If `true`, update the changelog of the crates. *(Default)*.
@@ -198,6 +246,37 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 - If `true`, update all the dependencies in the `Cargo.lock` file by running `cargo update`.
 - If `false`, only update the workspace packages by running `cargo update --workspace`. *(Default)*.
+
+#### The `custom_major_increment_regex` field
+
+Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field), but for major
+version increments.
+
+A matching commit triggers a major increment even for `0.x` versions (for example, `0.2.3` becomes
+`1.0.0`).
+
+#### The `custom_minor_increment_regex` field
+
+A custom regex pattern to match commit types that should trigger a minor version increment.
+This is useful when you use non-conventional commit prefixes (like emoji prefixes) and want to
+control which commits bump the minor version.
+
+- If the commit message is a conventional commit, the regex is matched against the commit type
+  (the part before the `:` in a commit message).
+- If the commit message is not a conventional commit, the regex is matched against the entire commit
+  message.
+
+Example:
+
+```toml
+[workspace]
+custom_minor_increment_regex = "^minor|^enhancement|^🎉"
+```
+
+With this configuration, commits like `minor: add feature`, `enhancement: new capability`,
+or `🎉: exciting change` will trigger a minor version bump instead of a patch bump.
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
 
 #### The `features_always_increment_minor` field
 
@@ -211,9 +290,37 @@ This option violates the Cargo SemVer
 Instead, new features for `0.x` should bump the version from `0.x.y` to `0.x.(y+1)`.
 :::
 
+#### The `git_release_enable` field
+
+- If `true`, release-plz creates a git release for the created tag. *(Default)*.
+- If `false`, release-plz doesn't create a git release.
+
+The supported git releases are:
+
+- [GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
+- [Gitea](https://docs.gitea.com/)
+- [GitLab](https://docs.gitlab.com/ee/user/project/releases/)
+
+#### The `git_release_name` field
+
+[Tera template](https://keats.github.io/tera/#template) of the git release name that
+release-plz creates.
+Use this to customize the git release name pattern.
+
+By default, it's:
+
+- `"{{ package }}-v{{ version }}"` for workspaces containing more than one public package.
+- `"v{{ version }}"` for projects containing a single crate or
+  workspaces containing just one public package.
+
+Where:
+
+- `{{ package }}` is the name of the package.
+- `{{ version }}` is the new version of the package.
+
 #### The `git_release_body` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git release body that
+[Tera template](https://keats.github.io/tera/#template) of the git release body that
 release-plz creates.
 Use this to customize the git release body pattern.
 
@@ -301,7 +408,7 @@ Supported values are:
 - If `true`, release-plz creates the git release as latest. *(Default)*.
 - If `false`, release-plz doesn't set the git release it creates as latest.
 
-*(GitHub only)*. Gitea doesn't support this feature.
+*(GitHub only)*. Gitea and GitLab do not support this feature.
 
 :::warning
 Drafts and prereleases cannot be set as latest.
@@ -315,7 +422,7 @@ Drafts and prereleases cannot be set as latest.
 
 #### The `git_tag_name` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of the git tags that release-plz creates.
+[Tera template](https://keats.github.io/tera/#template) of the git tags that release-plz creates.
 Use this to customize the git tags name pattern.
 
 By default, it's:
@@ -329,14 +436,94 @@ Where:
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
 
+#### The `git_release_generate_notes` field
+
+- If `true`, release notes will be generated server-side.
+- If `false`, the release body will only contain the
+  [`git_release_body`](#the-git_release_body-field) without the generated notes. *(Default)*.
+
+*(GitHub only)*. Gitea and GitLab do not support this feature.
+
+GitHub appends its generated notes after the body supplied by release-plz, including any
+[`git_release_body`](#the-git_release_body-field) template. Set `git_release_body = ""`
+to use only the generated notes.
+
+#### The `git_only` field
+
+Enable git-only mode, which determines package versions from git tags instead of the cargo registry.
+
+- If `true`, release-plz will look for existing git tags to determine the current
+  version, rather than checking the cargo registry. This is useful for packages that are not
+  published to crates.io but still need version management.
+- If `false`, release-plz uses the cargo registry to determine the current version. *(Default)*.
+
+When `git_only` is enabled:
+
+- The package will not be published to any cargo registry (`cargo publish` is skipped).
+- Version detection is based on git tags matching the
+  [`git_tag_name`](#the-git_tag_name-field) pattern.
+- If no matching tag is found, the package is treated as an initial release.
+- Packages with `publish = false` in their `Cargo.toml` are also released (tagged), since
+  they don't need a cargo registry.
+
+:::warning
+In git-only mode `cargo publish` is skipped, so `publish` doesn't need to be set.
+Setting `publish = true` together with `git_only = true` is an error.
+:::
+
+Example:
+
+```toml
+[workspace]
+git_only = true
+```
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
+
+#### The `pr_name` field
+
+[Tera template](https://keats.github.io/tera/#template) of pull request's name that
+release-plz creates.
+
+By default, it's:
+
+- `chore({{ package }}): release v{{ version }}` for releasing only one package from a workspace with
+multiple publishable packages.
+  This happens when only one package changed.
+- `chore: release v{{ version }}` for releasing either:
+  - the only package of the project
+  - multiple packages with the same version
+- `chore: release` for releasing multiple packages with different versions.
+
+Where:
+
+- `{{ package }}` is the name of the package.
+- `{{ version }}` is the new version of the package(s).
+
+When using a custom template:
+
+- `{{ package }}` is populated only when releasing a single package.
+- `{{ version }}` is populated only when releasing a single package or multiple packages with the
+  same version.
+
+If you are in a workspace with multiple public packages, use `{% if <variable> %}` to check if
+these variables are set, otherwise release-plz will fail.
+
+Here's an example of how you can customize the PR name template:
+
+```toml
+[workspace]
+pr_name = "release{% if package and version %} {{ package }} v{{ version }}{% endif %}"
+```
+
 #### The `pr_body` field
 
-[Tera template](https://keats.github.io/tera/docs/#templates) of pull request's body that
+[Tera template](https://keats.github.io/tera/#template) of pull request's body that
 release-plz creates.
 
 By default it contains the summary of package updates, the changelog for each package, a section
 for breaking changes, and a footer with credits for release-plz. If the text is longer than
-65536 characters, the changelog isn't inclued.
+65536 characters, the changelog isn't included.
 This limit is imposed by Github.
 
 Here is an example of how you can customize the PR body template:
@@ -382,7 +569,7 @@ The default PR body template is the following:
 ````toml
 [workspace]
 pr_body = """
-{% macro get_changes(releases, type="text") %}
+{% set changes %}
 {%- for release in releases %}
 {%- if release.title and release.changelog %}{% if releases | length > 1 %}
 ## `{{ release.package }}`
@@ -394,9 +581,7 @@ pr_body = """
 {{ release.changelog }}
 </blockquote>{% endif %}
 {% endfor %}
-{% endmacro -%}
-
-{% set changes = self::get_changes(releases=releases) %}
+{% endset %}
 
 ## 🤖 New release
 {% for release in releases %}
@@ -423,8 +608,11 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 Prefix for the release PR branch. By default, it's set to: `release-plz-`
 
+release-plz only manages release PRs whose branch starts with this prefix.
+
 :::warning
-Before changing the release-plz branch you should close the old release PR.
+Before changing the prefix, close the old release PR:
+release-plz won't detect it anymore and will open a new one.
 :::
 
 #### The `pr_draft` field
@@ -623,6 +811,9 @@ In `release-plz update` and `release-plz release-pr`, `release-plz` bumps the ve
 the changelog of the package only if at least one of the commits matches the `release_commits`
 regex.
 
+For packages in a [`version_group`](#the-version_group-field), a matching commit in any member
+allows all packages in the group to update, even if their own commits do not match.
+
 You can use this if you think it is too noisy to raise PRs on every commit.
 
 Examples:
@@ -638,6 +829,16 @@ By default, release-plz updates the package on every commit.
 The filtered commits are still included in the changelog.
 To exclude certain commits from the changelog, use the [commit_parsers](#the-commit_parsers-field) field.
 :::
+
+#### The `max_analyze_commits` field
+
+Maximum number of commits to analyze when the package hasn't been published yet (i.e. there is no
+release in the registry).
+
+- Default: `1000`.
+- This limit is ignored for packages that already have a release in the registry.
+
+If your first release needs to scan a longer history, increase this value.
 
 #### The `repo_url` field
 
@@ -692,6 +893,10 @@ For example, the changelog of the `release-plz` package of this repository
 includes commits of the `release_plz_core` package, because they affect the
 `release-plz` package, too.
 
+The included commits release the package, but bump its version at most by a
+patch (a prerelease increment for prerelease versions), as when a local
+dependency of the package changes.
+
 Example:
 
 ```toml
@@ -700,27 +905,22 @@ changelog_include = ["release_plz_core"]
 
 #### The `changelog_path` field (`package` section)
 
-By default, release-plz looks for the changelog in the `CHANGELOG.md` file
-of the same directory of the `Cargo.toml` of the package:
-
-```txt
-.
-├── src/
-├── CHANGELOG.md
-└── Cargo.toml
-```
-
-If the changelog of a package is in a different location, you can specify it with this field.
-
-This field is relative to the root `Cargo.toml` file.
-In GitHub Actions, this is the root of the repository.
-
-This field cannot be set in the `[workspace]` section.
+Overrides the [`workspace.changelog_path`](#the-changelog_path-field) field.
 
 #### The `changelog_update` field (`package` section)
 
 - If `true`, update the changelog of this package. *(Default)*.
 - If `false`, don't.
+
+#### The `custom_major_increment_regex` field (`package` section)
+
+Overrides the [`workspace.custom_major_increment_regex`](#the-custom_major_increment_regex-field)
+field.
+
+#### The `custom_minor_increment_regex` field (`package` section)
+
+Overrides the [`workspace.custom_minor_increment_regex`](#the-custom_minor_increment_regex-field)
+field.
 
 #### The `features_always_increment_minor` field (`package` section)
 
@@ -758,6 +958,14 @@ Overrides the [`workspace.git_tag_enable`](#the-git_tag_enable-field) field.
 #### The `git_tag_name` field (`package` section)
 
 Overrides the [`workspace.git_tag_name`](#the-git_tag_name-field) field.
+
+#### The `git_release_generate_notes` field (`package` section)
+
+Overrides the [`workspace.git_release_generate_notes`](#the-git_release_generate_notes-field) field.
+
+#### The `git_only` field (`package` section)
+
+Overrides the [`workspace.git_only`](#the-git_only-field) field.
 
 #### The `publish` field (`package` section)
 
@@ -859,6 +1067,11 @@ commit_parsers = [
     { message = "^fix", group = "Fixed" },
     { message = "^.*: fix", group = "Fixed" },
     { message = "^.*", group = "Changed" },
+]
+
+postprocessors = [
+    # Format the rendered changelog using `dprint`
+    { pattern = ".*", replace = "dprint fmt --stdin md" }
 ]
 
 link_parsers = [
@@ -1017,9 +1230,28 @@ For example, you can read the commit itself:
 
 - `{ pattern = '.*', replace_command = 'git show -s --format=%B $COMMIT_SHA' }`
 
+#### The `postprocessors` field
+
+An array of postprocessors for manipulating the rendered changelog. It can be used, for example, to
+enforce to run a formatter.
+
+```toml
+postprocessors = [
+    # Format the rendered changelog using `dprint`
+    { pattern = ".*", replace = "dprint fmt --stdin md" }
+]
+```
+
+Postprocessors use the same syntax as commit preprocessors, so check the section above for examples.
+
 #### The `commit_parsers` field
 
 An array of parsers allowing to group and skip commits.
+
+Parsers are evaluated in order. By default, processing stops at the first matching parser.
+Set `continue = true` on a parser to apply subsequent parsers to the same commit.
+Later matching parsers can override fields set by earlier parsers; fields they don't set are preserved.
+Omitting `continue` or setting it to `false` keeps the default behavior.
 
 Default:
 
@@ -1059,6 +1291,22 @@ Here are some examples of parsers:
     E.g. `docs: xyz` will be processed as `docs(other): xyz`.
 - `{ sha = "f6f2472bdf0bbb5f9fcaf2d72c1fa9f98f772bb2", skip = true }`
   - Skip a specific commit by using its SHA1.
+
+For example, set a scope from a commit footer, then assign a group from the commit message:
+
+```toml
+[changelog]
+commit_parsers = [
+    { footer = "^Component: ?Billing$", scope = "billing", continue = true },
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Fixes" },
+]
+```
+
+A `feat: add invoices` commit with a `Component: Billing` footer gets the `billing` scope
+and the `Features` group. A parser with `skip = true` still skips a matching commit even if
+`continue = true`, unless
+[`protect_breaking_commits`](#the-protect_breaking_commits-field) protects it.
 
 #### The `link_parsers` field
 

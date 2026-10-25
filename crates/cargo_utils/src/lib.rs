@@ -1,3 +1,4 @@
+mod cargo;
 mod dependency;
 mod fs_utils;
 mod local_manifest;
@@ -7,6 +8,7 @@ mod token;
 mod version;
 mod workspace_members;
 
+pub use cargo::*;
 pub use dependency::*;
 pub use fs_utils::*;
 pub use local_manifest::*;

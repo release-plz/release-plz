@@ -1,13 +1,13 @@
 use anyhow::Context as _;
-use cargo_metadata::camino::Utf8Path;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    GitReleaseConfig, ReleaseRequest, fs_utils::to_utf8_path, set_version::SetVersionRequest,
-    update_request::UpdateRequest,
+    GitReleaseConfig, ReleaseRequest,
+    set_version::SetVersionRequest,
+    update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashSet, path::PathBuf, time::Duration};
 use url::Url;
 
 use crate::changelog_config::ChangelogCfg;
@@ -16,6 +16,7 @@ use crate::changelog_config::ChangelogCfg;
 /// [here](https://release-plz.dev/docs/config).
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(extend("$id" = "https://raw.githubusercontent.com/release-plz/release-plz/main/.schema/latest.json"))]
 pub struct Config {
     /// # Workspace
     /// Global configuration. Applied to all packages by default.
@@ -26,8 +27,27 @@ pub struct Config {
     /// # Package
     /// Package-specific configuration. This overrides `workspace`.
     /// Not all settings of `workspace` can be overridden.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_unique_packages")]
     package: Vec<PackageSpecificConfigWithName>,
+}
+
+fn deserialize_unique_packages<'de, D>(
+    deserializer: D,
+) -> Result<Vec<PackageSpecificConfigWithName>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let packages = Vec::<PackageSpecificConfigWithName>::deserialize(deserializer)?;
+    let mut names = HashSet::new();
+    for package in &packages {
+        if !names.insert(package.name.as_str()) {
+            return Err(serde::de::Error::custom(format!(
+                "package `{}` is configured more than once",
+                package.name
+            )));
+        }
+    }
+    Ok(packages)
 }
 
 impl Config {
@@ -36,12 +56,24 @@ impl Config {
         todo!()
     }
 
-    /// Package-specific configurations.
-    /// Returns `<package name, package config>`.
-    fn packages(&self) -> HashMap<&str, &PackageSpecificConfig> {
+    /// Package-specific configurations merged with the workspace defaults.
+    ///
+    /// Returns an error if the `git_only` and `publish` settings are invalid
+    /// in the workspace defaults or in any merged package configuration.
+    /// The workspace defaults are validated even if no package is configured.
+    fn merged_packages(&self) -> anyhow::Result<Vec<(&str, PackageSpecificConfig)>> {
+        let defaults = &self.workspace.packages_defaults;
+        validate_git_only_settings(defaults.git_only, defaults.publish)
+            .context("Wrong workspace context")?;
+
         self.package
             .iter()
-            .map(|p| (p.name.as_str(), &p.config))
+            .map(|p| {
+                let config = p.config.clone().merge(defaults.clone());
+                validate_git_only_settings(config.common.git_only, config.common.publish)
+                    .with_context(|| format!("Wrong configuration of package {}", p.name))?;
+                Ok((p.name.as_str(), config))
+            })
             .collect()
     }
 
@@ -49,35 +81,34 @@ impl Config {
         &self,
         is_changelog_update_disabled: bool,
         update_request: UpdateRequest,
-    ) -> UpdateRequest {
+    ) -> anyhow::Result<UpdateRequest> {
+        let packages = self.merged_packages()?;
         let mut default_update_config = self.workspace.packages_defaults.clone();
         if is_changelog_update_disabled {
             default_update_config.changelog_update = false.into();
         }
         let mut update_request =
             update_request.with_default_package_config(default_update_config.into());
-        for (package, config) in self.packages() {
-            let mut update_config = config.clone();
-            update_config = update_config.merge(self.workspace.packages_defaults.clone());
+        for (package, mut update_config) in packages {
             if is_changelog_update_disabled {
                 update_config.common.changelog_update = false.into();
             }
             update_request = update_request.with_package_config(package, update_config.into());
         }
-        update_request
+        Ok(update_request)
     }
 
     pub fn fill_set_version_config(
         &self,
-        set_version_request: &mut SetVersionRequest,
-    ) -> anyhow::Result<()> {
-        for (package, config) in self.packages() {
-            if let Some(changelog_path) = config.common.changelog_path.clone() {
-                let changelog_path = to_utf8_pathbuf(changelog_path)?;
-                set_version_request.set_changelog_path(package, changelog_path);
-            }
+        set_version_request: SetVersionRequest,
+    ) -> anyhow::Result<SetVersionRequest> {
+        let packages = self.merged_packages()?;
+        let mut set_version_request = set_version_request
+            .with_default_package_config(self.workspace.packages_defaults.clone().into());
+        for (package, config) in packages {
+            set_version_request = set_version_request.with_package_config(package, config.into());
         }
-        Ok(())
+        Ok(set_version_request)
     }
 
     pub fn fill_release_config(
@@ -85,7 +116,8 @@ impl Config {
         allow_dirty: bool,
         no_verify: bool,
         release_request: ReleaseRequest,
-    ) -> ReleaseRequest {
+    ) -> anyhow::Result<ReleaseRequest> {
+        let packages = self.merged_packages()?;
         let mut default_config = self.workspace.packages_defaults.clone();
         if no_verify {
             default_config.publish_no_verify = Some(true);
@@ -96,10 +128,7 @@ impl Config {
         let mut release_request =
             release_request.with_default_package_config(default_config.into());
 
-        for (package, config) in self.packages() {
-            let mut release_config = config.clone();
-            release_config = release_config.merge(self.workspace.packages_defaults.clone());
-
+        for (package, mut release_config) in packages {
             if no_verify {
                 release_config.common.publish_no_verify = Some(true);
             }
@@ -109,12 +138,22 @@ impl Config {
             release_request =
                 release_request.with_package_config(package, release_config.common.into());
         }
-        release_request
+        Ok(release_request)
     }
 }
 
+fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
+    if git_only == Some(true) && publish == Some(true) {
+        anyhow::bail!(
+            "Config options 'git_only' and 'publish' are mutually exclusive: \
+            git-only packages are never published, so remove `publish = true`."
+        );
+    }
+    Ok(())
+}
+
 /// Config at the `[workspace]` level.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, JsonSchema)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Workspace {
     /// Configuration applied at the `[[package]]` level, too.
@@ -169,6 +208,32 @@ pub struct Workspace {
     ///   `release-plz-`. So if you want to create a PR that should trigger a release
     ///   (e.g. when you fix the CI), use this branch name format (e.g. `release-plz-fix-ci`).
     pub release_always: Option<bool>,
+    /// Maximum number of commits to analyze when the package hasn't been published yet.
+    /// Default: 1000.
+    #[serde(default = "default_max_analyze_commits")]
+    #[schemars(default = "default_max_analyze_commits")]
+    pub max_analyze_commits: Option<u32>,
+}
+
+impl Default for Workspace {
+    fn default() -> Self {
+        Self {
+            packages_defaults: PackageConfig::default(),
+            allow_dirty: None,
+            changelog_config: None,
+            dependencies_update: None,
+            repo_url: None,
+            pr_name: None,
+            pr_body: None,
+            pr_draft: false,
+            pr_labels: Vec::new(),
+            pr_branch_prefix: None,
+            publish_timeout: None,
+            release_commits: None,
+            release_always: None,
+            max_analyze_commits: default_max_analyze_commits(),
+        }
+    }
 }
 
 impl Workspace {
@@ -194,6 +259,7 @@ impl Workspace {
                 publish_all_features: Some(false),
                 semver_check: Some(true),
                 release: Some(true),
+                ..PackageConfig::default()
             },
             allow_dirty: Some(false),
             changelog_config: None,
@@ -207,6 +273,7 @@ impl Workspace {
             repo_url: None,
             release_commits: None,
             release_always: Some(true),
+            ..Self::default()
         }
     }
 
@@ -216,6 +283,10 @@ impl Workspace {
         parse_duration(publish_timeout)
             .with_context(|| format!("invalid publish_timeout '{publish_timeout}'"))
     }
+}
+
+fn default_max_analyze_commits() -> Option<u32> {
+    Some(DEFAULT_MAX_ANALYZE_COMMITS)
 }
 
 /// Parse the duration from the input string.
@@ -248,14 +319,12 @@ fn parse_duration_unit(input: &str) -> anyhow::Result<(&str, DurationUnit)> {
     } else if let Some(stripped) = input.strip_suffix('h') {
         Ok((stripped, DurationUnit::Hours))
     } else if let Some(last_char) = input.chars().last() {
-        if last_char.is_ascii_alphabetic() {
-            anyhow::bail!(
-                "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
-            )
-        } else {
-            // Default to seconds if no unit specified
-            Ok((input, DurationUnit::Seconds))
-        }
+        anyhow::ensure!(
+            !last_char.is_ascii_alphabetic(),
+            "'{last_char}' is not a valid time unit. Valid units are: 's', 'm' and 'h'"
+        );
+        // Default to seconds if no unit specified
+        Ok((input, DurationUnit::Seconds))
     } else {
         anyhow::bail!("input cannot be empty");
     }
@@ -279,8 +348,8 @@ pub struct PackageSpecificConfig {
 
 impl PackageSpecificConfig {
     /// Merge the package-specific configuration with the global configuration.
-    pub fn merge(self, default: PackageConfig) -> PackageSpecificConfig {
-        PackageSpecificConfig {
+    pub fn merge(self, default: PackageConfig) -> Self {
+        Self {
             common: self.common.merge(default),
             changelog_include: self.changelog_include,
             version_group: self.version_group,
@@ -328,6 +397,9 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
         if let Some(allow_dirty) = value.publish_allow_dirty {
             cfg = cfg.with_allow_dirty(allow_dirty);
         }
+        if let Some(git_only) = value.git_only {
+            cfg = cfg.with_git_only(git_only);
+        }
         cfg
     }
 }
@@ -351,6 +423,10 @@ fn git_release(config: &PackageConfig) -> GitReleaseConfig {
         git_release = git_release.set_latest(false);
     }
 
+    if config.git_release_generate_notes == Some(true) {
+        git_release = git_release.set_generate_release_notes(true);
+    }
+
     git_release
 }
 
@@ -371,6 +447,12 @@ pub struct PackageConfig {
     /// - If `true`, feature commits will always bump the minor version, even in 0.x releases.
     /// - If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
     pub features_always_increment_minor: Option<bool>,
+    /// # Git Only
+    /// Use git tags for release information.
+    /// If true, release-plz will use git tags to determine what the latest version of the package
+    /// is (i.e newest version is v0.1.3 and is associated with commit ac83762).
+    /// If false (default), release-plz will use the cargo registry (e.g. crates.io) to get the latest version.
+    pub git_only: Option<bool>,
     /// # Git Release Enable
     /// Publish the GitHub/Gitea/GitLab release for the created git tag.
     /// Enabled by default.
@@ -397,6 +479,10 @@ pub struct PackageConfig {
     /// # Git Tag Name
     /// Tera template of the git tag name created by release-plz.
     pub git_tag_name: Option<String>,
+    /// # Git Release Generate Notes
+    /// Generate release notes on GitHub. Defaults to `false`.
+    /// Generated notes are appended to the configured release body.
+    pub git_release_generate_notes: Option<bool>,
     /// # Publish
     /// If `false`, don't run `cargo publish`.
     pub publish: Option<bool>,
@@ -419,6 +505,14 @@ pub struct PackageConfig {
     /// # Release
     /// Used to toggle off the update/release process for a workspace or package.
     pub release: Option<bool>,
+    /// # Custom Minor Increment Regex
+    /// Custom regex to match commit types that should trigger a minor version increment.
+    /// Useful when using non-conventional commit prefixes.
+    pub custom_minor_increment_regex: Option<String>,
+    /// # Custom Major Increment Regex
+    /// Custom regex to match commit types that should trigger a major version increment.
+    /// Useful when using non-conventional commit prefixes.
+    pub custom_major_increment_regex: Option<String>,
 }
 
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
@@ -427,9 +521,13 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             semver_check: config.semver_check != Some(false),
             changelog_update: config.changelog_update != Some(false),
             release: config.release != Some(false),
+            publish: config.publish != Some(false),
             tag_name_template: config.git_tag_name,
             features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
+            custom_minor_increment_regex: config.custom_minor_increment_regex,
+            custom_major_increment_regex: config.custom_major_increment_regex,
+            git_only: config.git_only,
         }
     }
 }
@@ -460,6 +558,9 @@ impl PackageConfig {
             git_release_latest: self.git_release_latest.or(default.git_release_latest),
             git_release_name: self.git_release_name.or(default.git_release_name),
             git_release_body: self.git_release_body.or(default.git_release_body),
+            git_release_generate_notes: self
+                .git_release_generate_notes
+                .or(default.git_release_generate_notes),
 
             publish: self.publish.or(default.publish),
             publish_allow_dirty: self.publish_allow_dirty.or(default.publish_allow_dirty),
@@ -469,26 +570,15 @@ impl PackageConfig {
             git_tag_enable: self.git_tag_enable.or(default.git_tag_enable),
             git_tag_name: self.git_tag_name.or(default.git_tag_name),
             release: self.release.or(default.release),
+            custom_minor_increment_regex: self
+                .custom_minor_increment_regex
+                .or(default.custom_minor_increment_regex),
+            custom_major_increment_regex: self
+                .custom_major_increment_regex
+                .or(default.custom_major_increment_regex),
+            git_only: self.git_only.or(default.git_only),
         }
     }
-
-    pub fn changelog_path(&self) -> Option<&Utf8Path> {
-        self.changelog_path
-            .as_ref()
-            .map(|p| to_utf8_path(p.as_ref()).unwrap())
-    }
-}
-
-/// Whether to run cargo-semver-checks or not.
-/// Note: you can only run cargo-semver-checks on a library.
-#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum SemverCheck {
-    /// Run cargo-semver-checks.
-    #[default]
-    Yes,
-    /// Don't run cargo-semver-checks.
-    No,
 }
 
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone, Copy, JsonSchema)]
@@ -522,6 +612,41 @@ impl From<ReleaseType> for release_plz_core::ReleaseType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_release_notes_respect_workspace_defaults_and_package_overrides() {
+        use release_plz_core::ReleaseConfig;
+
+        let config: Config = toml::from_str(
+            r#"
+            [workspace]
+            git_release_generate_notes = true
+
+            [[package]]
+            name = "inherited"
+
+            [[package]]
+            name = "disabled"
+            git_release_generate_notes = false
+            "#,
+        )
+        .unwrap();
+        let request = config
+            .fill_release_config(
+                false,
+                false,
+                ReleaseRequest::new(fake_package::metadata::fake_metadata()),
+            )
+            .unwrap();
+        let enabled = ReleaseConfig::from(PackageConfig::default())
+            .with_git_release(GitReleaseConfig::default().set_generate_release_notes(true));
+        assert_eq!(request.get_package_config("unconfigured"), enabled);
+        assert_eq!(request.get_package_config("inherited"), enabled);
+        assert_eq!(
+            request.get_package_config("disabled"),
+            ReleaseConfig::from(PackageConfig::default())
+        );
+    }
 
     const BASE_WORKSPACE_CONFIG: &str = r#"
         [workspace]
@@ -570,6 +695,7 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
+                max_analyze_commits: default_max_analyze_commits(),
             },
             package: [].into(),
         }
@@ -694,6 +820,7 @@ mod tests {
                 publish_timeout: Some("10m".to_string()),
                 release_commits: Some("^feat:".to_string()),
                 release_always: None,
+                max_analyze_commits: default_max_analyze_commits(),
             },
             package: [PackageSpecificConfigWithName {
                 name: "crate1".to_string(),
@@ -729,6 +856,7 @@ mod tests {
             publish_timeout = "10m"
             repo_url = "https://github.com/release-plz/release-plz"
             release_commits = "^feat:"
+            max_analyze_commits = 1000
 
             [changelog]
 
@@ -750,49 +878,49 @@ mod tests {
         let config = "[unknown]";
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 1, column 2
               |
             1 | [unknown]
               |  ^^^^^^^
             unknown field `unknown`, expected one of `workspace`, `changelog`, `package`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 
     #[test]
     fn wrong_workspace_section_is_not_deserialized() {
-        let config = r#"
+        let config = r"
 [workspace]
 unknown = false
-allow_dirty = true"#;
+allow_dirty = true";
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 2, column 1
               |
             2 | [workspace]
               | ^^^^^^^^^^^
             unknown field `unknown`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 
     #[test]
     fn wrong_changelog_section_is_not_deserialized() {
-        let config = r#"
+        let config = r"
 [changelog]
 trim = true
-unknown = false"#;
+unknown = false";
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 4, column 1
               |
             4 | unknown = false
               | ^^^^^^^
-            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
-        "#]]
+            unknown field `unknown`, expected one of `header`, `body`, `trim`, `commit_preprocessors`, `postprocessors`, `sort_commits`, `link_parsers`, `commit_parsers`, `protect_breaking_commits`, `tag_pattern`
+        "]]
         .assert_eq(&error);
     }
 
@@ -804,13 +932,13 @@ name = "crate1"
 unknown = false"#;
 
         let error = toml::from_str::<Config>(config).unwrap_err().to_string();
-        expect_test::expect![[r#"
+        expect_test::expect![[r"
             TOML parse error at line 2, column 1
               |
             2 | [[package]]
               | ^^^^^^^^^^^
             unknown field `unknown`
-        "#]]
+        "]]
         .assert_eq(&error);
     }
 
@@ -832,5 +960,34 @@ unknown = false"#;
             parse_duration("-30s").unwrap_err().to_string(),
             "invalid duration number"
         );
+    }
+
+    #[test]
+    fn custom_minor_increment_regex_is_deserialized() {
+        let config = &format!(
+            "{BASE_WORKSPACE_CONFIG}\
+            custom_minor_increment_regex = \"minor|enhancement\""
+        );
+
+        let mut expected_config = create_base_workspace_config();
+        expected_config
+            .workspace
+            .packages_defaults
+            .custom_minor_increment_regex = Some("minor|enhancement".to_string());
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert_eq!(config, expected_config);
+    }
+
+    #[test]
+    fn custom_minor_increment_regex_is_serialized() {
+        let mut config = create_base_workspace_config();
+        config
+            .workspace
+            .packages_defaults
+            .custom_minor_increment_regex = Some("minor|enhancement".to_string());
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(serialized.contains(r#"custom_minor_increment_regex = "minor|enhancement""#));
     }
 }

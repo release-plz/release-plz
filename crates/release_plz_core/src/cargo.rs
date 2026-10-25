@@ -1,42 +1,103 @@
 use anyhow::Context;
-use cargo_metadata::{Package, camino::Utf8Path};
-use crates_index::{Crate, GitIndex, SparseIndex};
-use tracing::{debug, info};
-
-use http::{Version, header};
+use cargo::{GlobalContext, sources::SourceConfigMap, util::homedir, workspace::SourceId};
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
     process::{Command, ExitStatus},
     time::{Duration, Instant},
 };
+use tracing::{debug, info};
+
+/// Read a workspace member without resolving its dependencies.
+pub(crate) fn read_package_metadata(
+    manifest_path: &Utf8Path,
+    package_name: &str,
+) -> anyhow::Result<Package> {
+    let metadata = cargo_utils::get_manifest_metadata(manifest_path)
+        .with_context(|| format!("cannot read metadata from {manifest_path}"))?;
+    cargo_utils::workspace_package(&metadata, package_name).cloned()
+}
+
+/// Create a Cargo context rooted at the workspace whose configuration is needed.
+pub(crate) fn new_cargo_config(cwd: Option<Utf8PathBuf>) -> anyhow::Result<GlobalContext> {
+    match cwd {
+        Some(cwd) => {
+            #[expect(
+                clippy::default_trait_access,
+                reason = "Let Cargo infer the shell type without a direct cargo-util-terminal dependency"
+            )]
+            let shell = Default::default();
+            let homedir = homedir(cwd.as_std_path()).context(
+                "Cargo couldn't find your home directory. \
+                 This probably means that $HOME was not set.",
+            )?;
+            Ok(GlobalContext::new(shell, cwd.into_std_path_buf(), homedir))
+        }
+        None => GlobalContext::default(),
+    }
+}
 
 pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    pub index: CargoIndex,
+    /// Whether Cargo resolves dependencies from a remote mirror, i.e. a remote registry
+    /// other than the one where `cargo publish` confirms the package, which may lag behind.
+    pub has_remote_mirror: bool,
 }
 
-#[allow(clippy::large_enum_variant)]
-pub enum CargoIndex {
-    Git(GitIndex),
-    Sparse(SparseIndex),
+impl CargoRegistry {
+    pub fn new(config: &GlobalContext, name: Option<String>) -> anyhow::Result<Self> {
+        let source_id = SourceId::alt_registry(config, registry_or_crates_io(name.as_deref()))?;
+        // `cargo publish` confirms the package on the publish registry, which follows only
+        // Cargo's built-in replacement (e.g. the crates.io sparse index).
+        let publish_source = SourceConfigMap::empty(config)?
+            .load(source_id)?
+            .replaced_source_id();
+        // Dependency resolution follows the configured replacement instead, which may be
+        // a remote mirror that lags behind. Local replacements (`directory` and
+        // `local-registry`) never receive the published package, so don't wait for them.
+        let dependency_source = SourceConfigMap::new(config)?
+            .load(source_id)?
+            .replaced_source_id();
+        let has_remote_mirror =
+            dependency_source.is_remote_registry() && dependency_source != publish_source;
+        Ok(Self {
+            name,
+            has_remote_mirror,
+        })
+    }
 }
 
 fn cargo_cmd() -> Command {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-    Command::new(cargo)
+    let mut command = Command::new(cargo);
+    cargo_utils::disable_cargo_quiet(&mut command);
+    command
 }
 
 pub fn run_cargo(root: &Utf8Path, args: &[&str]) -> anyhow::Result<CmdOutput> {
-    debug!("cargo {}", args.join(" "));
+    run_cargo_with_env(root, args, &[])
+}
 
-    let output = cargo_cmd()
-        .current_dir(root)
-        .args(args)
-        .output()
-        .context("cannot run cargo")?;
+pub fn run_cargo_with_env(
+    root: &Utf8Path,
+    args: &[&str],
+    envs: &[(String, SecretString)],
+) -> anyhow::Result<CmdOutput> {
+    debug!("Run `cargo {}` in {root}", args.join(" "));
+
+    let mut command = cargo_cmd();
+    command.current_dir(root).args(args);
+    for (key, value) in envs {
+        command.env(key, value.expose_secret());
+    }
+
+    let output = command.output().context("cannot run cargo")?;
 
     let output_stdout = String::from_utf8(output.stdout)?;
     let output_stderr = String::from_utf8(output.stderr)?;
@@ -57,151 +118,98 @@ pub struct CmdOutput {
     pub stderr: String,
 }
 
-/// Check if the package is published in the index.
+/// Check if the package is published via `cargo info`.
 ///
-/// Unfortunately, the `cargo` cli doesn't provide a way
-/// to programmatically detect if a package at a certain version is published.
-/// There's `cargo info` but it is a human-focused command with very few
-/// compatibility guarantees around its behavior.
-/// Therefore, we use the [`crates_index`] crate to check if the package is already published.
+/// `cargo info` shouldn't be used by a machine because its output is not a stable API.
+/// However, checking if a package is published by using other methods is annoying, so
+/// we accept that release-plz might not work with future cargo versions and we will fix
+/// it when that happens.
+///
+/// Returns whether the package is published.
 pub async fn is_published(
-    index: &mut CargoIndex,
+    workspace_root: &Utf8Path,
     package: &Package,
     timeout: Duration,
-    token: &Option<SecretString>,
+    registry: Option<&str>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
-        match index {
-            CargoIndex::Git(index) => is_published_git(index, package),
-            CargoIndex::Sparse(index) => is_in_cache_sparse(index, package, token).await,
+        let output = run_cargo_info(workspace_root, package, registry, token)
+            .context("cannot run cargo info")?;
+        if output.status.success() {
+            Ok(true)
+        } else if cargo_info_reports_missing(&output) {
+            Ok(false)
+        } else {
+            let error_output = if output.stderr.trim().is_empty() {
+                output.stdout.trim()
+            } else {
+                output.stderr.trim()
+            };
+            anyhow::bail!(
+                "cargo info failed for {}@{}: {}",
+                package.name,
+                package.version,
+                error_output
+            )
         }
     })
     .await?
-    .with_context(|| format!("timeout while publishing {}", package.name))
+    .with_context(|| format!("timeout while checking if `{}` is published", package.name))
 }
 
-pub fn is_published_git(index: &mut GitIndex, package: &Package) -> anyhow::Result<bool> {
-    // See if we already have the package in cache.
-    if is_in_cache_git(index, package) {
-        return Ok(true);
+fn registry_or_crates_io(registry: Option<&str>) -> &str {
+    match registry {
+        None | Some("crates-io") => "crates-io",
+        Some(name) => name,
     }
-
-    // The package is not in the cache, so we update the cache.
-    index.update().context("failed to update git index")?;
-
-    // Try again with updated index.
-    Ok(is_in_cache_git(index, package))
 }
 
-fn is_in_cache_git(index: &GitIndex, package: &Package) -> bool {
-    let crate_data = index.crate_(&package.name);
-    let version = &package.version.to_string();
-    is_in_cache(crate_data.as_ref(), version)
+fn cargo_info_reports_missing(output: &CmdOutput) -> bool {
+    // Cargo output for `cargo info` is not a stable API. We only match the
+    // string we have observed in practice to avoid false positives.
+    let stdout_and_stderr = format!("{}\n{}", output.stdout, output.stderr).to_lowercase();
+    stdout_and_stderr.contains("could not find")
 }
 
-async fn is_in_cache_sparse(
-    index: &SparseIndex,
+fn run_cargo_info(
+    workspace_root: &Utf8Path,
     package: &Package,
-    token: &Option<SecretString>,
-) -> anyhow::Result<bool> {
-    let crate_data = fetch_sparse_metadata(index, &package.name, token)
-        .await
-        .context("failed fetching sparse metadata")?;
-    let version = &package.version.to_string();
-    Ok(is_in_cache(crate_data.as_ref(), version))
-}
+    registry: Option<&str>,
+    token: Option<&SecretString>,
+) -> anyhow::Result<CmdOutput> {
+    let registry_name = registry_or_crates_io(registry);
+    let spec = format!("{}@{}", package.name, package.version);
+    let args = ["info", &spec, "--registry", registry_name];
 
-fn is_in_cache(crate_data: Option<&Crate>, version: &str) -> bool {
-    if let Some(crate_data) = crate_data {
-        if is_version_present(version, crate_data) {
-            return true;
-        }
-    }
-    false
-}
+    debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
 
-fn is_version_present(version: &str, crate_data: &Crate) -> bool {
-    crate_data.versions().iter().any(|v| v.version() == version)
-}
+    let mut cmd = cargo_cmd();
+    cmd.current_dir(workspace_root).args(args);
 
-async fn fetch_sparse_metadata(
-    index: &SparseIndex,
-    crate_name: &str,
-    token: &Option<SecretString>,
-) -> anyhow::Result<Option<Crate>> {
-    let mut res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_2).await;
-    if let Err(ref e) = res {
-        match e.downcast_ref::<reqwest::Error>() {
-            Some(e) if e.is_connect() => {
-                debug!("HTTP/2 sparse index request failed, trying HTTP/1.1");
-                res = request_for_sparse_metadata(index, crate_name, token, Version::HTTP_11).await;
-            }
-            _ => (),
-        }
-    }
-    let res = res?;
+    let mut envs = vec![];
 
-    let mut builder = http::Response::builder()
-        .status(res.status())
-        .version(res.version());
-
-    if let Some(headers) = builder.headers_mut() {
-        headers.extend(res.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
-    }
-
-    let body = res.bytes().await?;
-    let res = builder.body(body.to_vec())?;
-
-    let crate_data = index.parse_cache_response(crate_name, res, true)?;
-
-    Ok(crate_data)
-}
-
-async fn request_for_sparse_metadata(
-    index: &SparseIndex,
-    crate_name: &str,
-    token: &Option<SecretString>,
-    http_version: Version,
-) -> anyhow::Result<reqwest::Response> {
-    let mut req = index.make_cache_request(crate_name)?;
-    // override default http version
-    req = req.version(http_version);
-    let (parts, _) = req.body(())?.into_parts();
-    let req = http::Request::from_parts(parts, vec![]);
-
-    let mut req: reqwest::Request = req.try_into()?;
     if let Some(token) = token {
-        let authorization = token
-            .expose_secret()
-            .parse()
-            .context("parse token as header value")?;
-        req.headers_mut()
-            .insert(header::AUTHORIZATION, authorization);
+        let env_var = cargo_utils::cargo_registries_token_env_var_name(registry_name)?;
+        envs.push((env_var, token.clone()));
     }
 
-    let mut client_builder = reqwest::ClientBuilder::new().gzip(true);
-    if http_version == Version::HTTP_2 {
-        client_builder = client_builder.http2_prior_knowledge();
-    }
-    let client = client_builder.build()?;
-    client
-        .execute(req)
-        .await
-        .context("request_for_sparse_metadata")
+    run_cargo_with_env(workspace_root, &args, &envs)
 }
 
 pub async fn wait_until_published(
-    index: &mut CargoIndex,
+    workspace_root: &Utf8Path,
     package: &Package,
     timeout: Duration,
-    token: &Option<SecretString>,
+    registry: Option<&str>,
+    token: Option<&SecretString>,
 ) -> anyhow::Result<()> {
     let now: Instant = Instant::now();
     let sleep_time = Duration::from_secs(2);
     let mut logged = false;
 
     loop {
-        let is_published = is_published(index, package, timeout, token).await?;
+        let is_published = is_published(workspace_root, package, timeout, registry, token).await?;
         if is_published {
             break;
         } else if timeout < now.elapsed() {
@@ -224,4 +232,30 @@ pub async fn wait_until_published(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crates_io_sparse_index_does_not_require_a_mirror_wait() {
+        // Cargo reads the configuration of the Cargo home and of the `.cargo` directories
+        // of the working directory and its ancestors. Use a temporary Cargo home and the
+        // filesystem root as working directory, so that the Cargo configuration of the
+        // machine running the test (e.g. a crates.io mirror) doesn't apply, even if the
+        // temporary directory is inside the home directory.
+        let temporary = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let cargo_home = temporary.path().as_std_path();
+        let root = cargo_home.ancestors().last().unwrap();
+        #[expect(
+            clippy::default_trait_access,
+            reason = "Cargo doesn't export the shell type"
+        )]
+        let config = GlobalContext::new(Default::default(), root.to_owned(), cargo_home.to_owned());
+        for name in [None, Some("crates-io".to_string())] {
+            let registry = CargoRegistry::new(&config, name).unwrap();
+            assert!(!registry.has_remote_mirror);
+        }
+    }
 }

@@ -3,6 +3,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
+use crate::RepoUrl;
 use crate::git::forge::Remote;
 
 #[derive(Debug, Clone)]
@@ -11,6 +12,21 @@ pub struct GitHub {
 }
 
 impl GitHub {
+    pub fn from_repo_url(url: RepoUrl, token: SecretString) -> anyhow::Result<Self> {
+        let base_url = url
+            .github_api_url()
+            .parse()
+            .context("invalid GitHub REST API URL derived from repo origin")?;
+        Ok(Self {
+            remote: Remote {
+                owner: url.owner,
+                repo: url.name,
+                token,
+                base_url,
+            },
+        })
+    }
+
     pub fn new(owner: String, repo: String, token: SecretString) -> Self {
         Self {
             remote: Remote {

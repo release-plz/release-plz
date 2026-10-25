@@ -31,10 +31,6 @@ impl PackagesUpdate {
         &self.updates
     }
 
-    pub fn updates_clone(&self) -> PackagesToUpdate {
-        self.updates.clone()
-    }
-
     pub fn updates_mut(&mut self) -> &mut PackagesToUpdate {
         &mut self.updates
     }
@@ -53,13 +49,16 @@ impl PackagesUpdate {
         self.updates
             .iter()
             .map(|(package, update)| {
-                if package.version == update.version {
-                    format!("\n* `{}`: {}", package.name, package.version)
+                // Use registry_version as previous_version when available
+                // (version already bumped case), otherwise use package.version
+                let previous_version = update.registry_version.as_ref().unwrap_or(&package.version);
+                if previous_version == &update.version {
+                    format!("\n* `{}`: {}", package.name, update.version)
                 } else {
                     format!(
                         "\n* `{}`: {} -> {}{}",
                         package.name,
-                        package.version,
+                        previous_version,
                         update.version,
                         update.semver_check.outcome_str()
                     )
@@ -78,7 +77,7 @@ impl PackagesUpdate {
                         package.name, incompatibilities
                     )
                 }
-                SemverCheck::Compatible | SemverCheck::Skipped => "".to_string(),
+                SemverCheck::Compatible | SemverCheck::Skipped => String::new(),
             })
             .collect()
     }
@@ -88,13 +87,17 @@ impl PackagesUpdate {
         self.updates
             .iter()
             .map(|(package, update)| {
+                let default_result = match &update.new_changelog_entry {
+                    Some(entry) => (None, Some(entry.clone())),
+                    None => (None, None),
+                };
                 let (changelog_title, changelog_notes) = match update.last_changes() {
                     Err(e) => {
                         warn!(
                             "can't determine changes in changelog of package {}: {e:?}",
                             package.name
                         );
-                        (None, None)
+                        default_result
                     }
                     Ok(Some(c)) => (Some(c.title().to_string()), Some(c.notes().to_string())),
                     Ok(None) => {
@@ -102,7 +105,7 @@ impl PackagesUpdate {
                             "no changes detected in changelog of package {}",
                             package.name
                         );
-                        (None, None)
+                        default_result
                     }
                 };
 
@@ -114,12 +117,20 @@ impl PackagesUpdate {
                     SemverCheck::Skipped => ("skipped", None),
                 };
 
+                // Use registry_version as previous_version when available
+                // (version already bumped case), otherwise use package.version
+                let previous_version = update
+                    .registry_version
+                    .as_ref()
+                    .unwrap_or(&package.version)
+                    .to_string();
+
                 ReleaseInfo {
                     package: package.name.to_string(),
                     title: changelog_title,
                     changelog: changelog_notes,
                     next_version: update.version.to_string(),
-                    previous_version: package.version.to_string(),
+                    previous_version,
                     breaking_changes,
                     semver_check: semver_check.to_string(),
                 }

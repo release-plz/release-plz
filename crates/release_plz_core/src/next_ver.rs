@@ -1,14 +1,18 @@
+use crate::command::git::{GitRepo, GitWorkTree};
+use crate::registry_packages::{PackagesCollection, RegistryPackage, ReleasedWorkspace};
+use crate::release_regex;
+use crate::tera::default_tag_name_template;
+use crate::tmp_repo::TempRepo;
 use crate::update_request::UpdateRequest;
 use crate::updater::Updater;
 use crate::{
     PackagesUpdate, Project,
     changelog_parser::{self, ChangelogRelease},
     copy_dir::copy_dir,
-    fs_utils::{Utf8TempDir, strip_prefix},
+    fs_utils::{Utf8TempDir, strip_prefix, to_utf8_path},
     package_path::manifest_dir,
     registry_packages::{self},
     semver_check::SemverCheck,
-    tmp_repo::TempRepo,
 };
 use anyhow::Context;
 use cargo_metadata::TargetKind;
@@ -18,16 +22,18 @@ use cargo_metadata::{
     semver::Version,
 };
 use chrono::NaiveDate;
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
+use std::sync::Arc;
 use toml_edit::TableLike;
-use tracing::instrument;
+use tracing::{debug, info, instrument, trace};
 
 // Used to indicate that this is a dummy commit with no corresponding ID available.
 // It should be at least 7 characters long to avoid a panic in git-cliff
 // (Git-cliff assumes it's a valid commit ID).
 pub(crate) const NO_COMMIT_ID: &str = "0000000";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReleaseMetadata {
     /// Template for the git tag created by release-plz.
     pub tag_name_template: Option<String>,
@@ -56,7 +62,146 @@ impl ReleaseMetadataBuilder for UpdateRequest {
     }
 }
 
-/// Determine next version of packages
+/// Create a temporary worktree and its associated repo.
+///
+/// If using the CLI, working in a worktree is the same as working in a repo, but in git2 they are
+/// considered different objects with different methods so we return both. The drop order for these
+/// doesn't actually matter, because the repo will become invalid when the worktree drops. But we
+/// typically want to drop the repo first just to avoid the possibility of someone using an invalid
+/// repo.
+fn get_temp_worktree_and_repo(
+    original_repo: &mut GitRepo,
+    package_name: &str,
+) -> anyhow::Result<(GitRepo, GitWorkTree)> {
+    // make a worktree for the package
+    let worktree = original_repo
+        .temp_worktree(Some(package_name), package_name)
+        .context("build worktree for package")?;
+
+    // create repo at new worktree
+    // git2 worktrees don't really contain any functionality, so we have to create a repo
+    // using that path
+    let repo = GitRepo::open(worktree.path()).context("open repo for package")?;
+
+    Ok((repo, worktree))
+}
+
+struct ReconstructedWorkspace {
+    /// Kept alive because the metadata paths point into the worktree, which is
+    /// cleaned up on drop.
+    _worktree: GitWorkTree,
+    released: Arc<ReleasedWorkspace>,
+}
+
+impl ReconstructedWorkspace {
+    fn new(worktree: GitWorkTree, commit: String) -> anyhow::Result<Self> {
+        let manifest = to_utf8_path(worktree.path())?.join("Cargo.toml");
+        // Cargo discovers configuration from its working directory, not --manifest-path.
+        let metadata = cargo_utils::cargo_metadata_command()
+            .current_dir(worktree.path())
+            .no_deps()
+            .manifest_path(&manifest)
+            .exec()
+            .context("get cargo metadata for worktree")?;
+        // Snapshot the committed lockfile before any other cargo command runs in the worktree.
+        let released = ReleasedWorkspace::new(metadata, commit)?;
+        Ok(Self {
+            _worktree: worktree,
+            released: Arc::new(released),
+        })
+    }
+
+    fn package(&self, package_name: &str) -> anyhow::Result<Package> {
+        cargo_utils::workspace_package(&self.released.metadata, package_name).cloned()
+    }
+}
+
+/// Process a single `git_only` package: find its release tag and commit, reconstruct
+/// the workspace if it hasn't already been reconstructed, and return the package metadata.
+///
+/// Returns `None` if no release tag is found (package will be treated as initial release).
+#[instrument(skip_all, fields(package_name = %package.name))]
+fn process_git_only_package(
+    package: &Package,
+    unreleased_project_repo: &mut GitRepo,
+    input: &UpdateRequest,
+    is_multi_package: bool,
+    reconstructed_workspaces: &mut BTreeMap<String, ReconstructedWorkspace>,
+) -> anyhow::Result<Option<RegistryPackage>> {
+    // Get the release tag template, falling back to default based on project structure
+    let template = input
+        .get_package_tag_name(&package.name)
+        .unwrap_or_else(|| default_tag_name_template(is_multi_package));
+
+    let release_regex =
+        release_regex::get_release_regex(&template, &package.name).context("get release regex")?;
+    debug!(
+        "looking for tags matching pattern: {}",
+        release_regex.to_string()
+    );
+
+    let Some((release_tag, version)) = unreleased_project_repo
+        .get_release_tag(&release_regex, &package.name)
+        .context("get release tag")?
+    else {
+        info!(
+            "No release tag found matching pattern `{release_regex}`. \
+             Package {} will be treated as initial release.",
+            package.name
+        );
+        return Ok(None);
+    };
+
+    info!(
+        "Latest release of package {}: tag `{release_tag}` (version {version})",
+        package.name
+    );
+
+    // Get the commit associated with the release tag
+    let release_commit = unreleased_project_repo
+        .get_tag_commit(&release_tag)
+        .context("get release tag commit")?;
+
+    let workspace = match reconstructed_workspaces.entry(release_commit.clone()) {
+        Entry::Occupied(entry) => {
+            debug!(
+                "Reusing workspace sources at commit {release_commit} for package {}",
+                package.name
+            );
+            entry.into_mut()
+        }
+        Entry::Vacant(entry) => {
+            let (mut repo, worktree) =
+                get_temp_worktree_and_repo(unreleased_project_repo, &package.name)
+                    .context("get worktree and repo for package")?;
+
+            repo.checkout_commit(&release_commit)
+                .context("checkout release commit for package")?;
+
+            // Keep the original manifests and path dependencies. Creating archives would
+            // require registry versions even for dependencies that will never be published.
+            debug!("Reconstructing workspace sources at commit {release_commit}");
+            entry.insert(ReconstructedWorkspace::new(
+                worktree,
+                release_commit.clone(),
+            )?)
+        }
+    };
+
+    // Metadata paths point into the cached worktree. Any error aborts collection and drops
+    // all reconstructed workspaces, so an unusable artifact cannot be reused.
+    let single_package = workspace.package(&package.name)?;
+
+    let registry_package = RegistryPackage::new(single_package, Some(release_commit))
+        .with_released_workspace(Arc::clone(&workspace.released));
+    Ok(Some(registry_package))
+}
+
+/// Determine next version of packages.
+///
+/// Returns:
+/// - Any packages that need to be updated
+/// - A temporary repository, i.e. an isolated copy of the repository used for git operations
 #[instrument(skip_all)]
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
     let overrides = input.packages_config().overridden_packages();
@@ -71,15 +216,35 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         project: &local_project,
         req: input,
     };
-    // Retrieve the latest published version of the packages.
-    // Release-plz will compare the registry packages with the local packages,
-    // to determine the new commits.
-    let registry_packages = registry_packages::get_registry_packages(
-        input.registry_manifest(),
-        &local_project.publishable_packages(),
-        input.registry(),
-    )?;
 
+    // Separate packages based on per-package git_only configuration
+    let workspace_packages = input.cargo_metadata().workspace_packages();
+    let (git_only_packages, registry_packages_list): (Vec<_>, Vec<_>) = workspace_packages
+        .iter()
+        .partition(|p| input.should_use_git_only(&p.name));
+
+    let is_multi_package = local_project.contains_multiple_releasable_packages();
+
+    // Process git_only packages (version determined from git tags).
+    // Worktrees must be kept alive until we're done with the packages.
+    let (mut all_packages, _worktrees) =
+        collect_git_only_packages(git_only_packages, input, is_multi_package)?;
+
+    // Process registry packages (version determined from registry)
+    let (registry_pkgs, registry_collection) = collect_registry_packages(
+        registry_packages_list,
+        &local_project.publishable_packages(),
+        input,
+    )
+    .await?;
+    all_packages.extend(registry_pkgs);
+
+    // NOTE: We reuse registry_collection here instead of instantiating a new object
+    // because otherwise the temp dir contained within it gets dropped and cleaned up.
+    let release_packages = registry_collection.with_packages(all_packages);
+
+    // Create a temporary isolated repository for git operations.
+    // This ensures that git checkouts and other operations don't affect the user's working directory.
     let repository = local_project
         .get_repo()
         .context("failed to determine local project repository")?;
@@ -89,7 +254,7 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
         repo_is_clean_result?;
     } else if repo_is_clean_result.is_err() {
         // Stash uncommitted changes so we can freely check out other commits.
-        // This function is ran inside a temporary repository, so this has no
+        // This function runs inside a temporary repository, so this has no
         // effects on the original repository of the user.
         repository.repo.git(&[
             "stash",
@@ -99,10 +264,125 @@ pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpd
             "uncommitted changes stashed by release-plz",
         ])?;
     }
+
     let packages_to_update = updater
-        .packages_to_update(&registry_packages, &repository.repo, input.local_manifest())
+        .packages_to_update(&release_packages, &repository.repo, input.local_manifest())
         .await?;
     Ok((packages_to_update, repository))
+}
+
+/// Process all `git_only` packages and return their metadata.
+///
+/// Returns:
+/// - A map of package name to `RegistryPackage`
+/// - A list of worktrees that must be kept alive until we're done with the packages
+fn collect_git_only_packages(
+    git_only_packages: Vec<&Package>,
+    input: &UpdateRequest,
+    is_multi_package: bool,
+) -> anyhow::Result<(
+    BTreeMap<String, RegistryPackage>,
+    Vec<ReconstructedWorkspace>,
+)> {
+    if git_only_packages.is_empty() {
+        return Ok((BTreeMap::new(), Vec::new()));
+    }
+
+    debug!(
+        "Processing {} packages in git_only mode",
+        git_only_packages.len()
+    );
+
+    let mut all_packages = BTreeMap::new();
+    // NOTE: We need to prevent the worktrees from being dropped because their Drop
+    // implementation cleans up the worktrees.
+    // See the note on the custom worktree Drop impl for more details.
+    // Packages released at the same commit share one reconstructed workspace: all other
+    // reconstruction inputs (repository, manifest, Cargo config) are fixed for this invocation.
+    let mut reconstructed_workspaces = BTreeMap::new();
+
+    let mut unreleased_project_repo = GitRepo::open(
+        input
+            .local_manifest_dir()
+            .context("get local manifest dir")?,
+    )
+    .context("create unreleased repo for spinning worktrees")?;
+
+    for package in git_only_packages {
+        if let Some(registry_package) = process_git_only_package(
+            package,
+            &mut unreleased_project_repo,
+            input,
+            is_multi_package,
+            &mut reconstructed_workspaces,
+        )? {
+            all_packages.insert(registry_package.package.name.to_string(), registry_package);
+        }
+    }
+
+    Ok((
+        all_packages,
+        reconstructed_workspaces.into_values().collect(),
+    ))
+}
+
+/// Fetch packages from the registry and return their metadata.
+///
+/// Returns:
+/// - A map of package name to `RegistryPackage`
+/// - The `PackagesCollection` (must be kept alive because it owns the temp dir)
+async fn collect_registry_packages(
+    registry_packages_list: Vec<&Package>,
+    publishable_packages: &[&Package],
+    input: &UpdateRequest,
+) -> anyhow::Result<(BTreeMap<String, RegistryPackage>, PackagesCollection)> {
+    if registry_packages_list.is_empty() {
+        return Ok((BTreeMap::new(), PackagesCollection::default()));
+    }
+
+    debug!(
+        "Processing {} packages from registry",
+        registry_packages_list.len()
+    );
+
+    // Filter to only publishable packages
+    let publishable_registry_packages: Vec<&Package> = registry_packages_list
+        .into_iter()
+        .filter(|p| {
+            publishable_packages
+                .iter()
+                .any(|pub_pkg| pub_pkg.name == p.name)
+        })
+        .collect();
+
+    if publishable_registry_packages.is_empty() {
+        return Ok((BTreeMap::new(), PackagesCollection::default()));
+    }
+
+    // Retrieve the latest published version of the packages.
+    // Release-plz will compare the registry packages with the local packages
+    // to determine the new commits.
+    let registry_packages = registry_packages::get_registry_packages(
+        input.registry_manifest(),
+        &publishable_registry_packages,
+        input.registry(),
+    )
+    .await?;
+
+    let mut all_packages = BTreeMap::new();
+    for package_name in publishable_registry_packages.iter().map(|p| &p.name) {
+        if let Some(reg_pkg) = registry_packages.get_registry_package(package_name) {
+            all_packages.insert(
+                package_name.to_string(),
+                RegistryPackage::new(
+                    reg_pkg.package.clone(),
+                    reg_pkg.published_at_sha1().map(|s| s.to_string()),
+                ),
+            );
+        }
+    }
+
+    Ok((all_packages, registry_packages))
 }
 
 pub fn root_repo_path(local_manifest: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
@@ -133,6 +413,12 @@ pub struct UpdateResult {
     /// New changelog.
     pub changelog: Option<String>,
     pub semver_check: SemverCheck,
+    pub new_changelog_entry: Option<String>,
+    /// The last released/published version from the registry.
+    /// This is set when the local version was already bumped (higher than registry version).
+    /// Used to generate correct version transitions in PR body (e.g., "0.1.0 -> 0.2.0")
+    /// instead of just showing "0.2.0" when `previous_version == next_version`.
+    pub registry_version: Option<Version>,
 }
 
 impl UpdateResult {
@@ -163,7 +449,7 @@ pub trait Publishable {
 impl Publishable for Package {
     /// Return true if the package can be published to at least one register (e.g. crates.io).
     fn is_publishable(&self) -> bool {
-        if let Some(publish) = &self.publish {
+        let res = if let Some(publish) = &self.publish {
             // `publish.is_empty()` is:
             // - true: when `publish` in Cargo.toml is `[]` or `false`.
             // - false: when the package can be published only to certain registries.
@@ -172,10 +458,25 @@ impl Publishable for Package {
         } else {
             // If it's not an example, the package can be published anywhere
             !is_example_package(self)
-        }
+        };
+        trace!("package {} is publishable: {res}", self.name);
+        res
     }
 }
 
+/// Whether the package takes part in a release.
+pub(crate) fn takes_part_in_release(package: &Package, git_only: bool) -> bool {
+    package.is_publishable() || (git_only && !is_unpublished_example(package))
+}
+
+/// An example-only package that doesn't set `publish` is not a crate anyone depends on,
+/// so it never takes part in a release, not even in git-only mode.
+/// Setting `publish` explicitly opts the package in.
+fn is_unpublished_example(package: &Package) -> bool {
+    package.publish.is_none() && is_example_package(package)
+}
+
+/// Whether all the targets of the package are examples.
 fn is_example_package(package: &Package) -> bool {
     package
         .targets
@@ -214,4 +515,222 @@ fn canonicalized_path(dependency: &dyn TableLike, package_dir: &Utf8Path) -> Opt
         .get("path")
         .and_then(|i| i.as_str())
         .and_then(|relpath| dunce::canonicalize(package_dir.join(relpath)).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::{package_manifest, write_package};
+    use fake_package::FakePackage;
+
+    #[test]
+    fn packages_taking_part_in_a_release() {
+        let lib = FakePackage::new("pkg").with_targets(&["lib"]);
+        let private_lib = lib.clone().unpublishable();
+        let example = FakePackage::new("pkg").with_targets(&["example"]);
+        let published_example = example.clone().with_publish(Some(vec!["my-reg".into()]));
+
+        // (name, package, released in registry mode, released in git-only mode)
+        for (name, package, registry, git_only) in [
+            ("lib", lib, true, true),
+            ("private lib", private_lib, false, true),
+            // Without `publish`, an example-only package is never a release candidate.
+            ("example", example, false, false),
+            // With `publish`, the user asked for it to be published (see the FAQ).
+            ("published example", published_example, true, true),
+        ] {
+            let package = cargo_metadata::Package::from(package);
+            assert_eq!(
+                super::takes_part_in_release(&package, false),
+                registry,
+                "{name} in registry mode"
+            );
+            assert_eq!(
+                super::takes_part_in_release(&package, true),
+                git_only,
+                "{name} in git-only mode"
+            );
+        }
+    }
+
+    #[test]
+    fn git_only_reconstruction_uses_historical_cargo_config() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::create_dir(root.path().join(".cargo")).unwrap();
+        let manifest = root.path().join("Cargo.toml");
+        write_package(
+            root.path(),
+            "app",
+            "0.1.0",
+            "[dependencies]\ndep = { version = \"1\", registry = \"historical\" }\n",
+        );
+        let config = root.path().join(".cargo/config.toml");
+        fs_err::write(
+            &config,
+            "[registries.historical]\nindex = \"sparse+https://example.com/index/\"\n",
+        )
+        .unwrap();
+        repo.add_all_and_commit("initial release").unwrap();
+        repo.tag("v0.1.0", "initial release").unwrap();
+
+        // The current checkout no longer knows the registry used by the old release.
+        fs_err::write(&manifest, package_manifest("app", "0.1.0", "")).unwrap();
+        fs_err::remove_file(config).unwrap();
+        repo.add_all_and_commit("remove obsolete registry dependency")
+            .unwrap();
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        let request = super::UpdateRequest::new(metadata.clone()).unwrap();
+        let (packages, _workspaces) =
+            super::collect_git_only_packages(metadata.workspace_packages(), &request, false)
+                .unwrap();
+        assert_eq!(packages["app"].package.dependencies[0].name, "dep");
+    }
+
+    #[test]
+    fn git_only_packages_share_released_workspace_metadata() {
+        // Create a two-package workspace with a known lockfile to snapshot at release time.
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"3\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two"] {
+            write_package(&root.path().join(name), name, "0.1.0", "");
+        }
+        let lockfile = "version = 4\n\n[[package]]\nname = \"one\"\nversion = \"0.1.0\"\n\n\
+             [[package]]\nname = \"two\"\nversion = \"0.1.0\"\n";
+        fs_err::write(root.path().join("Cargo.lock"), lockfile).unwrap();
+        repo.add_all_and_commit("initial workspace").unwrap();
+        // Separate package tags point to the same commit, allowing workspace reuse.
+        for name in ["one", "two"] {
+            repo.tag(&format!("{name}-v0.1.0"), "initial release")
+                .unwrap();
+        }
+        let release_commit = repo.current_commit_hash().unwrap();
+
+        // Advance one package so reconstruction must read the release, not the current checkout.
+        let manifest = root.path().join("one/Cargo.toml");
+        let contents = fs_err::read_to_string(&manifest).unwrap();
+        fs_err::write(&manifest, contents.replace("0.1.0", "0.2.0")).unwrap();
+        repo.add_all_and_commit("update current version").unwrap();
+
+        // Keep the returned workspaces alive while inspecting paths in their worktrees.
+        let metadata = cargo_utils::get_manifest_metadata(&root.path().join("Cargo.toml")).unwrap();
+        let request = super::UpdateRequest::new(metadata.clone()).unwrap();
+        let (packages, workspaces) =
+            super::collect_git_only_packages(metadata.workspace_packages(), &request, true)
+                .unwrap();
+        // Both packages were released at the same commit, so one worktree serves both.
+        assert_eq!(workspaces.len(), 1);
+        let one = &packages["one"];
+        let two = &packages["two"];
+        // Package metadata reflects the tagged version and points to files that still exist.
+        assert_eq!(one.package.version.to_string(), "0.1.0");
+        assert!(one.package.manifest_path.is_file());
+        assert!(two.package.manifest_path.is_file());
+        // Both packages share the same metadata allocation for the released workspace.
+        let released = one.released_workspace().unwrap();
+        assert!(std::ptr::eq(released, two.released_workspace().unwrap()));
+        assert_eq!(released.commit, release_commit);
+        // The lockfile committed at the release is captured with the workspace.
+        assert!(released.lockfile().is_some());
+    }
+
+    #[test]
+    fn git_only_reconstructs_package_without_running_build_script() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = git_cmd::Repo::init(root.path());
+        fs_err::create_dir(root.path().join("src")).unwrap();
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            r#"[package]
+name = "non-verifiable"
+version = "0.1.0"
+edition = "2024"
+exclude = ["excluded.txt"]
+"#,
+        )
+        .unwrap();
+        fs_err::write(root.path().join("src/lib.rs"), "pub fn example() {}\n").unwrap();
+        fs_err::write(root.path().join("excluded.txt"), "not packaged").unwrap();
+        fs_err::write(
+            root.path().join("build.rs"),
+            r#"fn main() {
+    std::fs::write("generated.txt", "outside OUT_DIR").unwrap();
+}
+"#,
+        )
+        .unwrap();
+        repo.add_all_and_commit("initial package").unwrap();
+
+        let mut original = super::GitRepo::open(root.path()).unwrap();
+        let (_repo, worktree) =
+            super::get_temp_worktree_and_repo(&mut original, "non-verifiable").unwrap();
+        let workspace = super::ReconstructedWorkspace::new(worktree, "HEAD".into()).unwrap();
+        let package = workspace.package("non-verifiable").unwrap();
+        let package_dir = package.manifest_path.parent().unwrap();
+
+        assert_eq!(package.version.to_string(), "0.1.0");
+        // Normalize line endings to allow Git's Windows checkout conversion.
+        assert_eq!(
+            fs_err::read_to_string(package_dir.join("src/lib.rs"))
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "pub fn example() {}\n"
+        );
+        let files = crate::get_cargo_package_files(package_dir).unwrap();
+        assert!(!files.iter().any(|file| file == "excluded.txt"));
+        // The build script never ran.
+        assert!(!package_dir.join("generated.txt").exists());
+    }
+
+    #[test]
+    fn reconstruction_preserves_existing_package_named_worktree() {
+        // Create an initial commit so the worktrees have a branch target.
+        let root = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(root.path().join("repo")).unwrap();
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let signature = git2::Signature::now("test", "test@example.com").unwrap();
+        let initial_commit = repo
+            .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap();
+
+        // Simulate a user's worktree named after the package, with uncommitted work.
+        let existing_path = root.path().join("mylib");
+        let existing = repo.worktree("mylib", &existing_path, None).unwrap();
+        let uncommitted_file = existing_path.join("notes.txt");
+        fs_err::write(&uncommitted_file, "work in progress").unwrap();
+
+        // Reconstruction must create a separate worktree despite the name collision.
+        let mut original = super::GitRepo::open(repo.path()).unwrap();
+        let (temporary_repo, temporary) =
+            super::get_temp_worktree_and_repo(&mut original, "mylib").unwrap();
+        let temporary_path = temporary.path().to_path_buf();
+        assert_ne!(temporary_path, existing_path);
+        assert!(existing.validate().is_ok());
+
+        // Dropping the temporary worktree must clean up only its own resources.
+        drop(temporary_repo);
+        drop(temporary);
+
+        assert!(!temporary_path.exists());
+        assert_eq!(repo.worktrees().unwrap().len(), 1);
+
+        // The user's worktree, uncommitted file, and branch target must remain intact.
+        assert!(existing.validate().is_ok());
+        assert_eq!(
+            fs_err::read_to_string(&uncommitted_file).unwrap(),
+            "work in progress"
+        );
+        assert_eq!(
+            repo.find_branch("mylib", git2::BranchType::Local)
+                .unwrap()
+                .get()
+                .target(),
+            Some(initial_commit)
+        );
+    }
 }

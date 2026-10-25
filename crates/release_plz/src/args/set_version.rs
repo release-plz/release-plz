@@ -3,44 +3,33 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use cargo_metadata::{camino::Utf8Path, semver::Version};
-use clap::builder::PathBufValueParser;
+use cargo_metadata::semver::Version;
 use release_plz_core::set_version::{SetVersionRequest, SetVersionSpec, VersionChange};
 
 use crate::config::Config;
 
-use super::{config_command::ConfigCommand, manifest_command::ManifestCommand};
+use super::{config_path::ConfigPath, manifest_command::ManifestCommand};
 
 #[derive(clap::Parser, Debug)]
 pub struct SetVersion {
-    /// New version of the package you want to update. Format: `<package_name>@<version-req>`.
+    /// New version to set: `<package_name>@<version>`.
+    /// Omit `<package_name>@` to set the workspace version or a single package's version.
     pub versions: Vec<String>,
     /// Path to the Cargo.toml of the project you want to update.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
     /// Both Cargo workspaces and single packages are supported.
-    #[arg(long, value_parser = PathBufValueParser::new())]
+    #[arg(long)]
     manifest_path: Option<PathBuf>,
-    /// Path to the release-plz config file.
-    /// Default: `./release-plz.toml`.
-    /// If no config file is found, the default configuration is used.
-    #[arg(
-        long,
-        value_name = "PATH",
-        value_parser = PathBufValueParser::new()
-    )]
-    config: Option<PathBuf>,
-}
 
-impl ConfigCommand for SetVersion {
-    fn config_path(&self) -> Option<&Utf8Path> {
-        self.config.as_deref().and_then(|p| Utf8Path::from_path(p))
-    }
+    /// Path to the release-plz config file.
+    #[command(flatten)]
+    pub config: ConfigPath,
 }
 
 impl SetVersion {
     fn parse_versions(self) -> anyhow::Result<SetVersionSpec> {
-        let is_single_package = self.versions.len() == 1 && !self.versions[0].contains('@');
-        if is_single_package {
+        let is_bare_version = self.versions.len() == 1 && !self.versions[0].contains('@');
+        if is_bare_version {
             let version = Version::parse(&self.versions[0])?;
             Ok(SetVersionSpec::Single(VersionChange::new(version)))
         } else {
@@ -69,9 +58,8 @@ impl SetVersion {
     pub fn set_version_request(self, config: &Config) -> anyhow::Result<SetVersionRequest> {
         let cargo_metadata = self.cargo_metadata()?;
         let version_changes = self.parse_versions()?;
-        let mut request = SetVersionRequest::new(version_changes, cargo_metadata)?;
-        config.fill_set_version_config(&mut request)?;
-        Ok(request)
+        let request = SetVersionRequest::new(version_changes, cargo_metadata)?;
+        config.fill_set_version_config(request)
     }
 }
 

@@ -1,13 +1,12 @@
-use crate::git::{gitea_client::Gitea, gitlab_client::GitLab};
+use crate::git::{gitea_client::Gitea, gitlab_client::GitLab, gitlab_graphql};
 use crate::{GitHub, GitReleaseInfo};
 use std::collections::{HashMap, HashSet};
 
 use crate::pr::Pr;
+use crate::response_ext::ResponseExt;
 use anyhow::Context;
-use http::StatusCode;
-use itertools::Itertools;
 use reqwest::header::HeaderMap;
-use reqwest::{Response, Url};
+use reqwest::{Response, StatusCode, Url};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use secrecy::SecretString;
@@ -25,9 +24,17 @@ pub enum GitForge {
 impl GitForge {
     fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         match self {
-            GitForge::Github(g) => g.default_headers(),
-            GitForge::Gitea(g) => g.default_headers(),
-            GitForge::Gitlab(g) => g.default_headers(),
+            Self::Github(g) => g.default_headers(),
+            Self::Gitea(g) => g.default_headers(),
+            Self::Gitlab(g) => g.default_headers(),
+        }
+    }
+
+    pub fn forge_type(&self) -> ForgeType {
+        match self {
+            Self::Github(_) => ForgeType::Github,
+            Self::Gitea(_) => ForgeType::Gitea,
+            Self::Gitlab(_) => ForgeType::Gitlab,
         }
     }
 }
@@ -39,7 +46,7 @@ pub enum ForgeType {
     Gitlab,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitClient {
     pub forge: ForgeType,
     pub remote: Remote,
@@ -68,6 +75,7 @@ pub struct PrCommit {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Author {
+    pub id: i32,
     pub login: String,
 }
 
@@ -79,7 +87,7 @@ pub struct GitLabMrCommit {
 
 impl From<GitLabMrCommit> for PrCommit {
     fn from(value: GitLabMrCommit) -> Self {
-        PrCommit {
+        Self {
             author: None,
             sha: value.id,
         }
@@ -96,6 +104,9 @@ pub struct CreateReleaseOption<'a> {
     /// Only supported by GitHub.
     #[serde(skip_serializing_if = "Option::is_none")]
     make_latest: Option<String>,
+    /// Only supported by GitHub.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generate_release_notes: Option<bool>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -142,7 +153,7 @@ impl From<GitLabMr> for GitPr {
             .map(|l| Label { name: l, id: None })
             .collect();
 
-        GitPr {
+        Self {
             number: value.iid,
             html_url: value.web_url,
             head: Commit {
@@ -152,6 +163,7 @@ impl From<GitLabMr> for GitPr {
             title: value.title,
             body,
             user: Author {
+                id: value.author.id,
                 login: value.author.username,
             },
             labels,
@@ -174,6 +186,7 @@ pub struct GitLabMr {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct GitLabAuthor {
+    pub id: i32,
     pub username: String,
 }
 
@@ -182,8 +195,9 @@ impl From<GitPr> for GitLabMr {
         let desc = value.body.unwrap_or_default();
         let labels: Vec<String> = value.labels.into_iter().map(|l| l.name).collect();
 
-        GitLabMr {
+        Self {
             author: GitLabAuthor {
+                id: value.user.id,
                 username: value.user.login,
             },
             iid: value.number,
@@ -233,7 +247,7 @@ pub struct PrEdit {
 
 impl From<PrEdit> for GitLabMrEdit {
     fn from(value: PrEdit) -> Self {
-        GitLabMrEdit {
+        Self {
             title: value.title,
             description: value.body,
             state_event: value.state,
@@ -270,8 +284,7 @@ impl GitClient {
     pub fn new(forge: GitForge) -> anyhow::Result<Self> {
         let client = {
             let headers = forge.default_headers()?;
-            let reqwest_client = reqwest::Client::builder()
-                .user_agent("release-plz")
+            let reqwest_client = crate::http_client::http_client_builder()
                 .default_headers(headers)
                 .build()
                 .context("can't build Git client")?;
@@ -289,8 +302,8 @@ impl GitClient {
             GitForge::Gitlab(g) => (ForgeType::Gitlab, g.remote),
         };
         Ok(Self {
-            remote,
             forge,
+            remote,
             client,
         })
     }
@@ -304,6 +317,10 @@ impl GitClient {
 
     /// Creates a GitHub/Gitea release.
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            release_info.generate_release_notes != Some(true) || self.forge == ForgeType::Github,
+            "The `git_release_generate_notes` option is only supported by GitHub"
+        );
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => self.create_github_release(release_info).await,
             ForgeType::Gitlab => self.create_gitlab_release(release_info).await,
@@ -323,6 +340,9 @@ impl GitClient {
             draft: &release_info.draft,
             prerelease: &release_info.pre_release,
             make_latest: release_info.latest.map(|l| l.to_string()),
+            generate_release_notes: release_info
+                .generate_release_notes
+                .filter(|_| self.forge == ForgeType::Github),
         };
         self.client
             .post(format!("{}/releases", self.repo_url()))
@@ -331,12 +351,12 @@ impl GitClient {
             .await?
             .error_for_status()
             .map_err(|e| {
-                if let Some(status) = e.status() {
-                    if status == reqwest::StatusCode::FORBIDDEN {
-                        return anyhow::anyhow!(e).context(
-                            "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release or https://release-plz.dev/docs/github/token",
-                        );
-                    }
+                if let Some(status) = e.status()
+                    && status == reqwest::StatusCode::FORBIDDEN
+                {
+                    return anyhow::anyhow!(e).context(
+                        "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release or https://release-plz.dev/docs/github/token",
+                    );
                 }
                 anyhow::anyhow!(e)
             })?;
@@ -362,13 +382,13 @@ impl GitClient {
             .await?
             .error_for_status()
             .map_err(|e| {
-                if let Some(status) = e.status() {
-                    if status == reqwest::StatusCode::FORBIDDEN {
+                if let Some(status) = e.status()
+                    && status == reqwest::StatusCode::FORBIDDEN {
                         return anyhow::anyhow!(e).context(
                             "Make sure your token has sufficient permissions. Learn more at https://release-plz.dev/docs/usage/release#gitlab",
                         );
                     }
-                }
+
                 anyhow::anyhow!(e)
             })?;
         Ok(())
@@ -438,12 +458,17 @@ impl GitClient {
     }
 
     async fn opened_prs_page(&self, page: i32, page_size: usize) -> anyhow::Result<Vec<GitPr>> {
+        let mut url = Url::parse(&self.pulls_url()).context("invalid pulls URL")?;
+        {
+            let mut qp = url.query_pairs_mut();
+            qp.append_pair("state", self.param_value_pr_state_open());
+            qp.append_pair("page", &page.to_string());
+            qp.append_pair(self.per_page(), &page_size.to_string());
+        }
+
         let resp = self
             .client
-            .get(self.pulls_url())
-            .query(&[("state", self.param_value_pr_state_open())])
-            .query(&[("page", page)])
-            .query(&[(self.per_page(), page_size)])
+            .get(url)
             .send()
             .await?
             .successful_status()
@@ -493,23 +518,22 @@ impl GitClient {
     }
 
     pub async fn edit_pr(&self, pr_number: u64, pr_edit: PrEdit) -> anyhow::Result<()> {
+        let url = format!("{}/{pr_number}", self.pulls_url());
         let req = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => self
-                .client
-                .patch(format!("{}/{}", self.pulls_url(), pr_number))
-                .json(&pr_edit),
+            ForgeType::Github | ForgeType::Gitea => self.client.patch(url).json(&pr_edit),
             ForgeType::Gitlab => {
                 let edit_mr: GitLabMrEdit = pr_edit.into();
-                self.client
-                    .put(format!("{}/merge_requests/{pr_number}", self.repo_url()))
-                    .json(&edit_mr)
+                self.client.put(url).json(&edit_mr)
             }
         };
         debug!("editing pr: {req:?}");
 
         req.send()
             .await
-            .with_context(|| format!("cannot edit pr {pr_number}"))?;
+            .with_context(|| format!("cannot edit pr {pr_number}"))?
+            .successful_status()
+            .await
+            .with_context(|| format!("forge rejected the edit of pr {pr_number}"))?;
 
         Ok(())
     }
@@ -550,15 +574,7 @@ impl GitClient {
             .await
             .context("received unexpected response")?;
 
-        let git_pr: GitPr = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => {
-                rep.json().await.context("Failed to parse PR")?
-            }
-            ForgeType::Gitlab => {
-                let gitlab_mr: GitLabMr = rep.json().await.context("Failed to parse Gitlab MR")?;
-                gitlab_mr.into()
-            }
-        };
+        let git_pr = self.pr_from_response(rep).await?;
 
         info!("opened pr: {}", git_pr.html_url);
         self.add_labels(&pr.labels, git_pr.number)
@@ -604,7 +620,7 @@ impl GitClient {
         self.client
             .put(format!("{}/{}", self.pulls_url(), pr_number))
             .json(&json!({
-                "add_labels": labels.iter().join(",")
+                "add_labels": labels.join(",")
             }))
             .send()
             .await?
@@ -642,7 +658,8 @@ impl GitClient {
             .get(format!("{}/labels", self.repo_url()))
             .send()
             .await?
-            .error_for_status()?
+            .successful_status()
+            .await?
             .json()
             .await
             .context("failed to parse labels")
@@ -810,29 +827,13 @@ impl GitClient {
             );
             return Ok(vec![]);
         }
-        let response = response.error_for_status()?;
+        let response = response.successful_status().await?;
         debug!("Associated PR found. Status: {}", response.status());
 
         let prs = match self.forge {
-            ForgeType::Github => {
-                let prs: Vec<GitPr> = response
-                    .json()
-                    .await
-                    .context("can't parse associated PRs")?;
-                prs
-            }
-            ForgeType::Gitea => {
-                let pr: GitPr = response.json().await.context("can't parse associated PR")?;
-                vec![pr]
-            }
-            ForgeType::Gitlab => {
-                let gitlab_mrs: Vec<GitLabMr> = response
-                    .json()
-                    .await
-                    .context("can't parse associated Gitlab MR")?;
-                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
-                git_prs
-            }
+            ForgeType::Github | ForgeType::Gitlab => self.prs_from_response(response).await?,
+            // Gitea returns the single PR that merged the commit.
+            ForgeType::Gitea => vec![self.pr_from_response(response).await?],
         };
 
         let prs_numbers = prs.iter().map(|pr| pr.number).collect::<Vec<_>>();
@@ -852,26 +853,30 @@ impl GitClient {
         self.pr_from_response(response).await
     }
 
-    pub async fn get_prs_info(&self, pr_numbers: &[u64]) -> anyhow::Result<Vec<GitPr>> {
-        let mut prs = vec![];
-        for pr_number in pr_numbers {
-            let pr = self.get_pr_info(*pr_number).await?;
-            prs.push(pr);
-        }
-        Ok(prs)
-    }
-
+    /// Get information about the given commit from the forge.
+    ///
+    /// `username` is `None` if the commit isn't in the remote repository
+    /// (e.g. the user edited files before running release-plz, like with cargo hakari)
+    /// or if the forge can't match the commit author to a user.
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
-        let api_path = self.commits_api_path(commit);
+        let api_path = match self.forge {
+            ForgeType::Github => format!("{}/commits/{commit}", self.repo_url()),
+            ForgeType::Gitea => format!("{}/git/commits/{commit}", self.repo_url()),
+            ForgeType::Gitlab => {
+                // The GitLab REST API only exposes the git author name and email of a commit.
+                // The GraphQL API resolves the author to a GitLab user instead.
+                let username = gitlab_graphql::commit_author_username(self, commit).await?;
+                return Ok(RemoteCommit { username });
+            }
+        };
         let response = self.client.get(api_path).send().await?;
 
-        if let Err(err) = response.error_for_status_ref() {
-            if let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status() {
-                // The user didn't push the commit to the remote repository.
-                // This can happen if people need to do edits before running release-plz (e.g. cargo hakari).
-                // I'm not sure why GitHub returns 422 if the commit doesn't exist.
-                return Ok(RemoteCommit { username: None });
-            }
+        if let Err(err) = response.error_for_status_ref()
+            && let Some(StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY) = err.status()
+        {
+            // The commit isn't in the remote repository.
+            // I'm not sure why GitHub returns 422 if the commit doesn't exist.
+            return Ok(RemoteCommit { username: None });
         }
 
         let remote_commit: GitHubCommit = response
@@ -885,18 +890,202 @@ impl GitClient {
         Ok(RemoteCommit { username })
     }
 
-    fn commits_api_path(&self, commit: &str) -> String {
-        let commits_path = "commits/";
-        let commits_api_path = match self.forge {
-            ForgeType::Gitea => {
-                format!("git/{commits_path}")
+    /// Create a new branch from the given SHA.
+    pub async fn create_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
+        match self.forge {
+            ForgeType::Github => {
+                self.post_github_ref(&format!("refs/heads/{branch_name}"), sha)
+                    .await
             }
-            ForgeType::Github => commits_path.to_string(),
-            ForgeType::Gitlab => {
-                unimplemented!("Gitlab support for `release-plz release-pr is not implemented yet")
+            ForgeType::Gitlab => self.post_gitlab_branch(branch_name, sha).await,
+            ForgeType::Gitea => self.post_gitea_branch(branch_name, sha).await,
+        }
+    }
+
+    async fn post_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+        let response = self
+            .client
+            .post(format!("{}/git/refs", self.repo_url()))
+            .json(&json!({
+                "ref": ref_name,
+                "sha": sha
+            }))
+            .send()
+            .await?;
+
+        let status = response.status();
+        response.successful_status().await.with_context(|| {
+            let mut message = format!("failed to create ref {ref_name} with sha {sha}");
+            if status == StatusCode::UNPROCESSABLE_ENTITY {
+                message.push_str(
+                    ". GitHub rejected the reference creation. \
+Check that the commit has been pushed to the remote repository, \
+the ref does not already exist, and the token's permissions and \
+repository rulesets or branch protection rules allow creating this ref. \
+Write permissions alone do not bypass repository rulesets. \
+If the commit hasn't been pushed to the remote repository yet, push it and run release-plz again.",
+                );
             }
+            message
+        })?;
+        Ok(())
+    }
+
+    async fn post_gitlab_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .post(format!("{}/repository/branches", self.repo_url()))
+            .json(&json!({
+                "branch": branch_name,
+                "ref": sha
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
+        Ok(())
+    }
+
+    async fn post_gitea_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .post(format!("{}/branches", self.repo_url()))
+            .json(&json!({
+                "new_branch_name": branch_name,
+                "old_ref_name": sha
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to create branch {branch_name} with sha {sha}"))?;
+        Ok(())
+    }
+
+    pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
+        self.client
+            .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
+            .json(&json!({
+                "sha": sha,
+                "force": true
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to update ref {ref_name} with sha {sha}"))?;
+        Ok(())
+    }
+
+    /// Delete a branch.
+    pub async fn delete_branch(&self, branch_name: &str) -> anyhow::Result<()> {
+        let url = match self.forge {
+            ForgeType::Github => format!("{}/git/refs/heads/{}", self.repo_url(), branch_name),
+            ForgeType::Gitlab => format!(
+                "{}/repository/branches/{}",
+                self.repo_url(),
+                crate::url_utils::encode_component(branch_name)
+            ),
+            ForgeType::Gitea => format!(
+                "{}/branches/{}",
+                self.repo_url(),
+                crate::url_utils::encode_component(branch_name)
+            ),
         };
-        format!("{}/{commits_api_path}{commit}", self.repo_url())
+        self.client
+            .delete(url)
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .context("failed to delete branch")?;
+        Ok(())
+    }
+
+    /// Creates an annotated tag.
+    pub async fn create_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        match self.forge {
+            ForgeType::Github => self.create_github_tag(tag_name, message, sha).await,
+            ForgeType::Gitlab => self.create_gitlab_tag(tag_name, message, sha).await,
+            ForgeType::Gitea => self.create_gitea_tag(tag_name, message, sha).await,
+        }
+    }
+
+    async fn create_github_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        let tag_object_sha = self
+            .client
+            .post(format!("{}/git/tags", self.repo_url()))
+            .json(&json!({
+                "tag": tag_name,
+                "message": message,
+                "object": sha,
+                "type": "commit"
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await?
+            .json::<serde_json::Value>()
+            .await?
+            .get("sha")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .with_context(|| {
+                format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
+            })?;
+        self.post_github_ref(&format!("refs/tags/{tag_name}"), &tag_object_sha)
+            .await
+    }
+
+    async fn create_gitlab_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/repository/tags", self.repo_url()))
+            .json(&json!({
+                "tag_name": tag_name,
+                "ref": sha,
+                "message": message
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
+        Ok(())
+    }
+
+    async fn create_gitea_tag(
+        &self,
+        tag_name: &str,
+        message: &str,
+        sha: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.client
+            .post(format!("{}/tags", self.repo_url()))
+            .json(&json!({
+                "tag_name": tag_name,
+                "target": sha,
+                "message": message
+            }))
+            .send()
+            .await?
+            .successful_status()
+            .await
+            .with_context(|| format!("failed to create git tag '{tag_name}' with ref '{sha}'"))?;
+        Ok(())
     }
 }
 
@@ -951,67 +1140,184 @@ pub struct GitHubCommitAuthor {
 
 /// Returns the list of contributors for the given commits,
 /// excluding the PR author and bots.
-pub fn contributors_from_commits(commits: &[PrCommit]) -> Vec<String> {
+pub fn contributors_from_commits(commits: &[PrCommit], forge: ForgeType) -> Vec<String> {
     let mut contributors = commits
         .iter()
         .skip(1) // skip pr author
         .flat_map(|commit| &commit.author)
-        .filter(|author| !author.login.ends_with("[bot]")) // ignore bots
+        .filter(|author| {
+            let is_gitea_actions_account = forge == ForgeType::Gitea && author.id == -2;
+            let is_bot = author.login.ends_with("[bot]") || is_gitea_actions_account;
+            !is_bot
+        })
         .map(|author| author.login.clone())
         .collect::<Vec<_>>();
     contributors.dedup();
     contributors
 }
 
-trait ResponseExt {
-    /// Better version of [`reqwest::Response::error_for_status`] that
-    /// also captures the response body in the error message. It will most
-    /// likely contain additional error details.
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response>;
-}
-
-impl ResponseExt for reqwest::Response {
-    async fn successful_status(self) -> anyhow::Result<reqwest::Response> {
-        let Err(err) = self.error_for_status_ref() else {
-            return Ok(self);
-        };
-
-        let mut body = self
-            .text()
-            .await
-            .context("can't convert response body to text")?;
-
-        // If the response is JSON, try to pretty-print it.
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-            body = format!("{json:#}");
-        }
-
-        Err(err).context(format!("Response body:\n{body}"))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn release_info(generate_release_notes: Option<bool>) -> GitReleaseInfo {
+        GitReleaseInfo {
+            git_tag: "v1.0.0".to_string(),
+            release_name: "Version 1.0.0".to_string(),
+            release_body: "Custom introduction".to_string(),
+            latest: None,
+            draft: false,
+            pre_release: false,
+            generate_release_notes,
+        }
+    }
+
+    #[tokio::test]
+    async fn generated_release_notes_are_sent_only_when_configured_on_github() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_json, method, path},
+        };
+        for (forge, generate_release_notes) in [
+            (ForgeType::Github, Some(true)),
+            (ForgeType::Github, Some(false)),
+            (ForgeType::Github, None),
+            (ForgeType::Gitea, Some(false)),
+            (ForgeType::Gitea, None),
+        ] {
+            let server = MockServer::start().await;
+            let mut body = json!({
+                "tag_name": "v1.0.0",
+                "name": "Version 1.0.0",
+                "body": "Custom introduction",
+                "draft": false,
+                "prerelease": false
+            });
+            if forge == ForgeType::Github
+                && let Some(generate_release_notes) = generate_release_notes
+            {
+                body["generate_release_notes"] = json!(generate_release_notes);
+            }
+            Mock::given(method("POST"))
+                .and(path("/repos/owner/repo/releases"))
+                .and(body_json(body))
+                .respond_with(ResponseTemplate::new(201))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+                .with_base_url(server.uri().parse().unwrap());
+            let mut client = GitClient::new(GitForge::Github(github)).unwrap();
+            client.forge = forge;
+            client
+                .create_release(&release_info(generate_release_notes))
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn generated_release_notes_reject_unsupported_forges() {
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"));
+        let mut client = GitClient::new(GitForge::Github(github)).unwrap();
+        for forge in [ForgeType::Gitea, ForgeType::Gitlab] {
+            client.forge = forge;
+            let error = client
+                .create_release(&release_info(Some(true)))
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains("git_release_generate_notes"));
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_commit_username_is_read_from_rest_commit() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        for (forge, commit_path) in [
+            (ForgeType::Github, "/repos/owner/repo/commits/abc"),
+            (ForgeType::Gitea, "/repos/owner/repo/git/commits/abc"),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path(commit_path))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "sha": "abc",
+                    "author": { "login": "bob" }
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+                .with_base_url(server.uri().parse().unwrap());
+            let mut client = GitClient::new(GitForge::Github(github)).unwrap();
+            client.forge = forge;
+            let remote_commit = client.get_remote_commit("abc").await.unwrap();
+            assert_eq!(remote_commit.username.as_deref(), Some("bob"), "{forge:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn rejected_pr_close_is_an_error() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_json, method, path},
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/pulls/42"))
+            .and(body_json(json!({"state": "closed"})))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "message": "Resource not accessible by integration"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let client = GitClient::new(GitForge::Github(github)).unwrap();
+
+        let error = client.close_pr(42).await.unwrap_err();
+
+        // The forge's explanation must reach the user, e.g. to fix the token permissions.
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("Resource not accessible by integration"),
+            "{error}"
+        );
+        server.verify().await;
+    }
 
     #[test]
     fn contributors_are_extracted_from_commits() {
         let commits = vec![
             PrCommit {
                 author: Some(Author {
+                    id: 1,
                     login: "bob".to_string(),
                 }),
                 sha: "abc".to_string(),
             },
             PrCommit {
                 author: Some(Author {
+                    id: 2,
                     login: "marco".to_string(),
                 }),
                 sha: "abc".to_string(),
             },
             PrCommit {
                 author: Some(Author {
+                    id: 3,
                     login: "release[bot]".to_string(),
+                }),
+                sha: "abc".to_string(),
+            },
+            PrCommit {
+                author: Some(Author {
+                    id: -2,
+                    login: "gitea-actions".to_string(),
                 }),
                 sha: "abc".to_string(),
             },
@@ -1020,7 +1326,7 @@ mod tests {
                 sha: "abc".to_string(),
             },
         ];
-        let contributors = contributors_from_commits(&commits);
+        let contributors = contributors_from_commits(&commits, ForgeType::Gitea);
         assert_eq!(contributors, vec!["marco"]);
     }
 }

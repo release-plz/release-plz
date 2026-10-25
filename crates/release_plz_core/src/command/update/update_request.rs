@@ -10,9 +10,11 @@ use cargo_metadata::{
 };
 use regex::Regex;
 
-use crate::{ChangelogRequest, GitClient, GitForge, PackagePath as _, RepoUrl, fs_utils};
+use crate::{ChangelogRequest, ForgeType, GitClient, GitForge, RepoUrl, fs_utils};
 
 use super::update_config::{PackageUpdateConfig, UpdateConfig};
+
+pub const DEFAULT_MAX_ANALYZE_COMMITS: u32 = 1000;
 
 #[derive(Debug, Clone)]
 pub struct UpdateRequest {
@@ -45,6 +47,9 @@ pub struct UpdateRequest {
     /// Prepare release only if at least one commit respects a regex.
     release_commits: Option<Regex>,
     git: Option<GitForge>,
+    /// Kind of git forge hosting the repository.
+    forge_type: ForgeType,
+    max_analyze_commits: Option<u32>,
 }
 
 impl UpdateRequest {
@@ -64,21 +69,18 @@ impl UpdateRequest {
             packages_config: PackagesConfig::default(),
             release_commits: None,
             git: None,
+            forge_type: ForgeType::Github,
+            max_analyze_commits: None,
         })
     }
 
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
-        config
-            .generic
-            .changelog_path
-            .map(|p| self.local_manifest.parent().unwrap().join(p))
-            .unwrap_or_else(|| {
-                package
-                    .package_path()
-                    .expect("can't determine package path")
-                    .join(crate::CHANGELOG_FILENAME)
-            })
+        crate::changelog_path(
+            package,
+            self.local_manifest.parent().unwrap(),
+            config.generic.changelog_path.as_deref(),
+        )
     }
 
     pub fn git_client(&self) -> anyhow::Result<Option<GitClient>> {
@@ -86,6 +88,11 @@ impl UpdateRequest {
             .as_ref()
             .map(|git| GitClient::new(git.clone()))
             .transpose()
+    }
+
+    pub fn max_analyze_commits(&self) -> u32 {
+        self.max_analyze_commits
+            .unwrap_or(DEFAULT_MAX_ANALYZE_COMMITS)
     }
 
     pub fn cargo_metadata(&self) -> &Metadata {
@@ -101,7 +108,23 @@ impl UpdateRequest {
 
     pub fn with_git_client(self, git: GitForge) -> Self {
         Self {
+            forge_type: git.forge_type(),
             git: Some(git),
+            ..self
+        }
+    }
+
+    pub fn with_forge_type(self, forge_type: ForgeType) -> Self {
+        Self { forge_type, ..self }
+    }
+
+    pub fn forge_type(&self) -> ForgeType {
+        self.forge_type
+    }
+
+    pub fn with_max_analyze_commits(self, max_commits: Option<u32>) -> Self {
+        Self {
+            max_analyze_commits: max_commits,
             ..self
         }
     }
@@ -230,6 +253,19 @@ impl UpdateRequest {
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
     }
+
+    /// Determine if `git_only` mode should be used for a specific package.
+    pub fn should_use_git_only(&self, package_name: &str) -> bool {
+        let pkg_config = self.get_package_config(package_name);
+        pkg_config.git_only().unwrap_or(false)
+    }
+
+    /// Get the release tag name template for a specific package.
+    /// Package-level config overrides workspace-level config.
+    pub fn get_package_tag_name(&self, package_name: &str) -> Option<String> {
+        let pkg_config = self.get_package_config(package_name);
+        pkg_config.generic.tag_name_template.clone()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -242,18 +278,18 @@ pub struct PackagesConfig {
 }
 
 impl PackagesConfig {
-    fn get(&self, package_name: &str) -> PackageUpdateConfig {
+    pub(crate) fn get(&self, package_name: &str) -> PackageUpdateConfig {
         self.overrides
             .get(package_name)
             .cloned()
-            .unwrap_or(self.default.clone().into())
+            .unwrap_or_else(|| self.default.clone().into())
     }
 
-    fn set_default(&mut self, config: UpdateConfig) {
+    pub(crate) fn set_default(&mut self, config: UpdateConfig) {
         self.default = config;
     }
 
-    fn set(&mut self, package_name: String, config: PackageUpdateConfig) {
+    pub(crate) fn set(&mut self, package_name: String, config: PackageUpdateConfig) {
         self.overrides.insert(package_name, config);
     }
 

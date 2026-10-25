@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use clap::builder::PathBufValueParser;
-
 use crate::init::InitRequest;
 
 use super::manifest_command::ManifestCommand;
@@ -11,7 +9,7 @@ pub struct Init {
     /// Path to the Cargo.toml of the project you want to update.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
     /// Both Cargo workspaces and single packages are supported.
-    #[arg(long, value_parser = PathBufValueParser::new())]
+    #[arg(long)]
     manifest_path: Option<PathBuf>,
     /// Don't check if the Cargo.toml files contain `description` and `license` fields, which are mandatory for crates.io.
     /// By default, Cargo.toml files are checked.

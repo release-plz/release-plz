@@ -27,6 +27,7 @@ pub struct VersionUpdater {
     pub(crate) breaking_always_increment_major: bool,
     pub(crate) custom_major_increment_regex: Option<Regex>,
     pub(crate) custom_minor_increment_regex: Option<Regex>,
+    pub(crate) no_increment_regex: Option<Regex>,
 }
 
 impl Default for VersionUpdater {
@@ -59,6 +60,7 @@ impl VersionUpdater {
             breaking_always_increment_major: false,
             custom_major_increment_regex: None,
             custom_minor_increment_regex: None,
+            no_increment_regex: None,
         }
     }
 
@@ -134,11 +136,19 @@ impl VersionUpdater {
     }
 
     /// Configure a custom regex pattern for major version increments.
-    /// This will check only the type of the commit against the given pattern.
     ///
-    /// Default: `None`.
+    /// - For conventional commits, this will check only the type of the commit against the given pattern.
+    /// - For non-conventional commits, this will check the entire commit message against the given pattern.
+    ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
+    ///
+    /// A match triggers a major increment even when the major version is 0.
+    /// Conventional breaking-change commits also trigger major increments, subject to
+    /// [`Self::with_breaking_always_increment_major`].
+    ///
+    /// By default, no regex is configured.
     ///
     /// ### Note
+    ///
     /// `commit type` according to the spec is only `[a-zA-Z]+`
     ///
     /// ### Example
@@ -198,11 +208,20 @@ impl VersionUpdater {
     }
 
     /// Configures a custom regex pattern for minor version increments.
-    /// This will check only the type of the commit against the given pattern.
     ///
-    /// Default: `None`.
+    /// - For conventional commits, this will check only the type of the commit against the given pattern.
+    /// - For non-conventional commits, this will check the entire commit message against the given pattern.
+    ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
+    ///
+    /// Even if this field is set, minor increments are still
+    /// triggered by conventional `feat` commits, subject to
+    /// [`Self::with_features_always_increment_minor`], and by breaking-change commits on `0.x`
+    /// versions as described in [`Self::with_breaking_always_increment_major`].
+    ///
+    /// By default, no regex is configured.
     ///
     /// ### Note
+    ///
     /// `commit type` according to the spec is only `[a-zA-Z]+`
     ///
     /// ### Example
@@ -215,7 +234,7 @@ impl VersionUpdater {
     /// let version = Version::new(0, 2, 3);
     /// assert_eq!(
     ///     VersionUpdater::new()
-    ///         .with_custom_minor_increment_regex("abc|bbb")
+    ///         .with_custom_minor_increment_regex("^abc|^bbb")
     ///         .expect("invalid regex")
     ///         .increment(&version, &commits),
     ///     Version::new(0, 3, 0)
@@ -235,13 +254,53 @@ impl VersionUpdater {
         Ok(self)
     }
 
+    /// Configures a regex pattern for commits that should not increment the version.
+    ///
+    /// Matching commits are ignored before calculating patch, minor, major, or prerelease
+    /// increments. If all commits match this regex, the version is unchanged.
+    ///
+    /// - For conventional commits, this will check only the type of the commit against the given pattern.
+    /// - For non-conventional commits, this will check the entire commit message against the given pattern.
+    ///   If you want to match only the beginning of the commit message, use `^` at the start of your regex.
+    ///
+    /// By default, no regex is configured.
+    ///
+    /// ### Note
+    ///
+    /// `commit type` according to the spec is only `[a-zA-Z]+`
+    ///
+    /// ### Example
+    ///
+    /// ```rust
+    /// use semver::Version;
+    /// use next_version::VersionUpdater;
+    ///
+    /// let commits = ["docs: update readme"];
+    /// let version = Version::new(1, 2, 3);
+    /// assert_eq!(
+    ///     VersionUpdater::new()
+    ///         .with_no_increment_regex("^docs$")
+    ///         .expect("invalid regex")
+    ///         .increment(&version, &commits),
+    ///     Version::new(1, 2, 3)
+    /// );
+    /// ```
+    pub fn with_no_increment_regex(
+        mut self,
+        no_increment_regex: &str,
+    ) -> Result<Self, regex::Error> {
+        let regex = Regex::new(no_increment_regex)?;
+        self.no_increment_regex = Some(regex);
+        Ok(self)
+    }
+
     /// Analyze commits and determine the next version.
-    pub fn increment<I>(self, version: &Version, commits: I) -> Version
+    pub fn increment<I>(&self, version: &Version, commits: I) -> Version
     where
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let increment = VersionIncrement::from_commits_with_updater(&self, version, commits);
+        let increment = VersionIncrement::from_commits_with_updater(self, version, commits);
         match increment {
             Some(increment) => increment.bump(version),
             None => version.clone(),

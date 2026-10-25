@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/release-plz/release-plz/compare/git_cmd-v0.9.0...git_cmd-v0.9.1) - 2026-10-19
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+
+## [0.9.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.8.0...git_cmd-v0.9.0) - 2026-10-10
+
+### Performance
+
+- read commit signatures with one git command ([#3178](https://github.com/release-plz/release-plz/pull/3178))
+
+## [0.8.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.7.0...git_cmd-v0.8.0) - 2026-10-07
+
+### Fixed
+
+- retain changes surviving equal package snapshots ([#3079](https://github.com/release-plz/release-plz/pull/3079))
+- *(changelog)* collect package history across merged branches ([#3078](https://github.com/release-plz/release-plz/pull/3078))
+
+## [0.7.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.29...git_cmd-v0.7.0) - 2026-09-19
+
+### Added
+
+- *(git_cmd)* add bounded path history walks ([#3077](https://github.com/release-plz/release-plz/pull/3077))
+
+### Fixed
+
+- support detached HEAD in release-plz release ([#3074](https://github.com/release-plz/release-plz/pull/3074))
+- support detached HEAD in release-plz update ([#3072](https://github.com/release-plz/release-plz/pull/3072))
+
+## [0.6.29](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.28...git_cmd-v0.6.29) - 2026-09-10
+
+### Other
+
+- preserve tracked files when copying directories ([#3046](https://github.com/release-plz/release-plz/pull/3046))
+
+## [0.6.28](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.27...git_cmd-v0.6.28) - 2026-02-16
+
+### Fixed
+
+- Improve error message for committed file that is in .gitignore ([#2654](https://github.com/release-plz/release-plz/pull/2654))
+
+## [0.6.27](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.26...git_cmd-v0.6.27) - 2026-01-17
+
+### Added
+
+- add ability to create lightweight tags ([#2512](https://github.com/release-plz/release-plz/pull/2512))
+- add ability to disable tag gpgsign ([#2561](https://github.com/release-plz/release-plz/pull/2561))
+- add ability to disable gpg signing ([#2552](https://github.com/release-plz/release-plz/pull/2552))
+
+## [0.6.26](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.25...git_cmd-v0.6.26) - 2025-09-13
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.6.25](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.24...git_cmd-v0.6.25) - 2025-09-05
+
+### Other
+
+- improve error messages ([#2377](https://github.com/release-plz/release-plz/pull/2377))
+
+## [0.6.24](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.23...git_cmd-v0.6.24) - 2025-06-19
+
+### Other
+
+- update dependencies ([#2260](https://github.com/release-plz/release-plz/pull/2260))
+
 ## [0.6.23](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.22...git_cmd-v0.6.23) - 2025-03-17
 
 ### Other
