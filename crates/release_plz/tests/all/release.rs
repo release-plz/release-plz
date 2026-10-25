@@ -7,6 +7,17 @@ use crate::helpers::{
     test_context::TestContext,
 };
 
+/// Dependency on version 0.1 of the workspace package at `path`.
+fn path_dependency(path: &str) -> toml_edit::Item {
+    let mut dependency = toml_edit::InlineTable::new();
+    dependency.insert("path", path.into());
+    dependency.insert("version", "0.1".into());
+    // `cargo publish` replaces the path with the version, which Cargo looks up in
+    // crates.io unless the dependency names the registry release-plz publishes to.
+    dependency.insert("registry", TEST_REGISTRY.into());
+    toml_edit::value(dependency)
+}
+
 /// Neither package exists in the registry, including the optional dependency.
 async fn unpublished_workspace() -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
@@ -16,15 +27,7 @@ async fn unpublished_workspace() -> TestContext {
     .await;
     let root_manifest = context.repo_dir().join("Cargo.toml");
     let mut root = cargo_utils::LocalManifest::try_new(&root_manifest).unwrap();
-    // `cargo publish` replaces the path with the version, which Cargo looks up in
-    // crates.io unless the dependency names the registry release-plz publishes to.
-    root.data["workspace"]["dependencies"]["dependency"] = toml_edit::value({
-        let mut dependency = toml_edit::InlineTable::new();
-        dependency.insert("path", "crates/dependency".into());
-        dependency.insert("version", "0.1.0".into());
-        dependency.insert("registry", TEST_REGISTRY.into());
-        dependency
-    });
+    root.data["workspace"]["dependencies"]["dependency"] = path_dependency("crates/dependency");
     root.write().unwrap();
     let mut dependent =
         cargo_utils::LocalManifest::try_new(&context.package_path("dependent").join("Cargo.toml"))
@@ -333,13 +336,7 @@ async fn dev_dependency_cycle_workspace() -> TestContext {
     let add_dependency = |package: &str, table: &str, dependency: &str| {
         let manifest_path = context.package_path(package).join("Cargo.toml");
         let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
-        manifest.data[table][dependency] = toml_edit::value({
-            let mut dependency_table = toml_edit::InlineTable::new();
-            dependency_table.insert("path", format!("../{dependency}").into());
-            dependency_table.insert("version", "0.1".into());
-            dependency_table.insert("registry", TEST_REGISTRY.into());
-            dependency_table
-        });
+        manifest.data[table][dependency] = path_dependency(&format!("../{dependency}"));
         manifest.write().unwrap();
     };
     add_dependency("lib", "dependencies", "macros");
