@@ -42,14 +42,14 @@ Release-plz checks packages separately when:
 
 - Their registry or any of these settings differ: `publish_allow_dirty`,
   `publish_no_verify`, and `publish_all_features`.
-  Without `--registry`, a package that doesn't set `publish` (Cargo's default
-  registry) is checked separately from packages that name a registry in `publish`.
-- They set `publish_features`: Cargo applies `--features` differently when it
-  checks multiple packages, so these packages are checked individually.
-- Cargo is older than 1.90, which can't check multiple packages together:
-  release-plz warns and checks each package individually.
-- Cargo can't check them together because of a dependency cycle, e.g. when a
-  package dev-depends on a package that depends on it.
+  Without `--registry`, leaving `publish` unset (Cargo's default registry) counts
+  as a different registry than any registry named in `publish`.
+- They set `publish_features`, because Cargo applies `--features` differently to
+  multiple packages.
+- Cargo is older than 1.90, which can't check multiple packages together
+  (release-plz warns).
+- Cargo reports a dependency cycle between them, e.g. a package dev-depends on a
+  package that depends on it.
 
 A package that depends on an unpublished workspace package only passes the check
 if both packages are checked together.
