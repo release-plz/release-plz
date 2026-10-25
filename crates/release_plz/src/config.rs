@@ -153,7 +153,7 @@ impl Config {
                 .any(|p| p.name.as_str() == package_config.name && !p.is_publishable());
             anyhow::ensure!(
                 !is_unpublishable,
-                "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
+                "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, so remove `publish = true` from its `[[package]]` section in the release-plz configuration.",
                 package_config.name
             );
         }
