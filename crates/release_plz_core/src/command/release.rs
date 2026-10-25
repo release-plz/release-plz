@@ -886,6 +886,9 @@ struct ReleaseInfo<'a> {
 }
 
 /// Return `true` if package was published, `false` otherwise.
+///
+/// Dry runs don't call this function: they check unpublished packages after all
+/// packages were processed, so that Cargo can check them together.
 async fn release_package(
     input: &ReleaseRequest,
     repo: &Repo,
@@ -909,7 +912,6 @@ async fn release_package(
             && input.token.is_none()
             && is_crates_io
             && should_publish
-            && !input.dry_run
             && is_github_actions
     };
     if should_use_trusted_publishing {
@@ -929,7 +931,6 @@ async fn release_package(
     }
 
     if should_publish {
-        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
             std::slice::from_ref(release_info.package),
             input,
@@ -958,9 +959,8 @@ async fn release_package(
         }
         // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
         // publish registry) or if `cargo publish` didn't confirm the package.
-        if !input.dry_run
-            && (registry.has_remote_mirror
-                || !is_publish_confirmed_by_cargo(&output, release_info.package))
+        if registry.has_remote_mirror
+            || !is_publish_confirmed_by_cargo(&output, release_info.package)
         {
             wait_until_published(
                 workspace_root,
@@ -973,31 +973,21 @@ async fn release_package(
         }
     }
 
-    if input.dry_run {
-        log_dry_run_info(
-            release_info,
-            should_publish,
-            should_create_git_tag,
-            should_create_git_release,
-        );
-        Ok(false)
-    } else {
-        create_git_tag_and_release(
-            input,
-            repo,
-            context,
-            release_info,
-            should_create_git_tag,
-            should_create_git_release,
-        )
-        .await?;
+    create_git_tag_and_release(
+        input,
+        repo,
+        context,
+        release_info,
+        should_create_git_tag,
+        should_create_git_release,
+    )
+    .await?;
 
-        info!(
-            "published {} {}",
-            release_info.package.name, release_info.package.version
-        );
-        Ok(true)
-    }
+    info!(
+        "published {} {}",
+        release_info.package.name, release_info.package.version
+    );
+    Ok(true)
 }
 
 /// Return `true` if `cargo publish` reported that the package is available in the registry.
