@@ -4,7 +4,12 @@ mod cmd;
 #[cfg(feature = "test_fixture")]
 pub mod test_fixture;
 
-use std::{collections::HashSet, path::Path, process::Command};
+use std::{
+    collections::HashSet,
+    io::{ErrorKind, Write as _},
+    path::Path,
+    process::{Command, Output, Stdio},
+};
 
 use anyhow::{Context, anyhow};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -15,10 +20,61 @@ use tracing::{Span, debug, instrument, trace, warn};
 pub struct Repo {
     /// Directory where you want to run git operations
     directory: Utf8PathBuf,
-    /// Branch name before running any git operation
+    /// Branch name, or commit hash if HEAD was detached, before running any git operation
     original_branch: String,
     /// Remote name before running any git operation
     original_remote: String,
+}
+
+/// The author and committer recorded in a commit.
+#[derive(Debug)]
+pub struct CommitSignatures {
+    pub author_name: String,
+    pub author_email: String,
+    pub committer_name: String,
+    pub committer_email: String,
+}
+
+/// A commit of [`Repo::parents_at_paths`].
+#[derive(Debug)]
+pub struct HistoryCommit {
+    pub id: String,
+    /// The parents, rewritten by history simplification.
+    pub parents: Vec<String>,
+    /// The message as Git prints it. Like other Git output, it must be UTF-8,
+    /// but only once read: callers may read the messages of some commits only.
+    message: Vec<u8>,
+}
+
+impl HistoryCommit {
+    /// Parse an entry `commit <id> <parents>\n<message>` of `git rev-list --parents`.
+    fn parse(entry: &[u8]) -> anyhow::Result<Self> {
+        let header_end = entry
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .unwrap_or(entry.len());
+        let (header, message) = entry.split_at(header_end);
+        let header = std::str::from_utf8(header).context("non-UTF-8 rev-list header")?;
+        let mut ids = header
+            .strip_prefix("commit ")
+            .with_context(|| format!("unexpected rev-list header `{header}`"))?
+            .split_whitespace()
+            .map(str::to_owned);
+        Ok(Self {
+            id: ids.next().context("rev-list printed no commit id")?,
+            parents: ids.collect(),
+            // Skip the newline that ends the header.
+            message: message.get(1..).unwrap_or_default().to_vec(),
+        })
+    }
+
+    /// The message, as [`Repo::current_commit_message`] reads it with this
+    /// commit checked out.
+    pub fn message(&self) -> anyhow::Result<String> {
+        let message = std::str::from_utf8(&self.message)
+            .with_context(|| format!("non-UTF-8 message in commit {}", self.id))?;
+        Ok(message.trim().to_owned())
+    }
 }
 
 impl Repo {
@@ -64,6 +120,11 @@ impl Repo {
                     let branch = get_current_branch(directory)?;
                     warn!("no upstream configured for branch {branch}");
                     Ok(("origin".to_string(), branch))
+                } else if err.contains("fatal: HEAD does not point to a branch") {
+                    // Save the commit, rather than the symbolic HEAD, so checkout_head
+                    // can restore it after checking out older commits.
+                    let commit = git_in_dir(directory.as_ref(), &["rev-parse", "HEAD"])?;
+                    Ok(("origin".to_string(), commit))
                 } else if err.contains("fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.") {
                     Err(anyhow!("git repository does not contain any commit."))
                 } else {
@@ -78,9 +139,8 @@ impl Repo {
         let changes = self.changes_except_typechanges()?;
         anyhow::ensure!(
             changes.is_empty(),
-            "the working directory of this project has uncommitted changes. If these files are both committed and in .gitignore, either delete them or remove them from .gitignore.\n\
-             If the list includes submodules, run `git ls-files -ci --exclude-standard` in the submodule to check if files in the submodule are both committed and in .gitignore.\n\
-             Otherwise, please commit or stash these changes:\n{changes:?}"
+            "the working directory of this project has uncommitted changes.\n\
+             Please commit or stash these changes:\n{changes:?}"
         );
         Ok(())
     }
@@ -179,15 +239,27 @@ impl Repo {
         Ok(())
     }
 
-    /// Branch name before running any git operation.
+    /// Branch name, or commit hash if HEAD was detached, before running any git operation.
     /// I.e. when the [`Repo`] was created.
     pub fn original_branch(&self) -> &str {
         &self.original_branch
     }
 
+    /// Whether HEAD points directly to a commit rather than to a branch.
+    pub fn is_head_detached(&self) -> anyhow::Result<bool> {
+        // `rev-parse --abbrev-ref HEAD` prints `HEAD` when HEAD is detached.
+        Ok(get_current_branch(&self.directory)? == "HEAD")
+    }
+
     /// Run a git command in the repository git directory
     pub fn git(&self, args: &[&str]) -> anyhow::Result<String> {
         git_in_dir(&self.directory, args)
+    }
+
+    /// Like [`Repo::git`], but write `input` to the standard input of git and
+    /// return its standard output as is, which can be invalid UTF-8.
+    pub fn git_output_with_input(&self, args: &[&str], input: &[u8]) -> anyhow::Result<Vec<u8>> {
+        git_output_in_dir(&self.directory, args, &[], Some(input))
     }
 
     pub fn stash_pop(&self) -> anyhow::Result<()> {
@@ -224,7 +296,11 @@ impl Repo {
 
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
-        self.git(&["checkout", object])
+        // Nobody reads the feedback, and computing it is a large part of a
+        // checkout: Git diffs the worktree to list local changes and, when
+        // leaving a detached HEAD, walks the history of every ref to warn about
+        // the commits left behind. Errors are still reported.
+        self.git(&["checkout", "--quiet", object])
             .context("failed to checkout")?;
         Ok(())
     }
@@ -284,28 +360,119 @@ impl Repo {
         Ok(Some(last_commit.to_string()))
     }
 
+    /// The commits of [`Repo::parents_at_paths`], without their parents.
+    pub fn commits_at_paths(
+        &self,
+        head: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+        max_commits: Option<u32>,
+    ) -> anyhow::Result<Vec<String>> {
+        let graph = self.parents_at_paths(head, exclude, paths, max_commits)?;
+        Ok(graph.into_iter().map(|commit| commit.id).collect())
+    }
+
+    /// Commits reachable from `commit` that touch `paths`.
+    ///
+    /// As in [`Repo::parents_at_paths`], `exclude` commits and their ancestors are
+    /// dropped, and missing exclusions are ignored.
+    ///
+    /// Unlike [`Repo::parents_at_paths`], this doesn't simplify history: every
+    /// parent of a merge is followed, so the result is a superset of the commits any
+    /// simplified walk can reach through `commit` with the same exclusions.
+    pub fn ancestors_at_paths(
+        &self,
+        commit: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<String>> {
+        let output = self.rev_list(&["--full-history", commit], exclude, paths)?;
+        let output = cmd::string_from_bytes(output)?;
+        Ok(output.lines().map(str::to_owned).collect())
+    }
+
+    /// Commits reachable from `head` that touch `paths`, with their parents and
+    /// messages, ordered with `--date-order`.
+    ///
+    /// `exclude` commits and their ancestors are dropped. An `exclude` entry that
+    /// doesn't exist in this repository is ignored, so a commit hash recorded by a
+    /// release that happened in another repository, or missing from a shallow clone,
+    /// is not fatal.
+    ///
+    /// Commits are ordered by date rather than topologically: `--topo-order` emits
+    /// whole lineages contiguously, so combining it with `max_commits` would keep the
+    /// oldest commits of one branch instead of the newest commits overall.
+    ///
+    /// Parents are rewritten as `git rev-list --parents` does: a parent dropped by
+    /// history simplification is replaced by the nearest ancestor that is kept.
+    /// Excluded commits can still appear as parents, but never as entries. The
+    /// first entry is the tip of the graph, since `--date-order` never lists a
+    /// parent before its children.
+    pub fn parents_at_paths(
+        &self,
+        head: &str,
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+        max_commits: Option<u32>,
+    ) -> anyhow::Result<Vec<HistoryCommit>> {
+        let limit = max_commits.map(|n| format!("--max-count={n}"));
+        // Listing the messages here saves a `git log` for each commit a walk
+        // keeps. Git prints each commit as `commit <id> <parents>\n<format>\n`.
+        // Messages can't contain NUL, so a NUL ends each one unambiguously.
+        let mut args = vec!["--parents", "--date-order", "--format=%B%x00", head];
+        args.extend(limit.as_deref());
+        let output = self.rev_list(&args, exclude, paths)?;
+        output
+            .split(|byte| *byte == b'\0')
+            .map(|entry| entry.strip_prefix(b"\n").unwrap_or(entry))
+            .filter(|entry| !entry.is_empty())
+            .map(HistoryCommit::parse)
+            .collect()
+    }
+
+    /// Run `git rev-list` with `args`, restricted to the commits touching `paths`,
+    /// and return its raw output.
+    fn rev_list(
+        &self,
+        args: &[&str],
+        exclude: &[&str],
+        paths: &[impl AsRef<Utf8Path>],
+    ) -> anyhow::Result<Vec<u8>> {
+        let exclusions: Vec<String> = exclude.iter().map(|commit| format!("^{commit}")).collect();
+        // Drop the exclusions that don't exist in this repository. A missing
+        // tip would be dropped too, listing no commits.
+        let mut rev_list = vec!["rev-list", "--ignore-missing"];
+        rev_list.extend(args);
+        rev_list.extend(exclusions.iter().map(String::as_str));
+        rev_list.push("--");
+        rev_list.extend(paths.iter().map(|p| p.as_ref().as_str()));
+        git_output_in_dir(&self.directory, &rev_list, &[], None)
+    }
+
     pub fn current_commit_message(&self) -> anyhow::Result<String> {
         self.git(&["log", "-1", "--pretty=format:%B"])
     }
 
-    pub fn get_author_name(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%an", commit_hash)
-    }
-
-    pub fn get_author_email(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%ae", commit_hash)
-    }
-
-    pub fn get_committer_name(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%cn", commit_hash)
-    }
-
-    pub fn get_committer_email(&self, commit_hash: &str) -> anyhow::Result<String> {
-        self.get_commit_info("%ce", commit_hash)
-    }
-
-    fn get_commit_info(&self, info: &str, commit_hash: &str) -> anyhow::Result<String> {
-        self.git(&["log", "-1", &format!("--pretty=format:{info}"), commit_hash])
+    pub fn get_commit_signatures(&self, commit_hash: &str) -> anyhow::Result<CommitSignatures> {
+        let output = self.git(&[
+            "log",
+            "-1",
+            "--pretty=format:%an%x00%ae%x00%cn%x00%ce",
+            commit_hash,
+        ])?;
+        let mut fields = output.split('\0');
+        let mut next = || {
+            fields
+                .next()
+                .map(|field| field.trim().to_owned())
+                .context("missing commit signature field")
+        };
+        Ok(CommitSignatures {
+            author_name: next()?,
+            author_email: next()?,
+            committer_name: next()?,
+            committer_email: next()?,
+        })
     }
 
     /// Get the SHA1 of the current HEAD.
@@ -380,16 +547,6 @@ impl Repo {
             .context("cannot determine if git tag exists")?;
         Ok(output.lines().count() >= 1)
     }
-
-    pub fn get_branches_of_commit(&self, commit_hash: &str) -> anyhow::Result<Vec<String>> {
-        let output = self.git(&["branch", "--contains", commit_hash])?;
-        let branches = output
-            .lines()
-            .filter_map(|l| l.split_whitespace().last())
-            .map(|s| s.to_string())
-            .collect();
-        Ok(branches)
-    }
 }
 
 pub fn is_file_ignored(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
@@ -414,38 +571,96 @@ fn changed_files(output: &str, filter: impl FnMut(&&str) -> bool) -> Vec<String>
         .collect()
 }
 
-#[instrument]
 pub fn git_in_dir(dir: &Utf8Path, args: &[&str]) -> anyhow::Result<String> {
+    git_in_dir_with_env(dir, args, &[])
+}
+
+/// Like [`git_in_dir`], but with `envs` added to the environment of the git process.
+pub(crate) fn git_in_dir_with_env(
+    dir: &Utf8Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> anyhow::Result<String> {
+    let stdout = git_output_in_dir(dir, args, envs, None)?;
+    cmd::string_from_bytes(stdout)
+}
+
+/// Like [`git_in_dir_with_env`], but write `input`, if any, to the standard
+/// input of the git process, and return the stdout as is.
+// Don't record `envs`, which can carry credentials, nor `input`.
+#[instrument(skip(envs, input))]
+fn git_output_in_dir(
+    dir: &Utf8Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+    input: Option<&[u8]>,
+) -> anyhow::Result<Vec<u8>> {
     let args: Vec<&str> = args.iter().map(|s| s.trim()).collect();
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .arg("-C")
         .arg(dir)
         .args(&args)
-        .output()
-        .with_context(|| {
-            format!("error while running git in directory `{dir:?}` with args `{args:?}`")
-        })?;
+        .envs(envs.iter().copied());
+    let output = match input {
+        None => command.output(),
+        Some(input) => output_with_input(&mut command, input),
+    }
+    .with_context(|| {
+        format!("error while running git in directory `{dir:?}` with args `{args:?}`")
+    })?;
     trace!("git {:?}: output = {:?}", args, output);
-    let stdout = cmd::string_from_bytes(output.stdout)?;
     if output.status.success() {
-        Ok(stdout)
+        Ok(output.stdout)
     } else {
         let mut error =
             format!("error while running git in directory `{dir:?}` with args `{args:?}");
-        let stderr = cmd::string_from_bytes(output.stderr)?;
+        // The output can be invalid UTF-8, such as paths: decode it lossily
+        // so that the error always reports why git failed.
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = stdout.trim();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
         if !stdout.is_empty() || !stderr.is_empty() {
             error.push(':');
         }
         if !stdout.is_empty() {
             error.push_str("\n- stdout: ");
-            error.push_str(&stdout);
+            error.push_str(stdout);
         }
         if !stderr.is_empty() {
             error.push_str("\n- stderr: ");
-            error.push_str(&stderr);
+            error.push_str(stderr);
         }
         Err(anyhow!(error))
     }
+}
+
+/// Run `command` like [`Command::output`], but write `input` to its standard input.
+fn output_with_input(command: &mut Command, input: &[u8]) -> std::io::Result<Output> {
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    std::thread::scope(|scope| {
+        // Write from another thread: the child can fill its output pipes
+        // before it reads all of its input. Dropping stdin then closes it.
+        let writer = scope.spawn(move || stdin.write_all(input));
+        let output = child.wait_with_output()?;
+        let written = writer.join().expect("writing to the child panicked");
+        // A child that fails stops reading: its own error explains more. A
+        // child that succeeds can exit without reading the input it doesn't
+        // need, which breaks the pipe.
+        if output.status.success()
+            && let Err(error) = written
+            && error.kind() != ErrorKind::BrokenPipe
+        {
+            return Err(error);
+        }
+        Ok(output)
+    })
 }
 
 /// Get the name of the current branch.
@@ -466,6 +681,342 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    /// `git rev-list --topo-order` emits whole lineages contiguously, so combining
+    /// it with `--max-count` returns the oldest commits of one branch instead of the
+    /// newest commits overall. Every mainline commit would be dropped from a first
+    /// release limited by `max_analyze_commits`.
+    #[test]
+    fn commit_limit_keeps_the_newest_commit_of_every_branch() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+
+        // Interleave the commit dates of the two branches, so taking the newest
+        // three commits must take from both sides.
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["branch", "other"]).unwrap();
+        for (name, date) in [
+            ("a1", "2024-01-01T00:00:01 +0000"),
+            ("a2", "2024-01-01T00:00:03 +0000"),
+            ("a3", "2024-01-01T00:00:05 +0000"),
+        ] {
+            commit_file_at(&repo, path, name, date);
+        }
+        let a3 = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "other"]).unwrap();
+        for (name, date) in [
+            ("b1", "2024-01-01T00:00:02 +0000"),
+            ("b2", "2024-01-01T00:00:04 +0000"),
+            ("b3", "2024-01-01T00:00:06 +0000"),
+        ] {
+            commit_file_at(&repo, path, name, date);
+        }
+        let b3 = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_merge_at(&repo, "other", "2024-01-01T00:00:07 +0000");
+        let merge = repo.current_commit_hash().unwrap();
+
+        assert_eq!(
+            repo.commits_at_paths("HEAD", &[], &[path], Some(3))
+                .unwrap(),
+            [merge, b3, a3]
+        );
+    }
+
+    fn commit_file_at(repo: &Repo, directory: &Utf8Path, name: &str, date: &str) {
+        let file = repo.directory().join(directory).join(name);
+        fs_err::write(file, name).unwrap();
+        repo.git(&["add", "."]).unwrap();
+        repo.git_at(&["commit", "-m", name], date).unwrap();
+    }
+
+    fn commit_merge_at(repo: &Repo, branch: &str, date: &str) {
+        let message = format!("merge {branch}");
+        repo.git_at(&["merge", "--no-ff", "-m", &message, branch], date)
+            .unwrap();
+    }
+
+    /// The commits of a "keep mine" merge, see [`keep_mine_merge`].
+    struct KeepMineMerge {
+        base: String,
+        discarded: String,
+        mine: String,
+    }
+
+    /// Commit `base`, then `discarded` on a `feature` branch and `mine` on the
+    /// main branch, and merge `feature` with `-s ours`: HEAD is a merge whose
+    /// tree equals its first parent `mine`, so it discards `feature` entirely.
+    fn keep_mine_merge(repo: &Repo, path: &Utf8Path) -> KeepMineMerge {
+        let main_branch = repo.original_branch().to_string();
+        commit_file_at(repo, path, "base", "2024-01-01T00:00:00 +0000");
+        let base = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "feature"]).unwrap();
+        commit_file_at(repo, path, "discarded", "2024-01-01T00:00:01 +0000");
+        let discarded = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        commit_file_at(repo, path, "mine", "2024-01-01T00:00:02 +0000");
+        let mine = repo.current_commit_hash().unwrap();
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2024-01-01T00:00:03 +0000",
+        )
+        .unwrap();
+        KeepMineMerge {
+            base,
+            discarded,
+            mine,
+        }
+    }
+
+    /// [`Repo::ancestors_at_paths`] exists to not simplify history: a "keep mine"
+    /// merge is TREESAME to its first parent, so git drops the branch the merge
+    /// discarded from every simplified walk through it, although those commits are
+    /// real ancestors of the merge.
+    #[test]
+    fn full_history_ancestors_keep_the_parent_a_simplified_walk_drops() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let KeepMineMerge { discarded, .. } = keep_mine_merge(&repo, path);
+
+        assert!(
+            repo.is_ancestor(&discarded, "HEAD"),
+            "the discarded commit must be a real ancestor of the merge"
+        );
+        assert!(
+            repo.ancestors_at_paths("HEAD", &[], &[path])
+                .unwrap()
+                .contains(&discarded)
+        );
+        assert!(
+            !repo
+                .commits_at_paths("HEAD", &[], &[path], None)
+                .unwrap()
+                .contains(&discarded),
+            "the simplified walk is supposed to miss it: that's why the two differ"
+        );
+    }
+
+    /// [`Repo::parents_at_paths`] simplifies history: the "keep mine" merge is
+    /// dropped, so the graph starts at its first parent, and exclusions remove
+    /// entries but not parents.
+    #[test]
+    fn simplified_parents_start_at_the_first_kept_commit() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let KeepMineMerge { base, mine, .. } = keep_mine_merge(&repo, path);
+        let parents = |exclude: &[&str]| -> Vec<_> {
+            repo.parents_at_paths("HEAD", exclude, &[path], None)
+                .unwrap()
+                .into_iter()
+                .map(|commit| (commit.id, commit.parents))
+                .collect()
+        };
+
+        assert_eq!(
+            parents(&[]),
+            [(mine.clone(), vec![base.clone()]), (base.clone(), vec![])]
+        );
+        assert_eq!(parents(&[&base]), [(mine, vec![base])]);
+    }
+
+    /// [`Repo::parents_at_paths`] reads every message in one go, so it must split
+    /// them from the commit headers whatever they contain.
+    #[test]
+    fn history_messages_equal_the_messages_of_checked_out_commits() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file");
+        for message in [
+            // A line that looks like the header of another commit.
+            "feat: first\n\ncommit 0000000000000000000000000000000000000000\n",
+            // Surrounding whitespace, which both readers trim.
+            "  fix: second  \n\n",
+            "",
+        ] {
+            fs_err::write(directory.path().join(path), message).unwrap();
+            repo.git(&["add", "."]).unwrap();
+            // Commit the message from stdin: `Repo::git` trims its arguments.
+            repo.git_output_with_input(
+                &[
+                    "commit",
+                    "--cleanup=verbatim",
+                    "--allow-empty-message",
+                    "-F",
+                    "-",
+                ],
+                message.as_bytes(),
+            )
+            .unwrap();
+        }
+
+        let commits = repo.parents_at_paths("HEAD", &[], &[path], None).unwrap();
+        assert_eq!(commits.len(), 3);
+        for commit in commits {
+            repo.checkout(&commit.id).unwrap();
+            assert_eq!(
+                commit.message().unwrap(),
+                repo.current_commit_message().unwrap()
+            );
+        }
+    }
+
+    /// Git can exit successfully without reading all of its input, breaking the
+    /// pipe for any input it didn't read.
+    #[test]
+    fn input_that_git_does_not_read_is_not_an_error() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        // More than a pipe holds, so writing it can't finish before git exits.
+        let input = b"x\n".repeat(1 << 20);
+        repo.git_output_with_input(&["rev-parse", "HEAD"], &input)
+            .unwrap();
+    }
+
+    /// Git can print invalid UTF-8, such as paths, before it fails: the error
+    /// must still report why it failed.
+    #[test]
+    fn git_error_is_reported_after_invalid_utf8_output() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        // Stage the path from stdin: file systems can reject invalid UTF-8 names.
+        let blob = repo.git(&["rev-parse", "HEAD:README.md"]).unwrap();
+        let entry = [format!("100644 {blob}\t").as_bytes(), b"invalid-\xff\n"].concat();
+        repo.git_output_with_input(&["update-index", "--index-info"], &entry)
+            .unwrap();
+        repo.git(&["commit", "-m", "add invalid UTF-8 path"])
+            .unwrap();
+        let commit = repo.current_commit_hash().unwrap();
+
+        // Git prints the path added by `commit`, then fails on the missing parent.
+        let missing = "0000000000000000000000000000000000000001";
+        let input = format!("{commit}\n{commit} {missing}\n");
+        let error = repo
+            .git_output_with_input(
+                &["diff-tree", "-r", "-z", "--always", "--stdin"],
+                input.as_bytes(),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("fatal: unable to parse commit {missing}")),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn full_history_ancestors_exclude_each_release_boundary() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("pkg");
+        fs_err::create_dir(directory.path().join(path)).unwrap();
+        let main_branch = repo.original_branch().to_string();
+        commit_file_at(&repo, path, "base", "2024-01-01T00:00:00 +0000");
+        repo.git(&["branch", "feature"]).unwrap();
+
+        // The tag and published SHA can be on different branches. Both release
+        // boundaries and their shared history must be excluded from the walk.
+        commit_file_at(&repo, path, "tagged", "2024-01-01T00:00:01 +0000");
+        let tagged = repo.current_commit_hash().unwrap();
+        commit_file_at(&repo, path, "mine", "2024-01-01T00:00:02 +0000");
+        let mine = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "feature"]).unwrap();
+        commit_file_at(&repo, path, "published", "2024-01-01T00:00:03 +0000");
+        let published = repo.current_commit_hash().unwrap();
+        commit_file_at(&repo, path, "discarded", "2024-01-01T00:00:04 +0000");
+        let discarded = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", &main_branch]).unwrap();
+        repo.git_at(
+            &["merge", "-s", "ours", "-m", "merge feature", "feature"],
+            "2024-01-01T00:00:05 +0000",
+        )
+        .unwrap();
+        let merge = repo.current_commit_hash().unwrap();
+
+        let missing = "0000000000000000000000000000000000000000";
+        assert_eq!(
+            repo.ancestors_at_paths("HEAD", &[missing], &[path])
+                .unwrap(),
+            repo.ancestors_at_paths("HEAD", &[], &[path]).unwrap(),
+            "a missing release boundary must leave history available"
+        );
+        let ancestors: HashSet<_> = repo
+            .ancestors_at_paths("HEAD", &[&tagged, &published, missing], &[path])
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(
+            ancestors,
+            HashSet::from([merge, mine, discarded]),
+            "only unreleased ancestors remain, including the discarded merge parent"
+        );
+    }
+
+    #[test]
+    fn detached_head_is_restored_after_checking_out_history() {
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let previous_commit = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "--detach"]).unwrap();
+        repo.git(&["commit", "--allow-empty", "-m", "detached commit"])
+            .unwrap();
+        let original_commit = repo.current_commit_hash().unwrap();
+        repo.git(&[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/test/project.git",
+        ])
+        .unwrap();
+
+        let repo = Repo::new(repo.directory()).unwrap();
+        assert_eq!(repo.original_branch(), original_commit);
+        assert_eq!(repo.original_remote(), "origin");
+        assert_eq!(
+            repo.original_remote_url().unwrap(),
+            "https://github.com/test/project.git"
+        );
+
+        repo.checkout(&previous_commit).unwrap();
+        repo.checkout_head().unwrap();
+        assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
+        assert!(repo.is_head_detached().unwrap());
+    }
+
+    #[test]
+    fn configured_upstream_is_used() {
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        repo.git(&[
+            "remote",
+            "add",
+            "upstream",
+            "https://github.com/test/project.git",
+        ])
+        .unwrap();
+        repo.git(&["update-ref", "refs/remotes/upstream/release/stable", "HEAD"])
+            .unwrap();
+        repo.git(&["branch", "--set-upstream-to=upstream/release/stable"])
+            .unwrap();
+
+        let repo = Repo::new(repo.directory()).unwrap();
+        assert_eq!(repo.original_remote(), "upstream");
+        assert_eq!(repo.original_branch(), "release/stable");
+    }
 
     #[test]
     fn inexistent_previous_commit_detected() {
@@ -493,6 +1044,66 @@ mod tests {
         }
         repo.checkout_previous_commit_at_paths(&[&file2]).unwrap();
         assert_eq!(repo.current_commit_message().unwrap(), "file2-1");
+    }
+
+    #[test]
+    fn commit_range_ignores_missing_but_not_unreachable_boundaries() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file.rs");
+        fs_err::write(directory.path().join(path), "shared").unwrap();
+        repo.add_all_and_commit("shared change").unwrap();
+        let shared = repo.current_commit_hash().unwrap();
+        repo.git(&["checkout", "-b", "release"]).unwrap();
+        fs_err::write(directory.path().join(path), "other branch").unwrap();
+        repo.add_all_and_commit("release on another branch")
+            .unwrap();
+        let release = repo.current_commit_hash().unwrap();
+        repo.checkout_head().unwrap();
+        fs_err::write(directory.path().join(path), "local change").unwrap();
+        repo.add_all_and_commit("local change").unwrap();
+        let local = repo.current_commit_hash().unwrap();
+
+        // A boundary that doesn't exist locally can't exclude anything.
+        assert_eq!(
+            repo.commits_at_paths(
+                "HEAD",
+                &["0000000000000000000000000000000000000000"],
+                &[path],
+                None,
+            )
+            .unwrap(),
+            [local.clone(), shared.clone()]
+        );
+
+        // A boundary on a divergent branch still excludes the history it shares
+        // with `head`: those changes were already released.
+        assert_eq!(
+            repo.commits_at_paths("HEAD", &[&release], &[path], None)
+                .unwrap(),
+            [local]
+        );
+    }
+
+    #[test]
+    fn commit_range_uses_the_given_tip_and_exclusions() {
+        test_logs::init();
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        let path = Utf8Path::new("file.rs");
+        let mut commits = Vec::new();
+        for message in ["tagged", "published", "unreleased"] {
+            fs_err::write(directory.path().join(path), message).unwrap();
+            repo.add_all_and_commit(message).unwrap();
+            commits.push(repo.current_commit_hash().unwrap());
+        }
+        repo.checkout(&commits[0]).unwrap();
+        assert_eq!(
+            repo.commits_at_paths(&commits[2], &[&commits[0], &commits[1]], &[path], None)
+                .unwrap(),
+            [commits[2].clone()]
+        );
     }
 
     #[test]
@@ -589,15 +1200,5 @@ D  crates/git_cmd/CHANGELOG.md
         repo.tag("v1.0.1", "test2").unwrap();
         let tags = repo.get_all_tags();
         assert_eq!(tags, vec!["v1.0.0", "v1.0.1"]);
-    }
-
-    #[test]
-    fn is_branch_of_commit_detected_correctly() {
-        test_logs::init();
-        let repository_dir = tempdir().unwrap();
-        let repo = Repo::init(&repository_dir);
-        let commit_hash = repo.current_commit_hash().unwrap();
-        let branches = repo.get_branches_of_commit(&commit_hash).unwrap();
-        assert_eq!(branches, vec![repo.original_branch()]);
     }
 }

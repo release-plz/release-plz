@@ -1,132 +1,124 @@
 // Copied from [cargo-clone](https://github.com/JanLikar/cargo-clone/blob/89ba4da215663ffb3b8c93a674f3002937eafec4/cargo-clone-core/src/lib.rs)
 //! Fetch the source code of a Rust crate from a registry.
 
-#![warn(missing_docs)]
-
-mod cloner_builder;
-mod source;
-
 use cargo::util::cache_lock::CacheLockMode;
 use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::camino::Utf8PathBuf;
-pub use cloner_builder::*;
-pub use source::*;
+use futures::StreamExt as _;
+use futures::stream::FuturesOrdered;
 use tracing::warn;
-
-use std::process::Command;
 
 use anyhow::{Context, bail};
 
-use cargo::core::dependency::Dependency;
-use cargo::core::{Package, PackageSet};
 use cargo::sources::source::{QueryKind, Source, SourceMap};
-use cargo::sources::{IndexSummary, PathSource, SourceConfigMap};
+use cargo::sources::{IndexSummary, SourceConfigMap};
+use cargo::util::{CargoResult, GlobalContext};
+use cargo::workspace::{Dependency, Package, PackageId, PackageSet, SourceId};
 
 use walkdir::WalkDir;
 
-// Re-export cargo types.
-pub use cargo::{
-    core::SourceId,
-    util::{CargoResult, GlobalContext},
-};
-
+use crate::cargo::new_cargo_config;
 use crate::fs_utils::strip_prefix;
 use crate::fs_utils::to_utf8_path;
-
-/// Rust crate.
-#[derive(PartialEq, Eq, Debug)]
-pub struct Crate {
-    name: String,
-    version: Option<String>,
-}
-
-impl Crate {
-    /// Create a new [`Crate`].
-    /// If `version` is not specified, the latest version is chosen.
-    pub fn new(name: String, version: Option<String>) -> Self {
-        Self { name, version }
-    }
-}
 
 /// Clones a crate.
 pub struct Cloner {
     /// Cargo configuration.
-    pub(crate) config: GlobalContext,
+    config: GlobalContext,
     /// Directory where the crates will be cloned.
     /// Each crate is cloned into a subdirectory of this directory.
-    pub(crate) directory: Utf8PathBuf,
+    directory: Utf8PathBuf,
     /// Where the crates will be cloned from.
-    pub(crate) srcid: SourceId,
-    /// If true, use `git` to clone the git repository present in the manifest metadata.
-    pub(crate) use_git: bool,
+    srcid: SourceId,
 }
 
 impl Cloner {
-    /// Creates a new [`ClonerBuilder`] that:
-    /// - Uses crates.io as source.
-    /// - Clones the crates into the current directory.
-    pub fn builder() -> ClonerBuilder {
-        ClonerBuilder::new()
-    }
-
-    fn clone_from_summary_into(
-        &self,
-        summary: &IndexSummary,
-        dest_path: &Utf8Path,
-    ) -> CargoResult<Package> {
-        let name = summary.package_id().name();
-
-        let pkg = self.download_package(summary)?;
-
-        if self.use_git {
-            let repo = pkg
-                .manifest()
-                .metadata()
-                .repository
-                .as_ref()
-                .with_context(|| {
-                    format!(
-                        "Cannot clone {name} from git repo because \
-                        repository is not specified in package's manifest."
-                    )
-                })?;
-
-            clone_git_repo(repo, dest_path)?;
-        } else {
-            clone_directory(to_utf8_path(pkg.root())?, dest_path)
-                .context("failed to clone directory")?;
+    /// Creates a [`Cloner`] that clones crates from `registry`, or from crates.io if `None`.
+    /// `cargo_cwd` is the Cargo working directory: use it to point to the right `.cargo/config.toml`.
+    pub fn new(
+        directory: impl Into<Utf8PathBuf>,
+        registry: Option<&str>,
+        cargo_cwd: Option<Utf8PathBuf>,
+    ) -> CargoResult<Self> {
+        let config = new_cargo_config(cargo_cwd).context("Unable to get cargo config.")?;
+        let srcid = match registry {
+            Some(registry) => SourceId::alt_registry(&config, registry),
+            None => SourceId::crates_io(&config),
         }
-
-        Ok(pkg)
+        .context("can't determine the source id")?;
+        Ok(Self {
+            config,
+            directory: directory.into(),
+            srcid,
+        })
     }
 
-    /// Clone the specified crates from registry or git repository.
+    /// Clone the specified crates from the registry.
     /// Each crate is cloned in a subdirectory named as the crate name.
-    /// Returns the cloned crates and the path where they are cloned.
-    /// If a crate doesn't exist, is not returned.
-    pub async fn clone(&self, crates: &[Crate]) -> CargoResult<Vec<(Package, Utf8PathBuf)>> {
+    /// Returns the paths where the crates are cloned.
+    /// If a crate doesn't exist, its path is not returned.
+    pub async fn clone(&self, names: &[String]) -> CargoResult<Vec<Utf8PathBuf>> {
         let _lock = self.acquire_cargo_package_cache_lock()?;
         let src = self.get_source()?;
-        let mut cloned_pkgs = vec![];
 
-        for crate_ in crates {
-            let mut dest_path = self.directory.clone();
-
-            dest_path.push(&crate_.name);
-
-            let pkg = self
-                .clone_in(crate_, &dest_path, src.as_ref())
-                .await
-                .with_context(|| {
-                    format!("failed to clone package {} in {dest_path}", crate_.name)
-                })?;
-
-            if let Some(pkg) = pkg {
-                cloned_pkgs.push((pkg, dest_path));
-            }
+        let destinations = self.query_destinations(src.as_ref(), names).await?;
+        if destinations.is_empty() {
+            return Ok(vec![]);
         }
 
-        Ok(cloned_pkgs)
+        let package_ids: Vec<_> = destinations.iter().map(|(id, _)| *id).collect();
+        let mut sources = SourceMap::new();
+        sources.insert(src);
+        let package_set = PackageSet::new(&package_ids, sources, &self.config)?;
+        // Use the set's deduplicated IDs: Cargo panics if a batch downloads the same ID twice.
+        package_set.get_many(package_set.package_ids())?;
+
+        // `get_many` returns packages in completion order.
+        // Look each one up by ID to keep request order.
+        destinations
+            .into_iter()
+            .map(|(id, dest_path)| {
+                let pkg = package_set.get_one(id)?;
+                clone_package_into(pkg, &dest_path).with_context(|| {
+                    format!("failed to clone package {} in {dest_path}", id.name())
+                })?;
+                Ok(dest_path)
+            })
+            .collect()
+    }
+
+    /// Query the latest version of each crate and check the directory it will be cloned into.
+    /// Crates that don't exist are skipped.
+    async fn query_destinations(
+        &self,
+        src: &dyn Source,
+        names: &[String],
+    ) -> CargoResult<Vec<(PackageId, Utf8PathBuf)>> {
+        // `get_source` invalidated the index cache, so sparse registries revalidate every
+        // index file with the server. Cargo runs these requests in parallel, so poll the
+        // queries together instead of paying one round trip per crate.
+        // Stop at the first error in request order: Cargo doesn't keep a failed sparse
+        // `config.json`, so without a copy on disk every pending query would fetch it
+        // again, one after another.
+        let mut summaries: FuturesOrdered<_> = names
+            .iter()
+            .map(async |name| (name, query_latest_package_summary(src, name).await))
+            .collect();
+
+        let mut destinations = vec![];
+        while let Some((name, summary)) = summaries.next().await {
+            match summary.with_context(|| format!("failed to query package {name}"))? {
+                Some(summary) => {
+                    let dest_path = self.directory.join(name);
+                    check_destination(&dest_path).with_context(|| {
+                        format!("failed to clone package {name} in {dest_path}")
+                    })?;
+                    destinations.push((summary.package_id(), dest_path));
+                }
+                None => warn!("Package `{name}` not found"),
+            }
+        }
+        Ok(destinations)
     }
 
     fn acquire_cargo_package_cache_lock(
@@ -137,76 +129,33 @@ impl Cloner {
     }
 
     fn get_source(&self) -> CargoResult<Box<dyn Source + '_>> {
-        let source = if self.srcid.is_path() {
-            let path = self.srcid.url().to_file_path().expect("path must be valid");
-            Box::new(PathSource::new(&path, self.srcid, &self.config))
-        } else {
-            let map = SourceConfigMap::new(&self.config)?;
-            map.load(self.srcid)?
-        };
-
+        let map = SourceConfigMap::new(&self.config)?;
+        let source = map.load(self.srcid)?;
         source.invalidate_cache();
         Ok(source)
     }
+}
 
-    fn download_package(&self, summary: &IndexSummary) -> CargoResult<Package> {
-        let package_id = summary.package_id();
-        let mut sources = SourceMap::new();
-        sources.insert(self.get_source()?);
-        let package_set = PackageSet::new(&[package_id], sources, &self.config)?;
-        package_set.get_one(package_id).cloned()
+fn clone_package_into(pkg: &Package, dest_path: &Utf8Path) -> CargoResult<()> {
+    // Duplicate requests share a destination that an earlier copy already filled.
+    check_destination(dest_path)?;
+    fs_err::create_dir_all(dest_path)?;
+    clone_directory(to_utf8_path(pkg.root())?, dest_path).context("failed to clone directory")
+}
+
+fn check_destination(dest_path: &Utf8Path) -> CargoResult<()> {
+    // Cloning into an existing directory is only allowed if the directory is empty.
+    if dest_path.exists() && dest_path.read_dir()?.next().is_some() {
+        bail!("destination path '{dest_path}' already exists and is not an empty directory.");
     }
-
-    async fn clone_in(
-        &self,
-        crate_: &Crate,
-        dest_path: &Utf8Path,
-        src: &dyn Source,
-    ) -> CargoResult<Option<Package>> {
-        if !dest_path.exists() {
-            fs_err::create_dir_all(dest_path)?;
-        }
-
-        // Cloning into an existing directory is only allowed if the directory is empty.
-        let is_empty = dest_path.read_dir()?.next().is_none();
-        if !is_empty {
-            bail!("destination path '{dest_path}' already exists and is not an empty directory.");
-        }
-
-        self.clone_single(crate_, dest_path, src).await
-    }
-
-    /// Clone one crate.
-    async fn clone_single(
-        &self,
-        crate_: &Crate,
-        dest_path: &Utf8Path,
-        src: &dyn Source,
-    ) -> CargoResult<Option<Package>> {
-        let name = &crate_.name;
-        let vers = crate_.version.as_deref();
-        let latest = query_latest_package_summary(src, name, vers).await?;
-
-        let pkg = match latest {
-            Some(l) => {
-                let pkg = self.clone_from_summary_into(&l, dest_path)?;
-                Some(pkg)
-            }
-            None => {
-                warn!("Package `{}@{}` not found", name, vers.unwrap_or("*.*.*"));
-                None
-            }
-        };
-        Ok(pkg)
-    }
+    Ok(())
 }
 
 async fn query_latest_package_summary(
     src: &dyn Source,
     name: &str,
-    vers: Option<&str>,
 ) -> CargoResult<Option<IndexSummary>> {
-    let dep = Dependency::parse(name, vers, src.source_id())?;
+    let dep = Dependency::parse(name, None, src.source_id())?;
     let summaries = match src.query_vec(&dep, QueryKind::Exact).await {
         Ok(summaries) => summaries,
         Err(err) => return none_or_query_err(err),
@@ -240,34 +189,16 @@ fn clone_directory(from: &Utf8Path, to: &Utf8Path) -> CargoResult<()> {
         let utf8_entry: &Utf8Path = entry.path().try_into()?;
         dest_path.push(strip_prefix(utf8_entry, from).unwrap());
 
+        // .cargo-ok is not wanted in this context
         if entry.file_name() == ".cargo-ok" {
             continue;
         }
 
         if !file_type.is_dir() {
-            // .cargo-ok is not wanted in this context
             fs_err::copy(entry.path(), &dest_path)?;
-        } else if file_type.is_dir() {
-            if dest_path == to {
-                continue;
-            }
+        } else if dest_path != to {
             fs_err::create_dir(&dest_path)?;
         }
-    }
-
-    Ok(())
-}
-
-fn clone_git_repo(repo: &str, to: &Utf8Path) -> CargoResult<()> {
-    let status = Command::new("git")
-        .arg("clone")
-        .arg(repo)
-        .arg(to)
-        .status()
-        .context("Failed to clone from git repo.")?;
-
-    if !status.success() {
-        bail!("Failed to clone from git repo.")
     }
 
     Ok(())

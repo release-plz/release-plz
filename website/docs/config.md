@@ -16,7 +16,12 @@ If you are using release-plz to release important projects, make sure to check t
 [`release_always`](#the-release_always-field) field.
 :::
 
-Put your `release-plz.toml` (or `.release-plz.toml`) file in the same directory of your root `Cargo.toml`.
+Release-plz looks for the configuration file in the directory where you run it,
+checking these paths in order and using the first one that exists:
+
+1. `release-plz.toml`
+2. `.release-plz.toml`
+3. `.config/release-plz.toml`
 
 ## Example
 
@@ -68,6 +73,7 @@ the following sections:
 - [`[workspace]`](#the-workspace-section) — Configuration applied to all packages by default.
   - [`allow_dirty`](#the-allow_dirty-field) — Update dirty working directories.
   - [`changelog_config`](#the-changelog_config-field) — Path to the [git-cliff] configuration file.
+  - [`changelog_path`](#the-changelog_path-field) — Changelog path.
   - [`changelog_update`](#the-changelog_update-field) — Update changelog.
   - [`dependencies_update`](#the-dependencies_update-field) — Update all dependencies.
   - [`custom_major_increment_regex`](#the-custom_major_increment_regex-field)
@@ -209,6 +215,27 @@ Ideally, release-plz users shouldn't need to read the `git-cliff` documentation
 to customize their changelog.
 :::
 
+#### The `changelog_path` field
+
+By default, release-plz looks for the changelog in the `CHANGELOG.md` file
+of the same directory of the `Cargo.toml` of the package:
+
+```txt
+.
+├── src/
+├── CHANGELOG.md
+└── Cargo.toml
+```
+
+If the changelog is in a different location, you can specify it with this field.
+For example, use it to [share a single changelog](./extra/single-changelog.md#all-packages)
+between all packages.
+
+This field is relative to the root `Cargo.toml` file.
+In GitHub Actions, this is the root of the repository.
+
+This field can be overridden in the [`[package]`](#the-package-section) section.
+
 #### The `changelog_update` field
 
 - If `true`, update the changelog of the crates. *(Default)*.
@@ -225,6 +252,9 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 
 Same as the [`custom_minor_increment_regex`](#the-custom_minor_increment_regex-field), but for major
 version increments.
+
+A matching commit triggers a major increment even for `0.x` versions (for example, `0.2.3` becomes
+`1.0.0`).
 
 #### The `custom_minor_increment_regex` field
 
@@ -406,9 +436,12 @@ When `git_only` is enabled:
 - Version detection is based on git tags matching the
   [`git_tag_name`](#the-git_tag_name-field) pattern.
 - If no matching tag is found, the package is treated as an initial release.
+- Packages with `publish = false` in their `Cargo.toml` are also released (tagged), since
+  they don't need a cargo registry.
 
 :::warning
-`git_only` and `publish` cannot both be `true` for the same package.
+In git-only mode `cargo publish` is skipped, so `publish` doesn't need to be set.
+Setting `publish = true` together with `git_only = true` is an error.
 :::
 
 Example:
@@ -548,8 +581,11 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 
 Prefix for the release PR branch. By default, it's set to: `release-plz-`
 
+release-plz only manages release PRs whose branch starts with this prefix.
+
 :::warning
-Before changing the release-plz branch you should close the old release PR.
+Before changing the prefix, close the old release PR:
+release-plz won't detect it anymore and will open a new one.
 :::
 
 #### The `pr_draft` field
@@ -794,6 +830,10 @@ For example, the changelog of the `release-plz` package of this repository
 includes commits of the `release_plz_core` package, because they affect the
 `release-plz` package, too.
 
+The included commits release the package, but bump its version at most by a
+patch (a prerelease increment for prerelease versions), as when a local
+dependency of the package changes.
+
 Example:
 
 ```toml
@@ -802,22 +842,7 @@ changelog_include = ["release_plz_core"]
 
 #### The `changelog_path` field (`package` section)
 
-By default, release-plz looks for the changelog in the `CHANGELOG.md` file
-of the same directory of the `Cargo.toml` of the package:
-
-```txt
-.
-├── src/
-├── CHANGELOG.md
-└── Cargo.toml
-```
-
-If the changelog of a package is in a different location, you can specify it with this field.
-
-This field is relative to the root `Cargo.toml` file.
-In GitHub Actions, this is the root of the repository.
-
-This field cannot be set in the `[workspace]` section.
+Overrides the [`workspace.changelog_path`](#the-changelog_path-field) field.
 
 #### The `changelog_update` field (`package` section)
 
@@ -1160,6 +1185,11 @@ Postprocessors use the same syntax as commit preprocessors, so check the section
 
 An array of parsers allowing to group and skip commits.
 
+Parsers are evaluated in order. By default, processing stops at the first matching parser.
+Set `continue = true` on a parser to apply subsequent parsers to the same commit.
+Later matching parsers can override fields set by earlier parsers; fields they don't set are preserved.
+Omitting `continue` or setting it to `false` keeps the default behavior.
+
 Default:
 
 ```toml
@@ -1198,6 +1228,22 @@ Here are some examples of parsers:
     E.g. `docs: xyz` will be processed as `docs(other): xyz`.
 - `{ sha = "f6f2472bdf0bbb5f9fcaf2d72c1fa9f98f772bb2", skip = true }`
   - Skip a specific commit by using its SHA1.
+
+For example, set a scope from a commit footer, then assign a group from the commit message:
+
+```toml
+[changelog]
+commit_parsers = [
+    { footer = "^Component: ?Billing$", scope = "billing", continue = true },
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Fixes" },
+]
+```
+
+A `feat: add invoices` commit with a `Component: Billing` footer gets the `billing` scope
+and the `Features` group. A parser with `skip = true` still skips a matching commit even if
+`continue = true`, unless
+[`protect_breaking_commits`](#the-protect_breaking_commits-field) protects it.
 
 #### The `link_parsers` field
 

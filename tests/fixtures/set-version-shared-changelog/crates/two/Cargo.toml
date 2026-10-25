@@ -1,0 +1,6 @@
+[package]
+name = "two"
+edition = "2024"
+
+[package.version]
+workspace = true

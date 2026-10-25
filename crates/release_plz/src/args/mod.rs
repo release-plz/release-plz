@@ -10,14 +10,11 @@ mod set_version;
 mod update;
 
 use anyhow::bail;
-use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use cargo_utils::CARGO_TOML;
 use clap::{
     ValueEnum,
     builder::{Styles, styling::AnsiColor},
 };
 use init::Init;
-use release_plz_core::fs_utils::current_directory;
 use set_version::SetVersion;
 use tracing::level_filters::LevelFilter;
 
@@ -113,6 +110,9 @@ pub enum Command {
     /// For single package projects, you can omit `<package_name>@`.
     /// E.g. `release-plz set-version 1.2.3`.
     ///
+    /// In workspaces with `workspace.package.version`, omitting `<package_name>@` updates
+    /// the workspace version and the changelogs of all packages inheriting it.
+    ///
     /// Note that this command is meant to edit the versions of the packages of your workspace, not the
     /// version of your dependencies.
     SetVersion(SetVersion),
@@ -121,11 +121,4 @@ pub enum Command {
 #[derive(ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutputType {
     Json,
-}
-
-fn local_manifest(manifest_path: Option<&Utf8Path>) -> Utf8PathBuf {
-    match manifest_path {
-        Some(manifest) => manifest.to_path_buf(),
-        None => current_directory().unwrap().join(CARGO_TOML),
-    }
 }

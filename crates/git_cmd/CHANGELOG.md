@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/release-plz/release-plz/compare/git_cmd-v0.9.0...git_cmd-v0.9.1) - 2026-10-19
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+
+## [0.9.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.8.0...git_cmd-v0.9.0) - 2026-10-10
+
+### Performance
+
+- read commit signatures with one git command ([#3178](https://github.com/release-plz/release-plz/pull/3178))
+
+## [0.8.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.7.0...git_cmd-v0.8.0) - 2026-10-07
+
+### Fixed
+
+- retain changes surviving equal package snapshots ([#3079](https://github.com/release-plz/release-plz/pull/3079))
+- *(changelog)* collect package history across merged branches ([#3078](https://github.com/release-plz/release-plz/pull/3078))
+
+## [0.7.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.29...git_cmd-v0.7.0) - 2026-09-19
+
+### Added
+
+- *(git_cmd)* add bounded path history walks ([#3077](https://github.com/release-plz/release-plz/pull/3077))
+
+### Fixed
+
+- support detached HEAD in release-plz release ([#3074](https://github.com/release-plz/release-plz/pull/3074))
+- support detached HEAD in release-plz update ([#3072](https://github.com/release-plz/release-plz/pull/3072))
+
+## [0.6.29](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.28...git_cmd-v0.6.29) - 2026-09-10
+
+### Other
+
+- preserve tracked files when copying directories ([#3046](https://github.com/release-plz/release-plz/pull/3046))
+
 ## [0.6.28](https://github.com/release-plz/release-plz/compare/git_cmd-v0.6.27...git_cmd-v0.6.28) - 2026-02-16
 
 ### Fixed

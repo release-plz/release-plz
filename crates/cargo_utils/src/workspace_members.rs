@@ -4,12 +4,12 @@ use cargo_metadata::{Metadata, Package};
 
 /// Lookup all members of the current workspace
 pub fn workspace_members(metadata: &Metadata) -> anyhow::Result<impl Iterator<Item = Package>> {
-    let workspace_members: BTreeSet<_> = metadata.workspace_members.clone().into_iter().collect();
+    let workspace_members: BTreeSet<_> = metadata.workspace_members.iter().collect();
     let workspace_members = metadata
         .packages
-        .clone()
-        .into_iter()
+        .iter()
         .filter(move |p| workspace_members.contains(&p.id))
+        .cloned()
         .map(|mut p| {
             p.manifest_path = canonicalize_path(p.manifest_path);
             for dep in &mut p.dependencies {

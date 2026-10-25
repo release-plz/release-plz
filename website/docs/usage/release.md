@@ -136,7 +136,8 @@ or if you are the only maintainer of your repository.
 
 To avoid race conditions when the release PR is merged,
 `release-plz release` does a `git checkout` to the latest commit of the PR
-before releasing (if the commit of the PR exists in the main branch).
+before releasing (if the commit of the PR is an ancestor of the checked-out commit).
+Afterwards, it restores the original checkout, including a detached HEAD.
 
 Depending on the merge strategy you use, this can have different effects:
 
@@ -211,3 +212,18 @@ this race condition doesn't happen because the ancestor of the latest commit
 of PR 22 is PR 20, not PR 21.
 
 </details>
+
+## Detached HEAD and Jujutsu (jj)
+
+`release-plz release` supports detached Git HEADs, including
+[colocated jj repositories](https://docs.jj-vcs.dev/latest/git-compatibility/#colocated-jujutsugit-workspaces).
+It starts from the commit checked out in Git's `HEAD` and then applies the logic
+described in [What commit is released](#what-commit-is-released).
+
+Before releasing with jj, create an empty working-copy change on top of the
+commit you want to release, for example with `jj new <revision>`.
+This makes Git's `HEAD` point to that commit and leaves the Git working tree clean.
+Since a detached HEAD has no upstream branch, release-plz reads the repository
+URL from the `origin` remote.
+If you sign tags (`tag.gpgSign=true`), the `origin` remote must point to the target
+repository because signed tags are pushed via Git.

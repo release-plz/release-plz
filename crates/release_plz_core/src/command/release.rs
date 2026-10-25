@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
     time::Duration,
 };
 
@@ -11,18 +11,22 @@ use cargo_metadata::{
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
+use git_cliff_core::contributor::RemoteContributor;
 use git_cmd::Repo;
 use secrecy::SecretString;
 use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
-use url::Url;
 
 use crate::{
-    CHANGELOG_FILENAME, DEFAULT_BRANCH_PREFIX, GitForge, PackagePath, Project, Publishable as _,
-    ReleaseMetadata, ReleaseMetadataBuilder, Remote,
-    cargo::{CargoRegistry, CmdOutput, is_published, run_cargo_with_env, wait_until_published},
+    DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
+    ReleaseMetadataBuilder, Remote,
+    cargo::{
+        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
+        wait_until_published,
+    },
     changelog_parser,
     git::forge::GitClient,
+    next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
 
@@ -137,20 +141,29 @@ impl ReleaseRequest {
 
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
-        config
-            .changelog_path
-            .map(|p| self.metadata.workspace_root.join(p))
-            .unwrap_or_else(|| {
-                package
-                    .package_path()
-                    .expect("can't determine package path")
-                    .join(CHANGELOG_FILENAME)
-            })
+        crate::changelog_path(
+            package,
+            &self.metadata.workspace_root,
+            config.changelog_path.as_deref(),
+        )
     }
 
+    /// Return true if the package must be published to a cargo registry.
+    ///
+    /// Git-only packages are never published: their versions live in git tags only,
+    /// so `cargo publish` is skipped even if `publish` isn't explicitly disabled.
     fn is_publish_enabled(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.publish.enabled
+        config.publish.enabled && !config.git_only
+    }
+
+    fn is_git_only(&self, package: &str) -> bool {
+        let config = self.get_package_config(package);
+        config.git_only
+    }
+
+    fn is_releasable(&self, package: &Package) -> bool {
+        takes_part_in_release(package, self.is_git_only(&package.name))
     }
 
     fn is_git_release_enabled(&self, package: &str) -> bool {
@@ -189,14 +202,14 @@ impl ReleaseRequest {
 
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
     fn find_registry_token(&self, registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
-        let is_registry_same_as_request = self.registry.as_deref() == registry;
-        let token = is_registry_same_as_request
-            .then(|| self.token.clone())
-            .flatten()
-            // if the registry is not the same as the request or if there's no token in the request,
-            // try to find the token in the Cargo credentials file or in the environment variables.
-            .or(cargo_utils::registry_token(self.registry.as_deref())?);
-        Ok(token)
+        if self.registry.as_deref() == registry
+            && let Some(token) = &self.token
+        {
+            return Ok(Some(token.clone()));
+        }
+        // if the registry is not the same as the request or if there's no token in the request,
+        // try to find the token in the environment variables or in the Cargo credentials file.
+        cargo_utils::registry_token(registry)
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
@@ -207,7 +220,9 @@ impl ReleaseRequest {
             return Ok(());
         }
         for package in &self.metadata.packages {
-            if !self.metadata.workspace_members.contains(&package.id) || !package.is_publishable() {
+            if !self.metadata.workspace_members.contains(&package.id)
+                || !self.is_releasable(package)
+            {
                 continue;
             }
             let config = self.get_package_config(&package.name);
@@ -226,6 +241,9 @@ impl ReleaseRequest {
     ///
     /// If there is no inconsistency, returns Ok(())
     ///
+    /// Git-only packages are skipped: they are never published, so the `publish`
+    /// field of their release-plz configuration is irrelevant.
+    ///
     /// # Errors
     ///
     /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
@@ -235,6 +253,7 @@ impl ReleaseRequest {
 
         for package in &self.metadata.packages {
             if !package.is_publishable()
+                && !self.is_git_only(&package.name)
                 && let Some(should_publish) = publish_fields.get(package.name.as_str())
             {
                 anyhow::ensure!(
@@ -324,11 +343,20 @@ pub struct ReleaseConfig {
     /// Whether this package has a changelog that release-plz updates or not.
     /// Default: `true`.
     changelog_update: bool,
+    /// Whether the package versions are tracked with git tags instead of a cargo registry.
+    /// A `publish = false` package is only released when this is `true`.
+    /// Default: `false`.
+    git_only: bool,
 }
 
 impl ReleaseConfig {
     pub fn with_publish(mut self, publish: PublishConfig) -> Self {
         self.publish = publish;
+        self
+    }
+
+    pub fn with_git_only(mut self, git_only: bool) -> Self {
+        self.git_only = git_only;
         self
     }
 
@@ -399,6 +427,7 @@ impl Default for ReleaseConfig {
             release: true,
             changelog_path: None,
             changelog_update: true,
+            git_only: false,
         }
     }
 }
@@ -588,21 +617,22 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
                 debug!("checking out commit {commit}");
                 checkout_done = true;
             }
-            // The commit does not exist if the PR was squashed.
-            Err(_) => trace!("checkout failed; continuing"),
+            // Not expected to fail because `should_release` only returns commits in
+            // HEAD's history.
+            Err(e) => {
+                warn!("failed to checkout commit {commit}: {e:#}. Releasing from HEAD.");
+            }
         }
     }
 
     // Don't return the error immediately because we want to go back to the previous commit if needed
     let release = release_packages(input, &project, &repo, &git_client).await;
 
-    if let ShouldRelease::YesWithCommit(_) = should_release {
-        // Go back to the previous commit so that the user finds
-        // the repository in the same commit they launched release-plz.
-        if checkout_done {
-            repo.checkout("-")?;
-            trace!("restored previous commit after release");
-        }
+    // Go back to the previous commit so that the user finds
+    // the repository in the same commit they launched release-plz.
+    if checkout_done {
+        repo.checkout("-")?;
+        trace!("restored previous commit after release");
     }
 
     release
@@ -615,29 +645,29 @@ async fn release_packages(
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
     // Packages are already ordered by release order.
-    let packages = project.publishable_packages();
+    let packages: Vec<_> = project
+        .workspace_packages()
+        .into_iter()
+        .filter(|package| input.is_releasable(package))
+        .collect();
     if packages.is_empty() {
         info!("nothing to release");
     }
 
     let mut package_releases: Vec<PackageRelease> = vec![];
-    // The same trusted publishing token can be used for all packages.
-    let mut trusted_publishing_client: Option<trusted_publishing::TrustedPublisher> = None;
+    let mut context = ReleaseContext {
+        git_client,
+        pr_authors: HashMap::new(),
+        trusted_publishing_client: None,
+    };
     for package in packages {
-        if let Some(pkg_release) = release_package_if_needed(
-            input,
-            project,
-            package,
-            repo,
-            git_client,
-            &mut trusted_publishing_client,
-        )
-        .await?
+        if let Some(pkg_release) =
+            release_package_if_needed(input, project, package, repo, &mut context).await?
         {
             package_releases.push(pkg_release);
         }
     }
-    if let Some(tp) = trusted_publishing_client.as_ref()
+    if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
     {
         warn!("Failed to revoke trusted publishing token: {e:?}");
@@ -648,13 +678,33 @@ async fn release_packages(
     Ok(release)
 }
 
+/// State shared by packages within a single release invocation.
+struct ReleaseContext<'a> {
+    git_client: &'a GitClient,
+    /// PR author usernames by PR number.
+    pr_authors: HashMap<u64, String>,
+    /// The same trusted publishing token can be used for all packages.
+    trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+}
+
+impl ReleaseContext<'_> {
+    async fn pr_author(&mut self, pr_number: u64) -> anyhow::Result<&str> {
+        let author = match self.pr_authors.entry(pr_number) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                entry.insert(self.git_client.get_pr_info(pr_number).await?.user.login)
+            }
+        };
+        Ok(author)
+    }
+}
+
 async fn release_package_if_needed(
     input: &ReleaseRequest,
     project: &Project,
     package: &Package,
     repo: &Repo,
-    git_client: &GitClient,
-    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
+    context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<Option<PackageRelease>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
@@ -680,17 +730,20 @@ async fn release_package_if_needed(
     let mut package_was_released = false;
 
     if should_publish {
-        let registry_indexes = registry_indexes(package, input.registry.clone())
-            .context("can't determine registry indexes")?;
+        let registry_indexes = registry_indexes(
+            package,
+            input.registry.clone(),
+            &input.metadata.workspace_root,
+        )
+        .context("can't determine registry indexes")?;
 
-        for CargoRegistry { name, index_url } in registry_indexes {
-            let token = input.find_registry_token(name.as_deref())?;
+        for registry in registry_indexes {
+            let token = input.find_registry_token(registry.name.as_deref())?;
             let pkg_is_published = is_published(
                 &input.metadata.workspace_root,
                 package,
                 input.publish_timeout,
-                name.as_deref(),
-                index_url.as_ref(),
+                registry.name.as_deref(),
                 token.as_ref(),
             )
             .await
@@ -703,13 +756,10 @@ async fn release_package_if_needed(
             let package_was_released_at_index = release_package(
                 input,
                 repo,
-                git_client,
+                context,
                 &release_info,
                 token.as_ref(),
-                name.as_deref(),
-                trusted_publishing_client,
-                name.as_deref(),
-                index_url.as_ref(),
+                &registry,
             )
             .await
             .context("failed to release package")?;
@@ -722,7 +772,7 @@ async fn release_package_if_needed(
         // When publishing is disabled (e.g., git_only mode), skip registry checks entirely
         // and only perform git tag/release operations.
         let package_was_released_result =
-            release_package_git_only(input, repo, git_client, &release_info)
+            release_package_git_only(input, repo, context, &release_info)
                 .await
                 .context("failed to release package (git-only)")?;
 
@@ -764,11 +814,11 @@ async fn should_release(
             // Get the last commit of the PR, i.e. the last commit that was pushed before the PR was merged
             match pr_commits.last() {
                 Some(commit) if commit.sha != last_commit => {
-                    if is_pr_commit_in_original_branch(repo, commit) {
-                        // I need to checkout the last commit of the PR if it exists
+                    if repo.is_ancestor(&commit.sha, &last_commit) {
+                        // Checkout the last commit of the PR
                         Ok(ShouldRelease::YesWithCommit(commit.sha.clone()))
                     } else {
-                        // The commit is not in the original branch, probably the PR was squashed
+                        // The commit is not in HEAD's history, probably the PR was squashed
                         Ok(ShouldRelease::Yes)
                     }
                 }
@@ -789,48 +839,26 @@ async fn should_release(
     }
 }
 
-fn is_pr_commit_in_original_branch(repo: &Repo, commit: &crate::git::forge::PrCommit) -> bool {
-    let branches_of_commit = repo.get_branches_of_commit(&commit.sha);
-    if let Ok(branches) = branches_of_commit {
-        branches.contains(&repo.original_branch().to_string())
-    } else {
-        false
-    }
-}
-
-/// Get the indexes where the package should be published.
+/// Get the registries where the package should be published.
 /// If `registry` is specified, it takes precedence over the `publish` field
 /// of the package manifest.
 fn registry_indexes(
     package: &Package,
     registry: Option<String>,
+    workspace_root: &Utf8Path,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
     let registries = registry
         .map(|r| vec![r])
         .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
-    let registry_urls = registries
-        .into_iter()
-        .map(|r| {
-            cargo_utils::registry_url(package.manifest_path.as_ref(), Some(&r))
-                .context("failed to retrieve registry url")
-                .map(|url| (r, url))
-        })
-        .collect::<anyhow::Result<Vec<(String, Url)>>>()?;
-
-    let mut registry_indexes = registry_urls
-        .into_iter()
-        .map(|(registry, u)| CargoRegistry {
-            name: Some(registry),
-            index_url: Some(u),
-        })
-        .collect::<Vec<CargoRegistry>>();
-    if registry_indexes.is_empty() {
-        registry_indexes.push(CargoRegistry {
-            name: None,
-            index_url: None,
-        });
+    let config = new_cargo_config(Some(workspace_root.to_owned()))?;
+    if registries.is_empty() {
+        Ok(vec![CargoRegistry::new(&config, None)?])
+    } else {
+        registries
+            .into_iter()
+            .map(|name| CargoRegistry::new(&config, Some(name)))
+            .collect()
     }
-    Ok(registry_indexes)
 }
 
 struct ReleaseInfo<'a> {
@@ -842,19 +870,16 @@ struct ReleaseInfo<'a> {
 }
 
 /// Return `true` if package was published, `false` otherwise.
-#[allow(clippy::too_many_arguments)]
 async fn release_package(
     input: &ReleaseRequest,
     repo: &Repo,
-    git_client: &GitClient,
+    context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
     token: Option<&SecretString>,
-    registry_name: Option<&str>,
-    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
-    registry: Option<&str>,
-    index_url: Option<&Url>,
+    registry: &CargoRegistry,
 ) -> anyhow::Result<bool> {
     let workspace_root = &input.metadata.workspace_root;
+    let registry_name = registry.name.as_deref();
     let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
     let should_publish = input.is_publish_enabled(&release_info.package.name);
@@ -872,13 +897,13 @@ async fn release_package(
             && is_github_actions
     };
     if should_use_trusted_publishing {
-        if let Some(tp) = trusted_publishing_client.as_ref() {
+        if let Some(tp) = context.trusted_publishing_client.as_ref() {
             publish_token = Some(tp.token().clone());
         } else {
             match trusted_publishing::TrustedPublisher::crates_io().await {
                 Ok(tp) => {
                     publish_token = Some(tp.token().clone());
-                    *trusted_publishing_client = Some(tp);
+                    context.trusted_publishing_client = Some(tp);
                 }
                 Err(e) => {
                     warn!("Failed to use trusted publishing: {e:#}. Proceeding without it.");
@@ -915,6 +940,21 @@ async fn release_package(
                 );
             }
         }
+        // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
+        // publish registry) or if `cargo publish` didn't confirm the package.
+        if !input.dry_run
+            && (registry.has_remote_mirror
+                || !is_publish_confirmed_by_cargo(&output, release_info.package))
+        {
+            wait_until_published(
+                workspace_root,
+                release_info.package,
+                input.publish_timeout,
+                registry_name,
+                token,
+            )
+            .await?;
+        }
     }
 
     if input.dry_run {
@@ -926,22 +966,10 @@ async fn release_package(
         );
         Ok(false)
     } else {
-        if should_publish {
-            wait_until_published(
-                workspace_root,
-                release_info.package,
-                input.publish_timeout,
-                registry,
-                index_url,
-                token,
-            )
-            .await?;
-        }
-
         create_git_tag_and_release(
             input,
             repo,
-            git_client,
+            context,
             release_info,
             should_create_git_tag,
             should_create_git_release,
@@ -954,6 +982,21 @@ async fn release_package(
         );
         Ok(true)
     }
+}
+
+/// Return `true` if `cargo publish` reported that the package is available in the registry.
+///
+/// After the upload, Cargo waits until the new version appears in the registry index
+/// and then prints `Published <package> v<version> at <registry>`.
+/// If the wait times out (after 60 s on stable Cargo), Cargo prints a warning instead,
+/// and release-plz must wait.
+fn is_publish_confirmed_by_cargo(output: &CmdOutput, package: &Package) -> bool {
+    // The status is colored, so look for the status and the package on the same line.
+    let published_package = format!("{} v{} at ", package.name, package.version);
+    output
+        .stderr
+        .lines()
+        .any(|line| line.contains("Published") && line.contains(&published_package))
 }
 
 fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {
@@ -982,7 +1025,7 @@ fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> b
 async fn release_package_git_only(
     input: &ReleaseRequest,
     repo: &Repo,
-    git_client: &GitClient,
+    context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
 ) -> anyhow::Result<bool> {
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
@@ -1000,7 +1043,7 @@ async fn release_package_git_only(
         create_git_tag_and_release(
             input,
             repo,
-            git_client,
+            context,
             release_info,
             should_create_git_tag,
             should_create_git_release,
@@ -1019,7 +1062,7 @@ async fn release_package_git_only(
 async fn create_git_tag_and_release(
     input: &ReleaseRequest,
     repo: &Repo,
-    git_client: &GitClient,
+    context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
     should_create_git_tag: bool,
     should_create_git_release: bool,
@@ -1039,14 +1082,30 @@ async fn create_git_tag_and_release(
             repo.push(release_info.git_tag)?;
         } else {
             let sha = repo.current_commit_hash()?;
-            git_client
+            context
+                .git_client
                 .create_tag(release_info.git_tag, &message, &sha)
-                .await?;
+                .await
+                .with_context(|| format!("failed to create tag `{}`", release_info.git_tag))?;
         }
     }
 
     if should_create_git_release {
-        let contributors = get_contributors(release_info, git_client).await;
+        let release_config = input
+            .get_package_config(&release_info.package.name)
+            .git_release;
+        // The default release body only contains the changelog, so skip contributor
+        // API requests unless a custom template might use them.
+        let contributors = if release_config.body_template.is_some() {
+            get_contributors(release_info, context)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!("failed to retrieve contributors: {e}");
+                    vec![]
+                })
+        } else {
+            vec![]
+        };
 
         // TODO fill the rest
         let remote = Remote {
@@ -1057,9 +1116,6 @@ async fn create_git_tag_and_release(
         };
         let release_body =
             release_body(input, release_info.package, release_info.changelog, &remote);
-        let release_config = input
-            .get_package_config(&release_info.package.name)
-            .git_release;
         let is_pre_release = release_config.is_pre_release(&release_info.package.version);
         let git_release_info = GitReleaseInfo {
             git_tag: release_info.git_tag.to_string(),
@@ -1070,7 +1126,7 @@ async fn create_git_tag_and_release(
             pre_release: is_pre_release,
             generate_release_notes: release_config.generate_release_notes,
         };
-        git_client.create_release(&git_release_info).await?;
+        context.git_client.create_release(&git_release_info).await?;
     }
 
     Ok(())
@@ -1111,33 +1167,22 @@ fn log_dry_run_info(
 
 async fn get_contributors(
     release_info: &ReleaseInfo<'_>,
-    git_client: &GitClient,
-) -> Vec<git_cliff_core::contributor::RemoteContributor> {
-    let prs_number = release_info
-        .prs
-        .iter()
-        .map(|pr| pr.number)
-        .collect::<Vec<_>>();
-
-    let mut unique_usernames = std::collections::HashSet::new();
-
-    git_client
-        .get_prs_info(&prs_number)
-        .await
-        .inspect_err(|e| tracing::warn!("failed to retrieve contributors: {e}"))
-        .unwrap_or(vec![])
-        .iter()
-        .filter_map(|pr| {
-            let username = &pr.user.login;
-            // Only include this contributor if we haven't seen their username before
-            unique_usernames.insert(username).then(|| {
-                git_cliff_core::contributor::RemoteContributor {
-                    username: Some(username.clone()),
-                    ..Default::default()
-                }
-            })
-        })
-        .collect()
+    context: &mut ReleaseContext<'_>,
+) -> anyhow::Result<Vec<RemoteContributor>> {
+    let mut contributors: Vec<RemoteContributor> = vec![];
+    for pr in release_info.prs {
+        let username = context.pr_author(pr.number).await?;
+        if !contributors
+            .iter()
+            .any(|c| c.username.as_deref() == Some(username))
+        {
+            contributors.push(RemoteContributor {
+                username: Some(username.to_owned()),
+                ..Default::default()
+            });
+        }
+    }
+    Ok(contributors)
 }
 
 fn get_git_client(input: &ReleaseRequest) -> anyhow::Result<GitClient> {
@@ -1289,13 +1334,19 @@ fn last_changelog_entry(req: &ReleaseRequest, package: &Package) -> String {
 #[cfg(test)]
 mod tests {
     use secrecy::ExposeSecret as _;
+    use serde_json::json;
     use std::env;
     use std::ffi::OsStr;
     use std::sync::{LazyLock, Mutex};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_partial_json, method, path},
+    };
 
-    use fake_package::metadata::fake_metadata;
+    use fake_package::{FakePackage, metadata::fake_metadata};
 
     use super::*;
+    use crate::CHANGELOG_FILENAME;
 
     // Trick to avoid the tests to run concurrently.
     // It's used to not affect environment variables used in other tests
@@ -1327,6 +1378,340 @@ mod tests {
         }
     }
 
+    fn release_fixture(server: &MockServer) -> (tempfile::TempDir, Repo, ReleaseRequest) {
+        let temporary = tempfile::tempdir().unwrap();
+        let repo = Repo::init(temporary.path());
+        crate::test_utils::write_package(repo.directory(), "test-package", "0.1.0", "");
+        let manifest = repo.directory().join(cargo_utils::CARGO_TOML);
+        let metadata = cargo_utils::get_manifest_metadata(&manifest).unwrap();
+        repo.add_all_and_commit("feat: initial package").unwrap();
+        let github = crate::GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let request = ReleaseRequest::new(metadata)
+            .with_default_package_config(ReleaseConfig::default().with_git_only(true))
+            .with_git_release(GitRelease {
+                forge: GitForge::Github(github),
+            });
+        (temporary, repo, request)
+    }
+
+    async fn mock_release_pr(server: &MockServer, head: &str, pr_commit: Option<&str>) {
+        let prs = match pr_commit {
+            Some(commit) => json!([{
+                "number": 1,
+                "user": {"id": 1, "login": "release-plz"},
+                "html_url": "https://github.com/owner/repo/pull/1",
+                "head": {"ref": "release-plz-test", "sha": commit},
+                "title": "chore: release",
+                "labels": [],
+            }]),
+            None => json!([]),
+        };
+        Mock::given(method("GET"))
+            .and(path(format!("/repos/owner/repo/commits/{head}/pulls")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(prs))
+            .expect(1)
+            .mount(server)
+            .await;
+        if let Some(commit) = pr_commit {
+            Mock::given(method("GET"))
+                .and(path("/repos/owner/repo/pulls/1/commits"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"sha": commit}])))
+                .expect(1)
+                .mount(server)
+                .await;
+        }
+    }
+
+    /// Mock the GitHub requests made when creating a git release.
+    /// The tag ref and the release are only created when the tag creation succeeds.
+    async fn mock_git_release(server: &MockServer, commit: &str, tag_status: u16) {
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/git/tags"))
+            .and(body_partial_json(
+                json!({"tag": "v0.1.0", "object": commit}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(tag_status).set_body_json(json!({"sha": "tag-sha"})),
+            )
+            .expect(1)
+            .mount(server)
+            .await;
+        let follow_up_requests: u64 = if tag_status == 201 { 1 } else { 0 };
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/git/refs"))
+            .and(body_partial_json(
+                json!({"ref": "refs/tags/v0.1.0", "sha": "tag-sha"}),
+            ))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(follow_up_requests)
+            .mount(server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/owner/repo/releases"))
+            .and(body_partial_json(json!({"tag_name": "v0.1.0"})))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(follow_up_requests)
+            .mount(server)
+            .await;
+    }
+
+    fn contributor_response(pr_number: u64, username: &str) -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({
+            "number": pr_number,
+            "user": {"id": 1, "login": username},
+            "html_url": format!("https://github.com/owner/repo/pull/{pr_number}"),
+            "head": {"ref": "fix", "sha": "commit"},
+            "title": "fix: bug",
+            "labels": [],
+        }))
+    }
+
+    #[tokio::test]
+    async fn release_reuses_contributor_requests_across_packages() {
+        let server = MockServer::start().await;
+        let (_temporary, repo, mut request) = release_fixture(&server);
+        crate::test_utils::write_package(
+            repo.directory(),
+            "test-package",
+            "0.1.0",
+            "[workspace]\nmembers = [\"second\"]",
+        );
+        crate::test_utils::write_package(
+            &repo.directory().join("second"),
+            "second-package",
+            "0.1.0",
+            "",
+        );
+        for (directory, pr_numbers) in [("", [42, 42, 43, 44]), ("second", [43, 42, 44, 43])] {
+            let changelog = pr_numbers
+                .map(|number| format!("- Fix (https://github.com/owner/repo/pull/{number})"))
+                .join("\n");
+            fs_err::write(
+                repo.directory().join(directory).join(CHANGELOG_FILENAME),
+                format!("# Changelog\n\n## [0.1.0]\n\n{changelog}\n"),
+            )
+            .unwrap();
+        }
+        request.metadata =
+            cargo_utils::get_manifest_metadata(&repo.directory().join(cargo_utils::CARGO_TOML))
+                .unwrap();
+        request = request.with_default_package_config(
+            ReleaseConfig::default()
+                .with_git_only(true)
+                .with_git_tag(GitTagConfig::enabled(false))
+                .with_git_release(GitReleaseConfig::default().set_body_template(Some(
+                    "{% for contributor in remote.contributors %}@{{ contributor.username }} {% endfor %}"
+                        .into(),
+                ))),
+        );
+        repo.add_all_and_commit("chore: release workspace").unwrap();
+        let head = repo.current_commit_hash().unwrap();
+        mock_release_pr(&server, &head, None).await;
+        for (pr_number, username) in [(42, "alice"), (43, "bob"), (44, "alice")] {
+            Mock::given(method("GET"))
+                .and(path(format!("/repos/owner/repo/pulls/{pr_number}")))
+                .respond_with(contributor_response(pr_number, username))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        for (package, contributors) in [
+            ("test-package", "@alice @bob "),
+            ("second-package", "@bob @alice "),
+        ] {
+            Mock::given(method("POST"))
+                .and(path("/repos/owner/repo/releases"))
+                .and(body_partial_json(json!({
+                    "tag_name": format!("{package}-v0.1.0"),
+                    "body": contributors,
+                })))
+                .respond_with(ResponseTemplate::new(201))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+
+        let result = release(&request).await.unwrap().unwrap();
+
+        assert_eq!(result.releases.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn release_fetches_contributors_only_for_custom_body() {
+        for custom_body in [false, true] {
+            let server = MockServer::start().await;
+            let (_temporary, repo, mut request) = release_fixture(&server);
+            let changelog = "- Fix ([#42](https://github.com/owner/repo/pull/42))";
+            fs_err::write(
+                repo.directory().join(CHANGELOG_FILENAME),
+                format!("# Changelog\n\n## [0.1.0]\n\n{changelog}\n"),
+            )
+            .unwrap();
+            repo.add_all_and_commit("chore: release").unwrap();
+            if custom_body {
+                request = request.with_package_config(
+                    "test-package",
+                    ReleaseConfig::default()
+                        .with_git_only(true)
+                        .with_git_release(
+                            GitReleaseConfig::default().set_body_template(Some(
+                                "Thanks @{{ remote.contributors[0].username }}!\n{{ changelog }}"
+                                    .into(),
+                            )),
+                        ),
+                );
+            }
+            let head = repo.current_commit_hash().unwrap();
+            mock_release_pr(&server, &head, None).await;
+            mock_git_release(&server, &head, 201).await;
+            Mock::given(method("GET"))
+                .and(path("/repos/owner/repo/pulls/42"))
+                .respond_with(contributor_response(42, "contributor"))
+                .expect(u64::from(custom_body))
+                .mount(&server)
+                .await;
+
+            let result = release(&request).await.unwrap().unwrap();
+
+            assert_eq!(result.releases[0].prs, prs_from_text(changelog));
+            let requests = server.received_requests().await.unwrap();
+            let release_request = requests
+                .iter()
+                .find(|request| request.url.path() == "/repos/owner/repo/releases")
+                .unwrap();
+            let body = release_request.body_json::<serde_json::Value>().unwrap();
+            let expected = if custom_body {
+                format!("Thanks @contributor!\n{changelog}")
+            } else {
+                changelog.to_owned()
+            };
+            assert_eq!(body["body"], expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn release_with_detached_head_respects_release_always() {
+        for release_always in [true, false] {
+            let context = format!("release_always: {release_always}");
+            let server = MockServer::start().await;
+            let (_temporary, repo, request) = release_fixture(&server);
+            // Model a colocated jj repository without requiring jj in CI.
+            repo.git(&["checkout", "--detach"]).unwrap();
+            let head = repo.current_commit_hash().unwrap();
+            let refs = repo.git(&["show-ref"]).unwrap();
+            mock_release_pr(&server, &head, None).await;
+            if release_always {
+                mock_git_release(&server, &head, 201).await;
+            }
+
+            let outcome = release(&request.with_release_always(release_always))
+                .await
+                .unwrap();
+
+            assert_eq!(outcome.is_some(), release_always, "{context}");
+            assert_eq!(
+                server.received_requests().await.unwrap().len(),
+                if release_always { 4 } else { 1 },
+                "{context}"
+            );
+            assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+            assert!(repo.is_head_detached().unwrap(), "{context}");
+            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
+            repo.is_clean().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn release_uses_prepared_commit_and_restores_checkout() {
+        for detached in [false, true] {
+            for tag_status in [201, 403] {
+                let context = format!("detached: {detached}, tag status: {tag_status}");
+                let server = MockServer::start().await;
+                let (_temporary, repo, request) = release_fixture(&server);
+                if detached {
+                    repo.git(&["checkout", "--detach"]).unwrap();
+                }
+                // The prepared commit need not belong to any named branch.
+                repo.git(&["commit", "--allow-empty", "-m", "chore: release"])
+                    .unwrap();
+                let prepared_commit = repo.current_commit_hash().unwrap();
+                fs_err::write(
+                    repo.directory().join("src/lib.rs"),
+                    "// Unreleased change\n",
+                )
+                .unwrap();
+                repo.add_all_and_commit("feat: unreleased change").unwrap();
+                let head = repo.current_commit_hash().unwrap();
+                let branch = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
+                let refs = repo.git(&["show-ref"]).unwrap();
+                mock_release_pr(&server, &head, Some(&prepared_commit)).await;
+                mock_git_release(&server, &prepared_commit, tag_status).await;
+
+                let outcome = release(&request.with_release_always(false)).await;
+
+                if tag_status == 201 {
+                    assert_eq!(outcome.unwrap().unwrap().releases.len(), 1, "{context}");
+                } else {
+                    let error = outcome.unwrap_err();
+                    assert!(
+                        format!("{error:#}").contains("failed to create tag"),
+                        "{context}: {error:#}"
+                    );
+                }
+                assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+                assert_eq!(
+                    repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap(),
+                    branch,
+                    "{context}"
+                );
+                assert_eq!(repo.is_head_detached().unwrap(), detached, "{context}");
+                assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
+                // Checkout can convert line endings when core.autocrlf is enabled.
+                assert_eq!(
+                    fs_err::read_to_string(repo.directory().join("src/lib.rs"))
+                        .unwrap()
+                        .replace("\r\n", "\n"),
+                    "// Unreleased change\n",
+                    "{context}"
+                );
+                repo.is_clean().unwrap();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn release_ignores_pr_commits_outside_detached_history() {
+        for missing_commit in [false, true] {
+            let context = format!("missing commit: {missing_commit}");
+            let server = MockServer::start().await;
+            let (_temporary, repo, request) = release_fixture(&server);
+            let head = repo.current_commit_hash().unwrap();
+            // The PR commit is either a newer commit on the original branch, outside
+            // detached HEAD's history, or a commit that doesn't exist locally,
+            // e.g. because the PR was squashed.
+            repo.git(&["commit", "--allow-empty", "-m", "chore: release"])
+                .unwrap();
+            let pr_commit = if missing_commit {
+                "0123456789012345678901234567890123456789".to_string()
+            } else {
+                repo.current_commit_hash().unwrap()
+            };
+            repo.git(&["checkout", "--detach", &head]).unwrap();
+            let refs = repo.git(&["show-ref"]).unwrap();
+            mock_release_pr(&server, &head, Some(&pr_commit)).await;
+            mock_git_release(&server, &head, 201).await;
+
+            let outcome = release(&request.with_release_always(false)).await.unwrap();
+
+            assert_eq!(outcome.unwrap().releases.len(), 1, "{context}");
+            assert_eq!(repo.current_commit_hash().unwrap(), head, "{context}");
+            assert!(repo.is_head_detached().unwrap(), "{context}");
+            assert_eq!(repo.git(&["show-ref"]).unwrap(), refs, "{context}");
+            repo.is_clean().unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn generated_release_notes_are_validated_before_accessing_the_repository() {
         use crate::git::{gitea_client::Gitea, gitlab_client::GitLab};
@@ -1340,18 +1725,36 @@ mod tests {
                 remote: remote.clone(),
             }),
         ] {
-            let mut metadata = fake_metadata();
-            // If validation is moved after repository access, the filesystem error will win.
-            let temp_dir = tempfile::tempdir().unwrap();
-            metadata.workspace_root =
-                Utf8PathBuf::from_path_buf(temp_dir.path().join("missing")).unwrap();
-            let request = ReleaseRequest::new(metadata)
-                .with_git_release(GitRelease { forge })
-                .with_default_package_config(ReleaseConfig::default().with_git_release(
-                    GitReleaseConfig::default().set_generate_release_notes(true),
-                ));
-            let error = release(&request).await.unwrap_err();
-            assert!(error.to_string().contains("git_release_generate_notes"));
+            for git_only in [false, true] {
+                let mut metadata = fake_metadata();
+                // Private packages still require validation when they are released in
+                // git-only mode.
+                if git_only {
+                    for package in &mut metadata.packages {
+                        package.publish = Some(vec![]);
+                    }
+                }
+                // If validation is moved after repository access, the filesystem error will win.
+                let temp_dir = tempfile::tempdir().unwrap();
+                metadata.workspace_root =
+                    Utf8PathBuf::from_path_buf(temp_dir.path().join("missing")).unwrap();
+                let request = ReleaseRequest::new(metadata)
+                    .with_git_release(GitRelease {
+                        forge: forge.clone(),
+                    })
+                    .with_default_package_config(
+                        ReleaseConfig::default()
+                            .with_git_only(git_only)
+                            .with_git_release(
+                                GitReleaseConfig::default().set_generate_release_notes(true),
+                            ),
+                    );
+                let error = release(&request).await.unwrap_err();
+                assert!(
+                    error.to_string().contains("git_release_generate_notes"),
+                    "git only: {git_only}: {error:#}"
+                );
+            }
         }
     }
 
@@ -1437,32 +1840,42 @@ mod tests {
     }
 
     #[test]
-    fn should_reference_env_var_provided_index() {
-        use cargo_utils::registry_url;
+    fn release_config_git_only_reaches_release_rule() {
+        // The full rule is covered by `packages_taking_part_in_a_release` in `next_ver.rs`;
+        // this only checks that the release config's `git_only` flag reaches it.
+        let pkg = Package::from(
+            FakePackage::new("pkg")
+                .unpublishable()
+                .with_targets(&["lib"]),
+        );
+        for git_only in [false, true] {
+            let request =
+                ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
+                    git_only,
+                    ..Default::default()
+                });
+            assert_eq!(
+                request.is_releasable(&pkg),
+                git_only,
+                "git only: {git_only}"
+            );
+        }
+    }
 
-        let registry_name = "my_registry";
-        let mock_index = "https://example.com/git/index";
-        let mock_index_url = Url::parse(mock_index).unwrap();
-
-        let index_env_var = format!("CARGO_REGISTRIES_{}_INDEX", registry_name.to_uppercase());
-
-        let fake_metadata = fake_metadata();
-        let fake_manifest_path = fake_metadata.workspace_root.as_ref();
-
-        with_env_var(&index_env_var, mock_index, || {
-            let maybe_registry_index =
-                registry_url(fake_manifest_path, Some(registry_name)).unwrap();
-
-            // assert the registry index is properly overriden
-            assert_eq!(maybe_registry_index, mock_index_url);
-        });
-
-        let non_overriden_maybe_registry_index =
-            registry_url(fake_manifest_path, Some(registry_name)).ok();
-
-        // assert the index is inherited from the workspace after the env var
-        // is cleared.
-        assert_eq!(non_overriden_maybe_registry_index, None);
+    #[test]
+    fn git_only_packages_are_never_published() {
+        for publish_enabled in [true, false] {
+            let request =
+                ReleaseRequest::new(fake_metadata()).with_default_package_config(ReleaseConfig {
+                    publish: PublishConfig::enabled(publish_enabled),
+                    git_only: true,
+                    ..Default::default()
+                });
+            assert!(
+                !request.is_publish_enabled("pkg"),
+                "publish enabled: {publish_enabled}"
+            );
+        }
     }
 
     #[test]
@@ -1478,5 +1891,23 @@ mod tests {
         );
 
         assert!(request.check_publish_fields().is_err());
+    }
+
+    #[test]
+    fn check_publish_fields_skips_git_only_packages() {
+        // fake_metadata() has `publish = false` in the Cargo.toml.
+        // The CLI merges `[[package]]` overrides with the `[workspace]` defaults, so an
+        // override for a git-only package carries `publish = true` even if the user
+        // never set `publish`. Git-only packages are never published, so this is fine.
+        let request = ReleaseRequest::new(fake_metadata()).with_package_config(
+            "fake_package".to_string(),
+            ReleaseConfig {
+                publish: PublishConfig::enabled(true),
+                git_only: true,
+                ..Default::default()
+            },
+        );
+
+        assert!(request.check_publish_fields().is_ok());
     }
 }

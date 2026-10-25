@@ -49,7 +49,7 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
           - target: x86_64-unknown-freebsd
             os: ubuntu-22.04
     timeout-minutes: 60
@@ -60,14 +60,18 @@ jobs:
           persist-credentials: false
       # Don't cache when uploading artifacts for security.
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           cache: false
+          # Set build-warnings to warn for aarch64-unknown-linux-musl.
+          # Cross's ARM64 musl linker wrapper emits shell traces as linker warnings.
+          # RUSTFLAGS still denies compiler warnings for this target.
+          build-warnings: ${{ matrix.target == 'aarch64-unknown-linux-musl' && 'warn' || 'deny' }}
       - uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
         with:
           target: ${{ matrix.target }}
         if: startsWith(matrix.os, 'ubuntu') && !contains(matrix.target, '-musl')
-      - uses: taiki-e/install-action@d438492cf8a250514fa2d34b30bc3c0dc37c65ff # v2.87.8
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cross
         if: contains(matrix.target, '-musl')
@@ -85,7 +89,7 @@ jobs:
     name: Draft social media announcement
     needs: upload-assets
     if: github.repository_owner == 'release-plz' && startsWith(github.event.release.name, 'release-plz-v')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     environment: announce
     steps:
       # We use typefully to cross-post the release announcement

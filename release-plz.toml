@@ -12,6 +12,18 @@ git_release_body = """
 {% endif %}
 """
 
+[changelog]
+commit_parsers = [
+    { message = "^feat", group = "added" },
+    { message = "^changed", group = "changed" },
+    { message = "^deprecated", group = "deprecated" },
+    { message = "^removed", group = "removed" },
+    { message = "^fix", group = "fixed" },
+    { message = "^perf", group = "performance" },
+    { message = "^security", group = "security" },
+    { message = ".*", group = "other" },
+]
+
 [[package]] # the double square brackets define a TOML table array
 name = "release-plz" # name of the package to configure
 changelog_include = ["release_plz_core"] # include commits from `release_plz_core` in the changelog

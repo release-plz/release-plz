@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.3.0...cargo_utils-v0.3.1) - 2026-10-24
+
+### Fixed
+
+- *(release)* use the token of each package's registry ([#3279](https://github.com/release-plz/release-plz/pull/3279))
+
+## [0.3.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.2.0...cargo_utils-v0.3.0) - 2026-10-22
+
+### Other
+
+- *(cargo_utils)* [**breaking**] remove unused manifest helpers ([#3257](https://github.com/release-plz/release-plz/pull/3257))
+
+## [0.2.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.87...cargo_utils-v0.2.0) - 2026-10-19
+
+### Performance
+
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+
+## [0.1.87](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.86...cargo_utils-v0.1.87) - 2026-10-12
+
+### Performance
+
+- find workspace packages without collecting all members ([#3211](https://github.com/release-plz/release-plz/pull/3211))
+- collect mutable dependency tables into one buffer ([#3214](https://github.com/release-plz/release-plz/pull/3214))
+
+## [0.1.86](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.85...cargo_utils-v0.1.86) - 2026-10-10
+
+### Performance
+
+- iterate package dependency tables lazily ([#3186](https://github.com/release-plz/release-plz/pull/3186))
+- clone only selected workspace packages ([#3176](https://github.com/release-plz/release-plz/pull/3176))
+- borrow version requirements while upgrading ([#3177](https://github.com/release-plz/release-plz/pull/3177))
+
+## [0.1.85](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.84...cargo_utils-v0.1.85) - 2026-10-07
+
+### Other
+
+- Update to cargo 0.100.0 ([#3118](https://github.com/release-plz/release-plz/pull/3118))
+
+## [0.1.84](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.83...cargo_utils-v0.1.84) - 2026-09-13
+
+### Fixed
+
+- compare released source trees with Cargo file selection ([#3056](https://github.com/release-plz/release-plz/pull/3056))
+
+## [0.1.83](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.82...cargo_utils-v0.1.83) - 2026-09-13
+
+### Fixed
+
+- propagate versionless git-only dependency updates ([#3055](https://github.com/release-plz/release-plz/pull/3055))
+
+## [0.1.82](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.81...cargo_utils-v0.1.82) - 2026-09-09
+
+### Other
+
+- remove dirs dependency ([#3038](https://github.com/release-plz/release-plz/pull/3038))
+
 ## [0.1.81](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.1.80...cargo_utils-v0.1.81) - 2026-09-05
 
 ### Other

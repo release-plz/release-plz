@@ -10,7 +10,7 @@ use tracing::debug;
 
 use crate::{
     PackagePath as _,
-    tera::{default_tag_name_template, tera_context},
+    tera::{default_tag_name, tera_context},
 };
 use crate::{
     Publishable as _, ReleaseMetadata, ReleaseMetadataBuilder, copy_to_temp_dir,
@@ -32,9 +32,9 @@ pub struct Project {
     root: Utf8PathBuf,
     /// Directory containing the project manifest
     manifest_dir: Utf8PathBuf,
-    /// The project contains more than one public package.
-    /// Not affected by `single_package` option.
-    contains_multiple_pub_packages: bool,
+    /// Whether the project has more than one release-enabled package.
+    /// Not affected by the `single_package` option.
+    contains_multiple_releasable_packages: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -56,11 +56,9 @@ impl Project {
         debug!("manifest_dir: {manifest_dir:?}");
         let root = root_repo_path_from_manifest_dir(&manifest_dir)?;
         debug!("project_root: {root:?}");
-        let mut packages = workspace_packages(metadata)?;
+        let mut packages = workspace_packages_at(metadata, &manifest_dir)?;
         check_overrides_typos(&packages, overrides)?;
         let mut release_metadata = HashMap::new();
-        override_packages_path(&mut packages, metadata, &manifest_dir)
-            .context("failed to override packages path")?;
 
         let packages_names: Vec<String> = packages.iter().map(|p| p.name.to_string()).collect();
         packages.retain(|p| {
@@ -77,7 +75,7 @@ impl Project {
             "no public packages found. Are there any public packages in your project? Analyzed packages: {packages_names:?}"
         );
 
-        let contains_multiple_pub_packages = packages.len() > 1;
+        let contains_multiple_releasable_packages = packages.len() > 1;
 
         if let Some(pac) = single_package {
             packages.retain(|p| *p.name == pac);
@@ -98,7 +96,7 @@ impl Project {
             release_metadata,
             root,
             manifest_dir,
-            contains_multiple_pub_packages,
+            contains_multiple_releasable_packages,
         })
     }
 
@@ -117,6 +115,13 @@ impl Project {
     /// Get all packages, including non-publishable.
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
+    }
+
+    /// Whether the project has more than one release-enabled package.
+    /// This decides the default tag name template, so the update and release
+    /// commands must answer it the same way.
+    pub(crate) fn contains_multiple_releasable_packages(&self) -> bool {
+        self.contains_multiple_releasable_packages
     }
 
     /// Copy this project in a temporary repository and return the repository.
@@ -154,23 +159,24 @@ impl Project {
         let (template_name, template) = match field {
             TemplateField::GitTagName => (
                 "tag_name",
-                release_metadata.and_then(|m| m.tag_name_template.clone()),
+                release_metadata.and_then(|m| m.tag_name_template.as_deref()),
             ),
             TemplateField::ReleaseName => (
                 "release_name",
-                release_metadata.and_then(|m| m.release_name_template.clone()),
+                release_metadata.and_then(|m| m.release_name_template.as_deref()),
             ),
         };
 
-        let template = template
-            .unwrap_or_else(|| default_tag_name_template(self.contains_multiple_pub_packages));
+        let Some(template) = template else {
+            return Ok(default_tag_name(
+                self.contains_multiple_releasable_packages,
+                package_name,
+                version,
+            ));
+        };
 
         let context = tera_context(package_name, version);
-        crate::tera::render_template(&template, &context, template_name)
-    }
-
-    pub fn cargo_lock_path(&self) -> Utf8PathBuf {
-        self.manifest_dir.join("Cargo.lock")
+        crate::tera::render_template(template, &context, template_name)
     }
 
     // Check mandatory fields for crates.io
@@ -299,6 +305,18 @@ pub fn new_project_root(
         .file_name()
         .context("cannot get project root dirname")?;
     Ok(new_project_root_parent.join(project_root_dirname))
+}
+
+/// Workspace members, with paths relative to the specified `manifest_dir`.
+/// See [`override_packages_path`].
+pub(crate) fn workspace_packages_at(
+    metadata: &Metadata,
+    manifest_dir: &Utf8Path,
+) -> anyhow::Result<Vec<Package>> {
+    let mut packages = workspace_packages(metadata)?;
+    override_packages_path(&mut packages, metadata, manifest_dir)
+        .context("failed to override packages path")?;
+    Ok(packages)
 }
 
 /// Cargo metadata contains package paths of the original user project.
@@ -430,12 +448,56 @@ mod tests {
     }
 
     #[test]
+    fn single_package_does_not_change_default_tag_template() {
+        let root = crate::fs_utils::Utf8TempDir::new().unwrap();
+        git_cmd::Repo::init(root.path());
+        fs_err::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"3\"\n",
+        )
+        .unwrap();
+        for name in ["one", "two"] {
+            crate::test_utils::write_package(&root.path().join(name), name, "0.1.0", "");
+        }
+        let manifest = root.path().join("Cargo.toml");
+        let workspace = get_project(&manifest, None, &HashSet::default(), true, None, None)
+            .expect("failed to get project");
+        assert_eq!(workspace.workspace_packages().len(), 2);
+        assert!(workspace.contains_multiple_releasable_packages());
+        assert_eq!(workspace.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+        assert_eq!(
+            workspace.release_name("one", "0.1.0").unwrap(),
+            "one-v0.1.0"
+        );
+
+        // Narrowing the packages with `--package` must keep the tag names that the
+        // whole workspace creates, otherwise the release tags could not be found.
+        let narrowed = get_project(
+            &manifest,
+            Some("one"),
+            &HashSet::default(),
+            true,
+            None,
+            None,
+        )
+        .expect("failed to get project");
+        assert_eq!(narrowed.workspace_packages().len(), 1);
+        assert!(narrowed.contains_multiple_releasable_packages());
+        assert_eq!(narrowed.git_tag("one", "0.1.0").unwrap(), "one-v0.1.0");
+        assert_eq!(narrowed.release_name("one", "0.1.0").unwrap(), "one-v0.1.0");
+    }
+
+    #[test]
     fn project_tag_template_none() {
         let local_manifest = Utf8Path::new("../../tests/fixtures/typo-in-overrides/Cargo.toml");
         let project = get_project(local_manifest, None, &HashSet::default(), true, None, None)
             .expect("Should ok");
         let git_tag = project.git_tag("typo_test", "0.1.0").unwrap();
         assert_eq!(git_tag, "v0.1.0");
+        assert_eq!(
+            project.release_name("typo_test", "0.1.0").unwrap(),
+            "v0.1.0"
+        );
     }
 
     #[test]

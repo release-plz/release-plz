@@ -1,10 +1,49 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
+    TEST_REGISTRY,
     package::{PackageType, TestPackage},
+    release_stdout,
     test_context::TestContext,
     today,
 };
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_update_handles_non_verifiable_release() {
+    let context = TestContext::new().await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+"#,
+    );
+    fs_err::write(
+        context.repo_dir().join("build.rs"),
+        r#"fn main() {
+    std::fs::write("generated.txt", "outside OUT_DIR").unwrap();
+}
+"#,
+    )
+    .unwrap();
+    context.push_all_changes("chore: add build script");
+    context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
+
+    fs_err::write(context.repo_dir().join("README.md"), "# Updated README").unwrap();
+    context.push_all_changes("fix: update readme");
+    context.run_update().success();
+
+    let metadata =
+        cargo_utils::get_manifest_metadata(&context.repo_dir().join("Cargo.toml")).unwrap();
+    assert_eq!(
+        metadata.root_package().unwrap().version.to_string(),
+        "0.1.1"
+    );
+    let changelog = fs_err::read_to_string(context.repo_dir().join("CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("update readme"));
+    assert!(!context.repo_dir().join("generated.txt").exists());
+}
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -381,7 +420,8 @@ git_tag_name = "api-v{{ version }}"
         .tag("core-v0.1.0", "Release core v0.1.0")
         .unwrap();
 
-    // Make changes to api package
+    // Add a library to the binary-only api package. There is no baseline library
+    // to check, so the PR must not claim that API compatibility was checked.
     let api_file = context.package_path("api").join("src").join("lib.rs");
     fs_err::write(&api_file, "pub fn api_updated() {}").unwrap();
     context.push_all_changes("feat: update api");
@@ -402,7 +442,7 @@ git_tag_name = "api-v{{ version }}"
             r"
 ## 🤖 New release
 
-* `api`: 0.1.0 -> 0.1.1 (✓ API compatible changes)
+* `api`: 0.1.0 -> 0.1.1
 
 <details><summary><i><b>Changelog</b></i></summary><p>
 
@@ -804,18 +844,7 @@ publish = false
     let outcome = context.run_release().success();
 
     // Verify JSON output shows the release
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": expected_tag,
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, expected_tag, "0.1.1"));
 
     // Verify the tag was created
     assert!(is_tag_created(), "Tag should exist after release");
@@ -944,7 +973,7 @@ publish = false
         .unwrap();
 
     // Release the binary at a later commit with different package contents, so
-    // each package must be compared against its own historical workspace.
+    // each package must be compared against its own released workspace.
     let readme = context.package_path("mybin").join("README.md");
     fs_err::write(&readme, "# Initial mybin release").unwrap();
     context.push_all_changes("feat: prepare mybin release");
@@ -962,10 +991,10 @@ publish = false
     let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert_eq!(
         stderr
-            .matches("Run `cargo package --allow-dirty --workspace`")
+            .matches("Reconstructing workspace sources at commit")
             .count(),
         2,
-        "packages at different historical commits need separate workspace reconstructions\n{stderr}"
+        "packages at different release commits need separate workspace reconstructions\n{stderr}"
     );
 
     let opened_prs = context.opened_release_prs().await;
@@ -1009,9 +1038,9 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_update_handles_packages_sharing_a_release_tag() {
     // All packages are released together under a single workspace tag, so they
-    // are all resolved at the same historical commit.
+    // are all resolved at the same release commit.
     // The unreleased internal libraries are path dependencies of the binary, so
-    // the whole workspace must be packaged at that commit.
+    // the whole workspace must be available at that commit.
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("mylib-a").with_type(PackageType::Lib),
         TestPackage::new("mylib-b").with_type(PackageType::Lib),
@@ -1044,10 +1073,10 @@ git_tag_name = "v{{ version }}"
     let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert_eq!(
         stderr
-            .matches("Run `cargo package --allow-dirty --workspace`")
+            .matches("Reconstructing workspace sources at commit")
             .count(),
         1,
-        "packages at one historical commit should share workspace reconstruction\n{stderr}"
+        "packages at one release commit should share workspace reconstruction\n{stderr}"
     );
 
     let opened_prs = context.opened_release_prs().await;
@@ -1157,6 +1186,10 @@ publish = false
     );
 }
 
+/// With `git_only = true` and `publish` unset in release-plz.toml,
+/// a crate with `publish = false` in Cargo.toml
+/// goes through the `release-pr` -> `release` round trip: `release-pr` bumps it and
+/// `release` tags it without running `cargo publish`, which would refuse to publish it.
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn git_only_processes_packages_with_publish_false_in_manifest() {
@@ -1171,7 +1204,8 @@ async fn git_only_processes_packages_with_publish_false_in_manifest() {
     cargo_toml.write().unwrap();
     context.push_all_changes("chore: set publish = false");
 
-    // Configure git_only = true in release-plz config
+    // Configure git_only = true in release-plz config.
+    // `publish` is not set: git-only mode must skip `cargo publish` on its own.
     let config = r#"
 [workspace]
 git_only = true
@@ -1193,6 +1227,13 @@ git_only = true
     let opened_prs = context.opened_release_prs().await;
     assert_eq!(opened_prs.len(), 1);
     assert_eq!(opened_prs[0].title, "chore: release v0.1.1");
+
+    // Release must tag the crate without running `cargo publish`.
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("v0.1.1").unwrap());
 }
 
 #[tokio::test]
@@ -1256,4 +1297,467 @@ git_release_name = "{{ package }}-v{{ version }}"
     let pr_body = opened_prs[0].body.as_ref().expect("PR should have body");
     assert!(pr_body.contains("`mybin`: 0.1.0 -> 0.1.1"));
     assert!(pr_body.contains("update mybin readme"));
+
+    // The merged `[[package]]` override carries `publish = true` for mybin, which has
+    // `publish = false` in its manifest. Git-only packages are never published, so
+    // `release` must not reject that and must tag mybin.
+    context.merge_release_pr().await;
+    context.run_release().success();
+
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("mybin-v0.1.1").unwrap());
+}
+
+/// A workspace whose packages inherit `publish = false`, the README and a path-only
+/// dependency from the workspace, released once in git-only mode.
+async fn released_private_workspace() -> TestContext {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("private-lib").with_type(PackageType::Lib),
+        TestPackage::new("private-bin").with_path_dependencies(vec!["../private-lib"]),
+    ])
+    .await;
+
+    // Inherit a path-only dependency and package fields from the workspace.
+    let mut root = LocalManifest::try_new(&context.repo_dir().join("Cargo.toml")).unwrap();
+    root.data["workspace"]["dependencies"]["private-lib"]["path"] = "crates/private-lib".into();
+    root.data["workspace"]["package"]["publish"] = false.into();
+    root.data["workspace"]["package"]["readme"] = "README.md".into();
+    root.write().unwrap();
+    fs_err::write(context.repo_dir().join("README.md"), "# Shared readme\n").unwrap();
+    for name in ["private-lib", "private-bin"] {
+        let mut manifest =
+            LocalManifest::try_new(&context.package_path(name).join("Cargo.toml")).unwrap();
+        manifest.data["package"]["publish"] = toml_edit::Item::None;
+        manifest.data["package"]["publish"]["workspace"] = true.into();
+        manifest.data["package"]["readme"]["workspace"] = true.into();
+        if name == "private-bin" {
+            manifest.data["dependencies"]["private-lib"] = toml_edit::Item::None;
+            manifest.data["dependencies"]["private-lib"]["workspace"] = true.into();
+        }
+        manifest.write().unwrap();
+    }
+    context.run_cargo_check();
+    context.push_all_changes("chore: configure private workspace");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+
+[[package]]
+name = "private-bin"
+git_release_name = "{{ package }}-v{{ version }}"
+"#,
+    );
+
+    // Exercise an initial release with real tags.
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    context
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_releases_workspace_with_versionless_private_dependencies() {
+    let context = released_private_workspace().await;
+    let root_manifest_path = context.repo_dir().join("Cargo.toml");
+
+    // The default tag names must stay distinct even when every manifest disables publishing.
+    for name in ["private-lib", "private-bin"] {
+        assert!(context.repo.tag_exists(&format!("{name}-v0.1.0")).unwrap());
+    }
+    context.run_update().success();
+    let metadata = cargo_utils::get_manifest_metadata(&root_manifest_path).unwrap();
+    assert!(
+        metadata
+            .workspace_packages()
+            .iter()
+            .all(|p| p.version.to_string() == "0.1.0")
+    );
+    assert!(
+        !context
+            .package_path("private-bin")
+            .join("CHANGELOG.md")
+            .exists()
+    );
+
+    fs_err::write(
+        context.package_path("private-bin").join("src/main.rs"),
+        "fn main() { println!(\"fixed\"); }\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update private binary");
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_ref().unwrap();
+    assert!(body.contains("`private-bin`: 0.1.0 -> 0.1.1"));
+    assert!(!body.contains("`private-lib`:"));
+    context.merge_release_pr().await;
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("private-bin-v0.1.1").unwrap());
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_detects_changes_to_inherited_readme() {
+    let context = released_private_workspace().await;
+
+    // Changes to a README inherited from outside either package are still detected.
+    fs_err::write(
+        context.repo_dir().join("README.md"),
+        "# Updated shared readme\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update shared readme");
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_ref().unwrap();
+    assert!(body.contains("`private-bin`: 0.1.0 -> 0.1.1"));
+    assert!(body.contains("`private-lib`: 0.1.0 -> 0.1.1"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_releases_dependents_of_versionless_private_libraries_together() {
+    use cargo_utils::LocalManifest;
+
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("support")
+            .with_type(PackageType::Lib)
+            .with_publish(false),
+        TestPackage::new("wrapper")
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec!["../support"])
+            .with_publish(false),
+        TestPackage::new("app")
+            .with_path_dependencies(vec!["../wrapper"])
+            .with_publish(false),
+        TestPackage::new("unrelated").with_publish(false),
+    ])
+    .await;
+    let root_manifest_path = context.repo_dir().join("Cargo.toml");
+    let mut root = LocalManifest::try_new(&root_manifest_path).unwrap();
+    root.data["workspace"]["dependencies"]["wrapper"]["path"] = "crates/wrapper".into();
+    root.write().unwrap();
+    for name in ["wrapper", "app"] {
+        let mut manifest =
+            LocalManifest::try_new(&context.package_path(name).join("Cargo.toml")).unwrap();
+        if name == "wrapper" {
+            manifest.data["dependencies"]["support"]["version"] = toml_edit::Item::None;
+        } else {
+            manifest.data["dependencies"]["wrapper"] = toml_edit::Item::None;
+            manifest.data["dependencies"]["wrapper"]["workspace"] = true.into();
+        }
+        manifest.write().unwrap();
+    }
+    context.run_cargo_check();
+    context.push_all_changes("chore: configure versionless private dependencies");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+"#,
+    );
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+
+    fs_err::write(
+        context.package_path("support").join("src/lib.rs"),
+        "pub fn fixed() {}\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update private library");
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_ref().unwrap();
+    for name in ["support", "wrapper", "app"] {
+        assert!(
+            body.contains(&format!("`{name}`: 0.1.0 -> 0.1.1")),
+            "{body}"
+        );
+    }
+    assert!(!body.contains("`unrelated`:"), "{body}");
+    context.merge_release_pr().await;
+
+    // Releasing dependents must not add version requirements to path-only dependencies.
+    let root = LocalManifest::try_new(&root_manifest_path).unwrap();
+    assert!(
+        root.data["workspace"]["dependencies"]["wrapper"]
+            .get("version")
+            .is_none()
+    );
+    for (package, dependency) in [("wrapper", "support"), ("app", "wrapper")] {
+        let manifest =
+            LocalManifest::try_new(&context.package_path(package).join("Cargo.toml")).unwrap();
+        assert!(
+            manifest.data["dependencies"][dependency]
+                .get("version")
+                .is_none()
+        );
+    }
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    for name in ["support", "wrapper", "app"] {
+        assert!(context.repo.tag_exists(&format!("{name}-v0.1.1")).unwrap());
+    }
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_checks_semver_with_versionless_private_dependencies() {
+    use cargo_utils::LocalManifest;
+
+    assert!(
+        release_plz_core::semver_check::is_cargo_semver_checks_installed(),
+        "cargo-semver-checks must be installed to run this test"
+    );
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("support")
+            .with_type(PackageType::Lib)
+            .with_publish(false),
+        TestPackage::new("wrapper")
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec!["../support"])
+            .with_publish(false),
+    ])
+    .await;
+    let manifest_path = context.package_path("wrapper").join("Cargo.toml");
+    let mut manifest = LocalManifest::try_new(&manifest_path).unwrap();
+    manifest.data["dependencies"]["support"]["version"] = toml_edit::Item::None;
+    manifest.write().unwrap();
+    fs_err::write(
+        context.package_path("support").join("src/lib.rs"),
+        "pub fn answer() -> u32 { 42 }\n",
+    )
+    .unwrap();
+    let wrapper_source = context.package_path("wrapper").join("src/lib.rs");
+    fs_err::write(
+        &wrapper_source,
+        "pub fn answer() -> u32 { support::answer() }\npub fn removed() {}\n",
+    )
+    .unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("chore: configure private libraries");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+semver_check = true
+"#,
+    );
+    for name in ["support", "wrapper"] {
+        context
+            .repo
+            .tag(&format!("{name}-v0.1.0"), "initial release")
+            .unwrap();
+    }
+
+    // Both current and historical APIs need the versionless dependency to build.
+    // A fix commit alone would only bump the patch version: the API check must
+    // detect the removed function and require a breaking release.
+    fs_err::write(
+        &wrapper_source,
+        "pub fn answer() -> u32 { support::answer() }\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: simplify wrapper API");
+    context.run_release_pr().success();
+    let prs = context.opened_release_prs().await;
+    assert_eq!(prs.len(), 1);
+    let body = prs[0].body.as_ref().unwrap();
+    assert!(body.contains("`wrapper`: 0.1.0 -> 0.2.0"), "{body}");
+    assert!(body.contains("API breaking changes"), "{body}");
+    assert!(body.contains("function_missing"), "{body}");
+    assert!(!body.contains("`support`:"), "{body}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_updates_root_package_with_versionless_dependency() {
+    use cargo_utils::LocalManifest;
+
+    // Create a workspace with a root package that depends on a member library by
+    // path only, without a version requirement in the dependency declaration.
+    let context = TestContext::new().await;
+    let lib_dir = context.repo_dir().join("internal-lib");
+    fs_err::create_dir_all(&lib_dir).unwrap();
+    TestPackage::new("internal-lib")
+        .with_type(PackageType::Lib)
+        .cargo_init(&lib_dir);
+    let mut root = LocalManifest::try_new(&context.repo_dir().join("Cargo.toml")).unwrap();
+    root.data["workspace"]["members"] =
+        toml_edit::value(["internal-lib"].into_iter().collect::<toml_edit::Array>());
+    root.data["dependencies"]["internal-lib"]["path"] = "internal-lib".into();
+    root.write().unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("chore: add versionless path dependency");
+    // Use git tags as the release baseline, with registry publishing disabled.
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+"#,
+    );
+    for name in [context.gitea.repo.as_str(), "internal-lib"] {
+        context
+            .repo
+            .tag(&format!("{name}-v0.1.0"), "initial release")
+            .unwrap();
+    }
+    // Change only the root package's README after both packages were tagged at 0.1.0.
+    fs_err::write(context.repo_dir().join("README.md"), "# Fixed readme\n").unwrap();
+    context.push_all_changes("fix: update root readme");
+    context.run_update().success();
+    // The fix should bump the root package's patch version despite its versionless
+    // dependency, while the unchanged library should keep its existing version.
+    let metadata =
+        cargo_utils::get_manifest_metadata(&context.repo_dir().join("Cargo.toml")).unwrap();
+    assert_eq!(
+        metadata.root_package().unwrap().version.to_string(),
+        "0.1.1"
+    );
+    let lib = metadata
+        .workspace_packages()
+        .into_iter()
+        .find(|p| p.name == "internal-lib")
+        .unwrap();
+    assert_eq!(lib.version.to_string(), "0.1.0");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_does_not_release_unrelated_binaries_for_workspace_lock_changes() {
+    let context = TestContext::new_workspace(&["bin-a", "bin-b"]).await;
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+"#,
+    );
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    fs_err::write(
+        context.package_path("bin-a").join("src/main.rs"),
+        "fn main() { println!(\"fixed\"); }\n",
+    )
+    .unwrap();
+    context.push_all_changes("fix: update bin-a");
+    context.run_release_pr().success();
+    context.merge_release_pr().await;
+    context.run_release().success();
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    assert!(context.repo.tag_exists("bin-a-v0.1.1").unwrap());
+    assert!(!context.repo.tag_exists("bin-b-v0.1.1").unwrap());
+
+    // Releasing bin-a changes the shared lockfile, but bin-b does not depend on it.
+    context.run_release_pr().success();
+    assert!(context.opened_release_prs().await.is_empty());
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("support").with_type(PackageType::Lib),
+        TestPackage::new("app").with_path_dependencies(vec!["../support"]),
+    ])
+    .await;
+
+    // Publish both versions to the local registry so only Cargo.lock needs to change.
+    let dependency_dir = Utf8TempDir::new().unwrap();
+    let dependency_path = dependency_dir.path().join("test-dependency");
+    fs_err::create_dir_all(&dependency_path).unwrap();
+    TestPackage::new("test-dependency")
+        .with_type(PackageType::Lib)
+        .cargo_init(&dependency_path);
+    let dependency_manifest_path = dependency_path.join("Cargo.toml");
+    for version in ["0.1.0", "0.1.1"] {
+        let mut manifest = cargo_utils::LocalManifest::try_new(&dependency_manifest_path).unwrap();
+        manifest.set_package_version(&version.parse().unwrap());
+        manifest.write().unwrap();
+        let token_env_var =
+            cargo_utils::cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
+        assert_cmd::Command::new("cargo")
+            .current_dir(context.repo_dir())
+            .env("CARGO_TARGET_DIR", context.cargo_target_dir())
+            .env(token_env_var, format!("Bearer {}", context.gitea.token))
+            .args([
+                "publish",
+                "--allow-dirty",
+                "--manifest-path",
+                dependency_manifest_path.as_str(),
+                "--registry",
+                TEST_REGISTRY,
+            ])
+            .assert()
+            .success();
+    }
+
+    let mut manifest =
+        cargo_utils::LocalManifest::try_new(&context.package_path("support").join("Cargo.toml"))
+            .unwrap();
+    let mut dependency = toml_edit::InlineTable::new();
+    dependency.insert("version", "0.1".into());
+    dependency.insert("registry", TEST_REGISTRY.into());
+    manifest.data["dev-dependencies"]["test-dependency"] = toml_edit::value(dependency);
+    manifest.write().unwrap();
+    context.run_cargo_check();
+    let update_test_dependency = |version| {
+        assert_cmd::Command::new("cargo")
+            .current_dir(context.repo_dir())
+            .args([
+                "update",
+                "--package",
+                "test-dependency",
+                "--precise",
+                version,
+            ])
+            .assert()
+            .success();
+        context.push_all_changes("chore: update library test dependency");
+    };
+    update_test_dependency("0.1.0");
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+git_only = true
+publish = false
+semver_check = false
+"#,
+    );
+    for name in ["support", "app"] {
+        context
+            .repo
+            .tag(&format!("{name}-v0.1.0"), "initial release")
+            .unwrap();
+    }
+    update_test_dependency("0.1.1");
+    context.run_update().success();
+    for name in ["support", "app"] {
+        let package_path = context.package_path(name);
+        let manifest =
+            cargo_utils::LocalManifest::try_new(&package_path.join("Cargo.toml")).unwrap();
+        assert_eq!(
+            manifest.data["package"]["version"].as_str(),
+            Some("0.1.0"),
+            "{name}"
+        );
+        assert!(!package_path.join("CHANGELOG.md").exists());
+    }
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 use camino::Utf8Path;
 use tracing::{debug, instrument};
 
-use crate::{Repo, git_in_dir};
+use crate::{Repo, git_in_dir, git_in_dir_with_env};
 
 impl Repo {
     #[instrument(skip(directory))]
@@ -24,5 +24,15 @@ impl Repo {
         let repo = Self::new(directory).unwrap();
         repo.disable_gpg_signing().unwrap();
         repo
+    }
+
+    /// Run git with `date` as both author and committer date, so tests control where
+    /// a commit lands in a date-ordered walk.
+    pub fn git_at(&self, args: &[&str], date: &str) -> anyhow::Result<String> {
+        git_in_dir_with_env(
+            self.directory(),
+            args,
+            &[("GIT_AUTHOR_DATE", date), ("GIT_COMMITTER_DATE", date)],
+        )
     }
 }

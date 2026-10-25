@@ -43,10 +43,10 @@ pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, Te
         .await
         .context("failed to determine next versions")?;
     let local_manifest_path = input.local_manifest();
-    let local_metadata = cargo_utils::get_manifest_metadata(local_manifest_path)?;
-    // Read packages from `local_metadata` to update the manifest of local
-    // workspace dependencies.
-    let all_packages: Vec<Package> = cargo_utils::workspace_members(&local_metadata)?.collect();
+    // Version analysis runs in an isolated copy, so the request's metadata is
+    // still current. Relocate manifest paths when release-pr updates a copy.
+    let all_packages =
+        crate::project::workspace_packages_at(input.cargo_metadata(), input.local_manifest_dir()?)?;
     let all_packages_ref: Vec<&Package> = all_packages.iter().collect();
     update_manifests(&packages_to_update, local_manifest_path, &all_packages_ref)?;
     update_changelogs(input, &packages_to_update)?;
@@ -70,15 +70,12 @@ fn update_manifests(
     all_packages: &[&Package],
 ) -> anyhow::Result<()> {
     // Distinguish packages type to avoid updating the version of packages that inherit the workspace version
-    let (workspace_pkgs, independent_pkgs): (PackagesToUpdate, PackagesToUpdate) =
-        packages_to_update
-            .updates_clone()
-            .into_iter()
-            .partition(|(p, _)| {
-                let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
-                let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
-                local_manifest.version_is_inherited()
-            });
+    let (workspace_pkgs, independent_pkgs): (Vec<_>, Vec<_>) =
+        packages_to_update.updates().iter().partition(|(p, _)| {
+            let local_manifest_path = p.package_path().unwrap().join(CARGO_TOML);
+            let local_manifest = LocalManifest::try_new(&local_manifest_path).unwrap();
+            local_manifest.version_is_inherited()
+        });
 
     if let Some(new_workspace_version) = packages_to_update.workspace_version() {
         let mut local_manifest = LocalManifest::try_new(local_manifest_path)?;
@@ -87,38 +84,38 @@ fn update_manifests(
             .write()
             .context("can't update workspace version")?;
 
-        for (pkg, _) in workspace_pkgs {
+        // Every inheriting member changes version, even when it isn't released
+        // (e.g. filtered by release_commits or with `release = false`).
+        // Keep references to those members in sync too.
+        // `Updater::dependent_packages_update` releases their dependents with the same rule.
+        for pkg in all_packages {
+            // Workspace names remain stable when release-pr relocates the
+            // checkout, whereas Cargo package IDs include the original path.
+            let is_planned = workspace_pkgs.iter().any(|(p, _)| p.name == pkg.name);
+            let changes_version = is_planned
+                || (pkg.version != *new_workspace_version
+                    && LocalManifest::try_new(&pkg.manifest_path)?.version_is_inherited());
+            if !changes_version {
+                continue;
+            }
             let package_path = pkg.package_path()?;
             update_dependencies(
                 all_packages,
                 new_workspace_version,
+                pkg.name.as_str(),
                 package_path,
                 local_manifest_path,
             )?;
         }
     }
 
-    update_versions(
-        all_packages,
-        &PackagesUpdate::new(independent_pkgs),
-        local_manifest_path,
-    )?;
-    Ok(())
-}
-
-#[instrument(skip_all)]
-fn update_versions(
-    all_packages: &[&Package],
-    packages_to_update: &PackagesUpdate,
-    workspace_manifest: &Utf8Path,
-) -> anyhow::Result<()> {
-    for (package, update) in packages_to_update.updates() {
+    for (package, update) in independent_pkgs {
         let package_path = package.package_path()?;
         set_version(
             all_packages,
             package_path,
             &update.version,
-            workspace_manifest,
+            local_manifest_path,
         )?;
     }
     Ok(())
@@ -171,12 +168,21 @@ pub fn set_version(
     let mut local_manifest =
         LocalManifest::try_new(&package_path.join("Cargo.toml")).context("cannot read manifest")?;
     local_manifest.set_package_version(version);
+    let package_name = local_manifest.data["package"]["name"]
+        .as_str()
+        .context("missing package name")?;
     local_manifest
         .write()
         .with_context(|| format!("cannot update manifest {:?}", local_manifest.path))?;
 
     let package_path = fs_utils::canonicalize_utf8(crate::manifest_dir(&local_manifest.path)?)?;
-    update_dependencies(all_packages, version, &package_path, workspace_manifest)?;
+    update_dependencies(
+        all_packages,
+        version,
+        package_name,
+        &package_path,
+        workspace_manifest,
+    )?;
     Ok(())
 }
 
@@ -202,23 +208,53 @@ pub fn set_version(
 /// pkg1 = { path = "../pkg1", version = "1.2.4" }
 /// ```
 ///
-fn update_dependencies(
+pub(super) fn update_dependencies(
     all_packages: &[&Package],
     version: &Version,
+    package_name: &str,
     package_path: &Utf8Path,
     workspace_manifest: &Utf8Path,
 ) -> anyhow::Result<()> {
-    let all_manifests = iter::once(workspace_manifest)
-        .chain(all_packages.iter().map(|pkg| pkg.manifest_path.as_path()));
+    // Only scan members with a path dependency on the package being updated.
+    // Cargo metadata includes normal, dev, build and target-specific dependencies;
+    // dep.name is the actual package name, even when the dependency is renamed.
+    //
+    // Match by name here because release-pr reuses metadata from the original
+    // checkout while editing a temporary copy: dep.path points to the original
+    // checkout, but package_path points to the copy, so the paths would not match.
+    //
+    // Always scan the workspace manifest once because cargo metadata omits
+    // [workspace.dependencies] entries that no member inherits.
+    let all_manifests = iter::once(workspace_manifest).chain(
+        all_packages
+            .iter()
+            .filter(|pkg| pkg.manifest_path != workspace_manifest)
+            .filter(|pkg| {
+                pkg.dependencies
+                    .iter()
+                    .any(|dep| dep.path.is_some() && dep.name == package_name)
+            })
+            .map(|pkg| pkg.manifest_path.as_path()),
+    );
     for manifest in all_manifests {
         let mut local_manifest = LocalManifest::try_new(manifest)?;
         let manifest_dir = crate::manifest_dir(&local_manifest.path)?.to_owned();
         let deps_to_update = local_manifest
             .get_dependency_tables_mut()
-            .flat_map(|t| t.iter_mut().filter_map(|(_, d)| d.as_table_like_mut()))
+            .flat_map(|t| {
+                t.iter_mut().filter_map(|(name, d)| {
+                    let d = d.as_table_like_mut()?;
+                    let dependency_name = d
+                        .get("package")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(name.get());
+                    (dependency_name == package_name).then_some(d)
+                })
+            })
             .filter(|d| d.contains_key("version"))
             .filter(|d| crate::is_dependency_referred_to_package(*d, &manifest_dir, package_path));
 
+        let mut changed = false;
         for dep in deps_to_update {
             let old_req = dep
                 .get("version")
@@ -227,9 +263,12 @@ fn update_dependencies(
                 .unwrap_or("*");
             if let Some(new_req) = upgrade_requirement(old_req, version)? {
                 dep.insert("version", toml_edit::value(new_req));
+                changed = true;
             }
         }
-        local_manifest.write()?;
+        if changed {
+            local_manifest.write()?;
+        }
     }
     Ok(())
 }
