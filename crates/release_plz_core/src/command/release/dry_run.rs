@@ -58,7 +58,8 @@ impl PublishBatches {
         }
     }
 
-    pub(super) fn publish(&self, input: &ReleaseRequest) -> anyhow::Result<()> {
+    /// Run `cargo publish --dry-run` for every batch.
+    pub(super) fn check(&self, input: &ReleaseRequest) -> anyhow::Result<()> {
         if self.batches.iter().any(|batch| batch.packages.len() > 1) {
             let output = run_cargo(&input.metadata.workspace_root, &["--version"])?;
             anyhow::ensure!(output.status.success(), "cannot determine Cargo version");
