@@ -661,7 +661,10 @@ async fn release_packages(
         git_client,
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
-        dry_run: dry_run::PublishBatches::default(),
+        dry_run: input
+            .dry_run
+            .then(|| dry_run::PublishBatches::new(input))
+            .transpose()?,
     };
     for package in packages {
         if let Some(pkg_release) =
@@ -670,7 +673,9 @@ async fn release_packages(
             package_releases.push(pkg_release);
         }
     }
-    context.dry_run.publish(input)?;
+    if let Some(batches) = &context.dry_run {
+        batches.publish(input)?;
+    }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
     {
@@ -689,8 +694,9 @@ struct ReleaseContext<'a> {
     pr_authors: HashMap<u64, String>,
     /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
-    /// Dry runs must package unpublished workspace dependencies together.
-    dry_run: dry_run::PublishBatches,
+    /// Unpublished packages to check together at the end of a dry run.
+    /// [`None`] for real releases.
+    dry_run: Option<dry_run::PublishBatches>,
 }
 
 impl ReleaseContext<'_> {
@@ -759,8 +765,8 @@ async fn release_package_if_needed(
                 info!("{} {}: already published", package.name, package.version);
                 continue;
             }
-            if input.dry_run {
-                context.dry_run.add(package, registry.name, input)?;
+            if let Some(batches) = &mut context.dry_run {
+                batches.add(package, registry.name, input);
                 log_dry_run_info(
                     &release_info,
                     true,
