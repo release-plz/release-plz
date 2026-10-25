@@ -24,8 +24,8 @@ pub(crate) const CARGO_VCS_INFO: &str = ".cargo_vcs_info.json";
 
 /// Whether `path`, relative to the package directory, is a file Cargo generates
 /// while packaging rather than a source file: the packaging markers and
-/// Cargo.lock at the package root. Files with these names in subdirectories
-/// remain in the packaged file list.
+/// Cargo.lock at the package root. Cargo packages files with these names in
+/// subdirectories verbatim, so they are compared like any other file.
 ///
 /// Older published libraries may lack Cargo.lock, but modern `cargo package --list`
 /// includes it even when absent, and its contents can differ in workspaces. The
@@ -36,14 +36,6 @@ pub(crate) fn is_generated_package_file(path: &Utf8Path) -> bool {
         path.as_str(),
         CARGO_TOML_ORIG | CARGO_VCS_INFO | "Cargo.lock"
     )
-}
-
-/// Whether package comparisons ignore the contents of `file`, at any depth:
-/// a local `Cargo.lock` differs from the published one in workspaces, and
-/// `Cargo.toml.orig` is generated. Below the package root, adding or removing
-/// such a file still changes the packaged file list.
-pub(crate) fn has_ignored_contents(file: &Utf8Path) -> bool {
-    matches!(file.file_name(), Some("Cargo.lock" | CARGO_TOML_ORIG))
 }
 
 /// Return true if `package` is an extracted registry package rather than a source tree.
@@ -133,8 +125,8 @@ pub(crate) fn are_packages_equal_cached(
     let local_files = local_files
         .map(|file| local_package.join(file))
         .filter(|file| {
-            // The manifest was checked above; ignore generated file contents.
-            file.file_name() != Some(CARGO_TOML) && !has_ignored_contents(file)
+            // The manifest was checked above; nested metadata contents are ordinary sources.
+            file.file_name() != Some(CARGO_TOML)
                 // Cargo may list generated paths that do not exist locally.
                 && file.symlink_metadata().is_ok_and(|metadata| !metadata.is_symlink())
         });
@@ -585,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_packaged_files_ignores_lockfile_presence_and_contents() {
+    fn compare_packaged_files_ignores_root_lockfile_presence_and_contents() {
         let local = test_package();
         let registry = test_package();
         for package in [&local, &registry] {
@@ -605,8 +597,11 @@ mod tests {
         fs_err::remove_file(local.path().join("Cargo.lock")).unwrap();
         assert!(are_packages_equal(local.path(), registry.path()).unwrap());
 
-        // Nested lockfiles remain part of the packaged file list.
+        // Nested lockfiles are ordinary packaged files: their presence and
+        // contents count.
         fs_err::write(registry.path().join("src/Cargo.lock"), "nested lockfile").unwrap();
+        assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
+        fs_err::write(local.path().join("src/Cargo.lock"), "local lockfile").unwrap();
         assert!(!are_packages_equal(local.path(), registry.path()).unwrap());
     }
 
