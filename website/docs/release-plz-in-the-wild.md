@@ -6,6 +6,7 @@ This page shows what projects use release-plz.
 
 Here are some popular projects using release-plz:
 
+- [GitHub's rust-gems](https://github.com/github/rust-gems/blob/31331e8eeadf7e58f5af355a3881d95e9315ee32/.github/workflows/publish-release.yaml#L21)
 - [aws-lambda-rust-runtime](https://github.com/aws/aws-lambda-rust-runtime/blob/6b9ff4e7392b025c986510d86de9b3afe68701bb/.github/workflows/release-plz.yml#L28)
 - [SurrealDB](https://github.com/surrealdb/surrealdb/blob/567832825a9ad660b002d96030c711a5f3d6c1e7/.github/workflows/reusable_publish_version.yml#L559)
 - [windows-drivers-rs](https://github.com/microsoft/windows-drivers-rs/blob/45811e309771f95d860c05a281efd42840a866cc/release-plz.toml)
