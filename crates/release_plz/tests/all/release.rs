@@ -13,11 +13,13 @@ use crate::helpers::{
 async fn unpublished_workspace() -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("dependency").with_type(PackageType::Lib),
-        TestPackage::new("dependent").with_path_dependencies(vec!["../dependency"]),
+        TestPackage::new("dependent"),
     ])
     .await;
     let root_manifest = context.repo_dir().join("Cargo.toml");
     let mut root = cargo_utils::LocalManifest::try_new(&root_manifest).unwrap();
+    // `cargo publish` replaces the path with the version, which Cargo looks up in
+    // crates.io unless the dependency names the registry release-plz publishes to.
     root.data["workspace"]["dependencies"]["dependency"] = toml_edit::value({
         let mut dependency = toml_edit::InlineTable::new();
         dependency.insert("path", "crates/dependency".into());
@@ -37,6 +39,7 @@ async fn unpublished_workspace() -> TestContext {
     let mut dependent =
         cargo_utils::LocalManifest::try_new(&context.package_path("dependent").join("Cargo.toml"))
             .unwrap();
+    // Inherited and optional, like the dependency of issue #2878.
     dependent.data["dependencies"]["dependency"] = toml_edit::value({
         let mut dependency = toml_edit::InlineTable::new();
         dependency.insert("workspace", true.into());
