@@ -290,7 +290,7 @@ publish_no_verify = true
         "{stderr}"
     );
     assert!(
-        stderr.contains("If a package depends on an unpublished workspace package"),
+        stderr.contains("If a package requires a version of a workspace package"),
         "{stderr}"
     );
     assert!(
@@ -320,7 +320,7 @@ async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
     assert!(stderr.contains("only fails to compile"), "{stderr}");
     // `only` is the only unpublished package, so no unpublished dependency can be missing.
     assert!(
-        !stderr.contains("If a package depends on an unpublished workspace package"),
+        !stderr.contains("If a package requires a version of a workspace package"),
         "{stderr}"
     );
 }

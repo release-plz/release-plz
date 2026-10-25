@@ -12,8 +12,9 @@ use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
 use crate::cargo::{CmdOutput, run_cargo};
 
 /// Possible cause of a failed check when packages are checked separately.
-const SEPARATE_CHECKS_HINT: &str = "\nIf a package depends on an unpublished workspace package, \
-    Cargo can only resolve the dependency if both packages are checked together. \
+const SEPARATE_CHECKS_HINT: &str = "\nIf a package requires a version of a workspace package \
+    that isn't in the registry yet, Cargo can only resolve the dependency if both packages \
+    are checked together. \
     Learn more at https://release-plz.dev/docs/usage/release#dry-runs";
 
 #[derive(Default)]
@@ -77,8 +78,8 @@ impl PublishBatches {
         if has_combined_packages && !combine {
             warn!(
                 "checking each package individually, because checking packages together \
-                 requires Cargo 1.90 or newer. Packages that depend on unpublished workspace \
-                 packages fail the check."
+                 requires Cargo 1.90 or newer. Packages that require a version of a workspace \
+                 package that isn't in the registry yet fail the check."
             );
         }
         // A package published to multiple registries is in multiple batches.

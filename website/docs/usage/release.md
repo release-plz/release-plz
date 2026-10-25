@@ -52,8 +52,8 @@ Release-plz checks packages separately when:
   dev-depends on a package that depends on it): release-plz then checks every
   package of that group separately.
 
-A package that depends on an unpublished workspace package only passes the check
-if both packages are checked together.
+A package that requires a version of a workspace package that isn't in the
+registry yet only passes the check if both packages are checked together.
 `publish_no_verify` and `--no-verify` don't avoid this: they skip compilation,
 but packaging still resolves dependencies.
 
