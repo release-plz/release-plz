@@ -73,9 +73,9 @@ impl PublishBatches {
     pub(super) fn check(&self, input: &ReleaseRequest) -> anyhow::Result<()> {
         let has_combined_packages = self.batches.iter().any(|batch| batch.packages.len() > 1);
         // Only query the Cargo version when it matters, so that it can't break other dry runs.
-        let combine =
+        let cargo_can_combine =
             has_combined_packages && can_publish_multiple_packages(&input.metadata.workspace_root)?;
-        if has_combined_packages && !combine {
+        if has_combined_packages && !cargo_can_combine {
             warn!(
                 "checking each package individually, because checking packages together \
                  requires Cargo 1.90 or newer. Packages that require a version of a workspace \
@@ -90,7 +90,7 @@ impl PublishBatches {
             .collect::<HashSet<_>>()
             .len();
         for batch in &self.batches {
-            batch.check(input, combine, package_count)?;
+            batch.check(input, cargo_can_combine, package_count)?;
         }
         Ok(())
     }
@@ -98,15 +98,16 @@ impl PublishBatches {
 
 impl PublishBatch {
     /// Run `cargo publish --dry-run` for the packages of this batch: together if
-    /// `combine` is true, otherwise one at a time.
+    /// `cargo_can_combine` is true, otherwise one at a time. If Cargo reports a dependency
+    /// cycle between the packages, check them one at a time too.
     /// `package_count` is the number of unpublished packages of the release.
     fn check(
         &self,
         input: &ReleaseRequest,
-        combine: bool,
+        cargo_can_combine: bool,
         package_count: usize,
     ) -> anyhow::Result<()> {
-        if combine && self.packages.len() > 1 {
+        if cargo_can_combine && self.packages.len() > 1 {
             let output = self.dry_run(input, &self.packages)?;
             // Cargo rejects selected packages that form a cycle, e.g. a proc-macro crate that
             // dev-depends on the crate depending on it. The real release publishes them one at
