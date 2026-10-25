@@ -1,5 +1,10 @@
 use anyhow::Context as _;
-use cargo_metadata::{Package, camino::Utf8PathBuf, semver::Version};
+use cargo_metadata::{
+    Package,
+    camino::{Utf8Path, Utf8PathBuf},
+    semver::Version,
+};
+use tracing::warn;
 
 use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
 use crate::cargo::{new_cargo_config, run_cargo};
@@ -8,6 +13,8 @@ pub(super) struct PublishBatches {
     batches: Vec<PublishBatch>,
     /// Registry that Cargo uses for packages that don't select one.
     default_registry: String,
+    /// Whether Cargo can check multiple packages with a single `cargo publish`.
+    can_combine_packages: bool,
 }
 
 struct PublishBatch {
@@ -23,12 +30,14 @@ struct PublishBatch {
 
 impl PublishBatches {
     pub(super) fn new(input: &ReleaseRequest) -> anyhow::Result<Self> {
-        let default_registry = new_cargo_config(Some(input.metadata.workspace_root.clone()))?
+        let workspace_root = &input.metadata.workspace_root;
+        let default_registry = new_cargo_config(Some(workspace_root.clone()))?
             .default_registry()?
             .unwrap_or_else(|| "crates-io".to_string());
         Ok(Self {
             batches: vec![],
             default_registry,
+            can_combine_packages: can_publish_multiple_packages(workspace_root)?,
         })
     }
 
@@ -50,7 +59,7 @@ impl PublishBatches {
             // Selecting multiple packages changes the meaning of `--features`: Cargo
             // only requires one of the selected packages to define each feature, and
             // with resolver 1 it enables them only for the package of the manifest.
-            Some(batch) if options.features.is_empty() => {
+            Some(batch) if self.can_combine_packages && options.features.is_empty() => {
                 batch.packages.push(package.name.to_string());
             }
             _ => self.batches.push(PublishBatch {
@@ -64,18 +73,11 @@ impl PublishBatches {
 
     /// Run `cargo publish --dry-run` for every batch.
     pub(super) fn check(&self, input: &ReleaseRequest) -> anyhow::Result<()> {
-        if self.batches.iter().any(|batch| batch.packages.len() > 1) {
-            let output = run_cargo(&input.metadata.workspace_root, &["--version"])?;
-            anyhow::ensure!(output.status.success(), "cannot determine Cargo version");
-            let version = output
-                .stdout
-                .split_whitespace()
-                .nth(1)
-                .context("missing Cargo version")?;
-            let version = Version::parse(version).context("cannot parse Cargo version")?;
-            anyhow::ensure!(
-                version >= Version::new(1, 90, 0),
-                "workspace release dry-runs require Cargo 1.90 or newer (found {version})"
+        if !self.can_combine_packages && self.batches.len() > 1 {
+            warn!(
+                "checking each package individually, because checking packages together \
+                 requires Cargo 1.90 or newer. Packages that depend on unpublished workspace \
+                 packages fail the check."
             );
         }
         for batch in &self.batches {
@@ -108,6 +110,22 @@ impl PublishBatches {
         }
         Ok(())
     }
+}
+
+/// Whether Cargo can publish multiple packages with a single `cargo publish`,
+/// which is supported since Cargo 1.90.
+fn can_publish_multiple_packages(workspace_root: &Utf8Path) -> anyhow::Result<bool> {
+    let output = run_cargo(workspace_root, &["--version"])?;
+    anyhow::ensure!(output.status.success(), "cannot determine Cargo version");
+    let version = output
+        .stdout
+        .split_whitespace()
+        .nth(1)
+        .context("missing Cargo version")?;
+    let version = Version::parse(version).context("cannot parse Cargo version")?;
+    // Ignore pre-release identifiers: in semver, `1.90.0-beta.1` is lower than `1.90.0`,
+    // but Cargo 1.90 betas and nightlies support it too.
+    Ok((version.major, version.minor) >= (1, 90))
 }
 
 #[cfg(test)]

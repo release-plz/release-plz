@@ -34,7 +34,8 @@ or creating tags and git releases.
 
 Release-plz checks unpublished workspace packages together with Cargo, so a package
 can depend on a version that would be published earlier in the same release.
-Checking multiple packages together requires Cargo 1.90 or newer.
+Checking multiple packages together requires Cargo 1.90 or newer: with older
+versions, release-plz warns and checks each package individually.
 Only packages selected for publication are included; already published packages
 and packages excluded by the release-plz configuration are skipped.
 

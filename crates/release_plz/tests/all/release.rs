@@ -286,34 +286,42 @@ publish_no_verify = true
 #[cfg(unix)]
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
-async fn release_dry_run_requires_recent_cargo_for_batches() {
-    let context = unpublished_workspace().await;
-    let wrapper_dir = Utf8TempDir::new().unwrap();
-    let cargo = wrapper_dir.path().join("cargo");
-    fs_err::write(
-        &cargo,
+async fn release_dry_run_checks_packages_individually_with_old_cargo() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    // Cargo 1.89 can't publish multiple packages with a single command,
+    // so fail if release-plz checks the packages together.
+    let cargo_dir = fake_cargo(
         r#"#!/bin/sh
 if [ "$1" = --version ]; then
     echo 'cargo 1.89.0 (c24e10642 2025-06-23)'
     exit 0
 fi
+if [ "$1" = publish ] && [ "$(printf '%s\n' "$@" | grep -cx -- --package)" -gt 1 ]; then
+    echo 'error: Cargo 1.89 publishes one package at a time' >&2
+    exit 1
+fi
 exec "$REAL_CARGO" "$@"
 "#,
-    )
-    .unwrap();
-    crate::helpers::make_executable(&cargo);
+    );
     let output = context
         .release_command()
         .arg("--dry-run")
-        .env("CARGO", &cargo)
+        .env("CARGO", cargo_dir.path().join("cargo"))
         .env("REAL_CARGO", env!("CARGO"))
+        .env("RELEASE_PLZ_LOG", "WARN")
         .assert()
-        .failure();
+        .success();
     let stderr = String::from_utf8_lossy(&output.get_output().stderr);
-    assert!(
-        stderr.contains("require Cargo 1.90 or newer (found 1.89.0)"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("requires Cargo 1.90 or newer"), "{stderr}");
+    // The packages are independent, so release-plz can check them individually.
+    for package in ["one", "two"] {
+        assert!(
+            context
+                .cargo_target_dir()
+                .join(format!("package/{package}-0.1.0/Cargo.toml"))
+                .exists()
+        );
+    }
 }
 
 #[tokio::test]
@@ -563,6 +571,17 @@ enum Scenario {
     VendoredSource,
 }
 
+/// Create a directory with a `cargo` executable that runs `script`.
+/// The script can run the real Cargo with `$REAL_CARGO`.
+#[cfg(unix)]
+fn fake_cargo(script: &str) -> Utf8TempDir {
+    let dir = Utf8TempDir::new().unwrap();
+    let cargo = dir.path().join("cargo");
+    fs_err::write(&cargo, script).unwrap();
+    crate::helpers::make_executable(&cargo);
+    dir
+}
+
 /// Cargo wrapper that records the subcommands run by release-plz
 /// and simulates the [`Scenario`] passed in `SCENARIO`.
 #[cfg(unix)]
@@ -597,10 +616,7 @@ exec "$REAL_CARGO" "$@"
 #[cfg(unix)]
 async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
     let context = TestContext::new().await;
-    let wrapper_dir = Utf8TempDir::new().unwrap();
-    let cargo = wrapper_dir.path().join("cargo");
-    fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
-    crate::helpers::make_executable(&cargo);
+    let wrapper_dir = fake_cargo(CARGO_WRAPPER);
 
     let index = context.gitea.cargo_index_url();
     let replacement = match scenario {
@@ -635,7 +651,7 @@ async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
 
     context
         .release_command()
-        .env("CARGO", &cargo)
+        .env("CARGO", wrapper_dir.path().join("cargo"))
         .env("REAL_CARGO", env!("CARGO"))
         .env("WRAPPER_DIR", wrapper_dir.path())
         .env("SCENARIO", format!("{scenario:?}"))
