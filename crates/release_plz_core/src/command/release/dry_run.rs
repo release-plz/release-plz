@@ -131,39 +131,3 @@ fn can_publish_multiple_packages(workspace_root: &Utf8Path) -> anyhow::Result<bo
     // but Cargo 1.90 betas and nightlies support it too.
     Ok((version.major, version.minor) >= (1, 90))
 }
-
-#[cfg(test)]
-mod tests {
-    use fake_package::{FakePackage, metadata::fake_metadata};
-
-    use super::*;
-    use crate::fs_utils::Utf8TempDir;
-
-    #[test]
-    fn implicit_and_explicit_registries_share_a_batch() {
-        let directory = Utf8TempDir::new().unwrap();
-        let config = directory.path().join(".cargo/config.toml");
-        fs_err::create_dir(config.parent().unwrap()).unwrap();
-        let mut metadata = fake_metadata();
-        metadata.workspace_root = directory.path().to_owned();
-        let input = ReleaseRequest::new(metadata);
-        for registry in ["crates-io", "private-registry"] {
-            fs_err::write(&config, format!("[registry]\ndefault = {registry:?}\n")).unwrap();
-            let mut batches = PublishBatches::new(&input).unwrap();
-            batches.add(&FakePackage::new("one").into(), None, &input);
-            batches.add(
-                &FakePackage::new("two").into(),
-                Some(registry.into()),
-                &input,
-            );
-            batches.add(
-                &FakePackage::new("three").into(),
-                Some("other".into()),
-                &input,
-            );
-            assert_eq!(batches.batches.len(), 2);
-            assert_eq!(batches.batches[0].packages.len(), 2);
-            assert_eq!(batches.batches[0].registry, registry);
-        }
-    }
-}

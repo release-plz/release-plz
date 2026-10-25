@@ -8,6 +8,8 @@ use crate::helpers::{
 };
 
 /// Neither package exists in the registry, including the optional dependency.
+/// `dependency` is published to Cargo's default registry, while `dependent`
+/// names the same registry in its `publish` field.
 async fn unpublished_workspace() -> TestContext {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("dependency").with_type(PackageType::Lib),
@@ -24,6 +26,14 @@ async fn unpublished_workspace() -> TestContext {
         dependency
     });
     root.write().unwrap();
+    let mut dependency =
+        cargo_utils::LocalManifest::try_new(&context.package_path("dependency").join("Cargo.toml"))
+            .unwrap();
+    dependency.data["package"]
+        .as_table_mut()
+        .unwrap()
+        .remove("publish");
+    dependency.write().unwrap();
     let mut dependent =
         cargo_utils::LocalManifest::try_new(&context.package_path("dependent").join("Cargo.toml"))
             .unwrap();
@@ -45,6 +55,8 @@ async fn release_dry_run_checks_unpublished_workspace_dependencies() {
     let context = unpublished_workspace().await;
     for no_verify in [false, true] {
         // Exercise registry selection from package manifests as well as --registry.
+        // Without --registry, the dry run only passes if release-plz recognizes that
+        // the default registry of `dependency` is the one `dependent` names.
         let mut command = if no_verify {
             let mut command = context.release_command();
             command.arg("--no-verify");
