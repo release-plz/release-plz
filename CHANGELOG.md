@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/release-plz/release-plz/compare/release-plz-v0.4.0...release-plz-v0.4.1) - 2026-10-24
+
+### Fixed
+
+- *(release)* use the token of each package's registry ([#3279](https://github.com/release-plz/release-plz/pull/3279))
+- *(config)* reject duplicate package configurations ([#3272](https://github.com/release-plz/release-plz/pull/3272))
+- *(update)* bump the version at most by a patch for `changelog_include` commits ([#3282](https://github.com/release-plz/release-plz/pull/3282))
+- *(forge)* report failed pull request edits ([#3277](https://github.com/release-plz/release-plz/pull/3277))
+
+### Other
+
+- share the expected JSON output of release ([#3269](https://github.com/release-plz/release-plz/pull/3269))
+- *(clone)* drop options the vendored cargo-clone code never uses ([#3270](https://github.com/release-plz/release-plz/pull/3270))
+- *(update)* take a plain ChangelogRequest in get_changelog ([#3273](https://github.com/release-plz/release-plz/pull/3273))
+- *(release_pr)* pass ReleasePrRequest instead of copying it into ReleasePrOptions ([#3274](https://github.com/release-plz/release-plz/pull/3274))
+- *(forge)* reuse the PR response parsers ([#3276](https://github.com/release-plz/release-plz/pull/3276))
+
+## [0.4.0](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.174...release-plz-v0.4.0) - 2026-10-22
+
+### Other
+
+- simplify the conversion of the changelog config to git-cliff ([#3258](https://github.com/release-plz/release-plz/pull/3258))
+- *(cli)* remove redundant path parsers and unused helpers ([#3261](https://github.com/release-plz/release-plz/pull/3261))
+- *(init)* deduplicate the CARGO_REGISTRY_TOKEN workflow env ([#3259](https://github.com/release-plz/release-plz/pull/3259))
+- share authenticated requests in the Gitea test client ([#3260](https://github.com/release-plz/release-plz/pull/3260))
+- *(repo_url)* [**breaking**] share host and port formatting ([#3263](https://github.com/release-plz/release-plz/pull/3263))
+- *(clone)* remove the unused git clone path ([#3256](https://github.com/release-plz/release-plz/pull/3256))
+- *(changelog)* replace ChangelogParser with a single helper ([#3262](https://github.com/release-plz/release-plz/pull/3262))
+- *(changelog)* deduplicate context and rendering helpers ([#3264](https://github.com/release-plz/release-plz/pull/3264))
+- share Cargo workspace and lockfile loading ([#3265](https://github.com/release-plz/release-plz/pull/3265))
+
+### Performance
+
+- list package files without resolving the lockfile ([#3247](https://github.com/release-plz/release-plz/pull/3247))
+
+## [0.3.174](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.173...release-plz-v0.3.174) - 2026-10-21
+
+### Performance
+
+- query registry packages concurrently ([#3240](https://github.com/release-plz/release-plz/pull/3240))
+- speed up the temporary copies of the repository ([#3248](https://github.com/release-plz/release-plz/pull/3248))
+
+## [0.3.173](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.172...release-plz-v0.3.173) - 2026-10-19
+
+### Other
+
+- add UTM params to Encore sponsor links ([#3237](https://github.com/release-plz/release-plz/pull/3237))
+- add sponsors to readme ([#3235](https://github.com/release-plz/release-plz/pull/3235))
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+- don't query the registry again after cargo publish confirms the package ([#3251](https://github.com/release-plz/release-plz/pull/3251))
+- reuse dependency builds between current and baseline semver checks ([#3243](https://github.com/release-plz/release-plz/pull/3243))
+- list open PRs while release-pr analyzes the packages ([#3249](https://github.com/release-plz/release-plz/pull/3249))
+- read downloaded registry packages in parallel ([#3246](https://github.com/release-plz/release-plz/pull/3246))
+
 ## [0.3.172](https://github.com/release-plz/release-plz/compare/release-plz-v0.3.171...release-plz-v0.3.172) - 2026-10-12
 
 ### Other

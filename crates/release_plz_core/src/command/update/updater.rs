@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::Context as _;
-use cargo::util::VersionExt as _;
 use cargo_metadata::{
     Package, TargetKind,
     camino::{Utf8Path, Utf8PathBuf},
@@ -17,8 +16,7 @@ use git_cliff_core::{
     config::{ChangelogConfig, Config},
     contributor::RemoteContributor,
 };
-use git_cmd::Repo;
-use next_version::NextVersion as _;
+use git_cmd::{HistoryCommit, Repo};
 use tracing::{Span, debug, info, instrument, warn};
 
 use crate::{
@@ -34,7 +32,7 @@ use crate::{
     registry_packages::{PackagesCollection, RegistryPackage},
     semver_check::{self, SemverCheck},
     toml_compare,
-    version::NextVersionFromDiff as _,
+    version::{NextVersionFromDiff as _, patch_increment},
 };
 
 use super::{
@@ -67,7 +65,7 @@ struct PackageHistory<'a> {
     tag_commit: Option<String>,
     /// The simplified parent graph of the commits to walk, see
     /// [`Repo::parents_at_paths`].
-    graph: Vec<(String, Vec<String>)>,
+    graph: Vec<HistoryCommit>,
     diff: Diff,
 }
 
@@ -166,7 +164,7 @@ impl Updater<'_> {
             // - Version changes.
             // - Package is new.
             // - Version was already bumped with pending unreleased commits so that we update the changelog.
-            let version_already_bumped = !diff.is_version_published && !diff.commits.is_empty();
+            let version_already_bumped = !diff.is_version_published && diff.has_commits();
             if next_version != current_version
                 || !diff.registry_package_exists
                 || version_already_bumped
@@ -327,6 +325,7 @@ impl Updater<'_> {
             .map(|(p, d)| (p.name.to_string(), d.commits.clone()))
             .collect();
 
+        let semver_check_target_dir = semver_check::TargetDir::new(self.req.cargo_metadata());
         let check_semver = |(p, diff): &mut (&Package, Diff)| -> anyhow::Result<()> {
             let registry_package = registry_packages.get_package(&p.name);
             if let Some(registry_package) = registry_package {
@@ -335,7 +334,7 @@ impl Updater<'_> {
                 let package_config = self.req.get_package_config(&p.name);
                 for pkg_to_include in &package_config.changelog_include {
                     if let Some(commits) = packages_commits.get(pkg_to_include) {
-                        diff.add_commits(commits);
+                        diff.include_commits(commits);
                     }
                 }
                 if diff.should_update_version()
@@ -348,9 +347,12 @@ impl Updater<'_> {
                     SEMVER_CHECK_LOG_ONCE.call_once(|| {
                         tracing::info!("Checking API compatibility with cargo-semver-checks...");
                     });
-                    let semver_check =
-                        semver_check::run_semver_check(&package_path, registry_package_path)
-                            .context("error while running cargo-semver-checks")?;
+                    let semver_check = semver_check::run_semver_check(
+                        &package_path,
+                        registry_package_path,
+                        semver_check_target_dir,
+                    )
+                    .context("error while running cargo-semver-checks")?;
                     diff.set_semver_check(semver_check);
                 }
             }
@@ -547,12 +549,10 @@ impl Updater<'_> {
                 };
                 let (change, version) = if !deps.is_empty() {
                     let deps: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
-                    let next_version = if !diff.is_version_published {
-                        p.version.clone()
-                    } else if p.version.is_prerelease() {
-                        p.version.increment_prerelease()
+                    let next_version = if diff.is_version_published {
+                        patch_increment(&p.version)
                     } else {
-                        p.version.increment_patch()
+                        p.version.clone()
                     };
                     (
                         format!(
@@ -579,6 +579,7 @@ impl Updater<'_> {
                     package: p,
                     diff: Diff {
                         commits: vec![Commit::new(NO_COMMIT_ID.to_string(), change)],
+                        included_commits: vec![],
                         semver_check: SemverCheck::Skipped,
                         ..diff.clone()
                     },
@@ -625,7 +626,7 @@ impl Updater<'_> {
         let changelog_path = self.req.changelog_path(p);
         let old_changelog = old_changelogs.get_or_read(&changelog_path);
         let update_result = self.update_result(
-            diff.commits,
+            diff.all_commits().cloned().collect(),
             version,
             p,
             diff.semver_check,
@@ -665,44 +666,37 @@ impl Updater<'_> {
             })
         };
 
-        let changelog_outcome = {
-            let cfg = self.req.get_package_config(package.name.as_str());
-            let changelog_req = cfg
-                .should_update_changelog()
-                .then_some(self.req.changelog_req().clone());
-            let commits: Vec<Commit> = commits
-                .into_iter()
-                // If not conventional commit, only consider the first line of the commit message.
-                .filter_map(|c| {
-                    if c.is_conventional() {
-                        Some(c)
-                    } else {
-                        c.message.lines().next().map(|line| Commit {
-                            message: line.to_string(),
-                            ..c
-                        })
-                    }
-                })
-                .collect();
-            changelog_req
-                .map(|r| {
-                    get_changelog(
-                        &commits,
-                        &version,
-                        Some(r),
-                        old_changelog,
-                        changelog_repo,
-                        package,
-                        previous_version,
-                    )
-                })
-                .transpose()
-        }?;
-
-        let (changelog, new_changelog_entry) = match changelog_outcome {
-            Some((changelog, new_changelog_entry)) => (Some(changelog), Some(new_changelog_entry)),
-            None => (None, None),
-        };
+        let (changelog, new_changelog_entry) = self
+            .req
+            .get_package_config(package.name.as_str())
+            .should_update_changelog()
+            .then(|| {
+                let commits: Vec<Commit> = commits
+                    .into_iter()
+                    // If not conventional commit, only consider the first line of the commit message.
+                    .filter_map(|c| {
+                        if c.is_conventional() {
+                            Some(c)
+                        } else {
+                            c.message.lines().next().map(|line| Commit {
+                                message: line.to_string(),
+                                ..c
+                            })
+                        }
+                    })
+                    .collect();
+                get_changelog(
+                    &commits,
+                    &version,
+                    self.req.changelog_req(),
+                    old_changelog,
+                    changelog_repo,
+                    package,
+                    previous_version,
+                )
+            })
+            .transpose()?
+            .unzip();
 
         Ok(UpdateResult {
             version,
@@ -851,8 +845,9 @@ impl Updater<'_> {
         let paths = PackagePaths::new(package_path, package)?;
         let released_package_files = PackageFiles::default();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
-        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository);
-        for (current_commit_hash, _) in graph {
+        let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
+        for (index, commit) in graph.iter().enumerate() {
+            let current_commit_hash = commit.id.as_str();
             // Stop lineages that have reached an equal snapshot. Still inspect
             // ancestors reachable through another lineage: they can contain
             // surviving changes or another equal snapshot that bounds that lineage.
@@ -860,21 +855,27 @@ impl Updater<'_> {
             // changes the package, forked before the release and merged after it,
             // keeps its fork point and every ancestor of it reachable, so all of
             // those are inspected.
-            if retained_changes.skips(&current_commit_hash) {
+            if retained_changes.skips(current_commit_hash) {
                 continue;
             }
-            checkout_commit(repository, &current_commit_hash)?;
+            checkout_commit(repository, current_commit_hash)?;
             // Equality and changed-file checks inspect the same snapshot.
-            let local_package_files = checkout_package_files.files_at(&current_commit_hash);
+            let local_package_files = checkout_package_files.files_at(index);
             if let Some((released_package, released_path)) = released {
-                let are_packages_equal = self.check_package_equality(
-                    repository,
+                let are_packages_equal = check_package_equality(
                     package,
                     package_path,
                     released_package,
                     released_path,
-                    (local_package_files, &released_package_files),
-                ).with_context(|| format!("failed to check package equality for `{}` at commit {current_commit_hash}", package.name))?;
+                    local_package_files,
+                    &released_package_files,
+                )
+                .with_context(|| {
+                    format!(
+                        "failed to check package equality for `{}` at commit {current_commit_hash}",
+                        package.name
+                    )
+                })?;
                 if are_packages_equal {
                     // Collect pruning candidates with full history: a "keep mine"
                     // merge can hide real ancestors from a simplified walk. Reuse
@@ -883,12 +884,12 @@ impl Updater<'_> {
                     // RetainedChanges preserves candidates whose changes survive
                     // through another lineage.
                     let ancestors = repository.ancestors_at_paths(
-                        &current_commit_hash,
+                        current_commit_hash,
                         &release_boundaries,
                         &paths.all(),
                     )?;
                     retained_changes.add_boundary(
-                        &current_commit_hash,
+                        current_commit_hash,
                         ancestors,
                         released_package_files.get(released_path)?,
                     );
@@ -897,15 +898,15 @@ impl Updater<'_> {
             }
             // A package can contain another package in a subdirectory, so only count
             // commits that touch files Cargo would package for this package.
-            if self.are_changed_files_in_package(
+            if are_changed_files_in_package(
                 package_path,
                 repository,
-                &current_commit_hash,
+                current_commit_hash,
                 local_package_files,
-            )? {
+            ) {
                 diff.commits.push(Commit::new(
-                    current_commit_hash,
-                    repository.current_commit_message()?,
+                    current_commit_hash.to_owned(),
+                    commit.message()?,
                 ));
             }
         }
@@ -915,48 +916,9 @@ impl Updater<'_> {
         // A simplified walk can visit an ancestor before the equal snapshot that
         // prunes it. Make the final decision with every discovered boundary,
         // keeping only ancestors whose changes survive through another lineage.
-        retained_changes.retain_surviving(&mut diff.commits, || {
-            self.history_package_files(package_path, repository)
-        })?;
+        retained_changes
+            .retain_surviving(&mut diff.commits, || history_package_files(package_path));
         Ok(diff)
-    }
-
-    /// Whether the current checkout equals the released package, README included.
-    fn check_package_equality(
-        &self,
-        repository: &Repo,
-        package: &Package,
-        package_path: &Utf8Path,
-        registry_package: &RegistryPackage,
-        registry_package_path: &Utf8Path,
-        (local_package_files, released_package_files): (&PackageFiles, &PackageFiles),
-    ) -> anyhow::Result<bool> {
-        let packages_equal = self
-            .with_cargo_lock_restored_unless_cached(repository, local_package_files, || {
-                crate::package_compare::are_packages_equal_cached(
-                    package_path,
-                    registry_package_path,
-                    local_package_files,
-                    released_package_files,
-                )
-            })?
-            .context("cannot compare packages");
-        // Most historical snapshots already differ in their packaged files.
-        // Read README metadata only when that comparison cannot decide equality
-        // (because `cargo metadata` is slower).
-        if matches!(packages_equal, Ok(false)) {
-            return Ok(false);
-        }
-        if crate::package_compare::is_readme_updated_with_released_package(
-            &package.name,
-            package_path,
-            &registry_package.package,
-        )? {
-            debug!("{}: README updated", package.name);
-            return Ok(false);
-        }
-        // A README change establishes inequality even if package listing failed.
-        packages_equal
     }
 
     /// If the dependencies changed, add a commit to the diff.
@@ -1005,55 +967,6 @@ impl Updater<'_> {
         Ok(())
     }
 
-    fn get_cargo_lock_path(&self, repository: &Repo) -> anyhow::Result<Option<String>> {
-        let project_cargo_lock = self.project.cargo_lock_path();
-        let relative_lock_path = fs_utils::strip_prefix(&project_cargo_lock, self.project.root())?;
-        let repository_cargo_lock = repository.directory().join(relative_lock_path);
-        if repository_cargo_lock.exists() {
-            Ok(Some(repository_cargo_lock.to_string()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Run `f`, which inspects the package with `cargo package`, then revert the
-    /// edits `cargo package` can make to files such as `Cargo.lock`.
-    fn with_cargo_lock_restored<T>(
-        &self,
-        repository: &Repo,
-        f: impl FnOnce() -> T,
-    ) -> anyhow::Result<T> {
-        // Store the path before `f` runs so it can be reverted afterwards.
-        let cargo_lock_path = self
-            .get_cargo_lock_path(repository)
-            .context("failed to determine Cargo.lock path")?;
-        let result = f();
-        if let Some(cargo_lock_path) = cargo_lock_path.as_deref() {
-            repository
-                .checkout(cargo_lock_path)
-                .context("cannot revert changes introduced when comparing packages")?;
-        }
-        Ok(result)
-    }
-
-    /// Run `f` with [`Self::with_cargo_lock_restored`] unless `package_files`,
-    /// the file list of the current checkout of `repository`, is already cached.
-    ///
-    /// Released packages are listed outside `repository`, so `f` only needs the
-    /// restore when it lists the current checkout.
-    fn with_cargo_lock_restored_unless_cached<T>(
-        &self,
-        repository: &Repo,
-        package_files: &PackageFiles,
-        f: impl FnOnce() -> T,
-    ) -> anyhow::Result<T> {
-        if package_files.is_cached() {
-            Ok(f())
-        } else {
-            self.with_cargo_lock_restored(repository, f)
-        }
-    }
-
     fn get_next_version(
         &self,
         new_workspace_version: Option<&Version>,
@@ -1087,53 +1000,77 @@ impl Updater<'_> {
         };
         Ok(next_version)
     }
+}
 
-    /// `hash` is only used for logging purposes.
-    fn are_changed_files_in_package(
-        &self,
-        package_path: &Utf8Path,
-        repository: &Repo,
-        hash: &str,
-        package_files: &PackageFiles,
-    ) -> anyhow::Result<bool> {
-        let package_files_res =
-            self.with_cargo_lock_restored_unless_cached(repository, package_files, || {
-                get_package_files(package_path, repository, package_files)
-            })?;
-        let Ok(package_files) = package_files_res.inspect_err(|e| {
+/// Whether the current checkout equals the released package, README included.
+fn check_package_equality(
+    package: &Package,
+    package_path: &Utf8Path,
+    registry_package: &RegistryPackage,
+    registry_package_path: &Utf8Path,
+    local_package_files: &PackageFiles,
+    released_package_files: &PackageFiles,
+) -> anyhow::Result<bool> {
+    let packages_equal = crate::package_compare::are_packages_equal_cached(
+        package_path,
+        registry_package_path,
+        local_package_files,
+        released_package_files,
+    )
+    .context("cannot compare packages");
+    // Most historical snapshots already differ in their packaged files.
+    // Read README metadata only when that comparison cannot decide equality
+    // (because `cargo metadata` is slower).
+    if matches!(packages_equal, Ok(false)) {
+        return Ok(false);
+    }
+    if crate::package_compare::is_readme_updated_with_released_package(
+        &package.name,
+        package_path,
+        &registry_package.package,
+    )? {
+        debug!("{}: README updated", package.name);
+        return Ok(false);
+    }
+    // A README change establishes inequality even if package listing failed.
+    packages_equal
+}
+
+/// `hash` is only used for logging purposes.
+fn are_changed_files_in_package(
+    package_path: &Utf8Path,
+    repository: &Repo,
+    hash: &str,
+    package_files: &PackageFiles,
+) -> bool {
+    let Ok(package_files) =
+        get_package_files(package_path, repository, package_files).inspect_err(|e| {
             debug!("failed to get package files at commit {hash}: {e:?}");
-        }) else {
-            // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
-            return Ok(true);
-        };
-        let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
-            warn!("failed to get changed files of commit {hash}: {e:?}");
-        }) else {
-            // Assume that this commit contains changes to the package.
-            return Ok(true);
-        };
-        Ok(!package_files.is_disjoint(&changed_files))
-    }
+        })
+    else {
+        // `cargo package` can fail if the package doesn't contain a Cargo.toml file yet.
+        return true;
+    };
+    let Ok(changed_files) = repository.files_of_current_commit().inspect_err(|e| {
+        warn!("failed to get changed files of commit {hash}: {e:?}");
+    }) else {
+        // Assume that this commit contains changes to the package.
+        return true;
+    };
+    !package_files.is_disjoint(&changed_files)
+}
 
-    /// List the files Cargo packages in the current checkout, relative to the
-    /// package directory, restoring any existing Cargo.lock after listing.
-    ///
-    /// Return `None` if listing fails, so history comparisons fall back to every
-    /// file under the package directory.
-    fn history_package_files(
-        &self,
-        package_path: &Utf8Path,
-        repository: &Repo,
-    ) -> anyhow::Result<Option<Vec<Utf8PathBuf>>> {
-        let package_files = self.with_cargo_lock_restored(repository, || {
-            crate::get_cargo_package_files(package_path)
-        })?;
-        // Cargo also lists generated files that do not exist in the checkout.
-        // Tree comparisons only need their names, not canonicalized files.
-        Ok(package_files
-            .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
-            .ok())
-    }
+/// List the files Cargo packages in the current checkout, relative to the
+/// package directory.
+///
+/// Return `None` if listing fails, so history comparisons fall back to every
+/// file under the package directory.
+fn history_package_files(package_path: &Utf8Path) -> Option<Vec<Utf8PathBuf>> {
+    // Cargo also lists generated files that do not exist in the checkout.
+    // Tree comparisons only need their names, not canonicalized files.
+    crate::get_cargo_package_files(package_path)
+        .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
+        .ok()
 }
 
 /// Exclude already released history using both the release tag and the
@@ -1309,7 +1246,7 @@ struct ChangelogRepo<'a> {
 fn get_changelog(
     commits: &[Commit],
     next_version: &Version,
-    changelog_req: Option<ChangelogRequest>,
+    changelog_req: &ChangelogRequest,
     old_changelog: &OldChangelog,
     repo: Option<ChangelogRepo<'_>>,
     package: &Package,
@@ -1317,58 +1254,56 @@ fn get_changelog(
 ) -> anyhow::Result<(String, String)> {
     let commits: Vec<git_cliff_core::commit::Commit> =
         commits.iter().map(|c| c.to_cliff_commit()).collect();
-    let contributors = if changelog_req.is_some() && repo.is_some() {
+    let contributors = if repo.is_some() {
         get_contributors(&commits)
     } else {
         Vec::new()
     };
     let mut changelog_builder =
         ChangelogBuilder::new(commits, next_version.to_string(), package.name.to_string());
-    if let Some(changelog_req) = changelog_req {
-        if let Some(release_date) = changelog_req.release_date {
-            changelog_builder = changelog_builder.with_release_date(release_date);
-        }
-        if let Some(config) = changelog_req.changelog_config {
-            changelog_builder = changelog_builder.with_config(config);
-        }
-        if let Some(repo) = repo {
-            changelog_builder = changelog_builder.with_release_link(repo.release_link);
-            let repo_url = repo.url;
-            let remote = Remote {
-                owner: repo_url.owner.clone(),
-                repo: repo_url.name.clone(),
-                link: repo_url.full_host(),
-                contributors,
-            };
-            changelog_builder = changelog_builder.with_remote(remote);
+    if let Some(release_date) = changelog_req.release_date {
+        changelog_builder = changelog_builder.with_release_date(release_date);
+    }
+    if let Some(config) = &changelog_req.changelog_config {
+        changelog_builder = changelog_builder.with_config(config.clone());
+    }
+    if let Some(repo) = repo {
+        changelog_builder = changelog_builder.with_release_link(repo.release_link);
+        let repo_url = repo.url;
+        let remote = Remote {
+            owner: repo_url.owner.clone(),
+            repo: repo_url.name.clone(),
+            link: repo_url.full_host(),
+            contributors,
+        };
+        changelog_builder = changelog_builder.with_remote(remote);
 
-            let pr_link = repo_url.git_pr_link_for(repo.forge);
-            changelog_builder = changelog_builder.with_pr_link(pr_link);
-        }
-        let is_package_published = next_version != &package.version;
+        let pr_link = repo_url.git_pr_link_for(repo.forge);
+        changelog_builder = changelog_builder.with_pr_link(pr_link);
+    }
+    let is_package_published = next_version != &package.version;
 
-        let last_version = old_changelog.original().and_then(|old_changelog| {
-            changelog_parser::last_version_from_str(old_changelog)
-                .ok()
-                .flatten()
-        });
-        if is_package_published {
-            // The latest release of a shared changelog can belong to another package.
-            let last_version = last_version
-                .filter(|_| !old_changelog.is_shared())
-                .unwrap_or_else(|| previous_version.to_string());
-            changelog_builder = changelog_builder.with_previous_version(last_version);
-        } else if let Some(last_version) = last_version
-            && let Some(old_changelog) = old_changelog.current()
-            && last_version == next_version.to_string()
-        {
-            // If the next version is the same as the last version of the changelog,
-            // don't update the changelog (returning the old one).
-            // This can happen when no version of the package was published,
-            // but the changelog already contains the changes of the initial version
-            // of the package (e.g. because a release PR was merged).
-            return Ok((old_changelog.to_string(), String::new()));
-        }
+    let last_version = old_changelog.original().and_then(|old_changelog| {
+        changelog_parser::last_version_from_str(old_changelog)
+            .ok()
+            .flatten()
+    });
+    if is_package_published {
+        // The latest release of a shared changelog can belong to another package.
+        let last_version = last_version
+            .filter(|_| !old_changelog.is_shared())
+            .unwrap_or_else(|| previous_version.to_string());
+        changelog_builder = changelog_builder.with_previous_version(last_version);
+    } else if let Some(last_version) = last_version
+        && let Some(old_changelog) = old_changelog.current()
+        && last_version == next_version.to_string()
+    {
+        // If the next version is the same as the last version of the changelog,
+        // don't update the changelog (returning the old one).
+        // This can happen when no version of the package was published,
+        // but the changelog already contains the changes of the initial version
+        // of the package (e.g. because a release PR was merged).
+        return Ok((old_changelog.to_string(), String::new()));
     }
     let new_changelog = changelog_builder.build();
     let changelog = match old_changelog.current() {
@@ -1543,7 +1478,7 @@ mod tests {
             let new = get_changelog(
                 &commits,
                 &next_version,
-                Some(changelog_req.clone()),
+                &changelog_req,
                 &old_changelog,
                 None,
                 &package,

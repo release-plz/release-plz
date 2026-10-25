@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
+use clap::builder::NonEmptyStringValueParser;
 use release_plz_core::ReleaseRequest;
 use secrecy::SecretString;
 
@@ -19,7 +19,7 @@ pub struct Release {
     /// Path to the Cargo.toml of the project you want to release.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
     /// Both Cargo workspaces and single packages are supported.
-    #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
+    #[arg(long, alias = "project-manifest")]
     manifest_path: Option<PathBuf>,
 
     /// Registry where you want to publish the packages.

@@ -2,6 +2,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
     package::{PackageType, TestPackage},
+    release_pr_stdout,
     test_context::TestContext,
     today,
 };
@@ -45,25 +46,7 @@ async fn release_plz_adds_changelog_on_new_project() {
     assert_eq!(opened_prs.len(), 1);
     let opened_pr = &opened_prs[0];
 
-    let expected_stdout = serde_json::json!({
-        "prs": [
-          {
-            "head_branch": opened_pr.branch(),
-            "base_branch": "main",
-            "html_url": opened_pr.html_url,
-            "number": opened_pr.number,
-            "releases": [
-                {
-                    "package_name": context.gitea.repo,
-                    "version": "0.1.0"
-                }
-            ]
-          }
-        ]
-    })
-    .to_string();
-
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(opened_pr, &context.gitea.repo, "0.1.0"));
 
     let changed_files = context.gitea.changed_files_in_pr(opened_pr.number).await;
     assert_eq!(changed_files.len(), 1);
@@ -162,19 +145,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         expected_pr_body.trim()
     );
 
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.0"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.1.0"));
 
     let changelog = context
         .gitea
