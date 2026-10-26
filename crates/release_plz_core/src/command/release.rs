@@ -770,7 +770,7 @@ async fn release_package_if_needed(
             // Use `|=` instead of `||`, which would skip publishing to the remaining
             // registries once the package was published to one of them.
             package_was_released |=
-                publish_package(input, context, &release_info, token.as_ref(), &registry)
+                publish_package(input, context, package, token.as_ref(), &registry)
                     .await
                     .context("failed to publish package")?;
         }
@@ -897,11 +897,10 @@ struct ReleaseInfo<'a> {
 async fn publish_package(
     input: &ReleaseRequest,
     context: &mut ReleaseContext<'_>,
-    release_info: &ReleaseInfo<'_>,
+    package: &Package,
     token: Option<&SecretString>,
     registry: &CargoRegistry,
 ) -> anyhow::Result<bool> {
-    let workspace_root = &input.metadata.workspace_root;
     let registry_name = registry.name.as_deref();
     let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
@@ -928,9 +927,9 @@ async fn publish_package(
 
     let output = run_cargo_publish(
         input,
-        &release_info.package.manifest_path,
-        &[release_info.package.name.as_str()],
-        &PublishOptions::new(input, &release_info.package.name),
+        &package.manifest_path,
+        &[package.name.as_str()],
+        &PublishOptions::new(input, &package.name),
         registry_name,
         publish_token.as_ref(),
     )
@@ -939,26 +938,22 @@ async fn publish_package(
         || !output.stderr.contains("Uploading")
         || output.stderr.contains("error:")
     {
-        if is_already_published(&output, release_info) {
+        if is_already_published(&output, package) {
             info!(
                 "skipping publish of {} {}: already published",
-                release_info.package.name, release_info.package.version
+                package.name, package.version
             );
             return Ok(false);
         } else {
-            anyhow::bail!(
-                "failed to publish {}: {}",
-                release_info.package.name,
-                output.stderr
-            );
+            anyhow::bail!("failed to publish {}: {}", package.name, output.stderr);
         }
     }
     // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
     // publish registry) or if `cargo publish` didn't confirm the package.
-    if registry.has_remote_mirror || !is_publish_confirmed_by_cargo(&output, release_info.package) {
+    if registry.has_remote_mirror || !is_publish_confirmed_by_cargo(&output, package) {
         wait_until_published(
-            workspace_root,
-            release_info.package,
+            &input.metadata.workspace_root,
+            package,
             input.publish_timeout,
             registry_name,
             token,
@@ -984,20 +979,16 @@ fn is_publish_confirmed_by_cargo(output: &CmdOutput, package: &Package) -> bool 
         .any(|line| line.contains("Published") && line.contains(&published_package))
 }
 
-fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> bool {
+fn is_already_published(output: &CmdOutput, package: &Package) -> bool {
     // Error happening if the crate was published while `cargo publish` was running.
-    let already_uploaded_message = format!(
-        "crate version `{}` is already uploaded",
-        release_info.package.version
-    );
+    let already_uploaded_message =
+        format!("crate version `{}` is already uploaded", package.version);
 
     // Previously, I thought that this error
     // would happen only if the crate wasn't published yet when `cargo publish` started,
     // but then I saw this error in CI while releasing the crate for the first time.
-    let already_exists_message = format!(
-        "crate {}@{} already exists",
-        release_info.package.name, release_info.package.version
-    );
+    let already_exists_message =
+        format!("crate {}@{} already exists", package.name, package.version);
     [already_uploaded_message, already_exists_message]
         .iter()
         .any(|message| output.stderr.contains(message))
