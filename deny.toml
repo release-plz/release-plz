@@ -75,6 +75,14 @@ ignore = [
     "RUSTSEC-2026-0250",
     "RUSTSEC-2026-0251",
     "RUSTSEC-2026-0387",
+    # zstd is only pulled in by git-cliff-core -> rust-embed -> include-flate.
+    # git-cliff-core's embedded configs use rust-embed's default DEFLATE backend.
+    # include-flate-compress 0.3.4 requires zstd ^0.13.3, so the patched
+    # zstd >=0.14.3 / zstd-safe >=8.2.0 cannot be selected yet. Remove these
+    # exceptions when upstream supports them; recheck the call paths on updates.
+    { id = "RUSTSEC-2026-0391", reason = "include-flate creates fresh Zstd contexts; it does not use the affected with_context constructors to reuse an abandoned stream's context." },
+    { id = "RUSTSEC-2026-0398", reason = "zstd-safe's vulnerable seekable feature is not enabled, including with all workspace features and targets." },
+    { id = "RUSTSEC-2026-0403", reason = "include-flate uses zstd::stream::read::Decoder, which the advisory identifies as unaffected, rather than the vulnerable write decoder." },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
