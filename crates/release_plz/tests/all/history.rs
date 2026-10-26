@@ -7,7 +7,7 @@ use git_cmd::Repo;
 use crate::helpers::{
     assert_walked_one_at_a_time,
     cmd::run_with_debug_logs,
-    locked_metadata,
+    ignore_global_checkout_conversions, locked_metadata,
     package::{PackageType, TestPackage},
     test_context::TestContext,
 };
@@ -77,15 +77,9 @@ async fn concurrent_histories(setup: impl FnOnce(&TestContext)) -> TestContext {
         TestPackage::new(PACKAGE).with_type(PackageType::Lib),
     ])
     .await;
-    let repo = &context.repo;
-    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
-    // Global attributes can convert checkouts, which would make the update
-    // walk histories one at a time for that reason rather than the one a test
-    // expects.
-    let attributes = repo.directory().parent().unwrap().join("attributes");
-    fs_err::write(&attributes, "").unwrap();
-    repo.git(&["config", "core.attributesFile", attributes.as_str()])
-        .unwrap();
+    // The tests expect the update to walk histories one at a time for another
+    // reason.
+    ignore_global_checkout_conversions(&context.repo);
     setup(&context);
     context.write_release_plz_toml(HISTORY_CONFIG);
     context

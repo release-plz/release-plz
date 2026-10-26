@@ -1,4 +1,5 @@
 use cargo_metadata::{Metadata, camino::Utf8Path};
+use git_cmd::Repo;
 use release_plz_core::GitPr;
 
 pub mod cmd;
@@ -86,6 +87,17 @@ pub fn assert_walked_one_at_a_time(logs: &str, reason: &str, context: &str) {
         let expected = format!("walking histories one at a time: {reason}");
         assert!(logs.contains(&expected), "{context}\n{logs}");
     }
+}
+
+/// Ignore the user's line-ending conversions and global attributes, which can
+/// convert checkouts and so make the update walk histories one at a time. The
+/// empty attributes file that replaces theirs goes next to the repository.
+pub fn ignore_global_checkout_conversions(repo: &Repo) {
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let attributes = repo.directory().with_file_name("attributes");
+    fs_err::write(&attributes, "").unwrap();
+    repo.git(&["config", "core.attributesFile", attributes.as_str()])
+        .unwrap();
 }
 
 pub fn locked_metadata(project_dir: &Utf8Path) -> Metadata {

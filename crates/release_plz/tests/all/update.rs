@@ -6,7 +6,7 @@ use crate::helpers::{
     assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_one_at_a_time,
     can_walk_concurrently,
     cmd::{fail_with_debug_logs, release_plz_cmd, run_with_debug_logs},
-    locked_metadata,
+    ignore_global_checkout_conversions, locked_metadata,
 };
 
 #[test]
@@ -660,13 +660,7 @@ fn two_package_workspace() -> (Utf8TempDir, Repo) {
         "",
         "[workspace]\nsemver_check = false\n",
     );
-    // Checkout conversions, by line endings or by global attributes, would
-    // make the update walk histories one at a time.
-    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
-    let attributes = temp_dir.path().join("attributes");
-    fs_err::write(&attributes, "").unwrap();
-    repo.git(&["config", "core.attributesFile", attributes.as_str()])
-        .unwrap();
+    ignore_global_checkout_conversions(&repo);
     (temp_dir, repo)
 }
 
