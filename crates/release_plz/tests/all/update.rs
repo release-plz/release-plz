@@ -814,6 +814,7 @@ fn update_walks_histories_concurrently() {
         "",
         "[workspace]\nsemver_check = false\n",
     );
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
     for name in ["one", "two"] {
         change_package(&repo, name, &format!("fix: update {name}"));
     }
@@ -829,6 +830,69 @@ fn update_walks_histories_concurrently() {
     );
     assert!(!logs.contains("cannot create a worktree"), "{logs}");
     assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.1")]);
+}
+
+/// Git can consider files clean even though a fresh checkout changes their
+/// bytes. Package equality must still recognize an unchanged release.
+#[test]
+fn update_preserves_released_bytes_with_checkout_conversions() {
+    for (case, autocrlf, eol, attributes, newline) in [
+        ("autocrlf", "true", "lf", "", "\n"),
+        ("autocrlf input", "input", "lf", "", "\r\n"),
+        (
+            "CRLF attribute",
+            "false",
+            "lf",
+            "*.rs text eol=crlf\n",
+            "\n",
+        ),
+        ("LF attribute", "false", "lf", "*.rs text eol=lf\n", "\r\n"),
+        ("text attribute", "false", "crlf", "*.rs text\n", "\n"),
+        ("ident attribute", "false", "lf", "*.rs ident\n", "\n"),
+    ] {
+        let (temp_dir, repo) = init_workspace(
+            &[
+                ("one", "version = \"1.0.0\"\n"),
+                ("two", "version = \"1.0.0\"\n"),
+            ],
+            "",
+            "[workspace]\nsemver_check = false\n",
+        );
+        repo.git(&["config", "core.autocrlf", autocrlf]).unwrap();
+        repo.git(&["config", "core.eol", eol]).unwrap();
+        fs_err::write(repo.directory().join(".gitattributes"), attributes).unwrap();
+        let released = format!("// Initial release{newline}// $Id${newline}");
+        for root in [repo.directory(), &temp_dir.path().join("registry")] {
+            for name in ["one", "two"] {
+                fs_err::write(root.join(name).join("src/lib.rs"), &released).unwrap();
+            }
+        }
+        repo.add_all_and_commit("chore: configure checkout conversions")
+            .unwrap();
+        for name in ["one", "two"] {
+            repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
+        }
+        change_package(&repo, "two", "fix: temporary change");
+        fs_err::write(repo.directory().join("two/src/lib.rs"), &released).unwrap();
+        repo.add_all_and_commit("revert: temporary change").unwrap();
+        change_package(&repo, "one", "fix: update one");
+        repo.is_clean().unwrap();
+
+        let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
+
+        assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.0")]);
+        assert!(
+            !repo.directory().join("two/CHANGELOG.md").exists(),
+            "{case}: {logs}"
+        );
+        // Assert the guard too: which worker takes `two` depends on timing.
+        if can_walk_concurrently() {
+            assert!(
+                logs.contains("walking histories one at a time: Git can change checkout contents"),
+                "{case}: {logs}"
+            );
+        }
+    }
 }
 
 #[test]

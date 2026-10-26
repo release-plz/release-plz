@@ -8,6 +8,8 @@
 //! packages when a manifest's `include` list names them. With
 //! `submodule.recurse`, checkouts also use the submodule repositories in the
 //! Git directory of the copy, which a worktree doesn't find.
+//! Git's line-ending and attribute conversions can also change clean files'
+//! bytes in a fresh checkout, while package equality compares the bytes on disk.
 //! [`supports_worktrees`] rules these cases out.
 
 use anyhow::Context as _;
@@ -74,6 +76,9 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
     if has_other_files {
         return Ok(Some("a new worktree would have other files"));
     }
+    if has_checkout_conversion(repository, &files)? {
+        return Ok(Some("Git can change checkout contents"));
+    }
     // With `submodule.recurse`, checking a commit out also checks its
     // submodules out, from their repositories in the Git directory. A worktree
     // looks for them in its own Git directory, so checking out a commit with a
@@ -92,6 +97,55 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
         return Ok(Some("Git recurses into submodules"));
     }
     Ok(None)
+}
+
+/// Clean files need not have the bytes a fresh checkout writes: Git compares
+/// their normalized contents, whereas Cargo packages the bytes on disk. For
+/// example, committing LF files with `core.autocrlf=true` leaves them as LF,
+/// but a worktree writes CRLF. Keep the original checkout when conversions
+/// could change those bytes, even if a particular file would be unaffected.
+fn has_checkout_conversion(repository: &Repo, files: &str) -> anyhow::Result<bool> {
+    let autocrlf = repository.git(&[
+        "config",
+        "--type=bool-or-str",
+        "--default=false",
+        "--get",
+        "core.autocrlf",
+    ])?;
+    if autocrlf != "false" {
+        return Ok(true);
+    }
+
+    // The earlier checks leave only indexed files. Query their effective
+    // attributes, including info/attributes and global attributes. NUL
+    // delimiters preserve paths containing whitespace or newlines.
+    let mut paths = Vec::new();
+    for entry in files.split_terminator('\0') {
+        let (_, path) = entry.split_once('\t').context("indexed file has no path")?;
+        paths.extend_from_slice(path.as_bytes());
+        paths.push(0);
+    }
+    let attributes = repository.git_output_with_input(
+        &[
+            "check-attr",
+            "-z",
+            "--stdin",
+            "text",
+            "eol",
+            "crlf",
+            "filter",
+            "ident",
+            "working-tree-encoding",
+        ],
+        &paths,
+    )?;
+    // Each record is <path> NUL <attribute> NUL <value> NUL. Unset and
+    // unspecified attributes don't enable a conversion.
+    Ok(attributes
+        .split(|&byte| byte == 0)
+        .skip(2)
+        .step_by(3)
+        .any(|value| !matches!(value, b"unset" | b"unspecified")))
 }
 
 /// A worktree of a repository, detached at a commit and removed on drop.
