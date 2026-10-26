@@ -284,6 +284,9 @@ async fn release_preserves_per_package_registries() {
         )
         .assert()
         .success();
+    // `TEST_REGISTRY` and `TEST_SPARSE_REGISTRY` share a backend, so these checks
+    // only prove that the uploads happened. The success above proves that each
+    // package was uploaded to its own registry.
     assert_latest_version_in_registry(&context, "one", TEST_REGISTRY, "0.1.0").await;
     assert_latest_version_in_registry(&context, "two", TEST_SPARSE_REGISTRY, "0.1.0").await;
 }
