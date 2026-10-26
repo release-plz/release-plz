@@ -678,7 +678,8 @@ async fn release_publishes_all_registries_before_creating_git_release() {
         .assert()
         .failure();
     let stderr = String::from_utf8_lossy(&output.get_output().stderr);
-    assert!(stderr.contains("failed to publish"), "{stderr}");
+    let publish_error = format!("failed to publish package to registry `{registry}`");
+    assert!(stderr.contains(&publish_error), "{stderr}");
     assert_eq!(all_tags(&context), "v0.1.0");
     // Only the upload to the second registry failed.
     assert_latest_version_in_registry(&context, package, TEST_REGISTRY, "0.1.1").await;

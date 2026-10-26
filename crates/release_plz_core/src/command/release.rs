@@ -772,7 +772,10 @@ async fn release_package_if_needed(
             package_was_released |=
                 publish_package(input, context, package, token.as_ref(), &registry)
                     .await
-                    .context("failed to publish package")?;
+                    .with_context(|| match &registry.name {
+                        Some(name) => format!("failed to publish package to registry `{name}`"),
+                        None => "failed to publish package".to_string(),
+                    })?;
         }
         // Finalize only after every registry upload succeeded. Creating the tag
         // earlier would both duplicate it and prevent retrying a partial publish.
