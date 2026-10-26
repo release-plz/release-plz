@@ -767,14 +767,12 @@ async fn release_package_if_needed(
                 log_dry_run_info(input, &release_info);
                 continue;
             }
-            let package_was_released_at_index =
+            // Use `|=` instead of `||`, which would skip publishing to the remaining
+            // registries once the package was published to one of them.
+            package_was_released |=
                 publish_package(input, context, &release_info, token.as_ref(), &registry)
                     .await
-                    .context("failed to release package")?;
-
-            if package_was_released_at_index {
-                package_was_released = true;
-            }
+                    .context("failed to publish package")?;
         }
         // Finalize only after every registry upload succeeded. Creating the tag
         // earlier would both duplicate it and prevent retrying a partial publish.
@@ -788,7 +786,7 @@ async fn release_package_if_needed(
                 input.is_git_release_enabled(&package.name),
             )
             .await
-            .context("failed to release package")?;
+            .context("failed to create git tag and release")?;
             info!("published {} {}", package.name, package.version);
         }
     } else {
