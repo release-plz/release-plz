@@ -767,20 +767,29 @@ async fn release_package_if_needed(
                 log_dry_run_info(input, &release_info);
                 continue;
             }
-            let package_was_released_at_index = release_package(
-                input,
-                repo,
-                context,
-                &release_info,
-                token.as_ref(),
-                &registry,
-            )
-            .await
-            .context("failed to release package")?;
+            let package_was_released_at_index =
+                publish_package(input, context, &release_info, token.as_ref(), &registry)
+                    .await
+                    .context("failed to release package")?;
 
             if package_was_released_at_index {
                 package_was_released = true;
             }
+        }
+        // Finalize only after every registry upload succeeded. Creating the tag
+        // earlier would both duplicate it and prevent retrying a partial publish.
+        if package_was_released {
+            create_git_tag_and_release(
+                input,
+                repo,
+                context,
+                &release_info,
+                input.is_git_tag_enabled(&package.name),
+                input.is_git_release_enabled(&package.name),
+            )
+            .await
+            .context("failed to release package")?;
+            info!("published {} {}", package.name, package.version);
         }
     } else {
         // When publishing is disabled (e.g., git_only mode), skip registry checks entirely
@@ -883,13 +892,12 @@ struct ReleaseInfo<'a> {
     prs: &'a [Pr],
 }
 
-/// Return `true` if package was published, `false` otherwise.
+/// Publish to one registry, returning `false` if the package was already published.
 ///
 /// Dry runs don't call this function: they check unpublished packages after all
 /// packages were processed, so that Cargo can check them together.
-async fn release_package(
+async fn publish_package(
     input: &ReleaseRequest,
-    repo: &Repo,
     context: &mut ReleaseContext<'_>,
     release_info: &ReleaseInfo<'_>,
     token: Option<&SecretString>,
@@ -899,18 +907,10 @@ async fn release_package(
     let registry_name = registry.name.as_deref();
     let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
-    let should_publish = input.is_publish_enabled(&release_info.package.name);
-    let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
-    let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
-
     let mut publish_token: Option<SecretString> = token.cloned();
     let should_use_trusted_publishing = {
         let is_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
-        publish_token.is_none()
-            && input.token.is_none()
-            && is_crates_io
-            && should_publish
-            && is_github_actions
+        publish_token.is_none() && input.token.is_none() && is_crates_io && is_github_actions
     };
     if should_use_trusted_publishing {
         if let Some(tp) = context.trusted_publishing_client.as_ref() {
@@ -928,64 +928,46 @@ async fn release_package(
         }
     }
 
-    if should_publish {
-        let output = run_cargo_publish(
-            input,
-            &release_info.package.manifest_path,
-            &[release_info.package.name.as_str()],
-            &PublishOptions::new(input, &release_info.package.name),
-            registry_name,
-            publish_token.as_ref(),
-        )
-        .context("failed to run cargo publish")?;
-        if !output.status.success()
-            || !output.stderr.contains("Uploading")
-            || output.stderr.contains("error:")
-        {
-            if is_already_published(&output, release_info) {
-                info!(
-                    "skipping publish of {} {}: already published",
-                    release_info.package.name, release_info.package.version
-                );
-                return Ok(false);
-            } else {
-                anyhow::bail!(
-                    "failed to publish {}: {}",
-                    release_info.package.name,
-                    output.stderr
-                );
-            }
-        }
-        // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
-        // publish registry) or if `cargo publish` didn't confirm the package.
-        if registry.has_remote_mirror
-            || !is_publish_confirmed_by_cargo(&output, release_info.package)
-        {
-            wait_until_published(
-                workspace_root,
-                release_info.package,
-                input.publish_timeout,
-                registry_name,
-                token,
-            )
-            .await?;
+    let output = run_cargo_publish(
+        input,
+        &release_info.package.manifest_path,
+        &[release_info.package.name.as_str()],
+        &PublishOptions::new(input, &release_info.package.name),
+        registry_name,
+        publish_token.as_ref(),
+    )
+    .context("failed to run cargo publish")?;
+    if !output.status.success()
+        || !output.stderr.contains("Uploading")
+        || output.stderr.contains("error:")
+    {
+        if is_already_published(&output, release_info) {
+            info!(
+                "skipping publish of {} {}: already published",
+                release_info.package.name, release_info.package.version
+            );
+            return Ok(false);
+        } else {
+            anyhow::bail!(
+                "failed to publish {}: {}",
+                release_info.package.name,
+                output.stderr
+            );
         }
     }
+    // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
+    // publish registry) or if `cargo publish` didn't confirm the package.
+    if registry.has_remote_mirror || !is_publish_confirmed_by_cargo(&output, release_info.package) {
+        wait_until_published(
+            workspace_root,
+            release_info.package,
+            input.publish_timeout,
+            registry_name,
+            token,
+        )
+        .await?;
+    }
 
-    create_git_tag_and_release(
-        input,
-        repo,
-        context,
-        release_info,
-        should_create_git_tag,
-        should_create_git_release,
-    )
-    .await?;
-
-    info!(
-        "published {} {}",
-        release_info.package.name, release_info.package.version
-    );
     Ok(true)
 }
 

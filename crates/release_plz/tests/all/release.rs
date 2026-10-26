@@ -2,6 +2,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
     TEST_REGISTRY, TEST_SPARSE_REGISTRY,
+    gitea::GiteaContext,
     package::{PackageType, TestPackage},
     release_stdout,
     test_context::TestContext,
@@ -266,6 +267,73 @@ async fn release_preserves_per_package_registries() {
             .await
             .unwrap();
         assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
+    }
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_publishes_all_registries_before_creating_git_release() {
+    let context = TestContext::new().await;
+    let package = &context.gitea.repo;
+    // The usual git and sparse test registries share a backend. Use a different
+    // Gitea user so that both registries need their own upload of this package.
+    let second_registry = GiteaContext::new("second-registry".to_string()).await;
+    let registry = "second-registry";
+    context.append_cargo_config(&format!(
+        "\n[registries.{registry}]\nindex = {:?}\n",
+        second_registry.cargo_sparse_index_url()
+    ));
+    let mut manifest =
+        cargo_utils::LocalManifest::try_new(&context.repo_dir().join("Cargo.toml")).unwrap();
+    manifest.data["package"]["publish"] =
+        toml_edit::value(toml_edit::Array::from_iter([TEST_REGISTRY, registry]));
+    manifest.write().unwrap();
+    context.push_all_changes("publish to two registries");
+
+    let token_env = cargo_utils::cargo_registries_token_env_var_name(registry).unwrap();
+    let release_command = || {
+        let mut command = context.release_command_without_registry();
+        command.env(&token_env, format!("Bearer {}", second_registry.token));
+        command
+    };
+    // Creating a tag/release after each upload would fail on the second registry.
+    release_command()
+        .assert()
+        .success()
+        .stdout(release_stdout(package, "v0.1.0", "0.1.0"));
+    assert_eq!(all_tags(&context), "v0.1.0");
+    context.gitea.get_gitea_release("v0.1.0").await;
+
+    // A failure at the second registry must not leave a tag that would make a
+    // retry skip the package before finishing its remaining registry uploads.
+    let version = cargo_metadata::semver::Version::new(0, 1, 1);
+    context.set_package_version(package, &version);
+    context.run_cargo_check();
+    context.push_all_changes("bump version");
+    let output = release_command()
+        .env(&token_env, "Bearer invalid-token")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("failed to publish"), "{stderr}");
+    assert_eq!(all_tags(&context), "v0.1.0");
+
+    release_command()
+        .assert()
+        .success()
+        .stdout(release_stdout(package, "v0.1.1", "0.1.1"));
+    assert_eq!(all_tags(&context), "v0.1.0\nv0.1.1");
+    context.gitea.get_gitea_release("v0.1.1").await;
+    for registry in [TEST_REGISTRY, registry] {
+        let downloaded = Utf8TempDir::new().unwrap();
+        let packages = context
+            .package_downloader([package], downloaded.path())
+            .with_registry(registry.to_string())
+            .download()
+            .await
+            .unwrap();
+        assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
+        assert_eq!(packages[0].version, version, "registry: {registry}");
     }
 }
 
