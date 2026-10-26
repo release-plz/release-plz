@@ -263,7 +263,8 @@ async fn release_dry_run_checks_packages_with_features_individually() {
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_preserves_per_package_registries() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
-    // `one` is published to the test registry, `two` to the sparse one.
+    // `one` keeps the `publish = [TEST_REGISTRY]` of the test packages; `two` is
+    // published to the sparse registry.
     set_publish_registries(&context, "two", &[TEST_SPARSE_REGISTRY]);
     context.push_all_changes("use different registries");
     // If release-plz checked both packages with the registry of `one`, Cargo would
@@ -286,9 +287,9 @@ async fn release_preserves_per_package_registries() {
         .assert()
         .success();
     // `TEST_REGISTRY` and `TEST_SPARSE_REGISTRY` share a backend, so these checks
-    // only prove that the uploads happened. The success above proves that `two` was
-    // uploaded to its own registry. It proves nothing about `one`, which has no
-    // `publish` field.
+    // only prove that the uploads happened. The success above proves that each
+    // package was uploaded to its own registry, because Cargo rejects a registry
+    // missing from the package's `publish` field.
     assert_latest_version_in_registry(&context, "one", TEST_REGISTRY, "0.1.0").await;
     assert_latest_version_in_registry(&context, "two", TEST_SPARSE_REGISTRY, "0.1.0").await;
 }
