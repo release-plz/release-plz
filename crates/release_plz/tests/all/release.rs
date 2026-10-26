@@ -1,6 +1,6 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{release_stdout, test_context::TestContext};
+use crate::helpers::{package::TestPackage, release_stdout, test_context::TestContext};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -229,6 +229,45 @@ async fn release_plz_can_do_backports() {
     context.push_all_changes("backport release");
     let outcome = context.run_release().success();
     outcome.stdout(release_stdout(crate_name, "v0.1.1", "0.1.1"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_rejects_only_explicit_publish_of_unpublishable_package() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("published"),
+        TestPackage::new("private").with_publish(false),
+    ])
+    .await;
+
+    // Cargo can't publish `private`, so asking release-plz to publish it is a mistake.
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "private"
+publish = true
+"#,
+    );
+    let error = context.run_release().failure().to_string();
+    assert!(
+        error.contains("Remove `publish = true` from its `[[package]]` section"),
+        "unexpected error: {error}"
+    );
+
+    // A `[[package]]` section that doesn't set `publish` doesn't ask to publish the
+    // package, even if it inherits `publish = true` from `[workspace]`.
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+publish = true
+
+[[package]]
+name = "private"
+"#,
+    );
+    let outcome = context.run_release().success();
+    // `private` is skipped because it's unpublishable.
+    outcome.stdout(release_stdout("published", "published-v0.1.0", "0.1.0"));
 }
 
 /// How [`CARGO_WRAPPER`] and the registry behave during the release.
