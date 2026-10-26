@@ -5,7 +5,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 use crate::helpers::{
     assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_one_at_a_time,
     can_walk_concurrently,
-    cmd::{release_plz_cmd, run_with_debug_logs},
+    cmd::{fail_with_debug_logs, release_plz_cmd, run_with_debug_logs},
     locked_metadata,
 };
 
@@ -844,6 +844,43 @@ fn update_walks_histories_concurrently() {
     );
     assert!(!logs.contains("cannot create a worktree"), "{logs}");
     assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.1")]);
+}
+
+/// Walks can fail in any order, but the update must report the error that
+/// walking histories one at a time reports: the error of the first failing
+/// package in workspace order, `one`. Here the walk of `two` fails first, at
+/// its first commit, whereas the walk of `one` packages a commit before failing.
+#[test]
+fn update_reports_the_first_failing_package_when_walking_histories_concurrently() {
+    let (temp_dir, repo) = two_package_workspace();
+    // Cargo can't package any member of a workspace with a member without
+    // targets, so walks fail at the commits that lack a library.
+    for name in ["one", "two"] {
+        fs_err::remove_file(repo.directory().join(name).join("src/lib.rs")).unwrap();
+    }
+    repo.add_all_and_commit("fix: delete libraries").unwrap();
+    // The commit that restores `two` still lacks the library of `one`.
+    for name in ["two", "one"] {
+        change_package(&repo, name, &format!("fix: restore {name}"));
+    }
+
+    let logs = fail_with_debug_logs(workspace_update_command(&temp_dir, &repo));
+
+    // Walks can only fail out of order when they run concurrently, which
+    // needs two CPUs.
+    assert_eq!(
+        logs.contains("walking histories concurrently"),
+        can_walk_concurrently(),
+        "{logs}"
+    );
+    assert!(
+        logs.contains("failed to retrieve difference of package one"),
+        "{logs}"
+    );
+    assert!(
+        !logs.contains("failed to retrieve difference of package two"),
+        "{logs}"
+    );
 }
 
 /// Git can consider files clean even though a fresh checkout changes their
