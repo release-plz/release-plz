@@ -18,8 +18,7 @@ use serde::Serialize;
 use tracing::{debug, info, instrument, trace, warn};
 
 use crate::{
-    DEFAULT_BRANCH_PREFIX, GitForge, Project, Publishable as _, ReleaseMetadata,
-    ReleaseMetadataBuilder, Remote,
+    DEFAULT_BRANCH_PREFIX, GitForge, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{
         CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
         wait_until_published,
@@ -236,35 +235,6 @@ impl ReleaseRequest {
         }
         Ok(())
     }
-
-    /// Checks for inconsistency in the `publish` fields in the workspace metadata and release-plz config.
-    ///
-    /// If there is no inconsistency, returns Ok(())
-    ///
-    /// Git-only packages are skipped: they are never published, so the `publish`
-    /// field of their release-plz configuration is irrelevant.
-    ///
-    /// # Errors
-    ///
-    /// Errors if any package has `publish = false` or `publish = []` in the Cargo.toml
-    /// but has `publish = true` in the release-plz configuration.
-    pub fn check_publish_fields(&self) -> anyhow::Result<()> {
-        let publish_fields = self.packages_config.publish_overrides_fields();
-
-        for package in &self.metadata.packages {
-            if !package.is_publishable()
-                && !self.is_git_only(&package.name)
-                && let Some(should_publish) = publish_fields.get(package.name.as_str())
-            {
-                anyhow::ensure!(
-                    !should_publish,
-                    "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, but it has `publish = true` in the release-plz configuration.",
-                    package.name
-                );
-            }
-        }
-        Ok(())
-    }
 }
 
 impl ReleaseMetadataBuilder for ReleaseRequest {
@@ -304,19 +274,6 @@ impl PackagesConfig {
 
     pub fn overridden_packages(&self) -> HashSet<&str> {
         self.overrides.keys().map(|s| s.as_str()).collect()
-    }
-
-    // Return the `publish` fields explicitly set in the
-    // `[[package]]` section of the release-plz config.
-    // I.e. `publish` isn't inherited from the `[workspace]` section of the
-    // release-plz config.
-    pub fn publish_overrides_fields(&self) -> BTreeMap<String, bool> {
-        self.overrides
-            .iter()
-            .map(|(package_name, release_config)| {
-                (package_name.clone(), release_config.publish().is_enabled())
-            })
-            .collect()
     }
 }
 
@@ -405,10 +362,6 @@ impl ReleaseConfig {
         self
     }
 
-    pub fn publish(&self) -> &PublishConfig {
-        &self.publish
-    }
-
     pub fn git_release(&self) -> &GitReleaseConfig {
         &self.git_release
     }
@@ -446,10 +399,6 @@ impl Default for PublishConfig {
 impl PublishConfig {
     pub fn enabled(enabled: bool) -> Self {
         Self { enabled }
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 }
 
@@ -1876,38 +1825,5 @@ mod tests {
                 "publish enabled: {publish_enabled}"
             );
         }
-    }
-
-    #[test]
-    fn check_publish_fields_works() {
-        // fake_metadata() has `publish = false` in the Cargo.toml
-        let mut request = ReleaseRequest::new(fake_metadata());
-        request = request.with_package_config(
-            "fake_package".to_string(),
-            ReleaseConfig {
-                publish: PublishConfig { enabled: true },
-                ..Default::default()
-            },
-        );
-
-        assert!(request.check_publish_fields().is_err());
-    }
-
-    #[test]
-    fn check_publish_fields_skips_git_only_packages() {
-        // fake_metadata() has `publish = false` in the Cargo.toml.
-        // The CLI merges `[[package]]` overrides with the `[workspace]` defaults, so an
-        // override for a git-only package carries `publish = true` even if the user
-        // never set `publish`. Git-only packages are never published, so this is fine.
-        let request = ReleaseRequest::new(fake_metadata()).with_package_config(
-            "fake_package".to_string(),
-            ReleaseConfig {
-                publish: PublishConfig::enabled(true),
-                git_only: true,
-                ..Default::default()
-            },
-        );
-
-        assert!(request.check_publish_fields().is_ok());
     }
 }
