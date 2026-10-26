@@ -644,8 +644,8 @@ async fn release_plz_publishes_with_the_token_of_the_package_registry() {
 async fn release_publishes_all_registries_before_creating_git_release() {
     let context = TestContext::new().await;
     let package = &context.gitea.repo;
-    // `TEST_REGISTRY` and `TEST_SPARSE_REGISTRY` share a backend. Use a different
-    // Gitea user so that both registries need their own upload of this package.
+    // `TEST_REGISTRY` and `TEST_SPARSE_REGISTRY` share a backend, so also publish to
+    // the registry of a new Gitea user, which needs its own upload of this package.
     let registry = "second-registry";
     let second_registry = GiteaContext::new(registry.to_string()).await;
     context.append_cargo_config(&format!(
