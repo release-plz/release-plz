@@ -966,10 +966,10 @@ async fn publish_package(
 
 /// Return `true` if `cargo publish` succeeded, with or without `--dry-run`.
 ///
-/// Cargo can exit successfully even if its output contains `error:`, e.g. in a warning
-/// of a build script, so also require that Cargo reached the upload and printed no
-/// error. Cargo prints the `Uploading` status in dry runs too, so dry runs pass only
-/// if the real release would.
+/// Besides a successful exit, require the `Uploading` status and no `error:` in the
+/// output: Cargo exits successfully even if, e.g., a build script prints a warning
+/// containing `error:`. Cargo prints `Uploading` before it skips the upload of a dry
+/// run, so dry runs apply the same check as real releases.
 fn is_publish_successful(output: &CmdOutput) -> bool {
     output.status.success()
         && output.stderr.contains("Uploading")
