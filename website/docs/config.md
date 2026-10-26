@@ -409,6 +409,12 @@ Where:
 - `{{ package }}` is the name of the package.
 - `{{ version }}` is the new version of the package.
 
+Release-plz skips packages whose git tag already exists.
+If a package published to a cargo registry has the same tag name as a package
+that creates a git tag or release, release-plz might skip publishing it.
+To prevent this, `release-plz release` fails before publishing anything.
+To create a single tag for your workspace, see the [single git tag guide](./extra/single-tag.md).
+
 #### The `git_release_generate_notes` field
 
 - If `true`, release notes will be generated server-side.

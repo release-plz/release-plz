@@ -166,6 +166,13 @@ impl ReleaseRequest {
         takes_part_in_release(package, self.is_git_only(&package.name))
     }
 
+    fn releasable_packages<'p>(&self, project: &'p Project) -> impl Iterator<Item = &'p Package> {
+        project
+            .workspace_packages()
+            .into_iter()
+            .filter(|package| self.is_releasable(package))
+    }
+
     fn is_git_release_enabled(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
         config.git_release.enabled
@@ -233,6 +240,41 @@ impl ReleaseRequest {
                 "Package `{}`: the `git_release_generate_notes` option is only supported by GitHub",
                 package.name
             );
+        }
+        Ok(())
+    }
+
+    /// Packages are skipped when their git tag already exists, so a shared tag created by
+    /// one package (directly or via a git release) skips the others, even in later runs.
+    /// Two packages can't share a tag if one of them is published to a registry and the other
+    /// one creates the tag. Other packages may share a tag
+    /// (e.g. git-only packages sharing the tag created by a published package).
+    fn validate_git_tag_names(&self, project: &Project) -> anyhow::Result<()> {
+        let mut packages_by_tag: BTreeMap<String, Vec<&Package>> = BTreeMap::new();
+        for package in self.releasable_packages(project) {
+            let tag = project.git_tag(&package.name, &package.version.to_string())?;
+            packages_by_tag.entry(tag).or_default().push(package);
+        }
+        let publishes = |package: &Package| self.is_publish_enabled(&package.name);
+        let creates_tag = |package: &Package| {
+            self.is_git_tag_enabled(&package.name) || self.is_git_release_enabled(&package.name)
+        };
+        for (tag, packages) in &packages_by_tag {
+            for (i, first) in packages.iter().enumerate() {
+                for second in &packages[i + 1..] {
+                    if (publishes(first) && creates_tag(second))
+                        || (publishes(second) && creates_tag(first))
+                    {
+                        anyhow::bail!(
+                            "Packages `{}` and `{}` resolve to the same git tag `{tag}`. \
+                             Configure unique `git_tag_name` values (e.g. `{{{{ package }}}}-v{{{{ version }}}}`) \
+                             or follow https://release-plz.dev/docs/extra/single-tag to create a single tag for the workspace.",
+                            first.name,
+                            second.name
+                        );
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -600,6 +642,7 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         &input.metadata,
         input,
     )?;
+    input.validate_git_tag_names(&project)?;
     let repo = Repo::new(&input.metadata.workspace_root)?;
     let git_client = get_git_client(input)?;
     let should_release = should_release(input, &repo, &git_client).await?;
@@ -645,11 +688,7 @@ async fn release_packages(
     git_client: &GitClient,
 ) -> anyhow::Result<Option<Release>> {
     // Packages are already ordered by release order.
-    let packages: Vec<_> = project
-        .workspace_packages()
-        .into_iter()
-        .filter(|package| input.is_releasable(package))
-        .collect();
+    let packages: Vec<_> = input.releasable_packages(project).collect();
     if packages.is_empty() {
         info!("nothing to release");
     }
