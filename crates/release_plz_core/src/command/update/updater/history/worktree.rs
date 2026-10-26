@@ -76,7 +76,7 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
     if has_other_files {
         return Ok(Some("a new worktree would have other files"));
     }
-    if has_checkout_conversion(repository, &files)? {
+    if has_checkout_conversion(repository)? {
         return Ok(Some("Git can change checkout contents"));
     }
     // With `submodule.recurse`, checking a commit out also checks its
@@ -104,7 +104,7 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
 /// example, committing LF files with `core.autocrlf=true` leaves them as LF,
 /// but a worktree writes CRLF. Keep the original checkout when conversions
 /// could change those bytes, even if a particular file would be unaffected.
-fn has_checkout_conversion(repository: &Repo, files: &str) -> anyhow::Result<bool> {
+fn has_checkout_conversion(repository: &Repo) -> anyhow::Result<bool> {
     let autocrlf = repository.git(&[
         "config",
         "--type=bool-or-str",
@@ -116,15 +116,10 @@ fn has_checkout_conversion(repository: &Repo, files: &str) -> anyhow::Result<boo
         return Ok(true);
     }
 
-    // The earlier checks leave only indexed files. Query their effective
-    // attributes, including info/attributes and global attributes. NUL
-    // delimiters preserve paths containing whitespace or newlines.
-    let mut paths = Vec::new();
-    for entry in files.split_terminator('\0') {
-        let (_, path) = entry.split_once('\t').context("indexed file has no path")?;
-        paths.extend_from_slice(path.as_bytes());
-        paths.push(0);
-    }
+    // Query the effective attributes of the indexed files, including
+    // info/attributes and global attributes. NUL delimiters preserve paths
+    // containing whitespace or newlines.
+    let paths = repository.git_output(&["ls-files", "-z"])?;
     let attributes = repository.git_output_with_input(
         &[
             "check-attr",

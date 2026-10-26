@@ -266,8 +266,14 @@ impl Repo {
         Ok(self.directory.join(git_path))
     }
 
-    /// Like [`Repo::git`], but write `input` to the standard input of git and
-    /// return its standard output as is, which can be invalid UTF-8.
+    /// Like [`Repo::git`], but return the standard output of git as is, which
+    /// can be invalid UTF-8.
+    pub fn git_output(&self, args: &[&str]) -> anyhow::Result<Vec<u8>> {
+        git_output_in_dir(&self.directory, args, &[], None)
+    }
+
+    /// Like [`Repo::git_output`], but write `input` to the standard input of
+    /// git.
     pub fn git_output_with_input(&self, args: &[&str], input: &[u8]) -> anyhow::Result<Vec<u8>> {
         git_output_in_dir(&self.directory, args, &[], Some(input))
     }
