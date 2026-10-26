@@ -136,11 +136,11 @@ impl Config {
         Ok(release_request)
     }
 
-    /// Errors if a package has `publish = false` or `publish = []` in the Cargo.toml,
-    /// but `publish = true` in its `[[package]]` section.
+    /// Errors if a package's Cargo.toml makes it unpublishable (e.g. `publish = false` or
+    /// `publish = []`), but its `[[package]]` section sets `publish = true`.
     ///
     /// A `publish` field that is unset or inherited from the `[workspace]` section isn't checked:
-    /// release-plz doesn't publish packages that Cargo can't publish anyway.
+    /// release-plz doesn't publish these packages anyway.
     pub fn check_publish_fields(&self, metadata: &cargo_metadata::Metadata) -> anyhow::Result<()> {
         let workspace_packages = metadata.workspace_packages();
         let explicitly_published = self
@@ -153,7 +153,7 @@ impl Config {
                 .any(|p| p.name.as_str() == package_config.name && !p.is_publishable());
             anyhow::ensure!(
                 !is_unpublishable,
-                "Package `{}` has `publish = false` or `publish = []` in the Cargo.toml, so remove `publish = true` from its `[[package]]` section in the release-plz configuration.",
+                "Package `{}` can't be published because of its Cargo.toml (`publish = false`, `publish = []`, or only example targets and no `publish` field). Remove `publish = true` from its `[[package]]` section in the release-plz configuration, or make the package publishable in its Cargo.toml.",
                 package_config.name
             );
         }

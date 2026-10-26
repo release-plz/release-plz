@@ -248,9 +248,13 @@ name = "private"
 publish = true
 "#,
     );
-    let error = context.run_release().failure().to_string();
+    let outcome = context.run_release().failure();
+    // Read the raw stderr: the `Display` of `outcome` escapes the `'` of "can't".
+    let error = String::from_utf8_lossy(&outcome.get_output().stderr);
     assert!(
-        error.contains("Package `private` has `publish = false`"),
+        error.contains(
+            "Package `private` can't be published because of its Cargo.toml (`publish = false`, `publish = []`, or only example targets and no `publish` field). Remove `publish = true` from its `[[package]]` section in the release-plz configuration, or make the package publishable in its Cargo.toml."
+        ),
         "unexpected error: {error}"
     );
 
