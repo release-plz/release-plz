@@ -659,9 +659,13 @@ fn two_package_workspace() -> (Utf8TempDir, Repo) {
         "",
         "[workspace]\nsemver_check = false\n",
     );
-    // Converted line endings would make the update walk histories one at a
-    // time.
+    // Checkout conversions, by line endings or by global attributes, would
+    // make the update walk histories one at a time.
     repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let attributes = temp_dir.path().join("attributes");
+    fs_err::write(&attributes, "").unwrap();
+    repo.git(&["config", "core.attributesFile", attributes.as_str()])
+        .unwrap();
     (temp_dir, repo)
 }
 

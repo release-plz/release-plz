@@ -77,9 +77,14 @@ async fn concurrent_histories(setup: impl FnOnce(&TestContext)) -> TestContext {
         TestPackage::new(PACKAGE).with_type(PackageType::Lib),
     ])
     .await;
-    context
-        .repo
-        .git(&["config", "core.autocrlf", "false"])
+    let repo = &context.repo;
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    // Global attributes can convert checkouts, which would make the update
+    // walk histories one at a time for that reason rather than the one a test
+    // expects.
+    let attributes = repo.directory().parent().unwrap().join("attributes");
+    fs_err::write(&attributes, "").unwrap();
+    repo.git(&["config", "core.attributesFile", attributes.as_str()])
         .unwrap();
     setup(&context);
     context.write_release_plz_toml(HISTORY_CONFIG);
