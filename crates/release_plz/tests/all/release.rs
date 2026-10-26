@@ -680,7 +680,12 @@ async fn release_publishes_all_registries_before_creating_git_release() {
     let stderr = String::from_utf8_lossy(&output.get_output().stderr);
     assert!(stderr.contains("failed to publish"), "{stderr}");
     assert_eq!(all_tags(&context), "v0.1.0");
+    // Only the upload to the second registry failed.
+    assert_latest_version_in_registry(&context, package, TEST_REGISTRY, "0.1.1").await;
+    assert_latest_version_in_registry(&context, package, registry, "0.1.0").await;
 
+    // The retry skips the first registry, uploads to the second one, and only
+    // then creates the tag and release.
     release_command()
         .assert()
         .success()
