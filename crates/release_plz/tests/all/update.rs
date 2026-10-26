@@ -3,7 +3,8 @@ use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    assert_cargo_semver_checks_is_installed, assert_locked_versions, can_walk_concurrently,
+    assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_one_at_a_time,
+    can_walk_concurrently,
     cmd::{release_plz_cmd, run_with_debug_logs},
     locked_metadata,
 };
@@ -891,13 +892,7 @@ fn update_preserves_released_bytes_with_checkout_conversions() {
             !repo.directory().join("two/CHANGELOG.md").exists(),
             "{case}: {logs}"
         );
-        // Assert the guard too: which worker takes `two` depends on timing.
-        if can_walk_concurrently() {
-            assert!(
-                logs.contains("walking histories one at a time: Git can change checkout contents"),
-                "{case}: {logs}"
-            );
-        }
+        assert_walked_one_at_a_time(&logs, "Git can change checkout contents", case);
     }
 }
 

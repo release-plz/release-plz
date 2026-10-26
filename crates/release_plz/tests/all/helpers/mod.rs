@@ -76,6 +76,18 @@ pub fn can_walk_concurrently() -> bool {
     std::thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2)
 }
 
+/// Assert that the update that logged `logs` walked histories one at a time
+/// because of `reason`. Whether a worktree would walk the history that needs
+/// the copy of the repository depends on timing, so the changelogs alone can
+/// miss a lost guard. With a single CPU, the update has no worker to spare and
+/// checks no reason.
+pub fn assert_walked_one_at_a_time(logs: &str, reason: &str, context: &str) {
+    if can_walk_concurrently() {
+        let expected = format!("walking histories one at a time: {reason}");
+        assert!(logs.contains(&expected), "{context}\n{logs}");
+    }
+}
+
 pub fn locked_metadata(project_dir: &Utf8Path) -> Metadata {
     cargo_metadata::MetadataCommand::new()
         .current_dir(project_dir)

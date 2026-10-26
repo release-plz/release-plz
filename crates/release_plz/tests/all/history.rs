@@ -5,7 +5,7 @@ use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
 use crate::helpers::{
-    can_walk_concurrently,
+    assert_walked_one_at_a_time,
     cmd::run_with_debug_logs,
     locked_metadata,
     package::{PackageType, TestPackage},
@@ -1506,7 +1506,7 @@ async fn submodule_files_match_the_release_while_other_histories_are_walked() {
     // The release has the submodule files, so a snapshot without them
     // wouldn't match it, and the reverted change would be released.
     let logs = commit_reverted_change_and_update(&history);
-    assert_walked_one_at_a_time(&logs, "a new worktree would have other files");
+    assert_walked_one_at_a_time(&logs, "a new worktree would have other files", "");
 }
 
 /// With `submodule.recurse`, checking a commit out also checks its submodules
@@ -1541,7 +1541,7 @@ async fn removed_submodules_are_checked_out_while_other_histories_are_walked() {
     };
     assert_commits(&changelog(PACKAGE), &[&changed, &removed]);
     assert_commits(&changelog("api"), &[&api]);
-    assert_walked_one_at_a_time(&logs, "Git recurses into submodules");
+    assert_walked_one_at_a_time(&logs, "Git recurses into submodules", "");
 }
 
 /// Add the submodule `crates/pkg/vendored` to [`PACKAGE`].
@@ -1592,7 +1592,7 @@ async fn ignored_included_files_match_the_release_while_other_histories_are_walk
         .assert()
         .success();
     let logs = commit_reverted_change_and_update(&history);
-    assert_walked_one_at_a_time(&logs, "a new worktree would have other files");
+    assert_walked_one_at_a_time(&logs, "a new worktree would have other files", "");
     assert_eq!(
         fs_err::read_to_string(generated).unwrap(),
         "generated package data\n"
@@ -1615,15 +1615,4 @@ fn commit_reverted_change_and_update(history: &TestContext) -> String {
     assert!(!changelog(PACKAGE).exists());
     assert_commits(&fs_err::read_to_string(changelog("api")).unwrap(), &[&api]);
     logs
-}
-
-/// Assert that the update that logged `logs` walked histories one at a time
-/// because of `reason`. Whether a worktree would walk the history that needs
-/// the copy depends on timing, so the changelogs alone can miss a lost guard.
-/// With a single CPU, the update has no worker to spare and checks no reason.
-fn assert_walked_one_at_a_time(logs: &str, reason: &str) {
-    if can_walk_concurrently() {
-        let expected = format!("walking histories one at a time: {reason}");
-        assert!(logs.contains(&expected), "{logs}");
-    }
 }
