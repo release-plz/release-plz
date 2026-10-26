@@ -1,6 +1,12 @@
+use cargo_metadata::semver::Version;
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{release_stdout, test_context::TestContext};
+use crate::helpers::{
+    TEST_REGISTRY,
+    package::{PackageType, TestPackage},
+    release_stdout,
+    test_context::TestContext,
+};
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -229,6 +235,152 @@ async fn release_plz_can_do_backports() {
     context.push_all_changes("backport release");
     let outcome = context.run_release().success();
     outcome.stdout(release_stdout(crate_name, "v0.1.1", "0.1.1"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
+    let context = app_whose_registry_dependency_depends_on_shared(false).await;
+    assert_release_publishes_shared_and_app(&context);
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_publishes_root_package_whose_registry_dependency_depends_on_workspace_package() {
+    // Cargo packages the workspace lockfile with the root package, so `cargo publish` also
+    // checks that the lockfile has no uncommitted changes.
+    let context = app_whose_registry_dependency_depends_on_shared(true).await;
+    assert_release_publishes_shared_and_app(&context);
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_doesnt_publish_root_package_with_other_uncommitted_changes() {
+    let context = app_whose_registry_dependency_depends_on_shared(true).await;
+    // With this config, `git status` hides untracked files. Cargo doesn't reject them as
+    // uncommitted changes either, but it still packages them.
+    context
+        .repo
+        .git(&["config", "status.showUntrackedFiles", "no"])
+        .unwrap();
+    // Cargo packages this file with `app`.
+    fs_err::write(context.repo_dir().join("src").join("extra.rs"), "").unwrap();
+
+    // release-plz updates the lockfile to publish `app`, but it must not pass `--allow-dirty`
+    // to `cargo publish`, because Cargo would publish `app` with the uncommitted file.
+    let outcome = context
+        .release_command()
+        // Print release-plz's warnings.
+        .env("RELEASE_PLZ_LOG", "warn")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&outcome.get_output().stderr);
+    // Cargo rejected the updated lockfile, so `app` wasn't published.
+    assert!(stderr.contains("failed to publish app"), "{stderr}");
+    // release-plz explains that the uncommitted file kept it from accepting the lockfile.
+    assert!(stderr.contains("src/extra.rs"), "{stderr}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_rerun_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
+    let context = app_whose_registry_dependency_depends_on_shared(false).await;
+    // Like a previous `release` run that published and tagged `shared`, and then failed
+    // before publishing `app`.
+    context.run_cargo_publish("shared");
+    context.repo.tag_lightweight("shared-v0.1.1").unwrap();
+
+    // `release` doesn't release `shared` again, but it must still update the registry copy
+    // of `shared` that `external` uses to publish `app`.
+    let outcome = context.run_release().success();
+    outcome.stdout(release_stdout("app", "app-v0.1.0", "0.1.0"));
+}
+
+/// Create a workspace with the packages `shared` and `app`, where `app` depends on `shared`
+/// and on the registry package `external`, which depends on `shared` from the registry.
+/// E.g. `release_plz_core` depends on `next_version` and on `git-cliff-core`,
+/// which depends on `next_version` from crates.io.
+///
+/// Like after merging a release PR, `app` requires `shared` 0.1.1, which isn't published yet.
+async fn app_whose_registry_dependency_depends_on_shared(app_is_root_package: bool) -> TestContext {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("shared").with_type(PackageType::Lib),
+        TestPackage::new("external")
+            .with_type(PackageType::Lib)
+            .with_path_dependencies(vec!["../shared"]),
+    ])
+    .await;
+    // Once published, `external` depends on `shared` 0.1.0 from the registry.
+    context.run_cargo_publish("shared");
+    context.run_cargo_publish("external");
+    // Replace `external` with `app` in the workspace, so that `app` can depend on the
+    // registry version of `external`.
+    fs_err::remove_dir_all(context.package_path("external")).unwrap();
+    let app_dir = if app_is_root_package {
+        context.repo_dir()
+    } else {
+        context.package_path("app")
+    };
+    fs_err::create_dir_all(app_dir.join("src")).unwrap();
+    fs_err::write(app_dir.join("src").join("lib.rs"), "").unwrap();
+    let app_manifest = format!(
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = [\"{TEST_REGISTRY}\"]\n"
+    );
+    // `crates` now contains `shared` and, if `app` isn't the root package, `app`.
+    let workspace = "[workspace]\nresolver = \"3\"\nmembers = [\"crates/*\"]\n";
+    let root_manifest = context.repo_dir().join("Cargo.toml");
+    if app_is_root_package {
+        fs_err::write(root_manifest, format!("{app_manifest}\n{workspace}")).unwrap();
+    } else {
+        fs_err::write(root_manifest, workspace).unwrap();
+        fs_err::write(app_dir.join("Cargo.toml"), app_manifest).unwrap();
+    }
+    let cargo_add = |args: &[&str]| {
+        assert_cmd::Command::new("cargo")
+            .current_dir(&app_dir)
+            .arg("add")
+            .args(args)
+            .assert()
+            .success();
+    };
+    cargo_add(&["external", "--registry", TEST_REGISTRY]);
+
+    // Like in a release PR, bump `shared` to a semver compatible version
+    // and make `app` require it.
+    context.set_package_version("shared", &Version::new(0, 1, 1));
+    cargo_add(&["--path", context.package_path("shared").as_str()]);
+    // The lockfile still pins the dependency of `external` to `shared` 0.1.0 from the registry,
+    // because `shared` 0.1.1 isn't published yet.
+    context.run_cargo_check();
+    context.push_all_changes("bump shared");
+    context
+}
+
+/// Check that `release` publishes `shared` and `app` in the workspace created by
+/// [`app_whose_registry_dependency_depends_on_shared`].
+fn assert_release_publishes_shared_and_app(context: &TestContext) {
+    // `cargo publish` resolves `app`'s dependency on `shared` from the registry, so it
+    // can only publish `app` if the lockfile lets `external` use `shared` 0.1.1, too.
+    let outcome = context.run_release().success();
+    let expected_stdout = serde_json::json!({
+        "releases": [
+            {
+                "package_name": "shared",
+                "prs": [],
+                "tag": "shared-v0.1.1",
+                "version": "0.1.1",
+            },
+            {
+                "package_name": "app",
+                "prs": [],
+                "tag": "app-v0.1.0",
+                "version": "0.1.0",
+            },
+        ]
+    });
+    outcome.stdout(format!("{expected_stdout}\n"));
+    // release-plz doesn't leave the lockfile it updated to publish `app`.
+    context.repo.is_clean().unwrap();
 }
 
 /// How [`CARGO_WRAPPER`] and the registry behave during the release.

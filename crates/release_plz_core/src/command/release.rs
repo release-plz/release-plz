@@ -26,6 +26,7 @@ use crate::{
     },
     changelog_parser,
     git::forge::GitClient,
+    lock_compare::{WorkspaceLockfile, workspace_lockfile_path},
     next_ver::takes_part_in_release,
     pr_parser::{Pr, prs_from_text},
 };
@@ -210,6 +211,29 @@ impl ReleaseRequest {
         // if the registry is not the same as the request or if there's no token in the request,
         // try to find the token in the environment variables or in the Cargo credentials file.
         cargo_utils::registry_token(registry)
+    }
+
+    /// Get the registries where the `package` should be published.
+    /// If [`Self::registry`] is specified, it takes precedence over the `publish` field
+    /// of the package manifest.
+    fn registries(&self, package: &Package) -> anyhow::Result<Vec<CargoRegistry>> {
+        let names = self
+            .registry
+            .clone()
+            .map(|r| vec![r])
+            .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
+        new_cargo_config(Some(self.metadata.workspace_root.clone()))
+            .and_then(|config| {
+                if names.is_empty() {
+                    Ok(vec![CargoRegistry::new(&config, None)?])
+                } else {
+                    names
+                        .into_iter()
+                        .map(|name| CargoRegistry::new(&config, Some(name)))
+                        .collect()
+                }
+            })
+            .context("can't determine the registries")
     }
 
     fn validate_git_release_options(&self) -> anyhow::Result<()> {
@@ -625,8 +649,23 @@ pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> 
         }
     }
 
+    // `release_packages` might update the lockfile, so save it to restore it later.
+    // If the lockfile can't be read, e.g. because the workspace has none, release-plz doesn't
+    // update it either.
+    let lockfile_path = workspace_lockfile_path(&input.metadata);
+    let original_lockfile = fs_err::read(&lockfile_path).ok();
+
     // Don't return the error immediately because we want to go back to the previous commit if needed
     let release = release_packages(input, &project, &repo, &git_client).await;
+
+    // Restore the lockfile before going back to the previous commit, because `git checkout`
+    // refuses to overwrite the changed lockfile, or carries the changes over to the previous commit.
+    if let Some(original_lockfile) = original_lockfile
+        && fs_err::read(&lockfile_path)? != original_lockfile
+    {
+        fs_err::write(&lockfile_path, original_lockfile)
+            .context("failed to restore the lockfile")?;
+    }
 
     // Go back to the previous commit so that the user finds
     // the repository in the same commit they launched release-plz.
@@ -659,12 +698,21 @@ async fn release_packages(
         git_client,
         pr_authors: HashMap::new(),
         trusted_publishing_client: None,
+        packages_with_stale_copies: vec![],
+        lockfile_updated: false,
     };
     for package in packages {
         if let Some(pkg_release) =
             release_package_if_needed(input, project, package, repo, &mut context).await?
         {
             package_releases.push(pkg_release);
+        }
+        // Packages published later might depend on the new version of this package.
+        // Include it even if it was already tagged or published, because a previous run might
+        // have published it and failed before publishing the packages that depend on it.
+        // Release-plz doesn't publish the new version of packages whose publishing is disabled.
+        if input.is_publish_enabled(&package.name) {
+            context.packages_with_stale_copies.push(package);
         }
     }
     if let Some(tp) = context.trusted_publishing_client.as_ref()
@@ -685,6 +733,11 @@ struct ReleaseContext<'a> {
     pr_authors: HashMap<u64, String>,
     /// The same trusted publishing token can be used for all packages.
     trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
+    /// Packages whose stale registry copies, if any, release-plz didn't try to update yet.
+    packages_with_stale_copies: Vec<&'a Package>,
+    /// Whether release-plz updated stale registry copies in a lockfile without uncommitted
+    /// changes, so that all the uncommitted changes of the lockfile are release-plz's.
+    lockfile_updated: bool,
 }
 
 impl ReleaseContext<'_> {
@@ -697,6 +750,103 @@ impl ReleaseContext<'_> {
         };
         Ok(author)
     }
+}
+
+/// Update the stale registry copies of [`ReleaseContext::packages_with_stale_copies`] in the
+/// lockfile to the latest compatible version in the registry.
+///
+/// A registry dependency can depend on a workspace package, so the lockfile can contain a
+/// registry copy of the workspace package. `cargo publish` replaces the path dependencies on
+/// the workspace package with registry ones, and Cargo can't lock two semver compatible
+/// versions of a package from the same registry, so a stale registry copy must be updated
+/// after publishing the workspace package.
+///
+/// Release-plz updates the copies only right before publishing a package, because only
+/// `cargo publish` needs them.
+fn update_stale_registry_copies(
+    input: &ReleaseRequest,
+    repo: &Repo,
+    context: &mut ReleaseContext<'_>,
+) -> anyhow::Result<()> {
+    let packages = std::mem::take(&mut context.packages_with_stale_copies);
+    if packages.is_empty() {
+        return Ok(());
+    }
+    // Load the lockfile from disk, because the previous updates can remove stale copies,
+    // which `cargo update` can't find, or add new ones.
+    let Some(lockfile) = WorkspaceLockfile::load(&input.metadata)? else {
+        return Ok(());
+    };
+    let mut specs = vec![];
+    let mut envs = vec![];
+    for package in packages {
+        // If release-plz can't find the copies of a package, still update the copies of the
+        // other packages.
+        match package_stale_registry_copies(input, &lockfile, package) {
+            Ok(copies) => {
+                specs.extend(copies.specs);
+                envs.extend(copies.envs);
+            }
+            Err(e) => warn!(
+                "can't update the stale registry copies of package {} in the lockfile: {e:#}",
+                package.name
+            ),
+        }
+    }
+    if specs.is_empty() {
+        return Ok(());
+    }
+    // Cargo must still reject the uncommitted changes of the lockfile that release-plz didn't make.
+    let was_lockfile_committed = uncommitted_changes(repo, &["Cargo.lock"])?.is_empty();
+    let mut args = vec!["update"];
+    for spec in &specs {
+        args.extend(["--package", spec]);
+    }
+    let output = run_cargo_with_env(&input.metadata.workspace_root, &args, &envs)
+        .context("failed to run cargo to update the lockfile")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "cargo update failed: {}",
+        output.stderr
+    );
+    // `cargo update` doesn't change the lockfile if the registry has no newer compatible versions.
+    if was_lockfile_committed && !uncommitted_changes(repo, &["Cargo.lock"])?.is_empty() {
+        context.lockfile_updated = true;
+    }
+    Ok(())
+}
+
+/// Stale registry copies to update with `cargo update`.
+struct StaleRegistryCopies {
+    /// Package ID specs of the copies.
+    specs: Vec<String>,
+    /// Environment variables with the tokens of the registries of the copies.
+    envs: Vec<(String, SecretString)>,
+}
+
+/// Find the stale registry copies of the workspace `package` in the `lockfile`.
+fn package_stale_registry_copies(
+    input: &ReleaseRequest,
+    lockfile: &WorkspaceLockfile,
+    package: &Package,
+) -> anyhow::Result<StaleRegistryCopies> {
+    let mut specs = vec![];
+    let mut envs = vec![];
+    // Only look for stale copies in the registries where the package is published:
+    // packages with the same name from other registries are different packages.
+    for registry in input.registries(package)? {
+        let registry_specs = lockfile.stale_registry_copies(package, registry.source_id);
+        if registry_specs.is_empty() {
+            continue;
+        }
+        specs.extend(registry_specs);
+        // The registry might require the token to read its index.
+        let registry_name = registry.name.as_deref();
+        if let Some(token) = input.find_registry_token(registry_name)? {
+            envs.push((cargo_registry_token_env_var(registry_name)?, token));
+        }
+    }
+    Ok(StaleRegistryCopies { specs, envs })
 }
 
 async fn release_package_if_needed(
@@ -730,14 +880,7 @@ async fn release_package_if_needed(
     let mut package_was_released = false;
 
     if should_publish {
-        let registry_indexes = registry_indexes(
-            package,
-            input.registry.clone(),
-            &input.metadata.workspace_root,
-        )
-        .context("can't determine registry indexes")?;
-
-        for registry in registry_indexes {
+        for registry in input.registries(package)? {
             let token = input.find_registry_token(registry.name.as_deref())?;
             let pkg_is_published = is_published(
                 &input.metadata.workspace_root,
@@ -839,28 +982,6 @@ async fn should_release(
     }
 }
 
-/// Get the registries where the package should be published.
-/// If `registry` is specified, it takes precedence over the `publish` field
-/// of the package manifest.
-fn registry_indexes(
-    package: &Package,
-    registry: Option<String>,
-    workspace_root: &Utf8Path,
-) -> anyhow::Result<Vec<CargoRegistry>> {
-    let registries = registry
-        .map(|r| vec![r])
-        .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
-    let config = new_cargo_config(Some(workspace_root.to_owned()))?;
-    if registries.is_empty() {
-        Ok(vec![CargoRegistry::new(&config, None)?])
-    } else {
-        registries
-            .into_iter()
-            .map(|name| CargoRegistry::new(&config, Some(name)))
-            .collect()
-    }
-}
-
 struct ReleaseInfo<'a> {
     package: &'a Package,
     git_tag: &'a str,
@@ -913,6 +1034,14 @@ async fn release_package(
     }
 
     if should_publish {
+        // This package might depend on the new versions of the packages before it.
+        // Only some workspaces have stale registry copies, so don't fail the release if
+        // release-plz can't update them, e.g. because the Cargo library bundled in release-plz
+        // can't load the lockfile. If `cargo publish` needs the update, it fails with Cargo's error.
+        if let Err(e) = update_stale_registry_copies(input, repo, context) {
+            warn!("can't update the stale registry copies in the lockfile: {e:#}");
+        }
+        let should_allow_dirty = should_allow_dirty(input, repo, context, release_info.package)?;
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
             release_info.package,
@@ -920,6 +1049,7 @@ async fn release_package(
             workspace_root,
             &publish_token,
             registry_name,
+            should_allow_dirty,
         )
         .context("failed to run cargo publish")?;
         if !output.status.success()
@@ -1230,12 +1360,62 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
     }
 }
 
+/// Return the `git status` of the files matching `pathspecs` that have uncommitted changes.
+/// Git runs in the workspace root, so relative pathspecs are relative to it.
+fn uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<String> {
+    // List all the uncommitted changes, even the ones that `status.showUntrackedFiles` or
+    // `submodule.<name>.ignore` hide, so that release-plz doesn't let `cargo publish`
+    // accept changes it didn't see.
+    let mut args = vec![
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+        "--",
+    ];
+    args.extend(pathspecs);
+    repo.git(&args)
+}
+
+/// Return `true` if `cargo publish` must accept uncommitted changes.
+fn should_allow_dirty(
+    input: &ReleaseRequest,
+    repo: &Repo,
+    context: &ReleaseContext<'_>,
+    package: &Package,
+) -> anyhow::Result<bool> {
+    if input.allow_dirty(&package.name) {
+        return Ok(true);
+    }
+    // Cargo packages the workspace lockfile with the root package, so it rejects the stale
+    // registry copies that release-plz updated in the lockfile as uncommitted changes.
+    let is_root_package =
+        package.manifest_path.parent() == Some(input.metadata.workspace_root.as_path());
+    if !context.lockfile_updated || !is_root_package {
+        return Ok(false);
+    }
+    // Accept them only if the lockfile is the only uncommitted change, so that Cargo
+    // still rejects the other ones. Check the whole repository, because Cargo also checks
+    // some files outside the package directory, such as the `readme` and `license` files.
+    let other_changes = uncommitted_changes(repo, &[":/", ":!Cargo.lock"])?;
+    if !other_changes.is_empty() {
+        // Cargo might only reject the lockfile, e.g. if the other changes are in other
+        // packages, so tell the user that release-plz changed it.
+        warn!(
+            "release-plz updated the lockfile, but can't let `cargo publish` accept it for the root package {} because of other uncommitted changes. Commit or remove them:\n{other_changes}",
+            package.name
+        );
+    }
+    Ok(other_changes.is_empty())
+}
+
 fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
     token: &Option<SecretString>,
     registry: Option<&str>,
+    should_allow_dirty: bool,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
     args.push("--color");
@@ -1258,7 +1438,7 @@ fn run_cargo_publish(
     if input.dry_run {
         args.push("--dry-run");
     }
-    if input.allow_dirty(&package.name) {
+    if should_allow_dirty {
         args.push("--allow-dirty");
     }
     if input.no_verify(&package.name) {
