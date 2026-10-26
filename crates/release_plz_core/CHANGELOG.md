@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.42.1...release_plz_core-v0.43.0) - 2026-10-26
+
+### Fixed
+
+- *(release)* only reject an explicit publish = true for unpublishable packages ([#3280](https://github.com/release-plz/release-plz/pull/3280))
+- *(update)* ignore dev-dependency changes in Cargo.toml ([#3290](https://github.com/release-plz/release-plz/pull/3290))
+
+### Other
+
+- *(set-version)* [**breaking**] remove the never-set VersionChange::changelog_path ([#3268](https://github.com/release-plz/release-plz/pull/3268))
+
 ## [0.42.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.42.0...release_plz_core-v0.42.1) - 2026-10-24
 
 ### Fixed

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.3.1...cargo_utils-v0.4.0) - 2026-10-26
+
+### Other
+
+- *(cargo_utils)* [**breaking**] simplify registry token lookup ([#3267](https://github.com/release-plz/release-plz/pull/3267))
+
 ## [0.3.1](https://github.com/release-plz/release-plz/compare/cargo_utils-v0.3.0...cargo_utils-v0.3.1) - 2026-10-24
 
 ### Fixed
