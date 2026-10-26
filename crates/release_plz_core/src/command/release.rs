@@ -362,10 +362,6 @@ impl ReleaseConfig {
         self
     }
 
-    pub fn publish(&self) -> &PublishConfig {
-        &self.publish
-    }
-
     pub fn git_release(&self) -> &GitReleaseConfig {
         &self.git_release
     }
@@ -403,10 +399,6 @@ impl Default for PublishConfig {
 impl PublishConfig {
     pub fn enabled(enabled: bool) -> Self {
         Self { enabled }
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
     }
 }
 
