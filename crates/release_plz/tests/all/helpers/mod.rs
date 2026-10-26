@@ -73,8 +73,22 @@ pub fn make_executable(path: &Utf8Path) {
 
 /// Whether the update can walk histories concurrently, as it runs a worker per
 /// CPU.
-pub fn can_walk_concurrently() -> bool {
+fn can_walk_concurrently() -> bool {
     std::thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2)
+}
+
+/// Assert that the update that logged `logs` walked histories concurrently,
+/// unless a single CPU leaves it no worker to spare. The update logs that it
+/// walks concurrently before its workers create their worktrees, and a worker
+/// without a worktree leaves its histories to the others, so the log alone
+/// misses walks that all end up in one checkout.
+pub fn assert_walked_concurrently(logs: &str) {
+    assert_eq!(
+        logs.contains("walking histories concurrently"),
+        can_walk_concurrently(),
+        "{logs}"
+    );
+    assert!(!logs.contains("cannot create a worktree"), "{logs}");
 }
 
 /// Assert that the update that logged `logs` walked histories one at a time

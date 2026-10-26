@@ -3,8 +3,8 @@ use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_one_at_a_time,
-    can_walk_concurrently,
+    assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_concurrently,
+    assert_walked_one_at_a_time,
     cmd::{fail_with_debug_logs, release_plz_cmd, run_with_debug_logs},
     ignore_global_checkout_conversions, locked_metadata,
 };
@@ -819,7 +819,7 @@ fn update_detached_workspace(repo_url: Option<&str>) {
 
 /// Without a reason to walk histories one at a time, each worker walks them in
 /// its own checkout. Losing the worktrees would only slow updates down, which
-/// no other test notices.
+/// the updated versions don't show.
 #[test]
 fn update_walks_histories_concurrently() {
     let (temp_dir, repo) = two_package_workspace();
@@ -829,14 +829,7 @@ fn update_walks_histories_concurrently() {
 
     let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
-    // The update runs a worker per CPU, so a single CPU walks one history at
-    // a time.
-    assert_eq!(
-        logs.contains("walking histories concurrently"),
-        can_walk_concurrently(),
-        "{logs}"
-    );
-    assert!(!logs.contains("cannot create a worktree"), "{logs}");
+    assert_walked_concurrently(&logs);
     assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.1")]);
 }
 
@@ -860,13 +853,8 @@ fn update_reports_the_first_failing_package_when_walking_histories_concurrently(
 
     let logs = fail_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
-    // Walks can only fail out of order when they run concurrently, which
-    // needs two CPUs.
-    assert_eq!(
-        logs.contains("walking histories concurrently"),
-        can_walk_concurrently(),
-        "{logs}"
-    );
+    // Walks can only fail out of order when they run concurrently.
+    assert_walked_concurrently(&logs);
     assert!(
         logs.contains("failed to retrieve difference of package one"),
         "{logs}"
