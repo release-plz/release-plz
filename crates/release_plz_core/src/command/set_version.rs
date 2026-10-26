@@ -25,6 +25,17 @@ pub struct SetVersionRequest {
 }
 
 impl SetVersionRequest {
+    pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
+        let manifest = cargo_utils::workspace_manifest(&metadata);
+        let manifest = canonical_local_manifest(manifest.as_ref())?;
+        Ok(Self {
+            version_changes,
+            metadata,
+            manifest,
+            packages_config: PackagesConfig::default(),
+        })
+    }
+
     /// Set update config for all packages.
     pub fn with_default_package_config(mut self, config: UpdateConfig) -> Self {
         self.packages_config.set_default(config);
@@ -46,44 +57,10 @@ impl SetVersionRequest {
 pub enum SetVersionSpec {
     /// Set the workspace version, or the package version in a single-package project.
     /// In these cases there's no need to specify the package name.
-    Single(VersionChange),
-    /// <package name, version change>
+    Single(Version),
+    /// <package name, new version>
     /// Used for multiple packages in a workspace.
-    Workspace(BTreeMap<String, VersionChange>),
-}
-
-#[derive(Debug)]
-pub struct VersionChange {
-    version: Version,
-    /// This path needs to be a relative path to the Cargo.toml of the project.
-    /// I.e. if you have a workspace, it needs to be relative to the workspace root.
-    pub changelog_path: Option<Utf8PathBuf>,
-}
-
-impl VersionChange {
-    pub fn new(version: Version) -> Self {
-        Self {
-            version,
-            changelog_path: None,
-        }
-    }
-
-    pub fn with_changelog_path(&mut self, changelog_path: Utf8PathBuf) {
-        self.changelog_path = Some(changelog_path);
-    }
-}
-
-impl SetVersionRequest {
-    pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
-        let manifest = cargo_utils::workspace_manifest(&metadata);
-        let manifest = canonical_local_manifest(manifest.as_ref())?;
-        Ok(Self {
-            version_changes,
-            metadata,
-            manifest,
-            packages_config: PackagesConfig::default(),
-        })
-    }
+    Workspace(BTreeMap<String, Version>),
 }
 
 pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
@@ -98,8 +75,8 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
         .collect();
     let all_packages: Vec<&Package> = packages.values().collect();
     let workspace_version = match &input.version_changes {
-        SetVersionSpec::Single(change) if workspace_manifest.get_workspace_version().is_some() => {
-            Some(&change.version)
+        SetVersionSpec::Single(version) if workspace_manifest.get_workspace_version().is_some() => {
+            Some(version)
         }
         _ => None,
     };
@@ -113,12 +90,12 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
             .context("can't update workspace version")?;
     }
     let mut updated_changelogs = BTreeSet::new();
-    for (package, change) in changes {
+    for (package, version) in changes {
         let package_path = package.package_path()?;
         if updating_workspace {
             super::update::update_dependencies(
                 &all_packages,
-                &change.version,
+                version,
                 package.name.as_str(),
                 package_path,
                 &workspace_manifest.path,
@@ -127,14 +104,14 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
             super::update::set_version(
                 &all_packages,
                 package_path,
-                &change.version,
+                version,
                 &workspace_manifest.path,
             )?;
         }
         update_package_changelog(
             input,
             package,
-            change,
+            version,
             updating_workspace,
             &mut updated_changelogs,
         )?;
@@ -149,32 +126,32 @@ fn prepare_version_changes<'a>(
     version_changes: &'a SetVersionSpec,
     packages: &'a BTreeMap<String, Package>,
     updating_workspace: bool,
-) -> anyhow::Result<Vec<(&'a Package, &'a VersionChange)>> {
+) -> anyhow::Result<Vec<(&'a Package, &'a Version)>> {
     let changes = match version_changes {
-        SetVersionSpec::Single(change) if updating_workspace => {
+        SetVersionSpec::Single(version) if updating_workspace => {
             let mut changes = Vec::new();
             for package in packages.values() {
                 let manifest = LocalManifest::try_new(&package.manifest_path)?;
                 if manifest.version_is_inherited() {
-                    changes.push((package, change));
+                    changes.push((package, version));
                 }
             }
             changes
         }
-        SetVersionSpec::Single(change) => {
+        SetVersionSpec::Single(version) => {
             anyhow::ensure!(
                 packages.len() == 1,
                 "Your workspace contains multiple packages and no workspace version. Please specify which package you want to update."
             );
-            vec![(packages.values().next().unwrap(), change)]
+            vec![(packages.values().next().unwrap(), version)]
         }
-        SetVersionSpec::Workspace(changes) => changes
+        SetVersionSpec::Workspace(versions) => versions
             .iter()
-            .map(|(name, change)| {
+            .map(|(name, version)| {
                 let package = packages
                     .get(name)
                     .with_context(|| format!("package {name} not found"))?;
-                Ok((package, change))
+                Ok((package, version))
             })
             .collect::<anyhow::Result<_>>()?,
     };
@@ -184,7 +161,7 @@ fn prepare_version_changes<'a>(
 fn update_package_changelog(
     input: &SetVersionRequest,
     package: &Package,
-    change: &VersionChange,
+    new_version: &Version,
     updating_workspace: bool,
     updated_changelogs: &mut BTreeSet<Utf8PathBuf>,
 ) -> anyhow::Result<()> {
@@ -195,11 +172,7 @@ fn update_package_changelog(
     let changelog_path = crate::changelog_path(
         package,
         &input.metadata.workspace_root,
-        config
-            .generic
-            .changelog_path
-            .as_deref()
-            .or(change.changelog_path.as_deref()),
+        config.generic.changelog_path.as_deref(),
     );
     if updating_workspace {
         let resolved_path = crate::fs_utils::canonicalize_utf8(&changelog_path)
@@ -209,7 +182,7 @@ fn update_package_changelog(
             return Ok(());
         }
     }
-    update_changelog(&changelog_path, &package.version, &change.version)
+    update_changelog(&changelog_path, &package.version, new_version)
         .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
     Ok(())
 }
