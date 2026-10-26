@@ -887,11 +887,13 @@ fn update_preserves_released_bytes_with_checkout_conversions() {
 
         let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
-        assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.0")]);
+        // Releasing `two` is the likely failure, so assert it first, naming
+        // the case.
         assert!(
             !repo.directory().join("two/CHANGELOG.md").exists(),
             "{case}: {logs}"
         );
+        assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.0")]);
         assert_walked_one_at_a_time(&logs, "Git can change checkout contents", case);
     }
 }
