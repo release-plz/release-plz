@@ -350,6 +350,8 @@ async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_fails_like_release_if_cargo_publish_prints_an_error() {
+    // Two packages, so that release-plz checks them together on Cargo 1.90+ and the test
+    // covers the combined `cargo publish` output.
     let context = TestContext::new_workspace(&["one", "two"]).await;
     // Cargo exits successfully, but the real release fails because stderr contains `error:`.
     fs_err::write(
