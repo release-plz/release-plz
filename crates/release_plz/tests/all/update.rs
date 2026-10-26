@@ -877,7 +877,7 @@ fn update_preserves_released_bytes_with_checkout_conversions() {
         repo.add_all_and_commit("chore: configure checkout conversions")
             .unwrap();
         for name in ["one", "two"] {
-            repo.git(&["tag", &format!("{name}-v1.0.0")]).unwrap();
+            repo.tag_lightweight(&format!("{name}-v1.0.0")).unwrap();
         }
         change_package(&repo, "two", "fix: temporary change");
         fs_err::write(repo.directory().join("two/src/lib.rs"), &released).unwrap();
