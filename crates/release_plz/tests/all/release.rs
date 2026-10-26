@@ -73,6 +73,37 @@ fn assert_packaged(context: &TestContext, packages: &[&str]) {
     }
 }
 
+/// Set the `publish` field of `package` to `registries`.
+fn set_publish_registries(context: &TestContext, package: &str, registries: &[&str]) {
+    let manifest_path = context.package_path(package).join("Cargo.toml");
+    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+    manifest.data["package"]["publish"] =
+        toml_edit::value(toml_edit::Array::from_iter(registries.iter().copied()));
+    manifest.write().unwrap();
+}
+
+/// Assert that the latest version of `package` in `registry` is `version`.
+async fn assert_latest_version_in_registry(
+    context: &TestContext,
+    package: &str,
+    registry: &str,
+    version: &str,
+) {
+    let downloaded = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader([package], downloaded.path())
+        .with_registry(registry.to_string())
+        .download()
+        .await
+        .unwrap();
+    assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
+    assert_eq!(
+        packages[0].version.to_string(),
+        version,
+        "registry: {registry}"
+    );
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_dry_run_checks_unpublished_workspace_dependencies() {
@@ -233,12 +264,7 @@ async fn release_dry_run_checks_packages_with_features_individually() {
 async fn release_preserves_per_package_registries() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
     // `one` is published to the test registry, `two` to the sparse one.
-    let manifest_path = context.package_path("two").join("Cargo.toml");
-    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
-    let mut registries = toml_edit::Array::new();
-    registries.push(TEST_SPARSE_REGISTRY);
-    manifest.data["package"]["publish"] = toml_edit::value(registries);
-    manifest.write().unwrap();
+    set_publish_registries(&context, "two", &[TEST_SPARSE_REGISTRY]);
     context.push_all_changes("use different registries");
     // If release-plz checked both packages with the registry of `one`, Cargo would
     // reject `two`, because that registry isn't in its `publish` field.
@@ -258,16 +284,8 @@ async fn release_preserves_per_package_registries() {
         )
         .assert()
         .success();
-    for (package, registry) in [("one", TEST_REGISTRY), ("two", TEST_SPARSE_REGISTRY)] {
-        let downloaded = Utf8TempDir::new().unwrap();
-        let packages = context
-            .package_downloader([package], downloaded.path())
-            .with_registry(registry.to_string())
-            .download()
-            .await
-            .unwrap();
-        assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
-    }
+    assert_latest_version_in_registry(&context, "one", TEST_REGISTRY, "0.1.0").await;
+    assert_latest_version_in_registry(&context, "two", TEST_SPARSE_REGISTRY, "0.1.0").await;
 }
 
 #[tokio::test]
@@ -283,11 +301,7 @@ async fn release_publishes_all_registries_before_creating_git_release() {
         "\n[registries.{registry}]\nindex = {:?}\n",
         second_registry.cargo_sparse_index_url()
     ));
-    let mut manifest =
-        cargo_utils::LocalManifest::try_new(&context.repo_dir().join("Cargo.toml")).unwrap();
-    manifest.data["package"]["publish"] =
-        toml_edit::value(toml_edit::Array::from_iter([TEST_REGISTRY, registry]));
-    manifest.write().unwrap();
+    set_publish_registries(&context, package, &[TEST_REGISTRY, registry]);
     context.push_all_changes("publish to two registries");
 
     let token_env = cargo_utils::cargo_registries_token_env_var_name(registry).unwrap();
@@ -324,17 +338,8 @@ async fn release_publishes_all_registries_before_creating_git_release() {
         .stdout(release_stdout(package, "v0.1.1", "0.1.1"));
     assert_eq!(all_tags(&context), "v0.1.0\nv0.1.1");
     context.gitea.get_gitea_release("v0.1.1").await;
-    for registry in [TEST_REGISTRY, registry] {
-        let downloaded = Utf8TempDir::new().unwrap();
-        let packages = context
-            .package_downloader([package], downloaded.path())
-            .with_registry(registry.to_string())
-            .download()
-            .await
-            .unwrap();
-        assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
-        assert_eq!(packages[0].version, version, "registry: {registry}");
-    }
+    assert_latest_version_in_registry(&context, package, TEST_REGISTRY, "0.1.1").await;
+    assert_latest_version_in_registry(&context, package, registry, "0.1.1").await;
 }
 
 #[tokio::test]
@@ -373,11 +378,7 @@ publish_no_verify = true
 async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
     let context = TestContext::new_workspace(&["only"]).await;
     // Release-plz checks `only` once per registry.
-    let manifest_path = context.package_path("only").join("Cargo.toml");
-    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
-    let registries = toml_edit::Array::from_iter([TEST_REGISTRY, TEST_SPARSE_REGISTRY]);
-    manifest.data["package"]["publish"] = toml_edit::value(registries);
-    manifest.write().unwrap();
+    set_publish_registries(&context, "only", &[TEST_REGISTRY, TEST_SPARSE_REGISTRY]);
     break_compilation(&context, "only", "only fails to compile");
     context.push_all_changes("publish to two registries");
     let output = context
