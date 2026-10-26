@@ -347,6 +347,30 @@ async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
     );
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_fails_like_release_if_cargo_publish_prints_an_error() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    // Cargo exits successfully, but the real release fails because stderr contains `error:`.
+    fs_err::write(
+        context.package_path("one").join("build.rs"),
+        r#"fn main() { println!("cargo::warning=error: printed by a build script"); }"#,
+    )
+    .unwrap();
+    context.push_all_changes("add build script");
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("failed to dry-run publishing"), "{stderr}");
+    assert!(
+        stderr.contains("error: printed by a build script"),
+        "{stderr}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]

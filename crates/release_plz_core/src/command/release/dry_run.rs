@@ -8,7 +8,7 @@ use cargo_metadata::{
 };
 use tracing::{info, warn};
 
-use super::{PublishOptions, ReleaseRequest, run_cargo_publish};
+use super::{PublishOptions, ReleaseRequest, is_publish_successful, run_cargo_publish};
 use crate::cargo::{CmdOutput, run_cargo};
 
 /// Possible cause of a failed check when packages are checked separately.
@@ -112,7 +112,7 @@ impl PublishBatch {
             // Cargo rejects selected packages that form a cycle, e.g. a proc-macro crate that
             // dev-depends on the crate depending on it. The real release publishes them one at
             // a time, so Cargo resolves the dev-dependency to the version in the registry.
-            if output.status.success() || !is_cycle_error(&output.stderr) {
+            if is_publish_successful(&output) || !is_cycle_error(&output.stderr) {
                 return ensure_success(&output, &self.packages, package_count);
             }
             info!(
@@ -151,7 +151,7 @@ fn ensure_success(
     packages: &[String],
     package_count: usize,
 ) -> anyhow::Result<()> {
-    if !output.status.success() {
+    if !is_publish_successful(output) {
         // Only hint if some unpublished packages weren't part of this check.
         let hint = if packages.len() < package_count {
             SEPARATE_CHECKS_HINT

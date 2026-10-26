@@ -937,10 +937,7 @@ async fn publish_package(
         publish_token.as_ref(),
     )
     .context("failed to run cargo publish")?;
-    if !output.status.success()
-        || !output.stderr.contains("Uploading")
-        || output.stderr.contains("error:")
-    {
+    if !is_publish_successful(&output) {
         if is_already_published(&output, package) {
             info!(
                 "skipping publish of {} {}: already published",
@@ -965,6 +962,18 @@ async fn publish_package(
     }
 
     Ok(true)
+}
+
+/// Return `true` if `cargo publish` succeeded, with or without `--dry-run`.
+///
+/// Cargo can exit successfully even if its output contains `error:`, e.g. in a warning
+/// of a build script, so also require that Cargo reached the upload and printed no
+/// error. Cargo prints the `Uploading` status in dry runs too, so dry runs pass only
+/// if the real release would.
+fn is_publish_successful(output: &CmdOutput) -> bool {
+    output.status.success()
+        && output.stderr.contains("Uploading")
+        && !output.stderr.contains("error:")
 }
 
 /// Return `true` if `cargo publish` reported that the package is available in the registry.
