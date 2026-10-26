@@ -42,20 +42,15 @@ Release-plz checks packages separately when:
 
 - Their registry or any of these settings differ: `publish_allow_dirty`,
   `publish_no_verify`, and `publish_all_features`.
-  Without `--registry`, leaving `publish` unset (Cargo's default registry) counts
-  as a different registry than any registry named in `publish`.
 - They set `publish_features`, because Cargo applies `--features` differently to
   multiple packages.
-- Cargo is older than 1.90, which can't check multiple packages together
-  (release-plz warns).
+- Cargo is older than 1.90, which can't check multiple packages together.
 - Cargo reports a dependency cycle while checking a group (e.g. a package
   dev-depends on a package that depends on it): release-plz then checks every
   package of that group separately.
 
 A package that requires a version of a workspace package that isn't in the
 registry yet only passes the check if both packages are checked together.
-`publish_no_verify` and `--no-verify` don't avoid this: they skip compilation,
-but packaging still resolves dependencies.
 
 ## Git Forges
 
