@@ -274,8 +274,8 @@ async fn release_preserves_per_package_registries() {
         .assert()
         .success();
 
-    // The real release must pass each package's registry: without `--registry`, Cargo
-    // picks the default registry, which isn't in the `publish` field of `two`.
+    // Cargo rejects a `--registry` missing from the package's `publish` field, so the
+    // real release only succeeds if release-plz passes each package its own registry.
     context
         .release_command_without_registry()
         .env(
