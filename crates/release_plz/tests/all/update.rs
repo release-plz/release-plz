@@ -648,6 +648,23 @@ fn single_package_workspace() -> (Utf8TempDir, Repo) {
     (temp_dir, repo)
 }
 
+/// Creates a workspace with [`init_workspace`] whose packages `one` and `two`
+/// are at 1.0.0.
+fn two_package_workspace() -> (Utf8TempDir, Repo) {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            ("one", "version = \"1.0.0\"\n"),
+            ("two", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    // Converted line endings would make the update walk histories one at a
+    // time.
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    (temp_dir, repo)
+}
+
 /// Assert that the update released `one` as 1.0.1 with a changelog that lists
 /// `messages` but not the initial commit, "add README".
 fn assert_patch_release(repo: &Repo, case: &str, messages: &[&str]) {
@@ -806,15 +823,7 @@ fn update_detached_workspace(repo_url: Option<&str>) {
 /// no other test notices.
 #[test]
 fn update_walks_histories_concurrently() {
-    let (temp_dir, repo) = init_workspace(
-        &[
-            ("one", "version = \"1.0.0\"\n"),
-            ("two", "version = \"1.0.0\"\n"),
-        ],
-        "",
-        "[workspace]\nsemver_check = false\n",
-    );
-    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let (temp_dir, repo) = two_package_workspace();
     for name in ["one", "two"] {
         change_package(&repo, name, &format!("fix: update {name}"));
     }
@@ -850,14 +859,7 @@ fn update_preserves_released_bytes_with_checkout_conversions() {
         ("text attribute", "false", "crlf", "*.rs text\n", "\n"),
         ("ident attribute", "false", "lf", "*.rs ident\n", "\n"),
     ] {
-        let (temp_dir, repo) = init_workspace(
-            &[
-                ("one", "version = \"1.0.0\"\n"),
-                ("two", "version = \"1.0.0\"\n"),
-            ],
-            "",
-            "[workspace]\nsemver_check = false\n",
-        );
+        let (temp_dir, repo) = two_package_workspace();
         repo.git(&["config", "core.autocrlf", autocrlf]).unwrap();
         repo.git(&["config", "core.eol", eol]).unwrap();
         fs_err::write(repo.directory().join(".gitattributes"), attributes).unwrap();
