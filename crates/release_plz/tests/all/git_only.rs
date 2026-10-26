@@ -1298,9 +1298,9 @@ git_release_name = "{{ package }}-v{{ version }}"
     assert!(pr_body.contains("`mybin`: 0.1.0 -> 0.1.1"));
     assert!(pr_body.contains("update mybin readme"));
 
-    // The merged `[[package]]` override carries `publish = true` for mybin, which has
-    // `publish = false` in its manifest. Git-only packages are never published, so
-    // `release` must not reject that and must tag mybin.
+    // mybin has `publish = false` in its manifest, but its `[[package]]` section
+    // doesn't set `publish`, so `release` must not reject it. mybin keeps the
+    // workspace `git_only`, so `release` must tag it.
     context.merge_release_pr().await;
     context.run_release().success();
 

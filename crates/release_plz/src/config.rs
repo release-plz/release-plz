@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    GitReleaseConfig, ReleaseRequest,
+    GitReleaseConfig, Publishable as _, ReleaseRequest,
     set_version::SetVersionRequest,
     update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
@@ -134,6 +134,30 @@ impl Config {
                 release_request.with_package_config(package, release_config.common.into());
         }
         Ok(release_request)
+    }
+
+    /// Errors if a package's Cargo.toml makes it unpublishable (e.g. `publish = false` or
+    /// `publish = []`), but its `[[package]]` section sets `publish = true`.
+    ///
+    /// A `publish` field that is unset or inherited from the `[workspace]` section isn't checked:
+    /// release-plz doesn't publish these packages anyway.
+    pub fn check_publish_fields(&self, metadata: &cargo_metadata::Metadata) -> anyhow::Result<()> {
+        let workspace_packages = metadata.workspace_packages();
+        let explicitly_published = self
+            .package
+            .iter()
+            .filter(|p| p.config.common.publish == Some(true));
+        for package_config in explicitly_published {
+            let is_unpublishable = workspace_packages
+                .iter()
+                .any(|p| p.name.as_str() == package_config.name && !p.is_publishable());
+            anyhow::ensure!(
+                !is_unpublishable,
+                "Package `{}` can't be published by release-plz because of its Cargo.toml. Remove `publish = true` from its `[[package]]` section in the release-plz configuration. Learn more at https://release-plz.dev/docs/faq#what-packages-does-release-plz-publish",
+                package_config.name
+            );
+        }
+        Ok(())
     }
 }
 
