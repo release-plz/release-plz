@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.2">
 <title data-rh="true">FAQ | Release-plz</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" name="twitter:image" content="https://release-plz.dev/img/release-plz-social-card.png"><meta data-rh="true" property="og:url" content="https://release-plz.dev/docs/faq"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="FAQ | Release-plz"><meta data-rh="true" name="description" content="What packages does release-plz publish?"><meta data-rh="true" property="og:description" content="What packages does release-plz publish?"><link data-rh="true" rel="icon" href="/img/favicon.ico"><link data-rh="true" rel="canonical" href="https://release-plz.dev/docs/faq"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/faq" hreflang="en"><link data-rh="true" rel="alternate" href="https://release-plz.dev/docs/faq" hreflang="x-default"><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"FAQ","item":"https://release-plz.dev/docs/faq"}]}</script><script src="/js/posthog.js"></script><link rel="stylesheet" href="/assets/css/styles.03e72e16.css">
-<script src="/assets/js/runtime~main.3f7dd32a.js" defer="defer"></script>
-<script src="/assets/js/main.b3e5e23e.js" defer="defer"></script>
+<script src="/assets/js/runtime~main.f638fccd.js" defer="defer"></script>
+<script src="/assets/js/main.92415c3c.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -15,7 +15,7 @@
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="what-packages-does-release-plz-publish">What packages does release-plz publish?<a href="#what-packages-does-release-plz-publish" class="hash-link" aria-label="Direct link to What packages does release-plz publish?" title="Direct link to What packages does release-plz publish?" translate="no">​</a></h2>
 <p>Release-plz publishes all packages, except:</p>
 <ul>
-<li class="">packages with <code>publish = false</code> in the <code>Cargo.toml</code>.</li>
+<li class="">packages with <code>publish = false</code> or <code>publish = []</code> in the <code>Cargo.toml</code>.</li>
 <li class=""><a href="https://doc.rust-lang.org/cargo/reference/cargo-targets.html#examples" target="_blank" rel="noopener noreferrer" class="">examples</a> that don&#x27;t
 specify the <a href="https://doc.rust-lang.org/cargo/reference/manifest.html#the-publish-field" target="_blank" rel="noopener noreferrer" class=""><code>publish</code></a>
 field in their <code>Cargo.toml</code> file. To publish them, set this field.</li>
