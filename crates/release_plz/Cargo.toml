@@ -1,6 +1,6 @@
 [package]
 name = "release-plz"
-version = "0.4.1"
+version = "0.4.2"
 edition.workspace = true
 description = "Update version and changelog based on semantic versioning and conventional commits"
 repository = "https://github.com/release-plz/release-plz"
@@ -21,8 +21,8 @@ all-static = ["release_plz_core/all-static"]
 
 [dependencies]
 git_cmd = { path = "../git_cmd", version = "0.9.1" }
-release_plz_core = { path = "../release_plz_core", version = "0.42.1", default-features = false }
-cargo_utils = { path = "../cargo_utils", version = "0.3" }
+release_plz_core = { path = "../release_plz_core", version = "0.43.0", default-features = false }
+cargo_utils = { path = "../cargo_utils", version = "0.4" }
 
 anyhow.workspace = true
 base64.workspace = true
