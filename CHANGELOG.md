@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0](https://github.com/release-plz/release-plz/compare/release-plz-v0.4.1...release-plz-v0.5.0) - 2026-10-26
+## [0.4.2](https://github.com/release-plz/release-plz/compare/release-plz-v0.4.1...release-plz-v0.4.2) - 2026-10-26
 
 ### Fixed
 
