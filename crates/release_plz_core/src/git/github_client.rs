@@ -9,6 +9,8 @@ use crate::git::forge::Remote;
 #[derive(Debug, Clone)]
 pub struct GitHub {
     pub remote: Remote,
+    /// Whether the repository is hosted on GitHub Enterprise Server rather than GitHub.com.
+    enterprise: bool,
 }
 
 impl GitHub {
@@ -18,6 +20,7 @@ impl GitHub {
             .parse()
             .context("invalid GitHub REST API URL derived from repo origin")?;
         Ok(Self {
+            enterprise: !url.is_on_github_dot_com(),
             remote: Remote {
                 owner: url.owner,
                 repo: url.name,
@@ -35,6 +38,7 @@ impl GitHub {
                 token,
                 base_url: "https://api.github.com".parse().unwrap(),
             },
+            enterprise: false,
         }
     }
 
@@ -44,7 +48,12 @@ impl GitHub {
                 base_url,
                 ..self.remote
             },
+            ..self
         }
+    }
+
+    pub fn is_enterprise(&self) -> bool {
+        self.enterprise
     }
 
     pub fn default_headers(&self) -> anyhow::Result<HeaderMap> {
