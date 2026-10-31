@@ -94,6 +94,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     # `cargo` and `rustc` are links to the `rustup` binary, so `rustup` must stay in the image.
     # Run these checks last, so that the build fails if an earlier command breaks the toolchain.
+    rustup --version; \
     cargo --version; \
     rustc --version;
 COPY --from=builder /app/target/release/release-plz /usr/local/bin
