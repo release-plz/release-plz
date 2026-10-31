@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Write as _,
 };
 
@@ -20,6 +20,20 @@ pub(super) struct ChangeReplay<'a> {
     /// The repository-relative paths the replayed trees are restricted to,
     /// see [`Self::restrict`].
     paths: Vec<Utf8PathBuf>,
+    /// Whether native Git materializes symlinks as links in checked-out snapshots.
+    symlinks: bool,
+    /// The configured README is compared by its contents, including through links.
+    readme: Option<Utf8PathBuf>,
+}
+
+/// A replayed change, classified the same way as package snapshot equality.
+#[derive(Clone, Copy)]
+pub(super) struct FileChange<'a> {
+    pub(super) path: &'a [u8],
+    pub(super) changes_presence: bool,
+    /// Whether the target holds a symlink at `path`. Only looked up for
+    /// content changes, since a presence change counts regardless.
+    pub(super) target_is_symlink: bool,
 }
 
 impl<'a> ChangeReplay<'a> {
@@ -31,6 +45,7 @@ impl<'a> ChangeReplay<'a> {
         repository: &'a Repo,
         head: &str,
         paths: &[&Utf8Path],
+        readme: Option<&Utf8Path>,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(
             git2::Oid::from_str(head).is_ok(),
@@ -55,10 +70,16 @@ impl<'a> ChangeReplay<'a> {
             index.read_tree(&repo.find_tree(tree.write()?)?)?;
         }
         repo.set_index(&mut index)?;
+        // Use native Git so environment overrides match historical checkouts.
+        let symlinks = repository
+            .git(&["config", "--type=bool", "--get", "core.symlinks"])
+            .map_or(true, |value| value == "true");
         Ok(Self {
             source: repository,
             repo,
             paths: paths.iter().map(|path| path.to_path_buf()).collect(),
+            symlinks,
+            readme: readme.map(Utf8Path::to_path_buf),
         })
     }
 
@@ -69,7 +90,7 @@ impl<'a> ChangeReplay<'a> {
         commit: &str,
         target: &str,
         conflicts: TokenConflicts,
-        includes: impl Fn(&[u8]) -> bool,
+        includes: impl Fn(FileChange<'_>) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let tree = self.tree(&commit)?;
@@ -91,7 +112,7 @@ impl<'a> ChangeReplay<'a> {
         edited: &str,
         target: &str,
         conflicts: TokenConflicts,
-        includes: impl Fn(&[u8]) -> bool,
+        includes: impl Fn(FileChange<'_>) -> bool,
     ) -> anyhow::Result<bool> {
         let commit = self.commit(commit)?;
         let tree = self.tree(&commit)?;
@@ -99,9 +120,12 @@ impl<'a> ChangeReplay<'a> {
         let edited = self.tree(&self.commit(edited)?)?;
         let parent = self.first_parent_tree(&commit)?;
         self.fetch_missing_blobs(&tree, &[&parent, &edited, &target])?;
+        // Select paths conservatively here: the final replay decides whether
+        // their presence or only their contents changed.
+        let includes_path = |path: &[u8]| includes(self.file_change(path, true, &target));
         let mut changed = HashSet::new();
         for (path, target_path) in self.changed_paths(&parent, &tree, &target)? {
-            if (includes(&path) || includes(&target_path))
+            if (includes_path(&path) || includes_path(&target_path))
                 && !self.edited_tokens_leave_file_unchanged(
                     [&parent, &tree, &edited, &target],
                     &path,
@@ -112,12 +136,12 @@ impl<'a> ChangeReplay<'a> {
                 changed.extend(
                     [path, target_path]
                         .into_iter()
-                        .filter(|path| includes(path)),
+                        .filter(|path| includes_path(path)),
                 );
             }
         }
-        self.merging_affects_files(&tree, &target, &edited, conflicts, |path| {
-            changed.contains(path)
+        self.merging_affects_files(&tree, &target, &edited, conflicts, |change| {
+            changed.contains(change.path) && includes(change)
         })
     }
 
@@ -213,11 +237,10 @@ impl<'a> ChangeReplay<'a> {
             return Ok(false);
         };
         let entries = [parent, changed, edited, target];
-        if !regular_file_modes(
-            entries
-                .each_ref()
-                .map(|entry| entry.filemode().cast_unsigned()),
-        ) {
+        if !entries
+            .iter()
+            .all(|entry| self.is_regular_file_in_checkout(entry.filemode().cast_unsigned()))
+        {
             return Ok(false);
         }
         let blobs = entries
@@ -292,7 +315,85 @@ impl<'a> ChangeReplay<'a> {
 
     /// The tree of `commit`, restricted as [`Self::restrict`] describes.
     fn tree<'r>(&'r self, commit: &git2::Commit<'r>) -> anyhow::Result<git2::Tree<'r>> {
-        self.restrict(commit.tree()?)
+        let tree = commit.tree()?;
+        // Resolve against the full snapshot: historical link targets may be
+        // outside the package and differ from the README's target at HEAD.
+        let readme = self
+            .readme
+            .as_deref()
+            .filter(|_| self.symlinks)
+            .map(|path| self.readme_target(&tree, path))
+            .transpose()?
+            .flatten();
+        let tree = self.restrict(tree)?;
+        let Some((path, id)) = readme else {
+            return Ok(tree);
+        };
+        // Replaying link pointer bytes would count retargeting a README even
+        // when both targets have identical contents. Use the bytes equality reads.
+        let id = git2::build::TreeUpdateBuilder::new()
+            .upsert(path.as_str(), id, git2::FileMode::Blob)
+            .create_updated(&self.repo, &tree)?;
+        Ok(self.repo.find_tree(id)?)
+    }
+
+    /// Dereference a README link using only this snapshot's objects. Unsupported
+    /// or missing targets keep the original entry for conservative replay.
+    fn readme_target<'p>(
+        &self,
+        tree: &git2::Tree<'_>,
+        path: &'p Utf8Path,
+    ) -> anyhow::Result<Option<(&'p Utf8Path, git2::Oid)>> {
+        if !tree
+            .get_path(path.as_std_path())
+            .is_ok_and(|entry| entry.filemode() == i32::from(git2::FileMode::Link))
+        {
+            return Ok(None);
+        }
+        let mut pending: VecDeque<_> = path.components().map(|c| c.as_str().to_owned()).collect();
+        let mut resolved = Utf8PathBuf::new();
+        let mut links = 0;
+        while let Some(component) = pending.pop_front() {
+            match component.as_str() {
+                "." => continue,
+                ".." => {
+                    if !resolved.pop() {
+                        return Ok(None);
+                    }
+                    continue;
+                }
+                _ => resolved.push(component),
+            }
+            let Ok(entry) = tree.get_path(resolved.as_std_path()) else {
+                return Ok(None);
+            };
+            if entry.filemode() == i32::from(git2::FileMode::Link) {
+                // Match the usual filesystem limit and terminate cyclic links.
+                links += 1;
+                if links > 40 {
+                    return Ok(None);
+                }
+                self.fetch_if_missing(entry.id())?;
+                let blob = self.repo.find_blob(entry.id())?;
+                let Ok(target) = std::str::from_utf8(blob.content()) else {
+                    return Ok(None);
+                };
+                let target = Utf8Path::new(target);
+                if target.is_absolute() {
+                    return Ok(None);
+                }
+                resolved.pop();
+                for component in target.components().rev() {
+                    pending.push_front(component.as_str().to_owned());
+                }
+            }
+        }
+        let entry = tree.get_path(resolved.as_std_path())?;
+        if entry.kind() != Some(git2::ObjectType::Blob) {
+            return Ok(None);
+        }
+        self.fetch_if_missing(entry.id())?;
+        Ok(Some((path, entry.id())))
     }
 
     /// The tree a change is relative to: the first parent's, as `git revert -m 1`
@@ -357,11 +458,13 @@ impl<'a> ChangeReplay<'a> {
         ours: &git2::Tree<'_>,
         theirs: &git2::Tree<'_>,
         conflicts: TokenConflicts,
-        includes: impl Fn(&[u8]) -> bool,
+        includes: impl Fn(FileChange<'_>) -> bool,
     ) -> anyhow::Result<bool> {
         let index = self.repo.merge_trees(base, ours, theirs, None)?;
         for conflict in index.conflicts()? {
             let conflict = conflict?;
+            let changes_presence = conflict.our.as_ref().map(|entry| &entry.path)
+                != conflict.their.as_ref().map(|entry| &entry.path);
             let affects_package = [
                 conflict.ancestor.as_ref(),
                 conflict.our.as_ref(),
@@ -369,7 +472,7 @@ impl<'a> ChangeReplay<'a> {
             ]
             .into_iter()
             .flatten()
-            .any(|entry| includes(&entry.path));
+            .any(|entry| includes(self.file_change(&entry.path, changes_presence, ours)));
             if affects_package
                 && !package_equality_ignores_conflict(&conflict)
                 && !self.conflict_leaves_file_unchanged(&conflict, conflicts)?
@@ -377,15 +480,53 @@ impl<'a> ChangeReplay<'a> {
                 return Ok(true);
             }
         }
+        // A regular file replaced by a symlink still has the same packaged path.
+        let mut options = git2::DiffOptions::new();
+        options.include_typechange(true);
         let diff = self
             .repo
-            .diff_tree_to_index(Some(ours), Some(&index), None)?;
+            .diff_tree_to_index(Some(ours), Some(&index), Some(&mut options))?;
         Ok(diff
             .deltas()
             // Conflicted paths were checked above, including nonconflicting hunks.
             .filter(|delta| delta.status() != git2::Delta::Conflicted)
             .filter(|delta| !package_equality_ignores(delta))
-            .any(|delta| delta_paths(&delta).any(&includes)))
+            .any(|delta| {
+                // Package equality ignores executable bits. With symlinks
+                // disabled, a link and a regular file also hold the same bytes.
+                if delta.old_file().id() == delta.new_file().id()
+                    && (delta.status() != git2::Delta::Typechange || !self.symlinks)
+                {
+                    return false;
+                }
+                let changes_presence = matches!(delta.status(), git2::Delta::Added | git2::Delta::Deleted);
+                delta_paths(&delta)
+                    .any(|path| includes(self.file_change(path, changes_presence, ours)))
+            }))
+    }
+
+    fn file_change<'p>(
+        &self,
+        path: &'p [u8],
+        changes_presence: bool,
+        target: &git2::Tree<'_>,
+    ) -> FileChange<'p> {
+        let target_is_symlink = !changes_presence
+            && self.symlinks
+            && std::str::from_utf8(path).is_ok_and(|path| {
+                target
+                    .get_path(std::path::Path::new(path))
+                    .is_ok_and(|entry| entry.filemode() == i32::from(git2::FileMode::Link))
+            });
+        FileChange {
+            path,
+            changes_presence,
+            target_is_symlink,
+        }
+    }
+
+    fn is_regular_file_in_checkout(&self, mode: u32) -> bool {
+        matches!(mode, 0o100_644 | 0o100_755) || (!self.symlinks && mode == 0o120_000)
     }
 
     /// Binary, large, rename, deletion and type conflicts cannot establish absence.
@@ -401,7 +542,9 @@ impl<'a> ChangeReplay<'a> {
         };
         if ancestor.path != ours.path
             || theirs.path != ours.path
-            || !regular_file_modes([ancestor.mode, ours.mode, theirs.mode])
+            || ![ancestor.mode, ours.mode, theirs.mode]
+                .into_iter()
+                .all(|mode| self.is_regular_file_in_checkout(mode))
         {
             return Ok(false);
         }
@@ -484,14 +627,6 @@ fn delta_paths<'a>(delta: &git2::DiffDelta<'a>) -> impl Iterator<Item = &'a [u8]
 fn objects_directory(repository: &Repo) -> anyhow::Result<Utf8PathBuf> {
     let objects = repository.git(&["rev-parse", "--git-path", "objects"])?;
     fs_utils::canonicalize_utf8(&repository.directory().join(objects))
-}
-
-/// Whether all `modes` describe regular files, so that merging the contents as
-/// text is meaningful. Package equality ignores differences in executable bits.
-fn regular_file_modes<const N: usize>(modes: [u32; N]) -> bool {
-    modes
-        .into_iter()
-        .all(|mode| matches!(mode, 0o100_644 | 0o100_755))
 }
 
 /// Whether undoing a text conflict leaves the target unchanged. Independent
@@ -621,7 +756,7 @@ mod tests {
         let head = repo.current_commit_hash().unwrap();
         let restricted_blobs = |paths: &[&str]| {
             let paths: Vec<_> = paths.iter().map(Utf8Path::new).collect();
-            let replay = ChangeReplay::new(&repo, &head, &paths).unwrap();
+            let replay = ChangeReplay::new(&repo, &head, &paths, None).unwrap();
             let commit = replay.commit(&head).unwrap();
             let tree = replay.tree(&commit).unwrap();
             let blobs = blob_paths(&tree);
@@ -726,7 +861,7 @@ mod tests {
                 ("100600", b"f", f_blob),
             ];
             let commit = commit_raw_tree(&repo, &base, &entries);
-            let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")]).unwrap();
+            let replay = ChangeReplay::new(&repo, &commit, &[Utf8Path::new("")], None).unwrap();
             replay.undo_affects_package(&commit, &base, TokenConflicts::Unresolved, |_| true)
         };
         assert!(!undo_legacy_mode(blob(b"hello\n")).unwrap());
@@ -768,7 +903,7 @@ mod tests {
             let head = commit(&base, 2);
             // Remove the submodule, with its directory.
             let removed = commit_raw_tree(&repo, &head, &[]);
-            let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")]).unwrap();
+            let replay = ChangeReplay::new(&repo, &removed, &[Utf8Path::new("")], None).unwrap();
             // Undoing the addition removes the submodule, which only the
             // commit's side has. Undoing the update changes it on both sides.
             // Undoing the removal re-adds it, which only the parent's side has.
