@@ -1032,7 +1032,7 @@ async fn a_retained_change_survives_a_rename_at_head() {
 }
 
 #[tokio::test]
-async fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
+async fn a_shallow_clone_deepens_to_replay_a_retained_change() {
     let history = api_history(BASE_API).await;
     let breaking = history.write_commit("src/lib.rs", BREAKING_API, "feat!: breaking API");
     // Put the breaking change one level deeper than the equal snapshot.
@@ -1044,9 +1044,9 @@ async fn a_shallow_clone_prunes_a_change_it_cannot_replay() {
     history.assert_release(&[&breaking, &later, &sibling], "0.2.0");
 
     // Four levels keep the equal snapshot and the breaking change, but not
-    // the parent its revert needs. Without evidence, ancestry pruning applies.
+    // the parent its revert needs. Fetch that ancestry so replay preserves the change.
     let shallow = history.clone_with("--depth=4", "shallow");
-    shallow.assert_release(&[&later, &sibling], "0.1.1");
+    shallow.assert_release(&[&breaking, &later, &sibling], "0.2.0");
 }
 
 /// The walk checks out only commits that touch the package, so a partial

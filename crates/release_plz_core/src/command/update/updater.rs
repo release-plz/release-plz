@@ -25,7 +25,9 @@ use crate::{
     changelog_parser,
     command::update::changelog_update::{OldChangelog, OldChangelogs},
     diff::{Commit, Diff},
-    fs_utils, lock_compare,
+    fs_utils,
+    git_history::ShallowHistory,
+    lock_compare,
     next_ver::takes_part_in_release,
     package_compare::{CARGO_TOML_ORIG, CARGO_VCS_INFO, PackageFiles},
     registry_packages::{PackagesCollection, RegistryPackage},
@@ -654,6 +656,24 @@ impl Updater<'_> {
         repository: &Repo,
         head: &str,
     ) -> anyhow::Result<Diff> {
+        loop {
+            repository.checkout(head)?;
+            if let Some(diff) = self.try_get_diff(package, registry_packages, repository, head)? {
+                return Ok(diff);
+            }
+            repository.checkout(head)?;
+            ShallowHistory::new(repository)?.deepen(repository)?;
+            // Deepening can change the path-filtered graph. Recompute the entire diff.
+        }
+    }
+
+    fn try_get_diff(
+        &self,
+        package: &Package,
+        registry_packages: &PackagesCollection,
+        repository: &Repo,
+        head: &str,
+    ) -> anyhow::Result<Option<Diff>> {
         info!(
             "determining next version for {} {}",
             package.name, package.version
@@ -683,7 +703,7 @@ impl Updater<'_> {
                 );
             }
         }
-        self.get_package_diff(
+        let complete = self.get_package_diff(
             package,
             registry_package,
             repository,
@@ -692,7 +712,7 @@ impl Updater<'_> {
             &mut diff,
         )?;
 
-        Ok(diff)
+        Ok(complete.then_some(diff))
     }
 
     fn get_package_diff(
@@ -703,7 +723,8 @@ impl Updater<'_> {
         head: &str,
         tag_commit: Option<&str>,
         diff: &mut Diff,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
+        let history = ShallowHistory::new(repository)?;
         let package_path = get_package_path(package, repository, self.project.root())
             .context("failed to determine package path")?;
         let package_path = package_path.as_path();
@@ -745,6 +766,18 @@ impl Updater<'_> {
             max_analyze_commits,
         )?;
         let checked_out_history = !graph.is_empty();
+        let mut complete_after: Vec<String> = release_boundaries
+            .iter()
+            .filter(|boundary| repository.git(&["cat-file", "-e", boundary]).is_ok())
+            .map(|boundary| (*boundary).to_owned())
+            .collect();
+        if max_analyze_commits.is_some_and(|limit| graph.len() >= limit as usize)
+            && let Some(last) = graph.last()
+            && !history.contains(&last.id)
+        {
+            // A first release intentionally ignores ancestry beyond this limit.
+            complete_after.push(last.id.clone());
+        }
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
         for (index, commit) in graph.iter().enumerate() {
@@ -778,6 +811,7 @@ impl Updater<'_> {
                     )
                 })?;
                 if are_packages_equal {
+                    complete_after.push(current_commit_hash.to_owned());
                     // Collect pruning candidates with full history: a "keep mine"
                     // merge can hide real ancestors from a simplified walk. Reuse
                     // the outer walk's paths and release boundaries to avoid
@@ -796,6 +830,11 @@ impl Updater<'_> {
                     );
                     continue;
                 }
+            }
+            // A shallow root's apparent changes include files inherited from missing parents.
+            // Check equality first: a root that is itself a release baseline needs no fetch.
+            if history.contains(current_commit_hash) {
+                return Ok(false);
             }
             // A package can contain another package in a subdirectory, so only count
             // commits that touch files Cargo would package for this package.
@@ -828,7 +867,8 @@ impl Updater<'_> {
         {
             self.add_dependencies_update_if_any(diff, released_package, package, released_path)?;
         }
-        Ok(())
+        let baselines: Vec<&str> = complete_after.iter().map(String::as_str).collect();
+        history.is_complete_since(repository, &baselines)
     }
 
     /// If the dependencies changed, add a commit to the diff.

@@ -10,6 +10,7 @@ mod diff;
 mod download;
 pub mod fs_utils;
 mod git;
+mod git_history;
 pub mod http_client;
 mod lock_compare;
 mod next_ver;
