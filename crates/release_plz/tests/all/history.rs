@@ -5,7 +5,9 @@ use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
 use crate::helpers::{
-    locked_metadata,
+    assert_walked_one_at_a_time,
+    cmd::run_with_debug_logs,
+    ignore_global_checkout_conversions, locked_metadata,
     package::{PackageType, TestPackage},
     test_context::TestContext,
 };
@@ -62,6 +64,23 @@ async fn member_history(write_extra: impl FnOnce(&Utf8Path)) -> TestContext {
         context.package_path(PACKAGE).join("Cargo.lock"),
     )
     .unwrap();
+    context.write_release_plz_toml(HISTORY_CONFIG);
+    context
+}
+
+/// A workspace with the libraries `api` and [`PACKAGE`], with the changes of
+/// `setup` committed. `api` is walked first, in the copy of the repository, so
+/// a concurrent walk of [`PACKAGE`] would take a worktree.
+async fn concurrent_histories(setup: impl FnOnce(&TestContext)) -> TestContext {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("api").with_type(PackageType::Lib),
+        TestPackage::new(PACKAGE).with_type(PackageType::Lib),
+    ])
+    .await;
+    // The tests expect the update to walk histories one at a time for another
+    // reason.
+    ignore_global_checkout_conversions(&context.repo);
+    setup(&context);
     context.write_release_plz_toml(HISTORY_CONFIG);
     context
 }
@@ -296,7 +315,7 @@ impl TestContext {
         )
     }
 
-    /// Every commit in the order `get_diff` visits them, newest date first.
+    /// Every commit in the order `walk_history` visits them, newest date first.
     fn walk_order(&self) -> String {
         self.repo
             .git(&["rev-list", "--date-order", "HEAD", "--", "."])
@@ -1467,4 +1486,127 @@ async fn a_tip_matching_the_release_releases_nothing_although_its_branches_diffe
     // Neither sibling matches the published tree; their merge does.
     history.publish_snapshot(&[]);
     assert!(history.update_history().is_empty());
+}
+
+/// Worktrees don't check submodules out, so the history of a package with
+/// submodule files stays in the copy of the repository, which has them, even
+/// when another package's history is walked at the same time.
+#[tokio::test]
+async fn submodule_files_match_the_release_while_other_histories_are_walked() {
+    let history = concurrent_histories(add_submodule).await;
+    for package in ["api", PACKAGE] {
+        history.run_cargo_publish(package);
+    }
+    // The release has the submodule files, so a snapshot without them
+    // wouldn't match it, and the reverted change would be released.
+    let logs = commit_reverted_change_and_update(&history);
+    assert_walked_one_at_a_time(&logs, "a new worktree would have other files", "");
+}
+
+/// With `submodule.recurse`, checking a commit out also checks its submodules
+/// out, from their repositories in the Git directory, where `submodule add`
+/// clones them. A worktree looks for them in its own Git directory, so a
+/// history with a submodule that HEAD removed stays in the copy of the
+/// repository.
+#[tokio::test]
+async fn removed_submodules_are_checked_out_while_other_histories_are_walked() {
+    let history = concurrent_histories(add_submodule).await;
+    for package in ["api", PACKAGE] {
+        history.run_cargo_publish(package);
+    }
+    let changed = history.write_commit(
+        "crates/pkg/src/lib.rs",
+        "pub fn changed() {}\n",
+        "feat: change",
+    );
+    history.repo.git(&["rm", "crates/pkg/vendored"]).unwrap();
+    history.repo.commit("feat: remove the submodule").unwrap();
+    let removed = history.repo.current_commit_hash().unwrap();
+    let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
+    history
+        .repo
+        .git(&["config", "submodule.recurse", "true"])
+        .unwrap();
+
+    let logs = run_with_debug_logs(history.update_command());
+
+    let changelog = |package| {
+        fs_err::read_to_string(history.package_path(package).join("CHANGELOG.md")).unwrap()
+    };
+    assert_commits(&changelog(PACKAGE), &[&changed, &removed]);
+    assert_commits(&changelog("api"), &[&api]);
+    assert_walked_one_at_a_time(&logs, "Git recurses into submodules", "");
+}
+
+/// Add the submodule `crates/pkg/vendored` to [`PACKAGE`].
+fn add_submodule(history: &TestContext) {
+    let repo = &history.repo;
+    let vendored = repo.directory().parent().unwrap().join("vendored");
+    fs_err::create_dir(&vendored).unwrap();
+    Repo::init(&vendored);
+    repo.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        vendored.as_str(),
+        "crates/pkg/vendored",
+    ])
+    .unwrap();
+}
+
+/// Cargo's explicit include list can package globally ignored files. The
+/// temporary repository keeps them, but a new worktree would omit them.
+#[tokio::test]
+async fn ignored_included_files_match_the_release_while_other_histories_are_walked() {
+    let history = concurrent_histories(|history| {
+        let repo = &history.repo;
+        let excludes = repo.directory().parent().unwrap().join("excludes");
+        fs_err::write(&excludes, "generated.txt\n").unwrap();
+        repo.git(&["config", "core.excludesFile", excludes.as_str()])
+            .unwrap();
+        let manifest_path = history.package_path(PACKAGE).join(CARGO_TOML);
+        let manifest = fs_err::read_to_string(&manifest_path).unwrap();
+        fs_err::write(
+            manifest_path,
+            manifest.replace(
+                "[package]",
+                "[package]\ninclude = [\"src/**\", \"generated.txt\"]",
+            ),
+        )
+        .unwrap();
+    })
+    .await;
+    let generated = history.package_path(PACKAGE).join("generated.txt");
+    fs_err::write(&generated, "generated package data\n").unwrap();
+    history.run_cargo_publish("api");
+    history
+        .cargo_publish_command(PACKAGE)
+        .arg("--allow-dirty")
+        .assert()
+        .success();
+    let logs = commit_reverted_change_and_update(&history);
+    assert_walked_one_at_a_time(&logs, "a new worktree would have other files", "");
+    assert_eq!(
+        fs_err::read_to_string(generated).unwrap(),
+        "generated package data\n"
+    );
+}
+
+/// Change [`PACKAGE`] and revert the change, then change `api`, and run the
+/// update, returning its debug logs. Only `api` is released: the reverted
+/// history of [`PACKAGE`] matches its release.
+fn commit_reverted_change_and_update(history: &TestContext) -> String {
+    let lib = "crates/pkg/src/lib.rs";
+    let released = fs_err::read_to_string(history.repo.directory().join(lib)).unwrap();
+    history.write_commit(lib, "pub fn changed() {}\n", "feat: change");
+    history.write_commit(lib, &released, "revert: change");
+    let api = history.write_commit("crates/api/src/lib.rs", "", "feat: api change");
+
+    let logs = run_with_debug_logs(history.update_command());
+
+    let changelog = |package| history.package_path(package).join("CHANGELOG.md");
+    assert!(!changelog(PACKAGE).exists());
+    assert_commits(&fs_err::read_to_string(changelog("api")).unwrap(), &[&api]);
+    logs
 }

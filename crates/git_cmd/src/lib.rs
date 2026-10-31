@@ -256,8 +256,24 @@ impl Repo {
         git_in_dir(&self.directory, args)
     }
 
-    /// Like [`Repo::git`], but write `input` to the standard input of git and
-    /// return its standard output as is, which can be invalid UTF-8.
+    /// Where Git looks for `path` of the Git directory, such as `hooks` or
+    /// `objects`. Git can relocate it, for example with `core.hooksPath` or to
+    /// the common directory of linked worktrees.
+    pub fn git_path(&self, path: &str) -> anyhow::Result<Utf8PathBuf> {
+        let git_path = self.git(&["rev-parse", "--git-path", path])?;
+        // Git prints the path relative to the working directory unless it is
+        // absolute.
+        Ok(self.directory.join(git_path))
+    }
+
+    /// Like [`Repo::git`], but return the standard output of git as is, which
+    /// can be invalid UTF-8.
+    pub fn git_output(&self, args: &[&str]) -> anyhow::Result<Vec<u8>> {
+        git_output_in_dir(&self.directory, args, &[], None)
+    }
+
+    /// Like [`Repo::git_output`], but write `input` to the standard input of
+    /// git.
     pub fn git_output_with_input(&self, args: &[&str], input: &[u8]) -> anyhow::Result<Vec<u8>> {
         git_output_in_dir(&self.directory, args, &[], Some(input))
     }
@@ -309,9 +325,10 @@ impl Repo {
         Ok(())
     }
 
-    /// Removes a worktree that was created for this repository at the given path.
-    pub fn remove_worktree(&self, path: impl AsRef<str>) -> anyhow::Result<()> {
-        self.git(&["worktree", "remove", path.as_ref()])
+    /// Removes a worktree that was created for this repository at the given path,
+    /// even if it has modified or untracked files.
+    pub fn force_remove_worktree(&self, path: impl AsRef<str>) -> anyhow::Result<()> {
+        self.git(&["worktree", "remove", "--force", path.as_ref()])
             .context("failed to remove worktree")?;
 
         Ok(())
@@ -1185,5 +1202,25 @@ D  crates/git_cmd/CHANGELOG.md
         repo.tag("v1.0.1", "test2").unwrap();
         let tags = repo.get_all_tags();
         assert_eq!(tags, vec!["v1.0.0", "v1.0.1"]);
+    }
+
+    #[test]
+    fn git_paths_are_resolved_in_main_and_linked_worktrees() {
+        let repository_dir = tempdir().unwrap();
+        let repo = Repo::init(&repository_dir);
+        let objects = repo.git_path("objects").unwrap();
+        assert_eq!(objects, repo.directory().join(".git/objects"));
+
+        let worktrees_dir = tempdir().unwrap();
+        let worktree_dir = Utf8Path::from_path(worktrees_dir.path())
+            .unwrap()
+            .join("worktree");
+        repo.add_worktree(&worktree_dir, "HEAD").unwrap();
+        let worktree = Repo::new(&worktree_dir).unwrap();
+        // Linked worktrees share the objects of the main worktree.
+        assert_eq!(
+            fs_err::canonicalize(worktree.git_path("objects").unwrap()).unwrap(),
+            fs_err::canonicalize(objects).unwrap()
+        );
     }
 }

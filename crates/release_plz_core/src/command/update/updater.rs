@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    panic,
     sync::{Mutex, Once},
     thread,
 };
@@ -15,8 +16,8 @@ use git_cliff_core::{
     config::{ChangelogConfig, Config},
     contributor::RemoteContributor,
 };
-use git_cmd::Repo;
-use tracing::{debug, info, instrument, warn};
+use git_cmd::{HistoryCommit, Repo};
+use tracing::{Span, debug, info, instrument, warn};
 
 use crate::{
     ChangelogBuilder, ChangelogRequest, ForgeType, NO_COMMIT_ID, PackagePath as _, Project, Remote,
@@ -53,6 +54,26 @@ struct PlannedUpdate<'a> {
     package: &'a Package,
     diff: Diff,
     version: Version,
+}
+
+/// The history of a package since its release, before it's walked.
+struct PackageHistory<'a> {
+    package: &'a Package,
+    /// The released package, paired with the path of its extracted sources.
+    released: Option<(&'a RegistryPackage, &'a Utf8Path)>,
+    /// The commit of the package's release tag, if any.
+    tag_commit: Option<String>,
+    /// The simplified parent graph of the commits to walk, see
+    /// [`Repo::parents_at_paths`].
+    graph: Vec<HistoryCommit>,
+    diff: Diff,
+}
+
+impl PackageHistory<'_> {
+    /// Whether the walk has commits to check out.
+    fn has_commits(&self) -> bool {
+        !self.graph.is_empty()
+    }
 }
 
 impl Updater<'_> {
@@ -266,37 +287,33 @@ impl Updater<'_> {
         Ok(new_versions.into_iter().max())
     }
 
-    async fn get_packages_diffs(
-        &self,
-        registry_packages: &PackagesCollection,
+    async fn get_packages_diffs<'a>(
+        &'a self,
+        registry_packages: &'a PackagesCollection,
         repository: &Repo,
-    ) -> anyhow::Result<Vec<(&Package, Diff)>> {
-        // Store diff for each package. This operation is not thread safe, so we do it in one
-        // package at a time.
-
+    ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
         let packages = self.packages_to_process();
         if packages.is_empty() {
             return Ok(Vec::new());
         }
-        // Each successful get_diff restores HEAD before returning, so the
+        // Each successful history walk restores HEAD before returning, so the
         // following packages can reuse that checkout and the same history tip.
         repository
             .checkout_head()
             .context("can't checkout head to calculate diff")?;
         let head = repository.current_commit_hash()?;
-        let packages_diffs_res: anyhow::Result<Vec<(&Package, Diff)>> = packages
+        // Find every history before walking any of them: walks check commits
+        // out, while finding a history reads the files at HEAD.
+        let histories = packages
             .iter()
             .map(|&p| {
-                let diff = self
-                    .get_diff(p, registry_packages, repository, &head)
-                    .with_context(|| {
-                        format!("failed to retrieve difference of package {}", p.name)
-                    })?;
-                Ok((p, diff))
+                self.package_history(p, registry_packages, repository, &head)
+                    .with_context(|| package_diff_error(p))
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let packages_diffs = self.walk_histories(histories, repository, &head)?;
 
-        let mut packages_diffs = self.fill_commits(packages_diffs_res?, repository).await?;
+        let mut packages_diffs = self.fill_commits(packages_diffs, repository).await?;
         // Snapshot only histories another package includes before adding commits to diffs.
         let included_packages: HashSet<String> = packages_diffs
             .iter()
@@ -342,35 +359,83 @@ impl Updater<'_> {
             Ok(())
         };
 
-        // Worker count is capped at both the CPU count and the number of packages, so no idle threads are spawned.
-        let parallelism = thread::available_parallelism()
-            .map_or(1, usize::from)
-            .min(packages_diffs.len());
-        // Workers pull the next package from a shared queue, so a slow check
-        // doesn't leave other workers idle.
+        let workers = worker_count(packages_diffs.len());
         let queue = Mutex::new(packages_diffs.iter_mut());
-        thread::scope(|scope| {
-            let mut workers = Vec::with_capacity(parallelism);
-            for _ in 0..parallelism {
-                workers.push(scope.spawn(|| {
-                    // Each worker repeatedly takes the next package from the shared queue until it’s empty.
-                    loop {
-                        // Release the queue lock before running the check.
-                        let Some(package_diff) = queue.lock().unwrap().next() else {
-                            break;
-                        };
-                        check_semver(package_diff)?;
-                    }
-                    anyhow::Ok(())
-                }));
-            }
-            for worker in workers {
-                worker.join().expect("semver check thread panicked")?;
+        run_workers(workers, |_| {
+            while let Some(package_diff) = next_job(&queue) {
+                check_semver(package_diff)?;
             }
             anyhow::Ok(())
-        })?;
+        })
+        .into_iter()
+        .collect::<anyhow::Result<()>>()?;
 
         Ok(packages_diffs)
+    }
+
+    /// The packages of `histories` with their diffs.
+    ///
+    /// Walking a history checks its commits out, so concurrent walks need a
+    /// checkout each: `repository` and worktrees of it at `head`.
+    fn walk_histories<'a>(
+        &self,
+        histories: Vec<PackageHistory<'a>>,
+        repository: &Repo,
+        head: &str,
+    ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
+        let diff_in = |history: PackageHistory<'a>, checkout: &Repo| {
+            let package = history.package;
+            self.package_diff(history, checkout, head)
+                .map(|diff| (package, diff))
+                .with_context(|| package_diff_error(package))
+        };
+        // Every worker but the first creates a worktree, so count only the
+        // histories with commits to check out.
+        let workers = worker_count(histories.iter().filter(|h| h.has_commits()).count());
+        if workers < 2 || !history::supports_worktrees(repository) {
+            return histories
+                .into_iter()
+                .map(|history| diff_in(history, repository))
+                .collect();
+        }
+        debug!("walking histories concurrently in {workers} checkouts");
+        let queue = Mutex::new(histories.into_iter().enumerate());
+        let mut diffs: Vec<_> = run_workers(workers, |worker| {
+            // The first worker walks in `repository`, so a failed worktree only
+            // costs concurrency.
+            let worktree = if worker == 0 {
+                None
+            } else {
+                match history::Worktree::new(repository, head) {
+                    Ok(worktree) => Some(worktree),
+                    Err(e) => {
+                        debug!("cannot create a worktree to walk histories: {e:#}");
+                        return Vec::new();
+                    }
+                }
+            };
+            let checkout = worktree.as_ref().map_or(repository, |w| w.repo());
+            let mut diffs = Vec::new();
+            while let Some((i, history)) = next_job(&queue) {
+                let diff = diff_in(history, checkout);
+                if diff.is_err() {
+                    // A failed walk can leave its checkout at any commit, so
+                    // its worker empties the queue to stop every worker, as the
+                    // update fails anyway. The queue is in package order, so
+                    // every package before the failed one is already taken and
+                    // still walked: the first error is the one a sequential
+                    // walk reports.
+                    queue.lock().unwrap().by_ref().for_each(drop);
+                }
+                diffs.push((i, diff));
+            }
+            diffs
+        })
+        .into_iter()
+        .flatten()
+        .collect();
+        diffs.sort_unstable_by_key(|(i, _)| *i);
+        diffs.into_iter().map(|(_, diff)| diff).collect()
     }
 
     fn packages_to_process(&self) -> Vec<&Package> {
@@ -642,18 +707,19 @@ impl Updater<'_> {
         })
     }
 
-    /// This operation is not thread-safe, because we do `git checkout` on the repository.
+    /// Find the commits that can have changed `package` since its release,
+    /// reading the repository at `head` without checking out any commit.
     #[instrument(
         skip_all,
         fields(package = %package.name)
     )]
-    fn get_diff(
+    fn package_history<'a>(
         &self,
-        package: &Package,
-        registry_packages: &PackagesCollection,
+        package: &'a Package,
+        registry_packages: &'a PackagesCollection,
         repository: &Repo,
         head: &str,
-    ) -> anyhow::Result<Diff> {
+    ) -> anyhow::Result<PackageHistory<'a>> {
         info!(
             "determining next version for {} {}",
             package.name, package.version
@@ -683,32 +749,8 @@ impl Updater<'_> {
                 );
             }
         }
-        self.get_package_diff(
-            package,
-            registry_package,
-            repository,
-            head,
-            tag_commit.as_deref(),
-            &mut diff,
-        )?;
-
-        Ok(diff)
-    }
-
-    fn get_package_diff(
-        &self,
-        package: &Package,
-        registry_package: Option<&RegistryPackage>,
-        repository: &Repo,
-        head: &str,
-        tag_commit: Option<&str>,
-        diff: &mut Diff,
-    ) -> anyhow::Result<()> {
         let package_path = get_package_path(package, repository, self.project.root())
             .context("failed to determine package path")?;
-        let package_path = package_path.as_path();
-        let released_package_files = PackageFiles::default();
-        // The released package, paired with the path of its extracted sources.
         let released = registry_package
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
@@ -723,28 +765,85 @@ impl Updater<'_> {
             );
             diff.set_version_unpublished(released_package.package.version.clone());
         }
-        let paths = PackagePaths::new(package_path, package)?;
+        let paths = PackagePaths::new(&package_path, package)?;
         let max_analyze_commits = released
             .is_none()
             .then(|| self.req.max_analyze_commits())
             // 0 means "no limit"
             .filter(|&n| n != 0);
-        // Exclude already released history using both the release tag and the
-        // registry's published commit, when available. The walk skips these
-        // commits and their ancestors.
-        let release_boundaries: Vec<&str> = tag_commit
-            .into_iter()
-            .chain(released.and_then(|(p, _)| p.published_at_sha1()))
-            .collect();
         // Enumerate from the branch tip before checking out any historical snapshot.
         // The parents let RetainedChanges follow the lineages of this same walk.
         let graph = repository.parents_at_paths(
             head,
-            &release_boundaries,
+            &release_boundaries(tag_commit.as_deref(), released),
             &paths.all(),
             max_analyze_commits,
         )?;
-        let checked_out_history = !graph.is_empty();
+        Ok(PackageHistory {
+            package,
+            released,
+            tag_commit,
+            graph,
+            diff,
+        })
+    }
+
+    /// Complete the diff of a package by walking its history in `repository`,
+    /// a checkout at `head`.
+    #[instrument(
+        skip_all,
+        fields(package = %history.package.name)
+    )]
+    fn package_diff(
+        &self,
+        history: PackageHistory<'_>,
+        repository: &Repo,
+        head: &str,
+    ) -> anyhow::Result<Diff> {
+        let (package, released) = (history.package, history.released);
+        let mut diff = if history.has_commits() {
+            self.walk_history(history, repository, head)?
+        } else {
+            history.diff
+        };
+        // The range can be empty when only workspace Cargo.toml or Cargo.lock
+        // changed. Dependency updates must not depend on visiting a package commit.
+        if diff.commits.is_empty()
+            && let Some((released_package, released_path)) = released
+        {
+            self.add_dependencies_update_if_any(
+                &mut diff,
+                released_package,
+                package,
+                released_path,
+            )?;
+        }
+        Ok(diff)
+    }
+
+    /// Add the commits of `history` that changed its package to its diff,
+    /// checking them out in `repository`, which is left at `head`.
+    fn walk_history(
+        &self,
+        history: PackageHistory<'_>,
+        repository: &Repo,
+        head: &str,
+    ) -> anyhow::Result<Diff> {
+        let PackageHistory {
+            package,
+            released,
+            tag_commit,
+            graph,
+            mut diff,
+        } = history;
+        let release_boundaries = release_boundaries(tag_commit.as_deref(), released);
+        // The paths of the checkout in `repository`, which can be a worktree of
+        // the repository where the history was found.
+        let package_path = get_package_path(package, repository, self.project.root())
+            .context("failed to determine package path")?;
+        let package_path = package_path.as_path();
+        let paths = PackagePaths::new(package_path, package)?;
+        let released_package_files = PackageFiles::default();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
         for (index, commit) in graph.iter().enumerate() {
@@ -811,24 +910,15 @@ impl Updater<'_> {
                 ));
             }
         }
-        if checked_out_history {
-            repository
-                .checkout_head()
-                .context("can't checkout head to compare dependencies")?;
-        }
+        repository
+            .checkout_head()
+            .context("can't checkout head to compare dependencies")?;
         // A simplified walk can visit an ancestor before the equal snapshot that
         // prunes it. Make the final decision with every discovered boundary,
         // keeping only ancestors whose changes survive through another lineage.
         retained_changes
             .retain_surviving(&mut diff.commits, || history_package_files(package_path));
-        // The range can be empty when only workspace Cargo.toml or Cargo.lock
-        // changed. Dependency updates must not depend on visiting a package commit.
-        if diff.commits.is_empty()
-            && let Some((released_package, released_path)) = released
-        {
-            self.add_dependencies_update_if_any(diff, released_package, package, released_path)?;
-        }
-        Ok(())
+        Ok(diff)
     }
 
     /// If the dependencies changed, add a commit to the diff.
@@ -981,6 +1071,56 @@ fn history_package_files(package_path: &Utf8Path) -> Option<Vec<Utf8PathBuf>> {
     crate::get_cargo_package_files(package_path)
         .inspect_err(|error| debug!("cannot list files for history comparison: {error:#}"))
         .ok()
+}
+
+/// Exclude already released history using both the release tag and the
+/// registry's published commit, when available. The walk skips these commits
+/// and their ancestors.
+fn release_boundaries<'a>(
+    tag_commit: Option<&'a str>,
+    released: Option<(&'a RegistryPackage, &Utf8Path)>,
+) -> Vec<&'a str> {
+    tag_commit
+        .into_iter()
+        .chain(released.and_then(|(p, _)| p.published_at_sha1()))
+        .collect()
+}
+
+fn package_diff_error(package: &Package) -> String {
+    format!("failed to retrieve difference of package {}", package.name)
+}
+
+/// One worker per CPU, but no more than `jobs`, so no worker starts idle.
+fn worker_count(jobs: usize) -> usize {
+    thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(jobs)
+}
+
+/// Run `work` in `workers` threads, passing each its index, and return their
+/// results in the same order.
+fn run_workers<R: Send>(workers: usize, work: impl Fn(usize) -> R + Sync) -> Vec<R> {
+    // Threads start outside of any span, so enter the current one in each of
+    // them to keep the logs of the work nested under it.
+    let span = Span::current();
+    thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|worker| {
+                let (work, span) = (&work, &span);
+                scope.spawn(move || span.in_scope(|| work(worker)))
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap_or_else(|e| panic::resume_unwind(e)))
+            .collect()
+    })
+}
+
+/// Take the next job from a queue shared by workers, so a long job doesn't
+/// leave the other workers idle. The lock is released before the job runs.
+fn next_job<I: Iterator>(queue: &Mutex<I>) -> Option<I::Item> {
+    queue.lock().unwrap().next()
 }
 
 /// Checkout a commit of the history we are walking, hinting at `--allow-dirty` when

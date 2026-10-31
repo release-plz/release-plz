@@ -1,4 +1,5 @@
 use cargo_metadata::{Metadata, camino::Utf8Path};
+use git_cmd::Repo;
 use release_plz_core::GitPr;
 
 pub mod cmd;
@@ -68,6 +69,49 @@ pub fn make_executable(path: &Utf8Path) {
     use std::os::unix::fs::PermissionsExt as _;
 
     fs_err::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// Whether the update can walk histories concurrently, as it runs a worker per
+/// CPU.
+fn can_walk_concurrently() -> bool {
+    std::thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2)
+}
+
+/// Assert that the update that logged `logs` walked histories concurrently,
+/// unless a single CPU leaves it no worker to spare. The update logs that it
+/// walks concurrently before its workers create their worktrees, and a worker
+/// without a worktree leaves its histories to the others, so the log alone
+/// misses walks that all end up in one checkout.
+pub fn assert_walked_concurrently(logs: &str) {
+    assert_eq!(
+        logs.contains("walking histories concurrently"),
+        can_walk_concurrently(),
+        "{logs}"
+    );
+    assert!(!logs.contains("cannot create a worktree"), "{logs}");
+}
+
+/// Assert that the update that logged `logs` walked histories one at a time
+/// because of `reason`. Whether a worktree would walk the history that needs
+/// the copy of the repository depends on timing, so the changelogs alone can
+/// miss a lost guard. With a single CPU, the update has no worker to spare and
+/// checks no reason.
+pub fn assert_walked_one_at_a_time(logs: &str, reason: &str, context: &str) {
+    if can_walk_concurrently() {
+        let expected = format!("walking histories one at a time: {reason}");
+        assert!(logs.contains(&expected), "{context}\n{logs}");
+    }
+}
+
+/// Ignore the user's line-ending conversions and global attributes, which can
+/// convert checkouts and so make the update walk histories one at a time. The
+/// empty attributes file that replaces theirs goes next to the repository.
+pub fn ignore_global_checkout_conversions(repo: &Repo) {
+    repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+    let attributes = repo.directory().with_file_name("attributes");
+    fs_err::write(&attributes, "").unwrap();
+    repo.git(&["config", "core.attributesFile", attributes.as_str()])
+        .unwrap();
 }
 
 pub fn locked_metadata(project_dir: &Utf8Path) -> Metadata {

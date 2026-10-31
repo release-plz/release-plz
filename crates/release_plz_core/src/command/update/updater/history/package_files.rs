@@ -1,16 +1,16 @@
 //! Reuse a package's file list across the checkouts of a history walk.
 //!
-//! The walk checks commits out in a clean temporary copy of the repository, so
-//! the tracked files on disk are those of the checked-out commit, and
-//! untracked and ignored files change only at checkouts that add or remove
-//! tracked paths. Cargo selects packaged files by their paths and types,
-//! manifests, ignore rules and configuration, never by the contents of Rust
-//! sources. Checkouts whose trees differ only in the contents of `.rs` files
-//! that are non-executable regular files in both therefore package the same
-//! files: symlinks and submodules stand for other files, and executable scripts
-//! can be Cargo or rustc wrappers. Such differences are transitive, so
-//! comparing each checkout with the previous one covers every checkout since
-//! Cargo listed the files.
+//! The walk checks commits out in the clean temporary copy of the repository,
+//! or in a worktree of it, so the tracked files on disk are those of the
+//! checked-out commit, and untracked and ignored files change only at checkouts
+//! that add or remove tracked paths. Cargo selects packaged files by their
+//! paths and types, manifests, ignore rules and configuration, never by the
+//! contents of Rust sources. Checkouts whose trees differ only in the contents
+//! of `.rs` files that are non-executable regular files in both therefore
+//! package the same files: symlinks and submodules stand for other files, and
+//! executable scripts can be Cargo or rustc wrappers. Such differences are
+//! transitive, so comparing each checkout with the previous one covers every
+//! checkout since Cargo listed the files.
 //!
 //! Hooks that run at checkout can change files without changing the trees,
 //! though, and a symlinked file-selection input pointing to a `.rs` file makes
@@ -157,11 +157,9 @@ fn has_checkout_hook(repository: &Repo) -> anyhow::Result<bool> {
 /// Whether the hooks directory has one of the [`CHECKOUT_HOOKS`].
 fn has_hook_file(repository: &Repo) -> anyhow::Result<bool> {
     // Let Git resolve core.hooksPath, including paths relative to the worktree.
-    // Git reports the directory relative to the repository directory unless it
-    // is absolute. Git for Windows ignores the executable bit of hooks, so test
-    // existence only.
-    let hooks = repository.git(&["rev-parse", "--git-path", "hooks"])?;
-    let hooks = repository.directory().join(hooks);
+    // Git for Windows ignores the executable bit of hooks, so test existence
+    // only.
+    let hooks = repository.git_path("hooks")?;
     for hook in CHECKOUT_HOOKS {
         let hook = hooks.join(hook);
         if fs_err::exists(&hook)? {
@@ -192,8 +190,9 @@ fn has_configured_hook(repository: &Repo) -> bool {
 /// Whether the checked-out commit has a symlink named `Cargo.toml`, in any
 /// ASCII case, in any directory.
 fn has_symlinked_manifest(repository: &Repo) -> anyhow::Result<bool> {
-    // After `git checkout <commit>` in the walk's clean copy, the index holds the
-    // tree of that commit. Unlike `ls-tree`, `ls-files` accepts this pathspec magic.
+    // After `git checkout <commit>` in the walk's clean copy, or a worktree of
+    // it, the index holds the tree of that commit. Unlike `ls-tree`, `ls-files`
+    // accepts this pathspec magic.
     // `icase` matches every casing, since case-insensitive filesystems resolve
     // any of them to the manifest.
     let manifests = repository.git(&[

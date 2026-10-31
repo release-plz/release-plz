@@ -15,9 +15,11 @@ use super::PackagePaths;
 
 mod package_files;
 mod replay;
+mod worktree;
 
 pub(super) use package_files::CheckoutPackageFiles;
 use replay::{ChangeReplay, TokenConflicts};
+pub(super) use worktree::{Worktree, supports_worktrees};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
 ///
@@ -60,8 +62,9 @@ impl<'a> RetainedChanges<'a> {
         graph: &[HistoryCommit],
         paths: &PackagePaths,
     ) -> anyhow::Result<Self> {
-        // The walked repository can be a temporary copy at a non-canonical path,
-        // such as `/var` on macOS, while the README paths were canonicalized.
+        // The walked repository can be the temporary copy, or a worktree of it,
+        // at a non-canonical path, such as `/var` on macOS, while the README
+        // paths were canonicalized.
         // Canonicalization is best effort: the raw path is tried first anyway.
         let directory = repository.directory();
         let canonical_directory = fs_utils::canonicalize_utf8(directory).ok();
@@ -407,7 +410,7 @@ mod tests {
 
         for path in [repo.directory(), &linked] {
             let source = Repo::new(path).unwrap();
-            let index_path = path.join(source.git(&["rev-parse", "--git-path", "index"]).unwrap());
+            let index_path = source.git_path("index").unwrap();
             let index_before = fs_err::read(&index_path).unwrap();
             let head_before = source.current_commit_hash().unwrap();
             let objects_before = source.git(&["count-objects", "-v"]).unwrap();

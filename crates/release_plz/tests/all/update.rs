@@ -3,8 +3,10 @@ use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    assert_cargo_semver_checks_is_installed, assert_locked_versions, cmd::release_plz_cmd,
-    locked_metadata,
+    assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_concurrently,
+    assert_walked_one_at_a_time,
+    cmd::{fail_with_debug_logs, release_plz_cmd, run_with_debug_logs},
+    ignore_global_checkout_conversions, locked_metadata,
 };
 
 #[test]
@@ -522,7 +524,7 @@ fn update_lists_package_files_with_a_symlinked_manifest() {
     fs_err::write(&manifest, contents.replace("src/**", "src/lib.rs")).unwrap();
     change_package(&repo, "one", "fix: select sources");
 
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+    let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
     // The symlink itself is unchanged, but its regular .rs target changes
     // Cargo's file selection. Reusing HEAD's list also hides the equal released
@@ -616,7 +618,7 @@ fn assert_package_file_listings(
     cargo_runs: usize,
     reuses: usize,
 ) {
-    let logs = run_workspace_update_with_logs(temp_dir, repo);
+    let logs = run_with_debug_logs(workspace_update_command(temp_dir, repo));
 
     assert_eq!(
         logs.matches("Run `cargo package --list").count(),
@@ -644,6 +646,21 @@ fn single_package_workspace() -> (Utf8TempDir, Repo) {
     // reuse, and it would hide the hooks that tests install in .git/hooks.
     repo.git(&["config", "core.hooksPath", ".git/hooks"])
         .unwrap();
+    (temp_dir, repo)
+}
+
+/// Creates a workspace with [`init_workspace`] whose packages `one` and `two`
+/// are at 1.0.0.
+fn two_package_workspace() -> (Utf8TempDir, Repo) {
+    let (temp_dir, repo) = init_workspace(
+        &[
+            ("one", "version = \"1.0.0\"\n"),
+            ("two", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        "[workspace]\nsemver_check = false\n",
+    );
+    ignore_global_checkout_conversions(&repo);
     (temp_dir, repo)
 }
 
@@ -676,7 +693,7 @@ fn update_lists_package_files_of_replaced_commits() {
     repo.git(&["checkout", "-"]).unwrap();
     repo.git(&["replace", &replaced, &replacement]).unwrap();
 
-    let logs = run_workspace_update_with_logs(&temp_dir, &repo);
+    let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
 
     // Reusing HEAD's file list would miss the added file and make the replaced
     // commit equal the release, stopping the walk there.
@@ -798,6 +815,106 @@ fn update_detached_workspace(repo_url: Option<&str>) {
     }
     assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
     assert!(repo.is_head_detached().unwrap());
+}
+
+/// Without a reason to walk histories one at a time, each worker walks them in
+/// its own checkout. Losing the worktrees would only slow updates down, which
+/// the updated versions don't show.
+#[test]
+fn update_walks_histories_concurrently() {
+    let (temp_dir, repo) = two_package_workspace();
+    for name in ["one", "two"] {
+        change_package(&repo, name, &format!("fix: update {name}"));
+    }
+
+    let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
+
+    assert_walked_concurrently(&logs);
+    assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.1")]);
+}
+
+/// Walks can fail in any order, but the update must report the error that
+/// walking histories one at a time reports: the error of the first failing
+/// package in workspace order, `one`. Here the walk of `two` fails first, at
+/// its first commit, whereas the walk of `one` packages a commit before failing.
+#[test]
+fn update_reports_the_first_failing_package_when_walking_histories_concurrently() {
+    let (temp_dir, repo) = two_package_workspace();
+    // Cargo can't package any member of a workspace with a member without
+    // targets, so walks fail at the commits that lack a library.
+    for name in ["one", "two"] {
+        fs_err::remove_file(repo.directory().join(name).join("src/lib.rs")).unwrap();
+    }
+    repo.add_all_and_commit("fix: delete libraries").unwrap();
+    // The commit that restores `two` still lacks the library of `one`.
+    for name in ["two", "one"] {
+        change_package(&repo, name, &format!("fix: restore {name}"));
+    }
+
+    let logs = fail_with_debug_logs(workspace_update_command(&temp_dir, &repo));
+
+    // Walks can only fail out of order when they run concurrently.
+    assert_walked_concurrently(&logs);
+    assert!(
+        logs.contains("failed to retrieve difference of package one"),
+        "{logs}"
+    );
+    assert!(
+        !logs.contains("failed to retrieve difference of package two"),
+        "{logs}"
+    );
+}
+
+/// Git can consider files clean even though a fresh checkout changes their
+/// bytes. Package equality must still recognize an unchanged release.
+#[test]
+fn update_preserves_released_bytes_with_checkout_conversions() {
+    for (case, autocrlf, eol, attributes, newline) in [
+        ("autocrlf", "true", "lf", "", "\n"),
+        ("autocrlf input", "input", "lf", "", "\r\n"),
+        (
+            "CRLF attribute",
+            "false",
+            "lf",
+            "*.rs text eol=crlf\n",
+            "\n",
+        ),
+        ("LF attribute", "false", "lf", "*.rs text eol=lf\n", "\r\n"),
+        ("text attribute", "false", "crlf", "*.rs text\n", "\n"),
+        ("ident attribute", "false", "lf", "*.rs ident\n", "\n"),
+    ] {
+        let (temp_dir, repo) = two_package_workspace();
+        repo.git(&["config", "core.autocrlf", autocrlf]).unwrap();
+        repo.git(&["config", "core.eol", eol]).unwrap();
+        fs_err::write(repo.directory().join(".gitattributes"), attributes).unwrap();
+        let released = format!("// Initial release{newline}// $Id${newline}");
+        for root in [repo.directory(), &temp_dir.path().join("registry")] {
+            for name in ["one", "two"] {
+                fs_err::write(root.join(name).join("src/lib.rs"), &released).unwrap();
+            }
+        }
+        repo.add_all_and_commit("chore: configure checkout conversions")
+            .unwrap();
+        for name in ["one", "two"] {
+            repo.tag_lightweight(&format!("{name}-v1.0.0")).unwrap();
+        }
+        change_package(&repo, "two", "fix: temporary change");
+        fs_err::write(repo.directory().join("two/src/lib.rs"), &released).unwrap();
+        repo.add_all_and_commit("revert: temporary change").unwrap();
+        change_package(&repo, "one", "fix: update one");
+        repo.is_clean().unwrap();
+
+        let logs = run_with_debug_logs(workspace_update_command(&temp_dir, &repo));
+
+        // Releasing `two` is the likely failure, so assert it first, naming
+        // the case.
+        assert!(
+            !repo.directory().join("two/CHANGELOG.md").exists(),
+            "{case}: {logs}"
+        );
+        assert_locked_versions(repo.directory(), &[("one", "1.0.1"), ("two", "1.0.0")]);
+        assert_walked_one_at_a_time(&logs, "Git can change checkout contents", case);
+    }
 }
 
 #[test]
@@ -1346,18 +1463,6 @@ fn run_workspace_update(temp_dir: &Utf8TempDir, repo: &Repo, repo_url: Option<&s
         cmd.args(["--repo-url", url]);
     }
     let output = cmd.assert().success().get_output().stdout.clone();
-    String::from_utf8(output).unwrap()
-}
-
-/// Run [`workspace_update_command`] and return its debug logs.
-fn run_workspace_update_with_logs(temp_dir: &Utf8TempDir, repo: &Repo) -> String {
-    let output = workspace_update_command(temp_dir, repo)
-        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
-        .assert()
-        .success()
-        .get_output()
-        .stderr
-        .clone();
     String::from_utf8(output).unwrap()
 }
 
