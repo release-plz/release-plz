@@ -135,12 +135,20 @@ jobs:
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
+          shopt -s nullglob
+          # Each file name is the digest of an image pushed by the build job.
+          digests=(*)
+          # Don't publish a single-platform image if a digest is missing,
+          # e.g. when re-running a failed build after the other platform's artifact expired.
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "Expected 2 digests, one per platform of the build matrix. Found: ${digests[*]}" >&2
+            exit 1
+          fi
           args=()
           while read -r tag; do
             args+=(--tag "$tag")
           done <<< "$TAGS"
-          # Each file name is the digest of an image pushed by the build job.
-          for digest in *; do
+          for digest in "${digests[@]}"; do
             args+=("$IMAGE@sha256:$digest")
           done
           docker buildx imagetools create "${args[@]}"
