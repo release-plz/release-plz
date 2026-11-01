@@ -162,12 +162,12 @@ fn prepare_version_changes<'a>(
 
 /// Rename the last release of each package in its changelog.
 /// Returns the new content of the edited changelogs.
-fn edit_changelogs(
+fn edit_changelogs<'a>(
     input: &SetVersionRequest,
-    changes: &[(&Package, &Version)],
+    changes: &[(&'a Package, &'a Version)],
 ) -> anyhow::Result<BTreeMap<Utf8PathBuf, String>> {
     // Several packages can share a changelog, including through different relative paths.
-    let mut changelogs: BTreeMap<Utf8PathBuf, EditedChangelog> = BTreeMap::new();
+    let mut changelogs: BTreeMap<Utf8PathBuf, EditedChangelog<'a>> = BTreeMap::new();
     for (package, new_version) in changes {
         let config = input.packages_config.get(&package.name);
         if !config.should_update_changelog() {
@@ -194,11 +194,11 @@ fn edit_changelogs(
                     .with_context(|| format!("failed to read changelog at {changelog_path}"))?;
                 entry.insert(EditedChangelog {
                     content,
-                    new_titles: BTreeMap::new(),
+                    renamed_releases: BTreeMap::new(),
                 })
             }
         };
-        changelog.rename_last_release(&changelog_path, package, new_version);
+        changelog.rename_last_release(&changelog_path, package, new_version)?;
     }
     Ok(changelogs
         .into_iter()
@@ -207,22 +207,32 @@ fn edit_changelogs(
 }
 
 /// Changelog with renamed releases, kept in memory until all changelogs are validated.
-struct EditedChangelog {
+struct EditedChangelog<'a> {
     /// Content of the changelog file.
     content: String,
-    /// New release titles, by the start of their range in `content`.
-    new_titles: BTreeMap<usize, (Range<usize>, String)>,
+    /// Renamed releases, by the start of their title in `content`.
+    renamed_releases: BTreeMap<usize, RenamedRelease<'a>>,
 }
 
-impl EditedChangelog {
+struct RenamedRelease<'a> {
+    /// Byte range of the title in the changelog content.
+    title_range: Range<usize>,
+    new_title: String,
+    /// The first package that renamed the release.
+    package: &'a str,
+    new_version: &'a Version,
+}
+
+impl<'a> EditedChangelog<'a> {
     /// Rename the last release of `package` from its current version to `new_version`.
     /// Log a warning if the last release of `package` isn't its current version.
+    /// Fail if another package renamed the same release to a different version.
     fn rename_last_release(
         &mut self,
         changelog_path: &Utf8Path,
-        package: &Package,
-        new_version: &Version,
-    ) {
+        package: &'a Package,
+        new_version: &'a Version,
+    ) -> anyhow::Result<()> {
         let old_version = package.version.to_string();
         // Search the file content, so that releases renamed for
         // other packages don't look like releases of this package.
@@ -232,34 +242,76 @@ impl EditedChangelog {
                 "{}: no release found in changelog {changelog_path}, so it isn't updated",
                 package.name
             );
-            return;
+            return Ok(());
         };
         if release.version != old_version {
             warn!(
                 "{}: the last release in changelog {changelog_path} is {}, not the current version {old_version}, so the changelog isn't updated",
                 package.name, release.version
             );
-            return;
+            return Ok(());
         }
-        // Replace all occurrences, because the release link contains the version too.
-        let new_title = release
-            .title
-            .replace(&old_version, &new_version.to_string());
-        // Packages can share a release, e.g. when they inherit the workspace version.
-        self.new_titles
-            .insert(release.title_range.start, (release.title_range, new_title));
+        match self.renamed_releases.entry(release.title_range.start) {
+            Entry::Vacant(entry) => {
+                entry.insert(RenamedRelease {
+                    new_title: replace_version(
+                        release.title,
+                        &old_version,
+                        &new_version.to_string(),
+                    ),
+                    title_range: release.title_range,
+                    package: &package.name,
+                    new_version,
+                });
+            }
+            // Packages can share a release, e.g. when they inherit the workspace version.
+            Entry::Occupied(entry) => {
+                let renamed = entry.get();
+                anyhow::ensure!(
+                    renamed.new_version == new_version,
+                    "can't set `{}` to {} and `{}` to {new_version}, because they share the release `{}` in changelog {changelog_path}",
+                    renamed.package,
+                    renamed.new_version,
+                    package.name,
+                    release.title,
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Content with the renamed releases, if any release was renamed.
     fn edited_content(self) -> Option<String> {
-        if self.new_titles.is_empty() {
+        if self.renamed_releases.is_empty() {
             return None;
         }
         let mut content = self.content;
         // Start from the end, so that the ranges of the other titles stay valid.
-        for (range, title) in self.new_titles.into_values().rev() {
-            content.replace_range(range, &title);
+        for release in self.renamed_releases.into_values().rev() {
+            content.replace_range(release.title_range, &release.new_title);
         }
         Some(content)
     }
+}
+
+/// Replace `old_version` with `new_version` in a release title, also in the release link.
+/// Versions that only contain `old_version` stay unchanged,
+/// like `1.2.3-rc.1` or `11.2.3` if `old_version` is `1.2.3`.
+fn replace_version(title: &str, old_version: &str, new_version: &str) -> String {
+    // Tags can have letters or `-` before the version, e.g. `v1.2.3` or `my-package-1.2.3`.
+    let extends_start = |c: char| c.is_ascii_digit() || c == '.';
+    let extends_end = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+');
+    let mut new_title = String::with_capacity(title.len());
+    let mut copied = 0;
+    for (start, _) in title.match_indices(old_version) {
+        let end = start + old_version.len();
+        if title[..start].ends_with(extends_start) || title[end..].starts_with(extends_end) {
+            continue;
+        }
+        new_title.push_str(&title[copied..start]);
+        new_title.push_str(new_version);
+        copied = end;
+    }
+    new_title.push_str(&title[copied..]);
+    new_title
 }
