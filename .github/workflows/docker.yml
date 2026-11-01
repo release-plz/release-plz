@@ -19,11 +19,14 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     with:
+      # Keep the full version as the first `match` rule:
+      # docker/metadata-action uses the first one as the image version,
+      # e.g. in the `org.opencontainers.image.version` label.
       tags: |
         type=ref,event=branch
         type=ref,event=pr
         type=sha
         type=raw,value=latest
+        type=match,pattern=release-plz-v(\d+\.\d+\.\d+),group=1
+        type=match,pattern=release-plz-v(\d+\.\d+),group=1
         type=match,pattern=release-plz-v(\d+),group=1
-        type=match,pattern=release-plz-v(\d+.\d+),group=1
-        type=match,pattern=release-plz-v(\d+.\d+.\d+),group=1
