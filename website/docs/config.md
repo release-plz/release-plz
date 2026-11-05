@@ -640,6 +640,12 @@ Pass a list of features to use for verification by `cargo publish`.
   `cargo publish`.
 - If not set or if it is empty, no list of features will be passed to `cargo publish`.
 
+[cargo-semver-checks] checks the same features as `cargo publish`: if `publish_features` is set
+to `["a", "b"]`, `release-plz` passes `--default-features --features=a,b` to it.
+Otherwise, [cargo-semver-checks] enables all features except the unstable ones.
+Set this field if some features are mutually exclusive, intentionally change the public API,
+or need dependencies that aren't available in CI.
+
 #### The `publish_all_features` field
 
 Whether to pass the `--all-features` to `cargo publish` when verifying.

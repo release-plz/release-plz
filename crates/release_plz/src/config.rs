@@ -473,6 +473,7 @@ pub struct PackageConfig {
     pub publish_no_verify: Option<bool>,
     /// # Publish Features
     /// If `["a", "b", "c"]`, add the `--features=a,b,c` flag to the `cargo publish` command.
+    /// cargo-semver-checks then checks the default features plus `a`, `b` and `c`.
     pub publish_features: Option<Vec<String>>,
     /// # Publish All Features
     /// If `true`, add the `--all-features` flag to the `cargo publish` command.
@@ -507,6 +508,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_minor_increment_regex: config.custom_minor_increment_regex,
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
+            publish_features: config.publish_features.unwrap_or_default(),
         }
     }
 }

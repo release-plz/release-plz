@@ -333,6 +333,7 @@ impl Updater<'_> {
                     let semver_check = semver_check::run_semver_check(
                         &package_path,
                         registry_package_path,
+                        package_config.publish_features(),
                         semver_check_target_dir,
                     )
                     .context("error while running cargo-semver-checks")?;
