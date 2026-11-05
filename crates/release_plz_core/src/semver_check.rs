@@ -71,6 +71,7 @@ impl TargetDir {
 pub fn run_semver_check(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
+    features: &[String],
     target_dir: TargetDir,
 ) -> anyhow::Result<SemverCheck> {
     let local_manifest = local_package.join(CARGO_TOML);
@@ -97,7 +98,7 @@ pub fn run_semver_check(
             Some(dir)
         }
     };
-    let output = command
+    command
         .args(["semver-checks", "check-release"])
         .args(["--color", "never"])
         // Only changes requiring a major bump are incompatible. Assume a minor
@@ -110,7 +111,15 @@ pub fn run_semver_check(
         // otherwise skips even when their manifest path is provided.
         .args(["--package", package_name])
         .arg("--baseline-root")
-        .arg(registry_package.join(CARGO_TOML))
+        .arg(registry_package.join(CARGO_TOML));
+    // Check the same features as `cargo publish`, i.e. the default ones plus `features`,
+    // instead of cargo-semver-checks' all-features heuristic.
+    if !features.is_empty() {
+        command
+            .arg("--default-features")
+            .args(["--features", &features.join(",")]);
+    }
+    let output = command
         .output()
         .with_context(|| format!("error while running cargo-semver-checks on {local_package:?}"))?;
 
@@ -191,7 +200,7 @@ mod tests {
         let baseline = baseline.join("wrapper");
         let current = current.join("wrapper");
         assert!(matches!(
-            run_semver_check(&current, &baseline, TargetDir::PerPackage).unwrap(),
+            run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap(),
             SemverCheck::Compatible
         ));
 
@@ -200,7 +209,7 @@ mod tests {
             "pub fn answer() -> u32 { support::answer() }\n",
         )
         .unwrap();
-        let result = run_semver_check(&current, &baseline, TargetDir::PerPackage).unwrap();
+        let result = run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap();
         assert!(
             matches!(result, SemverCheck::Incompatible(ref report) if report.contains("function_missing")),
             "expected a removed-function report for the private library, got {result:?}"
@@ -219,7 +228,7 @@ mod tests {
 
         let assert_incompatible = |source: &str, incompatible| {
             fs_err::write(current.join("src/lib.rs"), source).unwrap();
-            let result = run_semver_check(&current, &baseline, TargetDir::PerPackage).unwrap();
+            let result = run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap();
             assert_eq!(
                 matches!(result, SemverCheck::Incompatible(_)),
                 incompatible,
@@ -234,5 +243,45 @@ mod tests {
         // produce the same rustdoc JSON file. This change is only detected if the baseline
         // doesn't overwrite the current rustdoc before they are compared.
         assert_incompatible("pub fn other() -> u32 { 42 }", true);
+    }
+
+    #[test]
+    fn publish_features_exclude_other_features_from_check() {
+        let temp = Utf8TempDir::new().unwrap();
+        let baseline = temp.path().join("baseline");
+        let current = temp.path().join("current");
+        for package in [&baseline, &current] {
+            crate::test_utils::write_package(
+                package,
+                "semver-check-test",
+                "1.0.0",
+                "[features]\nextra = []\nother = []\n",
+            );
+        }
+        fs_err::write(
+            baseline.join("src/lib.rs"),
+            "pub fn answer() -> u32 { 42 }\n#[cfg(feature = \"extra\")]\npub fn gated() {}\n",
+        )
+        .unwrap();
+        fs_err::write(
+            current.join("src/lib.rs"),
+            "pub fn answer() -> u32 { 42 }\n",
+        )
+        .unwrap();
+
+        // The all-features heuristic enables `extra`, so removing `gated` is breaking.
+        let result = run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap();
+        assert!(
+            matches!(result, SemverCheck::Incompatible(_)),
+            "expected the removal to be detected, got {result:?}"
+        );
+
+        let features = ["other".to_string()];
+        let result =
+            run_semver_check(&current, &baseline, &features, TargetDir::PerPackage).unwrap();
+        assert!(
+            matches!(result, SemverCheck::Compatible),
+            "expected `extra` to be excluded from the check, got {result:?}"
+        );
     }
 }
