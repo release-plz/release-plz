@@ -495,6 +495,198 @@ fn set_version_skips_changelog_when_changelog_update_is_disabled() {
     );
 }
 
+#[test]
+fn set_version_updates_package_releases_in_shared_changelog() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    fs_err::write(
+        project_dir.join("release-plz.toml"),
+        "[workspace]\nchangelog_path = \"./CHANGELOG.md\"\n",
+    )
+    .unwrap();
+    // Release titles of the template in the "single changelog" guide of the website.
+    // The release of `one` is below the newer release of `two`,
+    // whose link contains the current version of `one` (0.1.0).
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    fs_err::write(
+        &changelog_path,
+        "\
+# Changelog
+
+## [Unreleased]
+
+## `two` - [0.2.0](https://github.com/owner/repo/compare/two-v0.1.0...two-v0.2.0) - 2024-05-17
+
+### Added
+- new feature
+
+## `one` - [0.1.0](https://github.com/owner/repo/releases/tag/one-v0.1.0) - 2024-05-16
+
+### Other
+- initial release
+",
+    )
+    .unwrap();
+
+    run_set_version(&project_dir, "one@0.1.1 two@0.3.0");
+
+    expect_test::expect![[r"
+        # Changelog
+
+        ## [Unreleased]
+
+        ## `two` - [0.3.0](https://github.com/owner/repo/compare/two-v0.1.0...two-v0.3.0) - 2024-05-17
+
+        ### Added
+        - new feature
+
+        ## `one` - [0.1.1](https://github.com/owner/repo/releases/tag/one-v0.1.1) - 2024-05-16
+
+        ### Other
+        - initial release
+    "]]
+    .assert_eq(&fs_err::read_to_string(changelog_path).unwrap());
+}
+
+#[test]
+fn set_version_updates_package_release_without_backticks() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    // Like the changelog of ratatui: release titles start with the package name
+    // without backticks, and older releases have plain titles.
+    // `one-macros` is listed first and has the same version as `one`,
+    // so a title must be ignored if the package name is only its prefix.
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let changelog = "\
+# Changelog
+
+## one-macros - [0.1.0](https://github.com/owner/repo/compare/one-macros-v0.0.1...one-macros-v0.1.0) - 2025-06-30
+
+- macros change
+
+## one - [0.1.0](https://github.com/owner/repo/compare/one-v0.0.9...one-v0.1.0) - 2025-06-30
+
+- one change
+
+## [0.0.9](https://github.com/owner/repo/releases/tag/v0.0.9) - 2025-01-14
+
+- old release
+";
+    fs_err::write(&changelog_path, changelog).unwrap();
+
+    run_set_version(&project_dir, "one@0.1.1");
+
+    assert_eq!(
+        fs_err::read_to_string(changelog_path).unwrap(),
+        changelog.replace(
+            "## one - [0.1.0](https://github.com/owner/repo/compare/one-v0.0.9...one-v0.1.0)",
+            "## one - [0.1.1](https://github.com/owner/repo/compare/one-v0.0.9...one-v0.1.1)"
+        )
+    );
+}
+
+#[test]
+fn set_version_updates_each_package_release_in_shared_workspace_changelog() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-shared-changelog");
+    // Both packages inherit the workspace version, but each one has its own release.
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let changelog = "\
+# Changelog
+
+## `two` - [1.2.3](https://github.com/owner/repo/compare/two-v1.2.2...two-v1.2.3) - 2024-05-16
+
+## `one` - [1.2.3](https://github.com/owner/repo/compare/one-v1.2.2...one-v1.2.3) - 2024-05-16
+";
+    fs_err::write(&changelog_path, changelog).unwrap();
+
+    run_set_version(&project_dir, "1.2.30");
+
+    assert_eq!(
+        fs_err::read_to_string(changelog_path).unwrap(),
+        changelog.replace("1.2.3", "1.2.30")
+    );
+}
+
+#[test]
+fn set_version_warns_when_last_release_is_not_the_current_version() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    // `one` has no release in its changelog.
+    let one_changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let one_changelog = "# Changelog\n\n## [Unreleased]\n";
+    fs_err::write(&one_changelog_path, one_changelog).unwrap();
+    // The last release of `two` is older than its current version (0.2.0).
+    let two_dir = project_dir.join("crates/two");
+    let two_changelog_path = two_dir.join(CHANGELOG_FILENAME);
+    let two_changelog = "# Changelog\n\n## [0.1.0] - 2024-05-16\n";
+    fs_err::write(&two_changelog_path, two_changelog).unwrap();
+
+    let stderr = run_set_version_with_warnings(&project_dir, "one@0.1.1 two@0.3.0");
+
+    assert!(
+        stderr.contains("one: no release found in changelog"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("two: the last release in changelog")
+            && stderr.contains("is 0.1.0, not the current version 0.2.0"),
+        "{stderr}"
+    );
+    // The versions are updated anyway: there's no release to rename in the changelogs.
+    assert_eq!(
+        read_manifest(&project_dir.join("crates/one"))["package"]["version"].as_str(),
+        Some("0.1.1")
+    );
+    assert_eq!(
+        read_manifest(&two_dir)["package"]["version"].as_str(),
+        Some("0.3.0")
+    );
+    assert_eq!(
+        fs_err::read_to_string(one_changelog_path).unwrap(),
+        one_changelog
+    );
+    assert_eq!(
+        fs_err::read_to_string(two_changelog_path).unwrap(),
+        two_changelog
+    );
+}
+
+#[test]
+fn set_version_warns_when_changelog_is_missing() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
+    fs_err::remove_file(project_dir.join(CHANGELOG_FILENAME)).unwrap();
+
+    let stderr = run_set_version_with_warnings(&project_dir, "0.1.1");
+
+    assert!(stderr.contains("changelog not found at"), "{stderr}");
+    assert_eq!(
+        read_manifest(&project_dir)["package"]["version"].as_str(),
+        Some("0.1.1")
+    );
+}
+
+#[test]
+fn set_version_does_not_write_files_if_a_changelog_is_invalid() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
+    // `two` is processed after `one`, so the files of `one` must not be
+    // written before the changelogs of all packages are validated.
+    fs_err::write(
+        project_dir.join("crates/two").join(CHANGELOG_FILENAME),
+        b"\xff not UTF-8",
+    )
+    .unwrap();
+    let files = [
+        project_dir.join("crates/one").join(CARGO_TOML),
+        project_dir.join("crates/two").join(CARGO_TOML),
+        project_dir.join(CHANGELOG_FILENAME),
+    ];
+    let original_files = files.each_ref().map(|f| fs_err::read_to_string(f).unwrap());
+
+    let stderr = run_set_version_failure(&project_dir, "one@0.1.1 two@0.3.0");
+
+    for (file, original) in files.iter().zip(original_files) {
+        assert_eq!(fs_err::read_to_string(file).unwrap(), original, "{file}");
+    }
+    assert!(stderr.contains("failed to read changelog"), "{stderr}");
+}
+
 // Keep the returned temporary directory alive for the duration of the test.
 fn copy_fixture(name: &str) -> (Utf8TempDir, Utf8PathBuf) {
     let fixture_dir = Utf8Path::new("../../tests/fixtures").join(name);
@@ -504,12 +696,13 @@ fn copy_fixture(name: &str) -> (Utf8TempDir, Utf8PathBuf) {
 }
 
 // Returns the stderr of the failed command.
-fn run_set_version_failure(project_dir: &Utf8Path, version: &str) -> String {
+fn run_set_version_failure(project_dir: &Utf8Path, args: &str) -> String {
     let manifest_path = project_dir.join(CARGO_TOML);
     let original_manifest = fs_err::read_to_string(&manifest_path).unwrap();
     let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
         .current_dir(project_dir)
-        .args(["set-version", version])
+        .arg("set-version")
+        .args(args.split(' '))
         .assert()
         .failure();
     // The command must fail before updating the manifest.
@@ -517,6 +710,18 @@ fn run_set_version_failure(project_dir: &Utf8Path, version: &str) -> String {
         fs_err::read_to_string(&manifest_path).unwrap(),
         original_manifest
     );
+    String::from_utf8_lossy(&output.get_output().stderr).into_owned()
+}
+
+// Returns the stderr of the successful command, which includes warnings.
+fn run_set_version_with_warnings(project_dir: &Utf8Path, args: &str) -> String {
+    let output = crate::helpers::cmd::release_plz_cmd(Utf8Path::new("target"))
+        .current_dir(project_dir)
+        .env("RELEASE_PLZ_LOG", "warn")
+        .arg("set-version")
+        .args(args.split(' '))
+        .assert()
+        .success();
     String::from_utf8_lossy(&output.get_output().stderr).into_owned()
 }
 

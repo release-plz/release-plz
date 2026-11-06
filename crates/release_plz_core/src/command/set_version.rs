@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, btree_map::Entry},
+    ops::Range,
+};
 
 use anyhow::Context;
 use cargo_metadata::{
@@ -7,9 +10,10 @@ use cargo_metadata::{
     semver::Version,
 };
 use cargo_utils::{LocalManifest, canonical_local_manifest, workspace_members};
+use tracing::warn;
 
 use crate::{
-    PackagePath as _, PackageUpdateConfig, UpdateConfig, changelog_parser::last_release_from_str,
+    PackagePath as _, PackageUpdateConfig, UpdateConfig, changelog_parser,
     update_request::PackagesConfig,
 };
 
@@ -82,6 +86,9 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
     };
     let updating_workspace = workspace_version.is_some();
     let changes = prepare_version_changes(&input.version_changes, &packages, updating_workspace)?;
+    // Edit the changelogs before writing any file, so that an invalid changelog
+    // doesn't leave the manifests updated.
+    let changelogs = edit_changelogs(input, &changes)?;
     if let Some(version) = workspace_version {
         // Keep version.workspace = true in the inheriting packages.
         workspace_manifest.set_workspace_version(version);
@@ -89,7 +96,6 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
             .write()
             .context("can't update workspace version")?;
     }
-    let mut updated_changelogs = BTreeSet::new();
     for (package, version) in changes {
         let package_path = package.package_path()?;
         if updating_workspace {
@@ -108,13 +114,9 @@ pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
                 &workspace_manifest.path,
             )?;
         }
-        update_package_changelog(
-            input,
-            package,
-            version,
-            updating_workspace,
-            &mut updated_changelogs,
-        )?;
+    }
+    for (changelog_path, changelog) in changelogs {
+        fs_err::write(changelog_path, changelog)?;
     }
     if cargo_lock.exists() {
         super::update::update_cargo_lock(&workspace_dir, false)?;
@@ -158,52 +160,106 @@ fn prepare_version_changes<'a>(
     Ok(changes)
 }
 
-fn update_package_changelog(
+/// Rename the last release of each package in its changelog.
+/// Returns the new content of the edited changelogs.
+fn edit_changelogs(
     input: &SetVersionRequest,
-    package: &Package,
-    new_version: &Version,
-    updating_workspace: bool,
-    updated_changelogs: &mut BTreeSet<Utf8PathBuf>,
-) -> anyhow::Result<()> {
-    let config = input.packages_config.get(&package.name);
-    if !config.should_update_changelog() {
-        return Ok(());
-    }
-    let changelog_path = crate::changelog_path(
-        package,
-        &input.metadata.workspace_root,
-        config.generic.changelog_path.as_deref(),
-    );
-    if updating_workspace {
+    changes: &[(&Package, &Version)],
+) -> anyhow::Result<BTreeMap<Utf8PathBuf, String>> {
+    // Several packages can share a changelog, including through different relative paths.
+    let mut changelogs: BTreeMap<Utf8PathBuf, EditedChangelog> = BTreeMap::new();
+    for (package, new_version) in changes {
+        let config = input.packages_config.get(&package.name);
+        if !config.should_update_changelog() {
+            continue;
+        }
+        let changelog_path = crate::changelog_path(
+            package,
+            &input.metadata.workspace_root,
+            config.generic.changelog_path.as_deref(),
+        );
+        if !changelog_path.exists() {
+            warn!(
+                "{}: changelog not found at {changelog_path}, so it isn't updated",
+                package.name
+            );
+            continue;
+        }
         let resolved_path = crate::fs_utils::canonicalize_utf8(&changelog_path)
             .with_context(|| format!("failed to resolve changelog at {changelog_path}"))?;
-        // Several packages can share a changelog, including through different relative paths.
-        if !updated_changelogs.insert(resolved_path) {
-            return Ok(());
-        }
+        let changelog = match changelogs.entry(resolved_path) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let content = fs_err::read_to_string(&changelog_path)
+                    .with_context(|| format!("failed to read changelog at {changelog_path}"))?;
+                entry.insert(EditedChangelog {
+                    content,
+                    new_titles: BTreeMap::new(),
+                })
+            }
+        };
+        changelog.rename_last_release(&changelog_path, package, new_version);
     }
-    update_changelog(&changelog_path, &package.version, new_version)
-        .with_context(|| format!("failed to update changelog at {changelog_path}"))?;
-    Ok(())
+    Ok(changelogs
+        .into_iter()
+        .filter_map(|(path, changelog)| Some((path, changelog.edited_content()?)))
+        .collect())
 }
 
-fn update_changelog(
-    changelog_path: &Utf8Path,
-    old_version: &Version,
-    new_version: &Version,
-) -> anyhow::Result<()> {
-    let changelog_content = fs_err::read_to_string(changelog_path)?;
-    let last_release = last_release_from_str(&changelog_content)?.context("no release found")?;
+/// Changelog with renamed releases, kept in memory until all changelogs are validated.
+struct EditedChangelog {
+    /// Content of the changelog file.
+    content: String,
+    /// New release titles, by the start of their range in `content`.
+    new_titles: BTreeMap<usize, (Range<usize>, String)>,
+}
 
-    let new_changelog_content = {
-        let old_title = last_release.title();
-        // replace the new version. `replacen` doesn't work, because we
-        // also want to replace the version in the release link.
-        let new_title = old_title.replace(&old_version.to_string(), &new_version.to_string());
-        changelog_content.replacen(old_title, &new_title, 1)
-    };
+impl EditedChangelog {
+    /// Rename the last release of `package` from its current version to `new_version`.
+    /// Log a warning if the last release of `package` isn't its current version.
+    fn rename_last_release(
+        &mut self,
+        changelog_path: &Utf8Path,
+        package: &Package,
+        new_version: &Version,
+    ) {
+        let old_version = package.version.to_string();
+        // Search the file content, so that releases renamed for
+        // other packages don't look like releases of this package.
+        let Some(release) = changelog_parser::last_package_release(&self.content, &package.name)
+        else {
+            warn!(
+                "{}: no release found in changelog {changelog_path}, so it isn't updated",
+                package.name
+            );
+            return;
+        };
+        if release.version != old_version {
+            warn!(
+                "{}: the last release in changelog {changelog_path} is {}, not the current version {old_version}, so the changelog isn't updated",
+                package.name, release.version
+            );
+            return;
+        }
+        // Replace all occurrences, because the release link contains the version too.
+        let new_title = release
+            .title
+            .replace(&old_version, &new_version.to_string());
+        // Packages can share a release, e.g. when they inherit the workspace version.
+        self.new_titles
+            .insert(release.title_range.start, (release.title_range, new_title));
+    }
 
-    fs_err::write(changelog_path, new_changelog_content)?;
-
-    Ok(())
+    /// Content with the renamed releases, if any release was renamed.
+    fn edited_content(self) -> Option<String> {
+        if self.new_titles.is_empty() {
+            return None;
+        }
+        let mut content = self.content;
+        // Start from the end, so that the ranges of the other titles stay valid.
+        for (range, title) in self.new_titles.into_values().rev() {
+            content.replace_range(range, &title);
+        }
+        Some(content)
+    }
 }
