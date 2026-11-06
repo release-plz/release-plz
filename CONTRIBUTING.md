@@ -67,6 +67,9 @@ cargo bench -p release-plz --bench update
 
 # Conventional-commit parsing and next-version calculation.
 cargo bench -p next_version --bench next_version
+
+# Manifest updates across independent workspace packages.
+cargo bench -p release-plz --bench manifest_updates
 ```
 
 The `update` suite creates disposable repositories and compares them with local
@@ -94,6 +97,11 @@ between iterations. The working repository is never modified by the benchmarks.
 The `next_version` suite measures fix, feature, and breaking-change histories of
 10, 100, and 1,000 commits. Input construction and correctness checks happen
 outside the timing loop.
+
+The `manifest_updates` suite isolates updating one package version in workspaces
+of 10 and 100 independent packages. It includes scanning all manifests for local
+dependency requirements, but excludes fixture creation and Cargo metadata. Each
+iteration alternates the target version; unrelated manifests stay unchanged.
 
 Pass a name filter to select a case, or `--test` to execute each selected case
 once and validate it without statistical measurement. Long-running CLI cases can
