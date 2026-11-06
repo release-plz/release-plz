@@ -167,6 +167,14 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     if !packages_to_update.updates().is_empty() {
         let unreleased_package_worktree_repo =
             Repo::new(&tmp_project_root).context("create new repo")?;
+        let unreleased_package_worktree_repo = if git_client.forge == ForgeType::Gitea {
+            crate::git::gitea_client::authenticated_repo(
+                unreleased_package_worktree_repo,
+                &git_client.remote,
+            )?
+        } else {
+            unreleased_package_worktree_repo
+        };
         let there_are_commits_to_push = unreleased_package_worktree_repo.is_clean().is_err();
         if there_are_commits_to_push {
             let opened_release_prs = opened_release_prs
@@ -382,7 +390,7 @@ fn update_pr_branch(
 
 fn reset_branch(pr: &GitPr, commits_number: usize, repository: &Repo) -> anyhow::Result<()> {
     if repository.checkout(pr.branch()).is_err() {
-        repository.git(&["pull"])?;
+        repository.pull()?;
         repository.checkout(pr.branch())?;
     };
 
