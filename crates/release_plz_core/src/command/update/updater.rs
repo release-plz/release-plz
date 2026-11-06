@@ -21,7 +21,7 @@ use tracing::{debug, info, instrument, warn};
 use crate::{
     ChangelogBuilder, ChangelogRequest, ForgeType, NO_COMMIT_ID, PackagePath as _, Project, Remote,
     RepoUrl, UpdateResult,
-    changelog_filler::{fill_commit, get_required_info},
+    changelog_filler::{self, get_required_info},
     changelog_parser,
     command::update::changelog_update::{OldChangelog, OldChangelogs},
     diff::{Commit, Diff},
@@ -387,7 +387,6 @@ impl Updater<'_> {
         repository: &Repo,
     ) -> anyhow::Result<Vec<(&'a Package, Diff)>> {
         let changelog_request: &ChangelogRequest = self.req.changelog_req();
-        let mut all_commits: HashMap<String, &Commit> = HashMap::new();
         if let Some(changelog_config) = changelog_request.changelog_config.as_ref() {
             let required_info = get_required_info(&changelog_config.changelog);
             let git_client = if required_info.is_remote_required() {
@@ -395,21 +394,18 @@ impl Updater<'_> {
             } else {
                 None
             };
-            for (_package, diff) in &mut packages_diffs {
-                for commit in &mut diff.commits {
-                    fill_commit(
-                        commit,
-                        &required_info,
-                        repository,
-                        &mut all_commits,
-                        git_client.as_ref(),
-                    )
-                    .await
-                    .context(
-                        "Failed to fetch the commit information required by the changelog template",
-                    )?;
-                }
-            }
+            let commits = packages_diffs
+                .iter_mut()
+                .flat_map(|(_package, diff)| &mut diff.commits)
+                .collect();
+            changelog_filler::fill_commits(
+                commits,
+                &required_info,
+                repository,
+                git_client.as_ref(),
+            )
+            .await
+            .context("Failed to fetch the commit information required by the changelog template")?;
         }
         Ok(packages_diffs)
     }
