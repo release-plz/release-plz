@@ -82,9 +82,9 @@ the following sections:
     — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field)
     — Features increment minor in `0.x` versions.
+  - [`git_release_body`](#the-git_release_body-field) — Customize git release body pattern.
   - [`git_release_enable`](#the-git_release_enable-field) — Enable git release.
   - [`git_release_name`](#the-git_release_name-field) — Customize git release name pattern.
-  - [`git_release_body`](#the-git_release_body-field) — Customize git release body pattern.
   - [`git_release_type`](#the-git_release_type-field) — Publish mode for git release.
   - [`git_release_draft`](#the-git_release_draft-field) — Publish git release as draft.
   - [`git_release_latest`](#the-git_release_latest-field) — Publish git release as latest.
@@ -122,9 +122,9 @@ the following sections:
     — Custom regex for minor version increments.
   - [`features_always_increment_minor`](#the-features_always_increment_minor-field-package-section)
     — Features increment minor in `0.x` versions.
+  - [`git_release_body`](#the-git_release_body-field-package-section) — Customize git release body pattern.
   - [`git_release_enable`](#the-git_release_enable-field-package-section) — Enable git release.
   - [`git_release_name`](#the-git_release_name-field-package-section) — Customize git release name pattern.
-  - [`git_release_body`](#the-git_release_body-field-package-section) — Customize git release body pattern.
   - [`git_release_type`](#the-git_release_type-field-package-section) — Git release type.
   - [`git_release_draft`](#the-git_release_draft-field-package-section) — Publish git release as draft.
   - [`git_release_latest`](#the-git_release_latest-field-package-section) — Publish git release as latest.
@@ -282,7 +282,7 @@ This field can be overridden in the [`[package]`](#the-package-section) section.
 #### The `features_always_increment_minor` field
 
 - If `true`, feature commits will always bump the minor version, even in 0.x releases.
-- If `false` (default), feature commits will only bump the minor version starting with 1.x releases.
+- If `false`, feature commits will only bump the minor version starting with 1.x releases. *(Default)*.
 
 :::warning
 This option violates the Cargo SemVer
@@ -645,7 +645,7 @@ Pass a list of features to use for verification by `cargo publish`.
 Whether to pass the `--all-features` to `cargo publish` when verifying.
 
 - If `true`, `release-plz` adds the `--all-features` flag to `cargo publish`.
-- If `false`, `release-plz` doesn't add the `--all-features` flag to `cargo publish`.
+- If `false`, `release-plz` doesn't add the `--all-features` flag to `cargo publish`. *(Default)*.
 
 #### The `publish_timeout` field
 
