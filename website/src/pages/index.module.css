@@ -16,6 +16,27 @@
   }
 }
 
+.heroVideo {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.heroVideo video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.transcript {
+  margin-top: 0.5rem;
+  text-align: left;
+}
+
+.transcript summary {
+  cursor: pointer;
+  text-align: center;
+}
+
 .buttons {
   display: flex;
   align-items: center;
