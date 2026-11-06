@@ -24,3 +24,17 @@ unpublished changes.
 ![release-plz update](https://user-images.githubusercontent.com/11428655/160762832-54300ddb-ec9c-4538-a611-c66490c47333.gif)
 
 To learn more, run `release-plz update --help`.
+
+## Shallow clones
+
+`release-plz update` and `release-plz release-pr` can use shallow clones when
+the available history is sufficient to determine the changes for each package.
+If more history is needed, release-plz fetches it from the configured upstream
+remote in batches and retries the calculation. It also checks for missing history
+on merged branches. In `git_only` mode, a missing release tag triggers a tag fetch
+before the package is treated as an initial release.
+
+Automatic fetching uses your Git credentials. If fetching fails or the remote
+cannot provide more history, release-plz returns an error before updating versions
+or changelogs. You can fetch the history yourself with `git fetch --unshallow`,
+or configure `actions/checkout` with `fetch-depth: 0`.
