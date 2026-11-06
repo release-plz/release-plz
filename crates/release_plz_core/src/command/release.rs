@@ -20,7 +20,7 @@ use tracing::{debug, info, instrument, trace, warn};
 use crate::{
     DEFAULT_BRANCH_PREFIX, GitForge, Project, ReleaseMetadata, ReleaseMetadataBuilder, Remote,
     cargo::{
-        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env,
+        CargoRegistry, CmdOutput, is_published, new_cargo_config, run_cargo_with_env_async,
         wait_until_published,
     },
     changelog_parser,
@@ -607,24 +607,67 @@ async fn release_packages(
     let mut context = ReleaseContext {
         git_client,
         pr_authors: HashMap::new(),
-        trusted_publishing_client: None,
     };
-    for package in packages {
-        if let Some(pkg_release) =
-            release_package_if_needed(input, project, package, repo, &mut context).await?
-        {
-            package_releases.push(pkg_release);
+    // Publishing and Git finalization have separate state so neither needs to lock the other.
+    let mut trusted_publishing_client = None;
+    let result = async {
+        let mut pending: Option<ReleaseInfo<'_>> = None;
+        for package in packages {
+            // A shared tag can mark several packages as released. Create it before
+            // checking the next package, as in the sequential release flow.
+            if let Some(previous) = pending.as_ref()
+                && project
+                    .git_tag(&package.name, &package.version.to_string())
+                    .is_ok_and(|tag| tag == previous.git_tag)
+                && let Some(release_info) = pending.take()
+            {
+                package_releases
+                    .push(finalize_package(input, repo, &mut context, release_info).await?);
+            }
+            let finalize = async {
+                if let Some(release_info) = pending.take() {
+                    let release = finalize_package(input, repo, &mut context, release_info).await?;
+                    package_releases.push(release);
+                }
+                anyhow::Ok(())
+            };
+            // Keep at most one publisher and one Git finalization in flight. Unlike
+            // try_join!, join! drains both operations on failure before cleanup runs.
+            let (published, finalized) = tokio::join!(
+                publish_package_if_needed(
+                    input,
+                    project,
+                    package,
+                    repo,
+                    &mut trusted_publishing_client,
+                ),
+                finalize,
+            );
+            pending = match (published, finalized) {
+                (Err(publish_error), Err(git_error)) => {
+                    return Err(publish_error
+                        .context(format!("Git finalization also failed: {git_error:#}")));
+                }
+                (published, finalized) => {
+                    finalized?;
+                    published?
+                }
+            };
         }
+        if let Some(release_info) = pending {
+            package_releases.push(finalize_package(input, repo, &mut context, release_info).await?);
+        }
+        Ok((!package_releases.is_empty()).then_some(Release {
+            releases: package_releases,
+        }))
     }
-    if let Some(tp) = context.trusted_publishing_client.as_ref()
+    .await;
+    if let Some(tp) = trusted_publishing_client.as_ref()
         && let Err(e) = tp.revoke_token().await
     {
         warn!("Failed to revoke trusted publishing token: {e:?}");
     }
-    let release = (!package_releases.is_empty()).then_some(Release {
-        releases: package_releases,
-    });
-    Ok(release)
+    result
 }
 
 /// State shared by packages within a single release invocation.
@@ -632,8 +675,6 @@ struct ReleaseContext<'a> {
     git_client: &'a GitClient,
     /// PR author usernames by PR number.
     pr_authors: HashMap<u64, String>,
-    /// The same trusted publishing token can be used for all packages.
-    trusted_publishing_client: Option<trusted_publishing::TrustedPublisher>,
 }
 
 impl ReleaseContext<'_> {
@@ -648,13 +689,13 @@ impl ReleaseContext<'_> {
     }
 }
 
-async fn release_package_if_needed(
+async fn publish_package_if_needed<'a>(
     input: &ReleaseRequest,
     project: &Project,
-    package: &Package,
+    package: &'a Package,
     repo: &Repo,
-    context: &mut ReleaseContext<'_>,
-) -> anyhow::Result<Option<PackageRelease>> {
+    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
+) -> anyhow::Result<Option<ReleaseInfo<'a>>> {
     let git_tag = project.git_tag(&package.name, &package.version.to_string())?;
     let release_name = project.release_name(&package.name, &package.version.to_string())?;
     if repo.tag_exists(&git_tag)? {
@@ -669,10 +710,10 @@ async fn release_package_if_needed(
     let prs = prs_from_text(&changelog);
     let release_info = ReleaseInfo {
         package,
-        git_tag: &git_tag,
-        release_name: &release_name,
-        changelog: &changelog,
-        prs: &prs,
+        git_tag,
+        release_name,
+        changelog,
+        prs,
     };
 
     let should_publish = input.is_publish_enabled(&package.name);
@@ -702,41 +743,34 @@ async fn release_package_if_needed(
                 info!("{} {}: already published", package.name, package.version);
                 continue;
             }
-            let package_was_released_at_index = release_package(
+            let package_was_released_at_index = publish_package(
                 input,
-                repo,
-                context,
+                trusted_publishing_client,
                 &release_info,
                 token.as_ref(),
                 &registry,
             )
             .await
-            .context("failed to release package")?;
+            .with_context(|| format!("failed to publish package {}", package.name))?;
 
             if package_was_released_at_index {
                 package_was_released = true;
             }
         }
-    } else {
+    } else if input.dry_run {
         // When publishing is disabled (e.g., git_only mode), skip registry checks entirely
         // and only perform git tag/release operations.
-        let package_was_released_result =
-            release_package_git_only(input, repo, context, &release_info)
-                .await
-                .context("failed to release package (git-only)")?;
-
-        if package_was_released_result {
-            package_was_released = true;
-        }
+        log_dry_run_info(
+            &release_info,
+            false,
+            input.is_git_tag_enabled(&package.name),
+            input.is_git_release_enabled(&package.name),
+        );
+    } else {
+        package_was_released = true;
     }
 
-    let package_release = package_was_released.then_some(PackageRelease {
-        package_name: package.name.to_string(),
-        version: package.version.clone(),
-        tag: git_tag,
-        prs,
-    });
-    Ok(package_release)
+    Ok(package_was_released.then_some(release_info))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -812,17 +846,16 @@ fn registry_indexes(
 
 struct ReleaseInfo<'a> {
     package: &'a Package,
-    git_tag: &'a str,
-    release_name: &'a str,
-    changelog: &'a str,
-    prs: &'a [Pr],
+    git_tag: String,
+    release_name: String,
+    changelog: String,
+    prs: Vec<Pr>,
 }
 
 /// Return `true` if package was published, `false` otherwise.
-async fn release_package(
+async fn publish_package(
     input: &ReleaseRequest,
-    repo: &Repo,
-    context: &mut ReleaseContext<'_>,
+    trusted_publishing_client: &mut Option<trusted_publishing::TrustedPublisher>,
     release_info: &ReleaseInfo<'_>,
     token: Option<&SecretString>,
     registry: &CargoRegistry,
@@ -831,7 +864,6 @@ async fn release_package(
     let registry_name = registry.name.as_deref();
     let is_crates_io = registry_name.is_none() || registry_name == Some("crates-io");
 
-    let should_publish = input.is_publish_enabled(&release_info.package.name);
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
@@ -841,18 +873,17 @@ async fn release_package(
         publish_token.is_none()
             && input.token.is_none()
             && is_crates_io
-            && should_publish
             && !input.dry_run
             && is_github_actions
     };
     if should_use_trusted_publishing {
-        if let Some(tp) = context.trusted_publishing_client.as_ref() {
+        if let Some(tp) = trusted_publishing_client.as_ref() {
             publish_token = Some(tp.token().clone());
         } else {
             match trusted_publishing::TrustedPublisher::crates_io().await {
                 Ok(tp) => {
                     publish_token = Some(tp.token().clone());
-                    context.trusted_publishing_client = Some(tp);
+                    *trusted_publishing_client = Some(tp);
                 }
                 Err(e) => {
                     warn!("Failed to use trusted publishing: {e:#}. Proceeding without it.");
@@ -861,74 +892,66 @@ async fn release_package(
         }
     }
 
-    if should_publish {
-        // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
-        let output = run_cargo_publish(
-            release_info.package,
-            input,
+    // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
+    let output = run_cargo_publish(
+        release_info.package,
+        input,
+        workspace_root,
+        &publish_token,
+        registry_name,
+    )
+    .await
+    .context("failed to run cargo publish")?;
+    if !output.status.success()
+        || !output.stderr.contains("Uploading")
+        || output.stderr.contains("error:")
+    {
+        if is_already_published(&output, release_info) {
+            info!(
+                "skipping publish of {} {}: already published",
+                release_info.package.name, release_info.package.version
+            );
+            return Ok(false);
+        } else {
+            anyhow::bail!(
+                "failed to publish {}: {}",
+                release_info.package.name,
+                output.stderr
+            );
+        }
+    }
+    // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
+    // publish registry) or if `cargo publish` didn't confirm the package.
+    if !input.dry_run
+        && (registry.has_remote_mirror
+            || !is_publish_confirmed_by_cargo(&output, release_info.package))
+    {
+        wait_until_published(
             workspace_root,
-            &publish_token,
+            release_info.package,
+            input.publish_timeout,
             registry_name,
+            token,
         )
-        .context("failed to run cargo publish")?;
-        if !output.status.success()
-            || !output.stderr.contains("Uploading")
-            || output.stderr.contains("error:")
-        {
-            if is_already_published(&output, release_info) {
-                info!(
-                    "skipping publish of {} {}: already published",
-                    release_info.package.name, release_info.package.version
-                );
-                return Ok(false);
-            } else {
-                anyhow::bail!(
-                    "failed to publish {}: {}",
-                    release_info.package.name,
-                    output.stderr
-                );
-            }
-        }
-        // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
-        // publish registry) or if `cargo publish` didn't confirm the package.
-        if !input.dry_run
-            && (registry.has_remote_mirror
-                || !is_publish_confirmed_by_cargo(&output, release_info.package))
-        {
-            wait_until_published(
-                workspace_root,
-                release_info.package,
-                input.publish_timeout,
-                registry_name,
-                token,
-            )
-            .await?;
-        }
+        .await?;
     }
 
     if input.dry_run {
         log_dry_run_info(
             release_info,
-            should_publish,
+            true,
             should_create_git_tag,
             should_create_git_release,
         );
         Ok(false)
     } else {
-        create_git_tag_and_release(
-            input,
-            repo,
-            context,
-            release_info,
-            should_create_git_tag,
-            should_create_git_release,
-        )
-        .await?;
-
         info!(
-            "published {} {}",
-            release_info.package.name, release_info.package.version
+            "published {} {} to {}",
+            release_info.package.name,
+            release_info.package.version,
+            registry_name.unwrap_or("crates.io")
         );
+
         Ok(true)
     }
 }
@@ -967,44 +990,49 @@ fn is_already_published(output: &CmdOutput, release_info: &ReleaseInfo<'_>) -> b
         .any(|message| output.stderr.contains(message))
 }
 
-/// Release a package without publishing to any registry (git-only mode).
-/// This only creates git tags and git releases.
-///
-/// Return `true` if package was released, `false` otherwise.
-async fn release_package_git_only(
+/// Finalize a package after publication to all its registries, or in git-only mode.
+async fn finalize_package(
     input: &ReleaseRequest,
     repo: &Repo,
     context: &mut ReleaseContext<'_>,
-    release_info: &ReleaseInfo<'_>,
-) -> anyhow::Result<bool> {
+    release_info: ReleaseInfo<'_>,
+) -> anyhow::Result<PackageRelease> {
     let should_create_git_tag = input.is_git_tag_enabled(&release_info.package.name);
     let should_create_git_release = input.is_git_release_enabled(&release_info.package.name);
 
-    if input.dry_run {
-        log_dry_run_info(
-            release_info,
-            false, // should_publish is always false in git-only mode
-            should_create_git_tag,
-            should_create_git_release,
-        );
-        Ok(false)
-    } else {
-        create_git_tag_and_release(
-            input,
-            repo,
-            context,
-            release_info,
-            should_create_git_tag,
-            should_create_git_release,
+    create_git_tag_and_release(
+        input,
+        repo,
+        context,
+        &release_info,
+        should_create_git_tag,
+        should_create_git_release,
+    )
+    .await
+    .with_context(|| {
+        format!(
+            "failed to finalize release of {}",
+            release_info.package.name
         )
-        .await?;
+    })?;
 
+    if input.is_publish_enabled(&release_info.package.name) {
+        info!(
+            "released {} {}",
+            release_info.package.name, release_info.package.version
+        );
+    } else {
         info!(
             "released {} {} (git-only)",
             release_info.package.name, release_info.package.version
         );
-        Ok(true)
     }
+    Ok(PackageRelease {
+        package_name: release_info.package.name.to_string(),
+        version: release_info.package.version.clone(),
+        tag: release_info.git_tag,
+        prs: release_info.prs,
+    })
 }
 
 /// Create git tag and/or git release for a package.
@@ -1027,13 +1055,13 @@ async fn create_git_tag_and_release(
             .map(|s| s.trim() == "true")?;
         // If tag signing is enabled, create the tag locally instead of using the API
         if should_sign_tags {
-            repo.tag(release_info.git_tag, &message)?;
-            repo.push(release_info.git_tag)?;
+            repo.tag(&release_info.git_tag, &message)?;
+            repo.push(&release_info.git_tag)?;
         } else {
             let sha = repo.current_commit_hash()?;
             context
                 .git_client
-                .create_tag(release_info.git_tag, &message, &sha)
+                .create_tag(&release_info.git_tag, &message, &sha)
                 .await
                 .with_context(|| format!("failed to create tag `{}`", release_info.git_tag))?;
         }
@@ -1063,12 +1091,16 @@ async fn create_git_tag_and_release(
             link: String::new(),
             contributors,
         };
-        let release_body =
-            release_body(input, release_info.package, release_info.changelog, &remote);
+        let release_body = release_body(
+            input,
+            release_info.package,
+            &release_info.changelog,
+            &remote,
+        );
         let is_pre_release = release_config.is_pre_release(&release_info.package.version);
         let git_release_info = GitReleaseInfo {
-            git_tag: release_info.git_tag.to_string(),
-            release_name: release_info.release_name.to_string(),
+            git_tag: release_info.git_tag.clone(),
+            release_name: release_info.release_name.clone(),
             release_body,
             draft: release_config.draft,
             latest: release_config.latest,
@@ -1119,7 +1151,7 @@ async fn get_contributors(
     context: &mut ReleaseContext<'_>,
 ) -> anyhow::Result<Vec<RemoteContributor>> {
     let mut contributors: Vec<RemoteContributor> = vec![];
-    for pr in release_info.prs {
+    for pr in &release_info.prs {
         let username = context.pr_author(pr.number).await?;
         if !contributors
             .iter()
@@ -1179,7 +1211,7 @@ fn cargo_registry_token_env_var(registry: Option<&str>) -> anyhow::Result<String
     }
 }
 
-fn run_cargo_publish(
+async fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
@@ -1224,7 +1256,7 @@ fn run_cargo_publish(
     let envs = token
         .map(|token| vec![(token_env_var, token.clone())])
         .unwrap_or_default();
-    run_cargo_with_env(workspace_root, &args, &envs)
+    run_cargo_with_env_async(workspace_root, &args, &envs).await
 }
 
 /// Return an empty string if the changelog cannot be parsed.
