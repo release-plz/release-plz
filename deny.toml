@@ -88,6 +88,12 @@ ignore = [
     # (whizsid/wasmtimer-rs#32 replaces it with pin-project-lite).
     # Remove this exception once a fixed wasmtimer is released.
     { id = "RUSTSEC-2026-0441", reason = "Unmaintained-crate advisory; reqwest-retry only compiles wasmtimer for wasm32, which release-plz does not target." },
+    # libsqlite3-sys is only pulled in by cargo -> rusqlite. cargo 0.100.0 is the
+    # latest release and requires rusqlite ^0.40, which requires libsqlite3-sys
+    # ^0.38, so the patched libsqlite3-sys >=0.39.0 (rusqlite 0.41) cannot be
+    # selected yet. Remove this exception once a cargo release supports
+    # rusqlite 0.41.
+    { id = "RUSTSEC-2026-0459", reason = "cargo only opens its global cache tracker database in $CARGO_HOME; a party able to write that file and its -wal already controls cargo's config, credentials and installed binaries." },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
