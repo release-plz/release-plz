@@ -7,6 +7,7 @@ mod clone;
 mod command;
 mod copy_dir;
 mod diff;
+pub mod dist;
 mod download;
 pub mod fs_utils;
 mod git;

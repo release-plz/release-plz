@@ -3,7 +3,8 @@
 The GitHub action accepts the following input variables:
 
 - `command`: The release-plz command to run. Accepted values: `release-pr`,
-  `release`. *(By default it runs both commands).*
+  `release`, `dist build`, and `dist finalize`.
+  *(By default it runs `release-pr` and `release`.)*
 - `registry`: Registry where the packages are stored.
   The registry name needs to be present in the Cargo config.
   If unspecified, the `publish` field of the package manifest is used.
@@ -27,6 +28,12 @@ The GitHub action accepts the following input variables:
   the `--dry-run` flag is only added to the `release` command
   (the flag isn't added to the `release-pr` command).
   Useful if you're only interested in whether or not a release (pr) would be created.
+
+When the action runs `dist build` or `dist finalize`, it installs cargo-dist,
+checks out the tag from the distribution dispatch event, and passes the job
+matrix context to release-plz automatically.
+See [Releasing binaries](../extra/releasing-binaries.md) for the optional Cargo
+profile and required workflow. These commands require GitHub.com and `contents: write`.
 
 You can specify the input variables by using the `with` keyword.
 For example:
