@@ -17,7 +17,7 @@ use regex::Regex;
 use serde::Serialize;
 use tracing::warn;
 
-use crate::{PackagePath as _, changelog_parser};
+use crate::{PackagePath as _, changelog_header::replace_unreleased, changelog_parser};
 
 pub const CHANGELOG_HEADER: &str = r"# Changelog
 
@@ -86,6 +86,7 @@ impl<'a> Changelog<'a> {
     pub fn prepend(mut self, old_changelog: impl Into<String>) -> anyhow::Result<String> {
         let old_changelog: String = old_changelog.into();
         if is_version_unchanged(&self.release) {
+            tracing::debug!("Version is unchanged, not updating changelog");
             // The changelog already contains this version, so we don't update the changelog.
             return Ok(old_changelog);
         }
@@ -149,6 +150,7 @@ fn compose_changelog(
         .strip_prefix(&header_to_strip)
         .unwrap_or(generated.as_str());
     let old_body = old_changelog.strip_prefix(header).unwrap_or(old_changelog);
+    let header = replace_unreleased(header, "aaaa");
     Ok(format!("{header}{generated_body}{old_body}"))
 }
 
@@ -475,8 +477,10 @@ fn kac_commit_parsers() -> Vec<CommitParser> {
 }
 
 pub fn default_changelog_config(header: Option<String>) -> ChangelogConfig {
+    let header = header.unwrap_or(String::from(CHANGELOG_HEADER));
+    let header = replace_unreleased(&header, "aaaa");
     ChangelogConfig {
-        header: Some(header.unwrap_or(String::from(CHANGELOG_HEADER))),
+        header: Some(header),
         body: default_changelog_body_config().to_string(),
         footer: None,
         postprocessors: vec![],
@@ -525,7 +529,7 @@ mod tests {
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-            ## [Unreleased]
+            ## [Unreleased](aaaa)
 
             ## [1.1.1] - 2015-05-15
 
@@ -559,7 +563,7 @@ mod tests {
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-            ## [Unreleased]
+            ## [Unreleased](aaaa)
 
             ## [1.1.1](https://github.com/release-plz/release-plz/compare/release-plz-v0.2.24...release-plz-v0.2.25) - 2015-05-15
 
@@ -598,7 +602,7 @@ mod tests {
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-            ## [Unreleased]
+            ## [Unreleased](aaaa)
 
             ## [1.1.2] - 2015-05-15
 
@@ -652,7 +656,7 @@ mod tests {
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-            ## [Unreleased]
+            ## [Unreleased](aaaa)
 
             ## [1.1.1] - 2015-05-15
 
@@ -706,7 +710,7 @@ mod tests {
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-            ## [Unreleased]
+            ## [Unreleased](aaaa)
 
             ## [1.1.1] - 2015-05-15
 
@@ -794,7 +798,7 @@ mod tests {
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-            ## [Unreleased]
+            ## [Unreleased](aaaa)
 
             ## [1.1.1] - 2015-05-15
 
@@ -809,6 +813,7 @@ mod tests {
 
 #[test]
 fn empty_changelog_is_updated() {
+    test_logs::init();
     let commits = vec![
         Commit::new(crate::NO_COMMIT_ID.to_string(), "fix: myfix".to_string()),
         Commit::new(crate::NO_COMMIT_ID.to_string(), "simple update".to_string()),
@@ -825,7 +830,7 @@ fn empty_changelog_is_updated() {
         The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
         and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-        ## [Unreleased]
+        ## [Unreleased](aaaa)
 
         ## [1.1.1] - 2015-05-15
 
