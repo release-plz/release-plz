@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import Tweets from "@site/src/data/feedback";
 import clsx from "clsx";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
@@ -19,11 +19,7 @@ function HomepageHeader() {
     <header className={clsx("hero hero--primary", styles.heroBanner)}>
       <div className="container">
         <h1 className="hero__title">RELEASE-PLZ</h1>
-        <img
-          alt="Release-plz Logo"
-          src="img/robot.jpeg"
-          style={{ maxHeight: 500, maxWidth: "100%" }}
-        />
+        <HeroVideo />
         <p className="hero__subtitle">
           Release Rust crates from <b>CI</b> with a <b>Release PR</b>
         </p>
@@ -38,6 +34,72 @@ function HomepageHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+function HeroVideo() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Autoplay from JS instead of using the `autoplay` attribute, so that:
+  // - users who prefer reduced motion only see the poster until they press play.
+  // - the video doesn't compete for bandwidth with the page resources.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    // Browsers only allow autoplay of muted videos.
+    video.muted = true;
+    // Autoplay can still be blocked (e.g. in low power mode). Users can press play.
+    video.play().catch(() => {});
+  }, []);
+
+  return (
+    <div className={styles.heroVideo}>
+      <video
+        ref={videoRef}
+        aria-label="Release-plz explainer video"
+        controls
+        loop
+        muted
+        playsInline
+        preload="none"
+        poster="img/release-plz-video-poster.webp"
+        width={1920}
+        height={1080}
+      >
+        <source src="video/release-plz-av1.mp4" type='video/mp4; codecs="av01.0.08M.08"' />
+        <source src="video/release-plz-h264.mp4" type="video/mp4" />
+      </video>
+      <details className={styles.transcript}>
+        <summary>Video transcript</summary>
+        <ol>
+          <li>Release-plz: release Rust crates from CI with a Release PR.</li>
+          <li>
+            The old way, releasing by hand: bump the version in Cargo.toml, write the changelog, run
+            cargo publish, create and push a git tag, draft the GitHub release. Tedious.
+            Error-prone.
+          </li>
+          <li>Step 1: merge to main as usual. Release-plz opens a Release PR.</li>
+          <li>
+            Step 2: review the Release PR. It contains the next version, computed from conventional
+            commits; the changelog, written by git-cliff; and the breaking changes, found by
+            cargo-semver-checks.
+          </li>
+          <li>Step 3: happy with it? Merge.</li>
+          <li>
+            Step 4: release-plz ships it: git tag, crates.io publish, and release notes on GitHub,
+            Gitea or GitLab. Straight from CI. No terminal needed.
+          </li>
+          <li>
+            Built for Rust, batteries included: workspaces (many crates, one PR), zero config (reads
+            your Cargo.toml), any registry (crates.io or your own), semver checks (no surprise
+            breakage), changelogs (powered by git-cliff), runs anywhere (GitHub Action or CLI).
+          </li>
+          <li>Release-plz. Stop releasing by hand.</li>
+        </ol>
+      </details>
+    </div>
   );
 }
 
