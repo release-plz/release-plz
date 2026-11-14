@@ -441,7 +441,7 @@
         },
         "publish_features": {
           "title": "Publish Features",
-          "description": "If `[\"a\", \"b\", \"c\"]`, add the `--features=a,b,c` flag to the `cargo publish` command.",
+          "description": "If `[\"a\", \"b\", \"c\"]`, add the `--features=a,b,c` flag to the `cargo publish` command.\ncargo-semver-checks then checks the default features plus `a`, `b` and `c`.",
           "type": [
             "array",
             "null"
@@ -770,7 +770,7 @@
         },
         "publish_features": {
           "title": "Publish Features",
-          "description": "If `[\"a\", \"b\", \"c\"]`, add the `--features=a,b,c` flag to the `cargo publish` command.",
+          "description": "If `[\"a\", \"b\", \"c\"]`, add the `--features=a,b,c` flag to the `cargo publish` command.\ncargo-semver-checks then checks the default features plus `a`, `b` and `c`.",
           "type": [
             "array",
             "null"
