@@ -115,6 +115,17 @@ pub fn run_semver_check(
     // Check the same features as `cargo publish`, i.e. the default ones plus `features`,
     // instead of cargo-semver-checks' all-features heuristic.
     if !features.is_empty() {
+        // cargo-semver-checks enables features in a dependency declaration, which rejects
+        // `package/feature`, so pass only this package's features, unqualified.
+        let package_prefix = format!("{package_name}/");
+        let features = features
+            .iter()
+            .filter_map(|feature| match feature.strip_prefix(&package_prefix) {
+                Some(own_feature) => Some(own_feature),
+                None if feature.contains('/') => None,
+                None => Some(feature.as_str()),
+            })
+            .collect::<Vec<_>>();
         command
             .arg("--default-features")
             .args(["--features", &features.join(",")]);
@@ -282,6 +293,18 @@ mod tests {
         assert!(
             matches!(result, SemverCheck::Compatible),
             "expected `extra` to be excluded from the check, got {result:?}"
+        );
+
+        // `cargo publish` also accepts features qualified with this package or a dependency.
+        let features = [
+            "semver-check-test/extra".to_string(),
+            "dependency/feature".to_string(),
+        ];
+        let result =
+            run_semver_check(&current, &baseline, &features, TargetDir::PerPackage).unwrap();
+        assert!(
+            matches!(result, SemverCheck::Incompatible(_)),
+            "expected `semver-check-test/extra` to be checked, got {result:?}"
         );
     }
 }
