@@ -118,12 +118,15 @@ pub fn run_semver_check(
         // cargo-semver-checks enables features in a dependency declaration, which rejects
         // `package/feature`, so pass only this package's features, unqualified.
         let package_prefix = format!("{package_name}/");
+        // Split like cargo does, since an entry can hold several features.
+        let features = features.join(",");
         let features = features
-            .iter()
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|feature| !feature.is_empty())
             .filter_map(|feature| match feature.strip_prefix(&package_prefix) {
                 Some(own_feature) => Some(own_feature),
                 None if feature.contains('/') => None,
-                None => Some(feature.as_str()),
+                None => Some(feature),
             })
             .collect::<Vec<_>>();
         command
@@ -295,9 +298,10 @@ mod tests {
             "expected `extra` to be excluded from the check, got {result:?}"
         );
 
-        // `cargo publish` also accepts features qualified with this package or a dependency.
+        // `cargo publish` also accepts comma-separated entries and features qualified
+        // with this package or a dependency.
         let features = [
-            "semver-check-test/extra".to_string(),
+            "other,semver-check-test/extra".to_string(),
             "dependency/feature".to_string(),
         ];
         let result =
