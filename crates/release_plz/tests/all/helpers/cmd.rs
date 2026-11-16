@@ -11,7 +11,6 @@ pub fn release_plz_cmd(target_dir: &Utf8Path) -> Command {
     cmd
 }
 
-/// Use instead of `Command::new("cargo")`. See `allow_cargo_warnings`.
 pub fn cargo_cmd() -> Command {
     let mut cmd = Command::new("cargo");
     allow_cargo_warnings(&mut cmd);
