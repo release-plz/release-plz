@@ -51,7 +51,7 @@ impl TestPackage {
             PackageType::Bin => vec!["init"],
             PackageType::Lib => vec!["init", "--lib"],
         };
-        assert_cmd::Command::new("cargo")
+        super::cmd::cargo_cmd()
             .current_dir(crate_dir)
             .args(&args)
             .assert()
@@ -61,7 +61,7 @@ impl TestPackage {
 
     pub fn write_dependencies(&self, crate_dir: &Utf8Path) {
         for dep in &self.path_dependencies {
-            assert_cmd::Command::new("cargo")
+            super::cmd::cargo_cmd()
                 .current_dir(crate_dir)
                 .args(["add", "--path", dep])
                 .assert()
