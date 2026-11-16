@@ -2,6 +2,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
     TEST_REGISTRY,
+    cmd::cargo_cmd,
     package::{PackageType, TestPackage},
     release_stdout,
     test_context::TestContext,
@@ -1144,7 +1145,7 @@ async fn git_only_update_handles_root_package_path_dependencies() {
         .with_type(PackageType::Lib)
         .cargo_init(&mylib_dir);
 
-    assert_cmd::Command::new("cargo")
+    cargo_cmd()
         .current_dir(context.repo_dir())
         .args(["add", "--path", "crates/mylib"])
         .assert()
@@ -1693,7 +1694,7 @@ async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
         manifest.write().unwrap();
         let token_env_var =
             cargo_utils::cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
-        assert_cmd::Command::new("cargo")
+        cargo_cmd()
             .current_dir(context.repo_dir())
             .env("CARGO_TARGET_DIR", context.cargo_target_dir())
             .env(token_env_var, format!("Bearer {}", context.gitea.token))
@@ -1719,7 +1720,7 @@ async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
     manifest.write().unwrap();
     context.run_cargo_check();
     let update_test_dependency = |version| {
-        assert_cmd::Command::new("cargo")
+        cargo_cmd()
             .current_dir(context.repo_dir())
             .args([
                 "update",

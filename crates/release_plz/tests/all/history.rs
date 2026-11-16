@@ -5,6 +5,7 @@ use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
 use crate::helpers::{
+    cmd::cargo_cmd,
     locked_metadata,
     package::{PackageType, TestPackage},
     test_context::TestContext,
@@ -1391,7 +1392,7 @@ async fn workspace_dependency_updates_are_detected_without_package_commits() {
         if update_lockfile {
             repo.add_all_and_commit("chore: bump dependency").unwrap();
             history.run_cargo_publish("history-dependency");
-            assert_cmd::Command::new("cargo")
+            cargo_cmd()
                 .current_dir(repo.directory())
                 .arg("update")
                 .assert()

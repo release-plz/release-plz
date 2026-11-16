@@ -1,11 +1,11 @@
 use crate::helpers::{
     TEST_REGISTRY, assert_cargo_semver_checks_is_installed, assert_locked_versions,
+    cmd::cargo_cmd,
     package::{PackageType, TestPackage},
     release_pr_stdout, release_stdout,
     test_context::TestContext,
     today,
 };
-use assert_cmd::Command;
 use cargo_metadata::semver::Version;
 use cargo_utils::{CARGO_TOML, LocalManifest, cargo_registries_token_env_var_name};
 
@@ -905,7 +905,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     // Publish the dependency first so the registry can resolve it.
     let publish_dep = || {
         let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
-        Command::new("cargo")
+        cargo_cmd()
             .current_dir(&dep_dir)
             .env("CARGO_TARGET_DIR", context.cargo_target_dir())
             .env(token_env_var, format!("Bearer {}", context.gitea.token))
@@ -941,7 +941,7 @@ async fn release_plz_detects_cargo_lock_updates_from_registry() {
     publish_dep();
 
     // Update Cargo.lock without modifying Cargo.toml.
-    Command::new("cargo")
+    cargo_cmd()
         .current_dir(context.repo_dir())
         .env("CARGO_TARGET_DIR", context.cargo_target_dir())
         .args(["update", "-p", dep_name])
