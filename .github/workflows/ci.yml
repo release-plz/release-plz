@@ -37,6 +37,10 @@ jobs:
         working-directory: ./tests
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
+        with:
+          # Tests run cargo on generated packages with unused dependencies.
+          # Clippy denies warnings in this repository.
+          build-warnings: warn
       - name: Run tests
         run: cargo test --all-features --workspace
 
