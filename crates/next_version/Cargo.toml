@@ -15,3 +15,10 @@ workspace = true
 regex.workspace = true
 semver.workspace = true
 git-conventional.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "next_version"
+harness = false
