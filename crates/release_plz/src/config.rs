@@ -477,6 +477,7 @@ pub struct PackageConfig {
     pub publish_features: Option<Vec<String>>,
     /// # Publish All Features
     /// If `true`, add the `--all-features` flag to the `cargo publish` command.
+    /// cargo-semver-checks then checks all features.
     pub publish_all_features: Option<bool>,
     /// # Semver Check
     /// Controls when to run cargo-semver-checks.
@@ -509,6 +510,7 @@ impl From<PackageConfig> for release_plz_core::UpdateConfig {
             custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
             publish_features: config.publish_features.unwrap_or_default(),
+            publish_all_features: config.publish_all_features == Some(true),
         }
     }
 }

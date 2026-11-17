@@ -30,9 +30,10 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
-    /// Features passed to `cargo publish`. If not empty, cargo-semver-checks
-    /// checks only the default features plus these.
+    /// Features passed to `cargo publish`. cargo-semver-checks checks the same features.
     pub publish_features: Vec<String>,
+    /// Whether `cargo publish` enables all features. cargo-semver-checks does the same.
+    pub publish_all_features: bool,
 }
 
 /// Package-specific config
@@ -76,6 +77,10 @@ impl PackageUpdateConfig {
     pub fn publish_features(&self) -> &[String] {
         &self.generic.publish_features
     }
+
+    pub fn publish_all_features(&self) -> bool {
+        self.generic.publish_all_features
+    }
 }
 
 impl Default for UpdateConfig {
@@ -92,6 +97,7 @@ impl Default for UpdateConfig {
             custom_minor_increment_regex: None,
             custom_major_increment_regex: None,
             publish_features: vec![],
+            publish_all_features: false,
         }
     }
 }

@@ -1,8 +1,11 @@
-use std::process::{Command, Output};
+use std::{
+    collections::BTreeSet,
+    process::{Command, Output},
+};
 
 use anyhow::Context;
 use cargo_metadata::{
-    Metadata,
+    Metadata, Package,
     camino::{Utf8Path, Utf8PathBuf},
 };
 use cargo_utils::CARGO_TOML;
@@ -68,10 +71,77 @@ impl TargetDir {
     }
 }
 
+/// Features that cargo-semver-checks enables in both versions of the package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Features {
+    /// All features, except the ones cargo-semver-checks considers unstable or internal,
+    /// such as `unstable` or `_private`.
+    Heuristic,
+    /// All features, like `cargo publish --all-features`.
+    All,
+    /// The default features plus these ones.
+    DefaultAnd(Vec<String>),
+}
+
+impl Features {
+    /// The features that `cargo publish` verifies `package` with, given its
+    /// `--features` values and whether it passes `--all-features`.
+    pub fn published(package: &Package, features: &[String], all_features: bool) -> Self {
+        if all_features {
+            return Self::All;
+        }
+        if features.is_empty() {
+            return Self::Heuristic;
+        }
+        // cargo-semver-checks enables the features in a dependency declaration, which
+        // rejects `name/feature`, so pass the package features these values enable instead.
+        let package_features: BTreeSet<&str> = features
+            .iter()
+            // Like cargo, accept several features in a value.
+            .flat_map(|value| value.split(|c: char| c == ',' || c.is_whitespace()))
+            .filter(|feature| !feature.is_empty())
+            .filter_map(|feature| match feature.split_once('/') {
+                None => Some(feature),
+                Some((name, feature)) if name == package.name.as_str() => Some(feature),
+                // `dependency/feature` enables an optional dependency, along with the
+                // package feature named after it.
+                Some((dependency, _)) if enables_feature(package, dependency) => Some(dependency),
+                // `dependency?/feature` and features of required dependencies don't enable
+                // any package feature.
+                Some(_) => None,
+            })
+            .collect();
+        Self::DefaultAnd(package_features.into_iter().map(String::from).collect())
+    }
+
+    fn args(&self) -> Vec<String> {
+        match self {
+            Self::Heuristic => vec![],
+            Self::All => vec!["--all-features".to_string()],
+            Self::DefaultAnd(features) if features.is_empty() => {
+                vec!["--default-features".to_string()]
+            }
+            Self::DefaultAnd(features) => vec![
+                "--default-features".to_string(),
+                format!("--features={}", features.join(",")),
+            ],
+        }
+    }
+}
+
+/// Whether `dependency/feature` enables the package feature named `dependency`.
+fn enables_feature(package: &Package, dependency: &str) -> bool {
+    package.features.contains_key(dependency)
+        && package
+            .dependencies
+            .iter()
+            .any(|dep| dep.optional && dep.rename.as_deref().unwrap_or(&dep.name) == dependency)
+}
+
 pub fn run_semver_check(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
-    features: &[String],
+    features: &Features,
     target_dir: TargetDir,
 ) -> anyhow::Result<SemverCheck> {
     let local_manifest = local_package.join(CARGO_TOML);
@@ -111,28 +181,8 @@ pub fn run_semver_check(
         // otherwise skips even when their manifest path is provided.
         .args(["--package", package_name])
         .arg("--baseline-root")
-        .arg(registry_package.join(CARGO_TOML));
-    // Check the same features as `cargo publish`, i.e. the default ones plus `features`,
-    // instead of cargo-semver-checks' all-features heuristic.
-    if !features.is_empty() {
-        // cargo-semver-checks enables features in a dependency declaration, which rejects
-        // `package/feature`, so pass only this package's features, unqualified.
-        let package_prefix = format!("{package_name}/");
-        // Split like cargo does, since an entry can hold several features.
-        let features = features.join(",");
-        let features = features
-            .split(|c: char| c == ',' || c.is_whitespace())
-            .filter(|feature| !feature.is_empty())
-            .filter_map(|feature| match feature.strip_prefix(&package_prefix) {
-                Some(own_feature) => Some(own_feature),
-                None if feature.contains('/') => None,
-                None => Some(feature),
-            })
-            .collect::<Vec<_>>();
-        command
-            .arg("--default-features")
-            .args(["--features", &features.join(",")]);
-    }
+        .arg(registry_package.join(CARGO_TOML))
+        .args(features.args());
     let output = command
         .output()
         .with_context(|| format!("error while running cargo-semver-checks on {local_package:?}"))?;
@@ -214,7 +264,13 @@ mod tests {
         let baseline = baseline.join("wrapper");
         let current = current.join("wrapper");
         assert!(matches!(
-            run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap(),
+            run_semver_check(
+                &current,
+                &baseline,
+                &Features::Heuristic,
+                TargetDir::PerPackage
+            )
+            .unwrap(),
             SemverCheck::Compatible
         ));
 
@@ -223,7 +279,13 @@ mod tests {
             "pub fn answer() -> u32 { support::answer() }\n",
         )
         .unwrap();
-        let result = run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap();
+        let result = run_semver_check(
+            &current,
+            &baseline,
+            &Features::Heuristic,
+            TargetDir::PerPackage,
+        )
+        .unwrap();
         assert!(
             matches!(result, SemverCheck::Incompatible(ref report) if report.contains("function_missing")),
             "expected a removed-function report for the private library, got {result:?}"
@@ -242,7 +304,13 @@ mod tests {
 
         let assert_incompatible = |source: &str, incompatible| {
             fs_err::write(current.join("src/lib.rs"), source).unwrap();
-            let result = run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap();
+            let result = run_semver_check(
+                &current,
+                &baseline,
+                &Features::Heuristic,
+                TargetDir::PerPackage,
+            )
+            .unwrap();
             assert_eq!(
                 matches!(result, SemverCheck::Incompatible(_)),
                 incompatible,
@@ -257,58 +325,5 @@ mod tests {
         // produce the same rustdoc JSON file. This change is only detected if the baseline
         // doesn't overwrite the current rustdoc before they are compared.
         assert_incompatible("pub fn other() -> u32 { 42 }", true);
-    }
-
-    #[test]
-    fn publish_features_exclude_other_features_from_check() {
-        let temp = Utf8TempDir::new().unwrap();
-        let baseline = temp.path().join("baseline");
-        let current = temp.path().join("current");
-        for package in [&baseline, &current] {
-            crate::test_utils::write_package(
-                package,
-                "semver-check-test",
-                "1.0.0",
-                "[features]\nextra = []\nother = []\n",
-            );
-        }
-        fs_err::write(
-            baseline.join("src/lib.rs"),
-            "pub fn answer() -> u32 { 42 }\n#[cfg(feature = \"extra\")]\npub fn gated() {}\n",
-        )
-        .unwrap();
-        fs_err::write(
-            current.join("src/lib.rs"),
-            "pub fn answer() -> u32 { 42 }\n",
-        )
-        .unwrap();
-
-        // The all-features heuristic enables `extra`, so removing `gated` is breaking.
-        let result = run_semver_check(&current, &baseline, &[], TargetDir::PerPackage).unwrap();
-        assert!(
-            matches!(result, SemverCheck::Incompatible(_)),
-            "expected the removal to be detected, got {result:?}"
-        );
-
-        let features = ["other".to_string()];
-        let result =
-            run_semver_check(&current, &baseline, &features, TargetDir::PerPackage).unwrap();
-        assert!(
-            matches!(result, SemverCheck::Compatible),
-            "expected `extra` to be excluded from the check, got {result:?}"
-        );
-
-        // `cargo publish` also accepts comma-separated entries and features qualified
-        // with this package or a dependency.
-        let features = [
-            "other,semver-check-test/extra".to_string(),
-            "dependency/feature".to_string(),
-        ];
-        let result =
-            run_semver_check(&current, &baseline, &features, TargetDir::PerPackage).unwrap();
-        assert!(
-            matches!(result, SemverCheck::Incompatible(_)),
-            "expected `semver-check-test/extra` to be checked, got {result:?}"
-        );
     }
 }

@@ -640,11 +640,25 @@ Pass a list of features to use for verification by `cargo publish`.
   `cargo publish`.
 - If not set or if it is empty, no list of features will be passed to `cargo publish`.
 
-[cargo-semver-checks] checks the same features as `cargo publish`: if `publish_features` is set
-to `["a", "b"]`, `release-plz` passes `--default-features --features=a,b` to it.
-Otherwise, [cargo-semver-checks] enables all features except the unstable ones.
+[cargo-semver-checks] checks the API with the same features as `cargo publish`.
+If `publish_features` is set to `["a", "b"]` and
+[`publish_all_features`](#the-publish_all_features-field) isn't `true`,
+[cargo-semver-checks] enables the default features plus `a` and `b`.
+Since it can only enable features of the package itself:
+
+- `package_name/feature` becomes `feature`.
+- `dependency/feature` becomes `dependency` if `dependency` is an optional dependency, because
+  `cargo publish` enables the package feature named after it.
+- `dependency?/feature` and features of required dependencies are ignored.
+
+If `publish_features` is not set or is empty, [cargo-semver-checks] enables all features except
+the ones that look unstable or internal, such as `unstable`, `nightly` or features starting
+with `_`.
+
 Set this field if some features are mutually exclusive, intentionally change the public API,
 or need dependencies that aren't available in CI.
+To check only the default features, set it to `["default"]`. If your package doesn't
+have default features, declare `default = []` in its `Cargo.toml`.
 
 #### The `publish_all_features` field
 
@@ -652,6 +666,9 @@ Whether to pass the `--all-features` to `cargo publish` when verifying.
 
 - If `true`, `release-plz` adds the `--all-features` flag to `cargo publish`.
 - If `false`, `release-plz` doesn't add the `--all-features` flag to `cargo publish`.
+
+If `true`, [cargo-semver-checks] checks the API with all features enabled,
+regardless of [`publish_features`](#the-publish_features-field).
 
 #### The `publish_timeout` field
 

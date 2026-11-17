@@ -425,7 +425,7 @@
         },
         "publish_all_features": {
           "title": "Publish All Features",
-          "description": "If `true`, add the `--all-features` flag to the `cargo publish` command.",
+          "description": "If `true`, add the `--all-features` flag to the `cargo publish` command.\ncargo-semver-checks then checks all features.",
           "type": [
             "boolean",
             "null"
@@ -754,7 +754,7 @@
         },
         "publish_all_features": {
           "title": "Publish All Features",
-          "description": "If `true`, add the `--all-features` flag to the `cargo publish` command.",
+          "description": "If `true`, add the `--all-features` flag to the `cargo publish` command.\ncargo-semver-checks then checks all features.",
           "type": [
             "boolean",
             "null"
