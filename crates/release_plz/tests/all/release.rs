@@ -1,6 +1,472 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::{package::TestPackage, release_stdout, test_context::TestContext};
+use crate::helpers::{
+    TEST_REGISTRY, TEST_SPARSE_REGISTRY,
+    gitea::GiteaContext,
+    package::{PackageType, TestPackage},
+    release_stdout,
+    test_context::TestContext,
+};
+
+/// Dependency on version 0.1 of the workspace package at `path`.
+fn path_dependency(path: &str) -> toml_edit::Item {
+    let mut dependency = toml_edit::InlineTable::new();
+    dependency.insert("path", path.into());
+    dependency.insert("version", "0.1".into());
+    // `cargo publish` replaces the path with the version, which Cargo looks up in
+    // crates.io unless the dependency names the registry release-plz publishes to.
+    dependency.insert("registry", TEST_REGISTRY.into());
+    toml_edit::value(dependency)
+}
+
+/// `dependent` optionally depends on `dependency`; neither is published.
+async fn unpublished_workspace() -> TestContext {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("dependency").with_type(PackageType::Lib),
+        TestPackage::new("dependent"),
+    ])
+    .await;
+    let root_manifest = context.repo_dir().join("Cargo.toml");
+    let mut root = cargo_utils::LocalManifest::try_new(&root_manifest).unwrap();
+    root.data["workspace"]["dependencies"]["dependency"] = path_dependency("crates/dependency");
+    root.write().unwrap();
+    let mut dependent =
+        cargo_utils::LocalManifest::try_new(&context.package_path("dependent").join("Cargo.toml"))
+            .unwrap();
+    // Inherited and optional, like the dependency of issue #2878.
+    dependent.data["dependencies"]["dependency"] = toml_edit::value({
+        let mut dependency = toml_edit::InlineTable::new();
+        dependency.insert("workspace", true.into());
+        dependency.insert("optional", true.into());
+        dependency
+    });
+    dependent.write().unwrap();
+    context.run_cargo_check();
+    context.push_all_changes("use optional workspace dependency");
+    context
+}
+
+/// Make the compilation of the `package` binary fail with `message`.
+fn break_compilation(context: &TestContext, package: &str, message: &str) {
+    fs_err::write(
+        context.package_path(package).join("src/main.rs"),
+        format!("compile_error!({message:?});"),
+    )
+    .unwrap();
+}
+
+/// List the local tags and the tags of the remote repository, which must be fetched:
+/// without tag signing, release-plz creates tags through the forge API.
+fn all_tags(context: &TestContext) -> String {
+    context.repo.git(&["fetch", "--tags"]).unwrap();
+    context.repo.git(&["tag", "--list"]).unwrap()
+}
+
+/// Assert that `cargo publish` packaged and verified version 0.1.0 of the `packages`:
+/// Cargo only extracts a package to `target/package` to verify it.
+fn assert_packaged(context: &TestContext, packages: &[&str]) {
+    for package in packages {
+        let manifest = context
+            .cargo_target_dir()
+            .join(format!("package/{package}-0.1.0/Cargo.toml"));
+        assert!(manifest.exists(), "{package} wasn't packaged and verified");
+    }
+}
+
+/// Set the `publish` field of `package` to `registries`.
+fn set_publish_registries(context: &TestContext, package: &str, registries: &[&str]) {
+    let manifest_path = context.package_path(package).join("Cargo.toml");
+    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+    manifest.data["package"]["publish"] =
+        toml_edit::value(toml_edit::Array::from_iter(registries.iter().copied()));
+    manifest.write().unwrap();
+}
+
+/// Assert that the latest version of `package` in `registry` is `version`.
+async fn assert_latest_version_in_registry(
+    context: &TestContext,
+    package: &str,
+    registry: &str,
+    version: &str,
+) {
+    let downloaded = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader([package], downloaded.path())
+        .with_registry(registry.to_string())
+        .download()
+        .await
+        .unwrap();
+    assert_eq!(packages.len(), 1, "{package} isn't in {registry}");
+    assert_eq!(
+        packages[0].version.to_string(),
+        version,
+        "registry: {registry}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_unpublished_workspace_dependencies() {
+    let context = unpublished_workspace().await;
+    // Without `--registry`, release-plz reads the registries from the package manifests.
+    // Both packages name the same registry, so release-plz can check them together.
+    context
+        .release_command_without_registry()
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout("{\"releases\":[]}\n");
+    assert_packaged(&context, &["dependency", "dependent"]);
+    // Issue #2878 used `--no-verify`, which skips compilation but not packaging:
+    // Cargo still needs to resolve `dependency` to package `dependent`.
+    // This run also covers selecting the registry with `--registry`.
+    context
+        .release_command()
+        .arg("--no-verify")
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout("{\"releases\":[]}\n");
+    let downloaded = Utf8TempDir::new().unwrap();
+    let packages = context
+        .package_downloader(["dependency", "dependent"], downloaded.path())
+        .download()
+        .await
+        .unwrap();
+    assert!(packages.is_empty(), "a dry run must not upload packages");
+    assert!(all_tags(&context).is_empty());
+    context.repo.is_clean().unwrap();
+
+    break_compilation(&context, "dependent", "verification must still run");
+    context.push_all_changes("break dependent compilation");
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("verification must still run"), "{stderr}");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_preserves_package_selection() {
+    let context = TestContext::new_workspace(&[
+        "selected",
+        "selected-too",
+        "published",
+        "tagged",
+        "disabled",
+        "unpublished",
+        "git-only",
+    ])
+    .await;
+    context.run_cargo_publish("published");
+    context.repo.tag_lightweight("tagged-v0.1.0").unwrap();
+    // Including any skipped package in Cargo's batch would fail verification.
+    for name in ["published", "tagged", "disabled", "unpublished", "git-only"] {
+        break_compilation(&context, name, "this package must not be verified");
+    }
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "disabled"
+release = false
+[[package]]
+name = "unpublished"
+publish = false
+[[package]]
+name = "git-only"
+git_only = true
+"#,
+    );
+    context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .success()
+        .stdout("{\"releases\":[]}\n");
+    assert_packaged(&context, &["selected", "selected-too"]);
+    assert_eq!(all_tags(&context), "tagged-v0.1.0");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_preserves_per_package_options() {
+    let context = TestContext::new_workspace(&["one", "two", "unchecked"]).await;
+    // `one` and `two` only compile with their own feature, so `one` depends on
+    // `publish_features` and `two` on `publish_all_features`.
+    for (name, feature) in [("one", "only_one"), ("two", "only_two")] {
+        let manifest_path = context.package_path(name).join("Cargo.toml");
+        let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+        manifest.data["features"][feature] = toml_edit::value(toml_edit::Array::new());
+        manifest.write().unwrap();
+        fs_err::write(
+            context.package_path(name).join("src/main.rs"),
+            format!(
+                "#[cfg(not(feature = {feature:?}))]\ncompile_error!(\"missing feature\");\nfn main() {{}}"
+            ),
+        )
+        .unwrap();
+    }
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "one"
+publish_features = ["only_one"]
+[[package]]
+name = "two"
+publish_all_features = true
+[[package]]
+name = "unchecked"
+publish_no_verify = true
+publish_allow_dirty = true
+"#,
+    );
+    // `unchecked` doesn't compile, so it depends on `publish_no_verify`. It's dirty
+    // only because this change comes after `write_release_plz_toml` commits, so it
+    // also depends on `publish_allow_dirty`.
+    break_compilation(&context, "unchecked", "do not compile this dirty package");
+    // The dry run only passes if release-plz checks each package with its own options.
+    context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .success();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_packages_with_features_individually() {
+    let context = TestContext::new_workspace(&["featured", "plain"]).await;
+    let manifest_path = context.package_path("featured").join("Cargo.toml");
+    let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+    manifest.data["features"]["extra"] = toml_edit::value(toml_edit::Array::new());
+    manifest.write().unwrap();
+    context.write_release_plz_toml("[workspace]\npublish_features = [\"extra\"]\n");
+    // The real release fails on `cargo publish -p plain --features extra` because
+    // `plain` doesn't define `extra`. Checking both packages together would pass,
+    // because Cargo only requires one of the selected packages to define the feature.
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("failed to dry-run publishing plain:"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_preserves_per_package_registries() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    // `one` keeps the `publish = [TEST_REGISTRY]` of the test packages; `two` is
+    // published to the sparse registry.
+    set_publish_registries(&context, "two", &[TEST_SPARSE_REGISTRY]);
+    context.push_all_changes("use different registries");
+    // If release-plz checked both packages with the registry of `one`, Cargo would
+    // reject `two`, because that registry isn't in its `publish` field.
+    context
+        .release_command_without_registry()
+        .arg("--dry-run")
+        .assert()
+        .success();
+
+    // The real release must pass each package's registry: without `--registry`, Cargo
+    // picks `registry.default` (`TEST_REGISTRY` in the test Cargo config), which isn't
+    // in the `publish` field of `two`.
+    context
+        .release_command_without_registry()
+        .env(
+            cargo_utils::cargo_registries_token_env_var_name(TEST_SPARSE_REGISTRY).unwrap(),
+            format!("Bearer {}", context.gitea.token),
+        )
+        .assert()
+        .success();
+    // `TEST_REGISTRY` and `TEST_SPARSE_REGISTRY` share a backend, so these checks
+    // only prove that the uploads happened. The success above proves that each
+    // package was uploaded to its own registry, because Cargo rejects a registry
+    // missing from the package's `publish` field.
+    assert_latest_version_in_registry(&context, "one", TEST_REGISTRY, "0.1.0").await;
+    assert_latest_version_in_registry(&context, "two", TEST_SPARSE_REGISTRY, "0.1.0").await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_explains_incompatible_dependency_options() {
+    let context = unpublished_workspace().await;
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "dependency"
+publish_no_verify = true
+"#,
+    );
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(
+        stderr.contains("failed to dry-run publishing dependent"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("If a package requires a version of a workspace package"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("https://release-plz.dev/docs/usage/release#dry-runs"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_does_not_hint_for_a_package_of_multiple_registries() {
+    let context = TestContext::new_workspace(&["only"]).await;
+    // Release-plz checks `only` once per registry.
+    set_publish_registries(&context, "only", &[TEST_REGISTRY, TEST_SPARSE_REGISTRY]);
+    break_compilation(&context, "only", "only fails to compile");
+    context.push_all_changes("publish to two registries");
+    let output = context
+        .release_command_without_registry()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("only fails to compile"), "{stderr}");
+    // `only` is the only unpublished package, so no unpublished dependency can be missing.
+    assert!(
+        !stderr.contains("If a package requires a version of a workspace package"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_fails_like_release_if_cargo_publish_prints_an_error() {
+    // Two packages, so that release-plz checks them together on Cargo 1.90+ and the test
+    // covers the combined `cargo publish` output.
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    // Cargo exits successfully, but the real release fails because stderr contains `error:`.
+    fs_err::write(
+        context.package_path("one").join("build.rs"),
+        r#"fn main() { println!("cargo::warning=error: printed by a build script"); }"#,
+    )
+    .unwrap();
+    context.push_all_changes("add build script");
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("failed to dry-run publishing"), "{stderr}");
+    assert!(
+        stderr.contains("error: printed by a build script"),
+        "{stderr}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_dev_dependency_cycles_individually() {
+    // `lib` depends on `macros`, which dev-depends on `lib` to test it, like a crate and its
+    // proc-macro crate.
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("lib").with_type(PackageType::Lib),
+        TestPackage::new("macros").with_type(PackageType::Lib),
+    ])
+    .await;
+    let add_dependency = |package: &str, table: &str, dependency: &str| {
+        let manifest_path = context.package_path(package).join("Cargo.toml");
+        let mut manifest = cargo_utils::LocalManifest::try_new(&manifest_path).unwrap();
+        manifest.data[table][dependency] = path_dependency(&format!("../{dependency}"));
+        manifest.write().unwrap();
+    };
+    add_dependency("lib", "dependencies", "macros");
+    context.run_cargo_check();
+    context.push_all_changes("depend on macros");
+    // Until `lib` is published, Cargo can't resolve the dev-dependency of `macros`,
+    // so publish both packages before adding it.
+    context.run_cargo_publish("macros");
+    context.run_cargo_publish("lib");
+    add_dependency("macros", "dev-dependencies", "lib");
+    for package in ["lib", "macros"] {
+        context.set_package_version(package, &cargo_metadata::semver::Version::new(0, 1, 1));
+    }
+    context.run_cargo_check();
+    context.push_all_changes("bump versions");
+
+    // Cargo rejects the cycle if it checks both packages together, while the real
+    // release publishes them one at a time, resolving the dev-dependency to `lib` 0.1.0.
+    // Cargo 1.96 and newer report the cycle as a circular dependency.
+    context
+        .release_command()
+        .arg("--dry-run")
+        .assert()
+        .success();
+
+    // Cargo 1.90 to 1.95 report the cycle as a timeout instead.
+    // Simulate them, so that the dry run only passes if release-plz recognizes the
+    // timeout and checks the packages individually.
+    let cargo_dir = fake_cargo(
+        r#"#!/bin/sh
+if [ "$1" = publish ] && [ "$(printf '%s\n' "$@" | grep -cx -- --package)" -gt 1 ]; then
+    echo 'error: unable to publish lib v0.1.1 and macros v0.1.1 due to a timeout while waiting for published dependencies to be available.' >&2
+    exit 1
+fi
+exec "$REAL_CARGO" "$@"
+"#,
+    );
+    context
+        .release_command()
+        .arg("--dry-run")
+        .env("CARGO", cargo_dir.path().join("cargo"))
+        .env("REAL_CARGO", env!("CARGO"))
+        .assert()
+        .success();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_dry_run_checks_packages_individually_with_old_cargo() {
+    let context = TestContext::new_workspace(&["one", "two"]).await;
+    // Cargo 1.89 can't publish multiple packages with a single command,
+    // so fail if release-plz checks the packages together.
+    let cargo_dir = fake_cargo(
+        r#"#!/bin/sh
+if [ "$1" = --version ]; then
+    echo 'cargo 1.89.0 (c24e10642 2025-06-23)'
+    exit 0
+fi
+if [ "$1" = publish ] && [ "$(printf '%s\n' "$@" | grep -cx -- --package)" -gt 1 ]; then
+    echo 'error: Cargo 1.89 publishes one package at a time' >&2
+    exit 1
+fi
+exec "$REAL_CARGO" "$@"
+"#,
+    );
+    let output = context
+        .release_command()
+        .arg("--dry-run")
+        .env("CARGO", cargo_dir.path().join("cargo"))
+        .env("REAL_CARGO", env!("CARGO"))
+        .env("RELEASE_PLZ_LOG", "WARN")
+        .assert()
+        .success();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    assert!(stderr.contains("requires Cargo 1.90 or newer"), "{stderr}");
+    // The packages are independent, so release-plz can check them individually.
+    assert_packaged(&context, &["one", "two"]);
+}
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
@@ -204,6 +670,68 @@ async fn release_plz_publishes_with_the_token_of_the_package_registry() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore)]
+async fn release_publishes_all_registries_before_creating_git_release() {
+    let context = TestContext::new().await;
+    let package = &context.gitea.repo;
+    // `TEST_REGISTRY` and `TEST_SPARSE_REGISTRY` share a backend, so also publish to
+    // the registry of a new Gitea user, which needs its own upload of this package.
+    let registry = "second-registry";
+    let second_registry = GiteaContext::new(registry.to_string()).await;
+    context.append_cargo_config(&format!(
+        "\n[registries.{registry}]\nindex = {:?}\n",
+        second_registry.cargo_sparse_index_url()
+    ));
+    set_publish_registries(&context, package, &[TEST_REGISTRY, registry]);
+    context.push_all_changes("publish to two registries");
+
+    let token_env = cargo_utils::cargo_registries_token_env_var_name(registry).unwrap();
+    let release_command = || {
+        let mut command = context.release_command_without_registry();
+        command.env(&token_env, format!("Bearer {}", second_registry.token));
+        command
+    };
+    // Creating a tag/release after each upload would fail on the second registry.
+    release_command()
+        .assert()
+        .success()
+        .stdout(release_stdout(package, "v0.1.0", "0.1.0"));
+    assert_eq!(all_tags(&context), "v0.1.0");
+    let gitea_release = context.gitea.get_gitea_release("v0.1.0").await;
+    assert_eq!(gitea_release.name, "v0.1.0");
+
+    // A failure at the second registry must not leave a tag that would make a
+    // retry skip the package before finishing its remaining registry uploads.
+    let version = cargo_metadata::semver::Version::new(0, 1, 1);
+    context.set_package_version(package, &version);
+    context.run_cargo_check();
+    context.push_all_changes("bump version");
+    let output = release_command()
+        .env(&token_env, "Bearer invalid-token")
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&output.get_output().stderr);
+    let publish_error = format!("failed to publish package to registry `{registry}`");
+    assert!(stderr.contains(&publish_error), "{stderr}");
+    assert_eq!(all_tags(&context), "v0.1.0");
+    // Only the upload to the second registry failed.
+    assert_latest_version_in_registry(&context, package, TEST_REGISTRY, "0.1.1").await;
+    assert_latest_version_in_registry(&context, package, registry, "0.1.0").await;
+
+    // The retry skips the first registry, uploads to the second one, and only
+    // then creates the tag and release.
+    release_command()
+        .assert()
+        .success()
+        .stdout(release_stdout(package, "v0.1.1", "0.1.1"));
+    assert_eq!(all_tags(&context), "v0.1.0\nv0.1.1");
+    let gitea_release = context.gitea.get_gitea_release("v0.1.1").await;
+    assert_eq!(gitea_release.name, "v0.1.1");
+    assert_latest_version_in_registry(&context, package, TEST_REGISTRY, "0.1.1").await;
+    assert_latest_version_in_registry(&context, package, registry, "0.1.1").await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore)]
 async fn release_plz_can_do_backports() {
     let context = TestContext::new().await;
 
@@ -288,6 +816,17 @@ enum Scenario {
     VendoredSource,
 }
 
+/// Create a directory with a `cargo` executable that runs `script`.
+/// The script can run the real Cargo with `$REAL_CARGO`.
+#[cfg(unix)]
+fn fake_cargo(script: &str) -> Utf8TempDir {
+    let dir = Utf8TempDir::new().unwrap();
+    let cargo = dir.path().join("cargo");
+    fs_err::write(&cargo, script).unwrap();
+    crate::helpers::make_executable(&cargo);
+    dir
+}
+
 /// Cargo wrapper that records the subcommands run by release-plz
 /// and simulates the [`Scenario`] passed in `SCENARIO`.
 #[cfg(unix)]
@@ -322,10 +861,7 @@ exec "$REAL_CARGO" "$@"
 #[cfg(unix)]
 async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
     let context = TestContext::new().await;
-    let wrapper_dir = Utf8TempDir::new().unwrap();
-    let cargo = wrapper_dir.path().join("cargo");
-    fs_err::write(&cargo, CARGO_WRAPPER).unwrap();
-    crate::helpers::make_executable(&cargo);
+    let wrapper_dir = fake_cargo(CARGO_WRAPPER);
 
     let index = context.gitea.cargo_index_url();
     let replacement = match scenario {
@@ -360,7 +896,7 @@ async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
 
     context
         .release_command()
-        .env("CARGO", &cargo)
+        .env("CARGO", wrapper_dir.path().join("cargo"))
         .env("REAL_CARGO", env!("CARGO"))
         .env("WRAPPER_DIR", wrapper_dir.path())
         .env("SCENARIO", format!("{scenario:?}"))
