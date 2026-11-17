@@ -93,6 +93,16 @@ ignore = [
     # selected yet. Remove this exception once a cargo release supports
     # rusqlite 0.41.
     { id = "RUSTSEC-2026-0459", reason = "cargo only opens its global cache tracker database in $CARGO_HOME; a party able to write that file and its -wal already controls cargo's config, credentials and installed binaries." },
+    # chrono and the crates built on it were declared unmaintained
+    # (chronotope/chrono#1768) and no maintained release exists.
+    # git-cliff-core 2.14.2 is the latest release and requires chrono, tera 1.x
+    # (-> chrono-tz -> chrono-tz-build) and humantime-serde (-> humantime).
+    # release-plz also uses chrono directly. Remove these exceptions once
+    # git-cliff-core drops these dependencies and release-plz migrates off chrono.
+    { id = "RUSTSEC-2026-0542", reason = "Unmaintained-crate advisory with no known vulnerability; humantime is required by git-cliff-core via humantime-serde." },
+    { id = "RUSTSEC-2026-0543", reason = "Unmaintained-crate advisory with no known vulnerability; chrono is required by git-cliff-core and tera 1.x." },
+    { id = "RUSTSEC-2026-0555", reason = "Unmaintained-crate advisory with no known vulnerability; chrono-tz is required by tera 1.x via git-cliff-core." },
+    { id = "RUSTSEC-2026-0559", reason = "Unmaintained-crate advisory with no known vulnerability; chrono-tz-build is a build dependency of chrono-tz." },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
