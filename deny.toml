@@ -74,7 +74,6 @@ ignore = [
     "RUSTSEC-2026-0247",
     "RUSTSEC-2026-0250",
     "RUSTSEC-2026-0251",
-    "RUSTSEC-2026-0387",
     # zstd is only pulled in by git-cliff-core -> rust-embed -> include-flate.
     # git-cliff-core's embedded configs use rust-embed's default DEFLATE backend.
     # include-flate-compress 0.3.4 requires zstd ^0.13.3, so the patched
@@ -88,7 +87,7 @@ ignore = [
     # (whizsid/wasmtimer-rs#32 replaces it with pin-project-lite).
     # Remove this exception once a fixed wasmtimer is released.
     { id = "RUSTSEC-2026-0441", reason = "Unmaintained-crate advisory; reqwest-retry only compiles wasmtimer for wasm32, which release-plz does not target." },
-    # libsqlite3-sys is only pulled in by cargo -> rusqlite. cargo 0.100.0 is the
+    # libsqlite3-sys is only pulled in by cargo -> rusqlite. cargo 0.101.0 is the
     # latest release and requires rusqlite ^0.40, which requires libsqlite3-sys
     # ^0.38, so the patched libsqlite3-sys >=0.39.0 (rusqlite 0.41) cannot be
     # selected yet. Remove this exception once a cargo release supports
