@@ -4,7 +4,7 @@ use anyhow::Context;
 use cargo::{
     GlobalContext,
     resolver::Resolve,
-    util::CanonicalUrl,
+    util::{CanonicalUrl, VersionReqMatchMode},
     workspace::{
         PackageId, Workspace,
         dependency::{DepKind, Patch},
@@ -264,13 +264,17 @@ fn is_dev_only_dependency(
         .dependencies()
         .iter()
         .filter(|dependency| {
-            dependency.matches_id(id)
+            dependency.matches_id(id, VersionReqMatchMode::Default)
                 // A patched normal/build declaration can resolve to the same package
                 // as a dev declaration with a directly matching source. Include both.
-                || (dependency.matches_ignoring_source(id)
+                || (dependency.matches_ignoring_source(id, VersionReqMatchMode::Default)
                     && patches
                         .get(dependency.source_id().canonical_url())
-                        .is_some_and(|patches| patches.iter().any(|patch| patch.dep.matches_id(id))))
+                        .is_some_and(|patches| {
+                            patches
+                                .iter()
+                                .any(|patch| patch.dep.matches_id(id, VersionReqMatchMode::Default))
+                        }))
         })
         .peekable();
     matching.peek().is_some() && matching.all(|d| d.kind() == DepKind::Development)
