@@ -1,4 +1,12 @@
 /// Upgrade an existing requirement to a new version
+///
+/// # Errors
+///
+/// Returns an error if the requirement uses an unsupported comparison operator.
+///
+/// # Panics
+///
+/// Panics if `req` is not a valid semantic version requirement.
 pub fn upgrade_requirement(req: &str, version: &semver::Version) -> anyhow::Result<Option<String>> {
     let raw_req =
         semver::VersionReq::parse(req).expect("semver to generate valid version requirements");

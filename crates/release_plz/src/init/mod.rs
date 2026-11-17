@@ -11,6 +11,10 @@ const CARGO_REGISTRY_TOKEN: &str = "CARGO_REGISTRY_TOKEN";
 const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 const CUSTOM_GITHUB_TOKEN: &str = "RELEASE_PLZ_TOKEN";
 
+/// # Errors
+///
+/// Returns an error if the project check or interactive setup of the GitHub workflow and
+/// repository secrets fails.
 pub fn init(manifest_path: &Utf8Path, toml_check: bool) -> anyhow::Result<()> {
     ensure_gh_is_installed()?;
 

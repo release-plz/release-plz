@@ -70,6 +70,10 @@ impl HistoryCommit {
 
     /// The message, as [`Repo::current_commit_message`] reads it with this
     /// commit checked out.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the commit message contains invalid UTF-8.
     pub fn message(&self) -> anyhow::Result<String> {
         let message = std::str::from_utf8(&self.message)
             .with_context(|| format!("non-UTF-8 message in commit {}", self.id))?;
@@ -78,7 +82,11 @@ impl HistoryCommit {
 }
 
 impl Repo {
-    /// Returns an error if the directory doesn't contain any commit
+    /// Open the repository and remember its original branch and remote.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot resolve the current branch or commit and its remote.
     #[instrument(skip_all)]
     pub fn new(directory: impl AsRef<Utf8Path>) -> anyhow::Result<Self> {
         debug!("initializing directory {:?}", directory.as_ref());
@@ -93,6 +101,7 @@ impl Repo {
         })
     }
 
+    #[must_use]
     pub fn directory(&self) -> &Utf8Path {
         &self.directory
     }
@@ -135,6 +144,11 @@ impl Repo {
     }
 
     /// Check if there are uncommitted changes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot read the status or there are uncommitted changes other
+    /// than type changes.
     pub fn is_clean(&self) -> anyhow::Result<()> {
         let changes = self.changes_except_typechanges()?;
         anyhow::ensure!(
@@ -145,22 +159,34 @@ impl Repo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot create and check out the branch.
     pub fn checkout_new_branch(&self, branch: &str) -> anyhow::Result<()> {
         self.git(&["checkout", "-b", branch])?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot delete the remote branch.
     pub fn delete_branch_in_remote(&self, branch: &str) -> anyhow::Result<()> {
         self.push(&format!(":refs/heads/{branch}"))
             .with_context(|| format!("can't delete temporary branch {branch}"))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot stage the changes or create the commit.
     pub fn add_all_and_commit(&self, message: &str) -> anyhow::Result<()> {
         self.git(&["add", "."])?;
         self.git(&["commit", "-m", message])?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot update the repository's signing configuration.
     pub fn disable_gpg_signing(&self) -> anyhow::Result<()> {
         self.git(&["config", "commit.gpgsign", "false"])
             .context("failed to disable commit gpg signing")?;
@@ -172,6 +198,10 @@ impl Repo {
     /// Get the list of changed files.
     /// `filter` is applied for each line of `git status --porcelain`.
     /// Only changes for which `filter` returns true are returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot report the working tree status as UTF-8.
     pub fn changes(&self, filter: impl FnMut(&&str) -> bool) -> anyhow::Result<Vec<String>> {
         let output = self.git(&["status", "--porcelain"])?;
         let changed_files = changed_files(&output, filter);
@@ -179,49 +209,75 @@ impl Repo {
     }
 
     /// Get files changed in the current commit
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot list the paths in the current commit as UTF-8.
     pub fn files_of_current_commit(&self) -> anyhow::Result<HashSet<Utf8PathBuf>> {
         let output = self.git(&["show", "--oneline", "--name-only", "--pretty=format:"])?;
         let changed_files = output
             .lines()
-            .map(|l| l.trim())
+            .map(str::trim)
             .map(Utf8PathBuf::from)
             .collect();
         Ok(changed_files)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot read the working tree status as UTF-8.
     pub fn changes_except_typechanges(&self) -> anyhow::Result<Vec<String>> {
         self.changes(|line| !line.starts_with("T "))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot stage the given paths.
     pub fn add<T: AsRef<str>>(&self, paths: &[T]) -> anyhow::Result<()> {
         let mut args = vec!["add"];
-        let paths: Vec<&str> = paths.iter().map(|p| p.as_ref()).collect();
+        let paths: Vec<&str> = paths.iter().map(std::convert::AsRef::as_ref).collect();
         args.extend(paths);
         self.git(&args)?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot commit the staged changes.
     pub fn commit(&self, message: &str) -> anyhow::Result<()> {
         self.git(&["commit", "-m", message])?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot create the commit with a sign-off.
     pub fn commit_signed(&self, message: &str) -> anyhow::Result<()> {
         self.git(&["commit", "-s", "-m", message])?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot push the ref to the original remote.
     pub fn push(&self, obj: &str) -> anyhow::Result<()> {
         self.git(&["push", &self.original_remote, obj])?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot fetch the ref from the original remote.
     pub fn fetch(&self, obj: &str) -> anyhow::Result<()> {
         self.git(&["fetch", &self.original_remote, obj])
             .with_context(|| format!("failed to fetch {obj}"))?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the remote ref has changed unexpectedly or the push otherwise
+    /// fails.
     pub fn force_push(&self, obj: &str) -> anyhow::Result<()> {
         // `--force-with-lease` is safer than `--force` because it will not overwrite
         // changes on the remote that you do not have locally.
@@ -233,6 +289,9 @@ impl Repo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot restore the original branch or detached commit.
     #[instrument(skip(self))]
     pub fn checkout_head(&self) -> anyhow::Result<()> {
         self.checkout(&self.original_branch)?;
@@ -241,33 +300,53 @@ impl Repo {
 
     /// Branch name, or commit hash if HEAD was detached, before running any git operation.
     /// I.e. when the [`Repo`] was created.
+    #[must_use]
     pub fn original_branch(&self) -> &str {
         &self.original_branch
     }
 
     /// Whether HEAD points directly to a commit rather than to a branch.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot resolve `HEAD`.
     pub fn is_head_detached(&self) -> anyhow::Result<bool> {
         // `rev-parse --abbrev-ref HEAD` prints `HEAD` when HEAD is detached.
         Ok(get_current_branch(&self.directory)? == "HEAD")
     }
 
     /// Run a git command in the repository git directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git fails or its output contains invalid UTF-8.
     pub fn git(&self, args: &[&str]) -> anyhow::Result<String> {
         git_in_dir(&self.directory, args)
     }
 
     /// Like [`Repo::git`], but write `input` to the standard input of git and
     /// return its standard output as is, which can be invalid UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Git process or communication with it fails.
     pub fn git_output_with_input(&self, args: &[&str], input: &[u8]) -> anyhow::Result<Vec<u8>> {
         git_output_in_dir(&self.directory, args, &[], Some(input))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot apply the stashed changes.
     pub fn stash_pop(&self) -> anyhow::Result<()> {
         self.git(&["stash", "pop"])?;
         Ok(())
     }
 
     /// Checkout to the latest commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot find or check out a matching commit.
     pub fn checkout_last_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
         let previous_commit = self.last_commit_at_paths(paths)?;
         self.checkout(&previous_commit)?;
@@ -284,12 +363,18 @@ impl Repo {
             .context("failed to get message of previous commit")
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if there are fewer than two matching commits or checkout fails.
     pub fn checkout_previous_commit_at_paths(&self, paths: &[&Path]) -> anyhow::Result<()> {
         let commit = self.previous_commit_at_paths(paths)?;
         self.checkout(&commit)?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot check out the specified object.
     #[instrument(skip(self))]
     pub fn checkout(&self, object: &str) -> anyhow::Result<()> {
         // Nobody reads the feedback, and computing it is a large part of a
@@ -302,6 +387,10 @@ impl Repo {
     }
 
     /// Adds a detached git worktree at the given path checked out at the given object.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot create the worktree at the given revision.
     pub fn add_worktree(&self, path: impl AsRef<str>, object: &str) -> anyhow::Result<()> {
         self.git(&["worktree", "add", "--detach", path.as_ref(), object])
             .context("failed to create git worktree")?;
@@ -310,6 +399,10 @@ impl Repo {
     }
 
     /// Removes a worktree that was created for this repository at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot remove the worktree.
     pub fn remove_worktree(&self, path: impl AsRef<str>) -> anyhow::Result<()> {
         self.git(&["worktree", "remove", path.as_ref()])
             .context("failed to remove worktree")?;
@@ -346,6 +439,10 @@ impl Repo {
     }
 
     /// The commits of [`Repo::parents_at_paths`], without their parents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the history walk or parsing its output fails.
     pub fn commits_at_paths(
         &self,
         head: &str,
@@ -365,6 +462,10 @@ impl Repo {
     /// Unlike [`Repo::parents_at_paths`], this doesn't simplify history: every
     /// parent of a merge is followed, so the result is a superset of the commits any
     /// simplified walk can reach through `commit` with the same exclusions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot walk the history or returns invalid UTF-8.
     pub fn ancestors_at_paths(
         &self,
         commit: &str,
@@ -393,6 +494,10 @@ impl Repo {
     /// Excluded commits can still appear as parents, but never as entries. The
     /// first entry is the tip of the graph, since `--date-order` never lists a
     /// parent before its children.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot walk the history or returns a malformed commit header.
     pub fn parents_at_paths(
         &self,
         head: &str,
@@ -434,10 +539,16 @@ impl Repo {
         git_output_in_dir(&self.directory, &rev_list, &[], None)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot read the current commit message as UTF-8.
     pub fn current_commit_message(&self) -> anyhow::Result<String> {
         self.git(&["log", "-1", "--pretty=format:%B"])
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot read the commit or its signature fields as UTF-8.
     pub fn get_commit_signatures(&self, commit_hash: &str) -> anyhow::Result<CommitSignatures> {
         let output = self.git(&[
             "log",
@@ -461,27 +572,41 @@ impl Repo {
     }
 
     /// Get the SHA1 of the current HEAD.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot resolve the current commit.
     pub fn current_commit_hash(&self) -> anyhow::Result<String> {
         self.git(&["log", "-1", "--pretty=format:%H"])
             .context("can't determine current commit hash")
     }
 
     /// Create a git tag (annotated)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot create the annotated tag.
     pub fn tag(&self, name: &str, message: &str) -> anyhow::Result<String> {
         self.git(&["tag", "-m", message, name])
     }
 
     /// Create a lightweight git tag (no message, just a reference to a commit)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot create the tag.
     pub fn tag_lightweight(&self, name: &str) -> anyhow::Result<String> {
         self.git(&["tag", name])
     }
 
     /// Get the commit hash of the given tag
+    #[must_use]
     pub fn get_tag_commit(&self, tag: &str) -> Option<String> {
         self.git(&["rev-list", "-n", "1", tag]).ok()
     }
 
     /// Returns all the tags in the repository in an unspecified order.
+    #[must_use]
     pub fn get_all_tags(&self) -> Vec<String> {
         match self
             .git(&["tag", "--list"])
@@ -490,7 +615,7 @@ impl Repo {
             .map(|output| output.trim())
         {
             None | Some("") => vec![],
-            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
+            Some(output) => output.lines().map(std::borrow::ToOwned::to_owned).collect(),
         }
     }
 
@@ -505,6 +630,7 @@ impl Repo {
     /// ```
     ///
     /// `git.is_ancestor("e880d8786cb16aa9a3f258e7503932445d708df7", "d6ec399b80d44bf9c4391e4a9ead8482faa9bffd")` returns true.
+    #[must_use]
     pub fn is_ancestor(&self, maybe_ancestor_commit: &str, descendant_commit: &str) -> bool {
         self.git(&[
             "merge-base",
@@ -516,16 +642,24 @@ impl Repo {
     }
 
     /// Name of the remote when the [`Repo`] was created.
+    #[must_use]
     pub fn original_remote(&self) -> &str {
         &self.original_remote
     }
 
     /// Url of the remote when the [`Repo`] was created.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot read the configured URL for the original remote.
     pub fn original_remote_url(&self) -> anyhow::Result<String> {
         let param = format!("remote.{}.url", self.original_remote);
         self.git(&["config", "--get", &param])
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if Git cannot list matching tags.
     pub fn tag_exists(&self, tag: &str) -> anyhow::Result<bool> {
         let output = self
             .git(&["tag", "-l", tag])
@@ -534,12 +668,14 @@ impl Repo {
     }
 }
 
+#[must_use]
 pub fn is_file_ignored(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
     let file = file.as_str();
 
     git_in_dir(repo_path, &["check-ignore", "--no-index", file]).is_ok()
 }
 
+#[must_use]
 pub fn is_file_committed(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
     let file = file.as_str();
     git_in_dir(repo_path, &["ls-files", "--error-unmatch", file]).is_ok()
@@ -548,14 +684,17 @@ pub fn is_file_committed(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
 fn changed_files(output: &str, filter: impl FnMut(&&str) -> bool) -> Vec<String> {
     output
         .lines()
-        .map(|l| l.trim())
+        .map(str::trim)
         // filter typechanges
         .filter(filter)
         .filter_map(|e| e.rsplit(' ').next())
-        .map(|e| e.to_string())
+        .map(std::string::ToString::to_string)
         .collect()
 }
 
+/// # Errors
+///
+/// Returns an error if Git fails or its output contains invalid UTF-8.
 pub fn git_in_dir(dir: &Utf8Path, args: &[&str]) -> anyhow::Result<String> {
     git_in_dir_with_env(dir, args, &[])
 }

@@ -37,6 +37,10 @@ pub struct ReleaseInfo {
 }
 
 /// Update a local Rust project.
+///
+/// # Errors
+///
+/// Returns an error if the next versions cannot be determined or applying the updates fails.
 #[instrument(skip_all)]
 pub async fn update(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
     let (packages_to_update, repository) = crate::next_versions(input)
@@ -157,6 +161,10 @@ pub(crate) fn update_cargo_lock(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns an error if the package manifest or the workspace's dependency requirements cannot
+/// be read or updated.
 #[instrument(skip(all_packages))]
 pub fn set_version(
     all_packages: &[&Package],

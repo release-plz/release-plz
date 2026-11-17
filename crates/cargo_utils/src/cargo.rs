@@ -12,6 +12,7 @@ pub fn disable_cargo_quiet(command: &mut Command) -> &mut Command {
     command.env(CARGO_TERM_QUIET, FALSE)
 }
 
+#[must_use]
 pub fn cargo_metadata_command() -> cargo_metadata::MetadataCommand {
     let mut command = cargo_metadata::MetadataCommand::new();
     disable_cargo_metadata_quiet(&mut command);
@@ -25,6 +26,9 @@ fn disable_cargo_metadata_quiet(
     command.env(CARGO_TERM_QUIET, FALSE)
 }
 
+/// # Errors
+///
+/// Returns an error if Cargo cannot load the manifest or produce workspace metadata.
 pub fn get_manifest_metadata(
     manifest_path: &Utf8Path,
 ) -> Result<cargo_metadata::Metadata, cargo_metadata::Error> {
@@ -33,6 +37,10 @@ pub fn get_manifest_metadata(
 }
 
 /// Find a workspace member by name.
+///
+/// # Errors
+///
+/// Returns an error if the named package is absent from the workspace.
 pub fn workspace_package<'a>(
     metadata: &'a cargo_metadata::Metadata,
     package_name: &str,

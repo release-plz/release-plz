@@ -39,7 +39,7 @@ impl TestPackage {
 
     pub fn with_path_dependencies<I: Into<String>>(self, path_dependencies: Vec<I>) -> Self {
         let path_dependencies: Vec<String> =
-            path_dependencies.into_iter().map(|d| d.into()).collect();
+            path_dependencies.into_iter().map(Into::into).collect();
         Self {
             path_dependencies,
             ..self

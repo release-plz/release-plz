@@ -4,19 +4,41 @@ use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::to_utf8_pathbuf;
 
+/// # Errors
+///
+/// Returns an error if the path does not start with the given prefix.
 pub fn strip_prefix(path: &Utf8Path, prefix: impl AsRef<Path>) -> anyhow::Result<&Utf8Path> {
-    path.strip_prefix(prefix.as_ref())
-        .with_context(|| format!("cannot strip prefix {:?} from {:?}", prefix.as_ref(), path))
+    path.strip_prefix(prefix.as_ref()).with_context(|| {
+        format!(
+            "cannot strip prefix {} from {path}",
+            prefix.as_ref().display()
+        )
+    })
 }
 
+/// # Errors
+///
+/// Returns an error if the path contains invalid UTF-8.
 pub fn to_utf8_path(path: &Path) -> anyhow::Result<&Utf8Path> {
-    Utf8Path::from_path(path).with_context(|| format!("cannot convert {path:?} to Utf8Path"))
+    Utf8Path::from_path(path).with_context(|| {
+        format!(
+            "cannot convert {} to Utf8Path",
+            path.as_os_str().as_encoded_bytes().escape_ascii()
+        )
+    })
 }
 
+/// # Errors
+///
+/// Returns an error if the working directory cannot be determined or contains invalid UTF-8.
 pub fn current_directory() -> anyhow::Result<Utf8PathBuf> {
     to_utf8_pathbuf(std::env::current_dir().context("Unable to get current directory.")?)
 }
 
+/// # Errors
+///
+/// Returns an error if the path cannot be canonicalized or the resulting path contains
+/// invalid UTF-8.
 pub fn canonicalize_utf8(path: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
     let canonicalized =
         dunce::canonicalize(path).with_context(|| format!("cannot canonicalize path {path:?}"))?;
@@ -32,6 +54,10 @@ pub struct Utf8TempDir {
 }
 
 impl Utf8TempDir {
+    /// # Errors
+    ///
+    /// Returns an error if the temporary directory cannot be created or its path contains
+    /// invalid UTF-8.
     pub fn new() -> anyhow::Result<Self> {
         let temp_dir = tempfile::tempdir().with_context(|| "cannot create temporary directory")?;
         let path = to_utf8_path(temp_dir.as_ref())?.to_path_buf();
@@ -41,6 +67,7 @@ impl Utf8TempDir {
         })
     }
 
+    #[must_use]
     pub fn path(&self) -> &Utf8Path {
         &self.path
     }

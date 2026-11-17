@@ -202,6 +202,11 @@ fn process_git_only_package(
 /// Returns:
 /// - Any packages that need to be updated
 /// - A temporary repository, i.e. an isolated copy of the repository used for git operations
+///
+/// # Errors
+///
+/// Returns an error if the workspace, release history or published packages cannot be
+/// analyzed.
 #[instrument(skip_all)]
 pub async fn next_versions(input: &UpdateRequest) -> anyhow::Result<(PackagesUpdate, TempRepo)> {
     let overrides = input.packages_config().overridden_packages();
@@ -376,7 +381,9 @@ async fn collect_registry_packages(
                 package_name.to_string(),
                 RegistryPackage::new(
                     reg_pkg.package.clone(),
-                    reg_pkg.published_at_sha1().map(|s| s.to_string()),
+                    reg_pkg
+                        .published_at_sha1()
+                        .map(std::string::ToString::to_string),
                 ),
             );
         }
@@ -385,16 +392,27 @@ async fn collect_registry_packages(
     Ok((all_packages, registry_packages))
 }
 
+/// # Errors
+///
+/// Returns an error if the manifest has no parent directory or Git cannot locate its
+/// repository root.
 pub fn root_repo_path(local_manifest: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
     let manifest_dir = manifest_dir(local_manifest)?;
     root_repo_path_from_manifest_dir(manifest_dir)
 }
 
+/// # Errors
+///
+/// Returns an error if Git cannot resolve the repository root as a UTF-8 path.
 pub fn root_repo_path_from_manifest_dir(manifest_dir: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
     let root = git_cmd::git_in_dir(manifest_dir, &["rev-parse", "--show-toplevel"])?;
     Ok(Utf8PathBuf::from(root))
 }
 
+/// # Errors
+///
+/// Returns an error if the manifest directory is outside the original project's parent
+/// directory.
 pub fn new_manifest_dir_path(
     old_project_root: &Utf8Path,
     old_manifest_dir: &Utf8Path,
@@ -422,6 +440,9 @@ pub struct UpdateResult {
 }
 
 impl UpdateResult {
+    /// # Errors
+    ///
+    /// Returns an error if the changelog cannot be parsed.
     pub fn last_changes(&self) -> anyhow::Result<Option<ChangelogRelease>> {
         match &self.changelog {
             Some(c) => changelog_parser::last_release_from_str(c),
@@ -430,16 +451,22 @@ impl UpdateResult {
     }
 }
 
+/// # Errors
+///
+/// Propagates errors from [`cargo_utils::workspace_members`], which is currently infallible.
 pub fn workspace_packages(metadata: &Metadata) -> anyhow::Result<Vec<Package>> {
-    cargo_utils::workspace_members(metadata).map(|members| members.collect())
+    cargo_utils::workspace_members(metadata).map(std::iter::Iterator::collect)
 }
 
+/// # Errors
+///
+/// Returns an error if Cargo cannot load the workspace metadata for the manifest.
 pub fn publishable_packages_from_manifest(
     manifest: impl AsRef<Utf8Path>,
 ) -> anyhow::Result<Vec<Package>> {
     let metadata = cargo_utils::get_manifest_metadata(manifest.as_ref())?;
     cargo_utils::workspace_members(&metadata)
-        .map(|members| members.filter(|p| p.is_publishable()).collect())
+        .map(|members| members.filter(Publishable::is_publishable).collect())
 }
 
 pub trait Publishable {
@@ -484,6 +511,9 @@ fn is_example_package(package: &Package) -> bool {
         .all(|t| t.kind == [TargetKind::Example])
 }
 
+/// # Errors
+///
+/// Returns an error if creating the temporary directory or copying the source tree fails.
 pub fn copy_to_temp_dir(target: &Utf8Path) -> anyhow::Result<Utf8TempDir> {
     let tmp_dir = Utf8TempDir::new().context("cannot create temporary directory")?;
     copy_dir(target, tmp_dir.path())

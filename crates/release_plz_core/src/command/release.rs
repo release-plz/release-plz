@@ -30,6 +30,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[must_use]
 pub struct ReleaseRequest {
     /// Cargo metadata.
     metadata: Metadata,
@@ -61,7 +62,7 @@ pub struct ReleaseRequest {
 
 impl ReleaseRequest {
     pub fn new(metadata: Metadata) -> Self {
-        let minutes_30 = Duration::from_secs(30 * 60);
+        let minutes_30 = Duration::from_mins(30);
         Self {
             metadata,
             registry: None,
@@ -77,6 +78,7 @@ impl ReleaseRequest {
     }
 
     /// The manifest of the project you want to release.
+    #[must_use]
     pub fn local_manifest(&self) -> Utf8PathBuf {
         cargo_utils::workspace_manifest(&self.metadata)
     }
@@ -138,6 +140,7 @@ impl ReleaseRequest {
         self
     }
 
+    #[must_use]
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
         crate::changelog_path(
@@ -179,24 +182,28 @@ impl ReleaseRequest {
         self.packages_config.get(package)
     }
 
+    #[must_use]
     pub fn allow_dirty(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.allow_dirty
+        config.cargo_publish.allow_dirty
     }
 
+    #[must_use]
     pub fn no_verify(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.no_verify
+        config.cargo_publish.no_verify
     }
 
+    #[must_use]
     pub fn features(&self, package: &str) -> Vec<String> {
         let config = self.get_package_config(package);
-        config.features.clone()
+        config.cargo_publish.features
     }
 
+    #[must_use]
     pub fn all_features(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.all_features
+        config.cargo_publish.all_features
     }
 
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
@@ -273,15 +280,31 @@ impl PackagesConfig {
     }
 
     pub fn overridden_packages(&self) -> HashSet<&str> {
-        self.overrides.keys().map(|s| s.as_str()).collect()
+        self.overrides.keys().map(String::as_str).collect()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct ReleaseConfig {
     publish: PublishConfig,
     git_release: GitReleaseConfig,
     git_tag: GitTagConfig,
+    cargo_publish: CargoPublishOptions,
+    /// High-level toggle to process this package or ignore it
+    release: bool,
+    changelog_path: Option<Utf8PathBuf>,
+    /// Whether this package has a changelog that release-plz updates or not.
+    /// Default: `true`.
+    changelog_update: bool,
+    /// Whether the package versions are tracked with git tags instead of a cargo registry.
+    /// A `publish = false` package is only released when this is `true`.
+    /// Default: `false`.
+    git_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct CargoPublishOptions {
     /// Don't verify the contents by building them.
     /// If true, `release-plz` adds the `--no-verify` flag to `cargo publish`.
     no_verify: bool,
@@ -294,16 +317,6 @@ pub struct ReleaseConfig {
     /// Enable all features when packaging the crate.
     /// If true, pass the `--all-features` flag to `cargo publish`.
     all_features: bool,
-    /// High-level toggle to process this package or ignore it
-    release: bool,
-    changelog_path: Option<Utf8PathBuf>,
-    /// Whether this package has a changelog that release-plz updates or not.
-    /// Default: `true`.
-    changelog_update: bool,
-    /// Whether the package versions are tracked with git tags instead of a cargo registry.
-    /// A `publish = false` package is only released when this is `true`.
-    /// Default: `false`.
-    git_only: bool,
 }
 
 impl ReleaseConfig {
@@ -328,22 +341,22 @@ impl ReleaseConfig {
     }
 
     pub fn with_no_verify(mut self, no_verify: bool) -> Self {
-        self.no_verify = no_verify;
+        self.cargo_publish.no_verify = no_verify;
         self
     }
 
     pub fn with_allow_dirty(mut self, allow_dirty: bool) -> Self {
-        self.allow_dirty = allow_dirty;
+        self.cargo_publish.allow_dirty = allow_dirty;
         self
     }
 
     pub fn with_features(mut self, features: Vec<String>) -> Self {
-        self.features = features;
+        self.cargo_publish.features = features;
         self
     }
 
     pub fn with_all_features(mut self, all_features: bool) -> Self {
-        self.all_features = all_features;
+        self.cargo_publish.all_features = all_features;
         self
     }
 
@@ -362,6 +375,7 @@ impl ReleaseConfig {
         self
     }
 
+    #[must_use]
     pub fn git_release(&self) -> &GitReleaseConfig {
         &self.git_release
     }
@@ -373,10 +387,7 @@ impl Default for ReleaseConfig {
             publish: PublishConfig::default(),
             git_release: GitReleaseConfig::default(),
             git_tag: GitTagConfig::default(),
-            no_verify: false,
-            allow_dirty: false,
-            features: vec![],
-            all_features: false,
+            cargo_publish: CargoPublishOptions::default(),
             release: true,
             changelog_path: None,
             changelog_update: true,
@@ -397,6 +408,7 @@ impl Default for PublishConfig {
 }
 
 impl PublishConfig {
+    #[must_use]
     pub fn enabled(enabled: bool) -> Self {
         Self { enabled }
     }
@@ -411,6 +423,7 @@ pub enum ReleaseType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct GitReleaseConfig {
     enabled: bool,
     draft: bool,
@@ -440,6 +453,7 @@ impl GitReleaseConfig {
         }
     }
 
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -474,6 +488,7 @@ impl GitReleaseConfig {
         self
     }
 
+    #[must_use]
     pub fn is_pre_release(&self, version: &Version) -> bool {
         match self.release_type {
             ReleaseType::Pre => true,
@@ -484,6 +499,7 @@ impl GitReleaseConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct GitTagConfig {
     enabled: bool,
     name_template: Option<String>,
@@ -508,6 +524,7 @@ impl GitTagConfig {
         self
     }
 
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -537,6 +554,11 @@ pub struct PackageRelease {
 }
 
 /// Release the project as it is.
+///
+/// # Errors
+///
+/// Returns an error if the release configuration is invalid or a requested Git, registry or
+/// forge operation fails.
 #[instrument(skip(input))]
 pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> {
     // Reject unsupported configuration before checkout, registry publication or tag creation.
@@ -796,9 +818,8 @@ fn registry_indexes(
     registry: Option<String>,
     workspace_root: &Utf8Path,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
-    let registries = registry
-        .map(|r| vec![r])
-        .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
+    let registries =
+        registry.map_or_else(|| package.publish.clone().unwrap_or_default(), |r| vec![r]);
     let config = new_cargo_config(Some(workspace_root.to_owned()))?;
     if registries.is_empty() {
         Ok(vec![CargoRegistry::new(&config, None)?])
@@ -867,7 +888,7 @@ async fn release_package(
             release_info.package,
             input,
             workspace_root,
-            &publish_token,
+            publish_token.as_ref(),
             registry_name,
         )
         .context("failed to run cargo publish")?;
@@ -881,13 +902,12 @@ async fn release_package(
                     release_info.package.name, release_info.package.version
                 );
                 return Ok(false);
-            } else {
-                anyhow::bail!(
-                    "failed to publish {}: {}",
-                    release_info.package.name,
-                    output.stderr
-                );
             }
+            anyhow::bail!(
+                "failed to publish {}: {}",
+                release_info.package.name,
+                output.stderr
+            );
         }
         // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
         // publish registry) or if `cargo publish` didn't confirm the package.
@@ -1163,7 +1183,7 @@ pub struct GitReleaseInfo {
 /// - If the token is unset, the user might want to log in to the registry
 ///   with `cargo login`. Don't throw an error in this case.
 fn verify_ci_cargo_registry_token(token_env_var: &str) -> anyhow::Result<()> {
-    let is_token_empty = std::env::var(token_env_var).map(|t| t.is_empty()) == Ok(true);
+    let is_token_empty = std::env::var(token_env_var).is_ok_and(|t| t.is_empty());
     let is_environment_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
     anyhow::ensure!(
         !(is_environment_github_actions && is_token_empty),
@@ -1183,7 +1203,7 @@ fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
-    token: &Option<SecretString>,
+    token: Option<&SecretString>,
     registry: Option<&str>,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
@@ -1200,7 +1220,7 @@ fn run_cargo_publish(
         args.push(registry);
     }
     let token_env_var = cargo_registry_token_env_var(registry)?;
-    let token = token.as_ref().or(input.token.as_ref());
+    let token = token.or(input.token.as_ref());
     if token.is_none() {
         verify_ci_cargo_registry_token(&token_env_var)?;
     }
@@ -1221,9 +1241,7 @@ fn run_cargo_publish(
     if input.all_features(&package.name) {
         args.push("--all-features");
     }
-    let envs = token
-        .map(|token| vec![(token_env_var, token.clone())])
-        .unwrap_or_default();
+    let envs = token.map_or_default(|token| vec![(token_env_var, token.clone())]);
     run_cargo_with_env(workspace_root, &args, &envs)
 }
 
@@ -1386,7 +1404,7 @@ mod tests {
             .expect(1)
             .mount(server)
             .await;
-        let follow_up_requests: u64 = if tag_status == 201 { 1 } else { 0 };
+        let follow_up_requests: u64 = u64::from(tag_status == 201);
         Mock::given(method("POST"))
             .and(path("/repos/owner/repo/git/refs"))
             .and(body_partial_json(

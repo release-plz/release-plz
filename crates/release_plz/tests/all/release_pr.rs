@@ -45,7 +45,7 @@ async fn released_workspace_with_shared_version(
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
     let context = released_workspace_with_shared_version(
         &[
@@ -105,7 +105,7 @@ async fn release_pr_shared_versions_propagate_through_unreleased_siblings() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_pr_pre_bumped_shared_versions_update_dependency_requirements() {
     let context = released_workspace_with_shared_version(
         &[
@@ -147,7 +147,7 @@ async fn release_pr_pre_bumped_shared_versions_update_dependency_requirements() 
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_opens_pr_with_default_config() {
     let context = TestContext::new().await;
 
@@ -190,7 +190,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_pr_ignores_forge_errors_when_nothing_to_release() {
     let context = TestContext::new().await;
     context.run_release().success();
@@ -205,7 +205,7 @@ async fn release_pr_ignores_forge_errors_when_nothing_to_release() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_opens_pr_without_breaking_changes() {
     assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
@@ -267,7 +267,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_can_do_backport_prs() {
     assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
@@ -341,13 +341,13 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_opens_pr_with_breaking_changes() {
     check_release_pr_with_breaking_changes(None, None).await;
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib() {
     check_release_pr_with_breaking_changes(
         Some(&["cdylib", "rlib"][..]),
@@ -357,7 +357,7 @@ async fn release_plz_opens_pr_with_breaking_changes_in_cdylib_rlib() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_opens_pr_with_breaking_changes_after_rlib_to_lib() {
     // The published version has a different `crate-type` than the current one.
     check_release_pr_with_breaking_changes(
@@ -462,7 +462,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_binary_when_library_changes() {
     let binary = "binary";
     let library1 = "library1";
@@ -572,7 +572,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_opens_pr_with_two_packages_and_default_config() {
     let one = "one";
     let two = "two";
@@ -640,7 +640,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_pr_legacy_prefix_requires_explicit_configuration() {
     let legacy_prefix = "release-plz/";
     let legacy_config = format!("[workspace]\npr_branch_prefix = \"{legacy_prefix}\"\n");
@@ -685,7 +685,7 @@ async fn release_pr_legacy_prefix_requires_explicit_configuration() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_should_set_custom_pr_details() {
     let context = TestContext::new().await;
 
@@ -744,7 +744,7 @@ Changes:
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_should_fail_for_multi_package_pr() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
 
@@ -762,7 +762,7 @@ async fn release_plz_should_fail_for_multi_package_pr() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_detects_edited_readme_cargo_toml_field() {
     let context = TestContext::new().await;
 
@@ -795,7 +795,7 @@ async fn release_plz_detects_edited_readme_cargo_toml_field() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_honors_features_always_increment_minor_flag() {
     let context = TestContext::new().await;
 
@@ -839,7 +839,7 @@ async fn release_plz_honors_features_always_increment_minor_flag() {
 
 #[tokio::test]
 #[cfg(unix)]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_detects_symlink_package_changes() {
     let context = TestContext::new().await;
     let readme = "README.md";
@@ -891,7 +891,7 @@ async fn release_plz_detects_symlink_package_changes() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_detects_cargo_lock_updates_from_registry() {
     let context = TestContext::new().await;
     let dep_name = "dep";
@@ -988,7 +988,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
     let context = TestContext::new().await;
     context.run_release_pr().success();
@@ -1011,7 +1011,7 @@ async fn changelog_is_not_updated_if_version_already_exists_in_changelog() {
 /// When the version changes while a release PR is open, the commit of the release branch
 /// must be updated, too — not just the PR title.
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_commit_message_when_version_changes() {
     assert_cargo_semver_checks_is_installed();
     let context = TestContext::new().await;
@@ -1056,7 +1056,7 @@ async fn release_plz_updates_commit_message_when_version_changes() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_adds_labels_to_release_pr() {
     let test_context = TestContext::new().await;
 
@@ -1108,7 +1108,7 @@ async fn release_plz_adds_labels_to_release_pr() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
     let test_context = TestContext::new().await;
     let test_cases: &[(&str, &str)] = &[
@@ -1155,7 +1155,7 @@ async fn release_plz_doesnt_add_invalid_labels_to_release_pr() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_binary_when_library_has_breaking_changes() {
     let binary = "binary";
     let library1 = "library1";
@@ -1286,19 +1286,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     .trim()
     .to_string();
 
-    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
-    let actual_lines: Vec<_> = actual_body.lines().collect();
-    let expected_lines: Vec<_> = expected_body.lines().collect();
-    assert_eq!(
-        actual_lines.len(),
-        expected_lines.len(),
-        "Different number of lines. Expected:\n{expected_body}\nActual:\n{actual_body}"
-    );
-    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !does_line_vary(actual) {
-            assert_eq!(actual, expected);
-        }
-    }
+    assert_release_body(&actual_body, &expected_body);
 
     context.merge_release_pr().await;
 
@@ -1364,7 +1352,7 @@ fn update_readme_in_cargo_toml(context: &TestContext, readme_path: &str) {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_binary_with_no_commits_and_dependency_change() {
     let binary = "binary";
     let library = "library";
@@ -1458,19 +1446,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     .trim()
     .to_string();
 
-    // Split the strings into lines and compare line by line, ignoring lines containing temporary directory paths
-    let actual_lines: Vec<_> = actual_body.lines().collect();
-    let expected_lines: Vec<_> = expected_body.lines().collect();
-    assert_eq!(
-        actual_lines.len(),
-        expected_lines.len(),
-        "Different number of lines. Expected:\n{expected_body}\nActual:\n{actual_body}"
-    );
-    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
-        if !does_line_vary(actual) {
-            assert_eq!(actual, expected);
-        }
-    }
+    assert_release_body(&actual_body, &expected_body);
 
     context.merge_release_pr().await;
 
@@ -1490,12 +1466,27 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
     .assert_eq(&binary_cargo_toml);
 }
 
-/// Check if the line contains a temporary directory or the version of cargo-semver-checks.
+/// Ignore lines that include temporary paths or the installed cargo-semver-checks version.
+fn assert_release_body(actual_body: &str, expected_body: &str) {
+    let actual_lines: Vec<_> = actual_body.lines().collect();
+    let expected_lines: Vec<_> = expected_body.lines().collect();
+    assert_eq!(
+        actual_lines.len(),
+        expected_lines.len(),
+        "Different number of lines. Expected:\n{expected_body}\nActual:\n{actual_body}"
+    );
+    for (actual, expected) in actual_lines.iter().zip(expected_lines.iter()) {
+        if !does_line_vary(actual) {
+            assert_eq!(actual, expected);
+        }
+    }
+}
+
 fn does_line_vary(line: &str) -> bool {
     line.contains("cargo-semver-checks/tree") || line.contains(".tmp")
 }
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_handles_invalid_readme_path_gracefully() {
     let context = TestContext::new().await;
 
@@ -1552,7 +1543,7 @@ async fn release_plz_handles_invalid_readme_path_gracefully() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_handles_nonexistent_readme_path_in_cargo_toml() {
     let context = TestContext::new().await;
 
@@ -1583,7 +1574,7 @@ async fn release_plz_handles_nonexistent_readme_path_in_cargo_toml() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_works_with_valid_readme_path() {
     let context = TestContext::new().await;
 
@@ -1625,7 +1616,7 @@ async fn release_plz_works_with_valid_readme_path() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_binary_when_library_changes_commit_regex() {
     let binary = "binary";
     let library1 = "library1";
@@ -1740,7 +1731,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_changelog_when_version_already_bumped() {
     let context = TestContext::new().await;
 
@@ -1823,7 +1814,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn changelog_is_updated_correctly_if_no_new_line_after_h1() {
     let context = TestContext::new().await;
     let changelog = "# Changelog
@@ -1907,7 +1898,7 @@ version_group = "a"
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_updates_whole_version_group_with_matching_release_commits() {
     let context = version_group_with_dependent_change("feat: update dependent").await;
 
@@ -1927,7 +1918,7 @@ async fn release_plz_updates_whole_version_group_with_matching_release_commits()
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_does_not_release_version_group_without_matching_release_commits() {
     let context = version_group_with_dependent_change("chore: update dependent").await;
 

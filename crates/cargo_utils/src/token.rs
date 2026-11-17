@@ -4,6 +4,10 @@ use anyhow::Context as _;
 use secrecy::SecretString;
 use serde::Deserialize;
 
+/// # Errors
+///
+/// Returns an error if the registry name is invalid or Cargo's credentials cannot be located,
+/// read or parsed.
 pub fn registry_token(registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
     let mut token = registry_token_from_env(registry)?;
     if token.is_none() {
@@ -63,9 +67,7 @@ fn cargo_home() -> anyhow::Result<PathBuf> {
     let default_cargo_home = std::env::home_dir()
         .map(|x| x.join(".cargo"))
         .context("Failed to read home directory")?;
-    let cargo_home = std::env::var("CARGO_HOME")
-        .map(PathBuf::from)
-        .unwrap_or(default_cargo_home);
+    let cargo_home = std::env::var("CARGO_HOME").map_or(default_cargo_home, PathBuf::from);
     Ok(cargo_home)
 }
 

@@ -30,6 +30,7 @@ impl GitForge {
         }
     }
 
+    #[must_use]
     pub fn forge_type(&self) -> ForgeType {
         match self {
             Self::Github(_) => ForgeType::Github,
@@ -122,10 +123,12 @@ pub struct GitPr {
 
 /// Pull request.
 impl GitPr {
+    #[must_use]
     pub fn branch(&self) -> &str {
         self.head.ref_field.as_str()
     }
 
+    #[must_use]
     pub fn label_names(&self) -> Vec<&str> {
         self.labels.iter().map(|l| l.name.as_str()).collect()
     }
@@ -281,6 +284,10 @@ impl PrEdit {
 }
 
 impl GitClient {
+    /// # Errors
+    ///
+    /// Returns an error if the authentication headers are invalid or the HTTP client cannot
+    /// be built.
     pub fn new(forge: GitForge) -> anyhow::Result<Self> {
         let client = {
             let headers = forge.default_headers()?;
@@ -308,6 +315,7 @@ impl GitClient {
         })
     }
 
+    #[must_use]
     pub fn per_page(&self) -> &str {
         match self.forge {
             ForgeType::Github | ForgeType::Gitlab => "per_page",
@@ -316,6 +324,11 @@ impl GitClient {
     }
 
     /// Creates a GitHub/Gitea release.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the forge does not support the requested release options or the
+    /// release request fails.
     pub async fn create_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         anyhow::ensure!(
             release_info.generate_release_notes != Some(true) || self.forge == ForgeType::Github,
@@ -329,6 +342,11 @@ impl GitClient {
     }
 
     /// Same as Gitea.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Gitea receives a GitHub-only latest-release option or the release
+    /// request fails.
     pub async fn create_github_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         if release_info.latest.is_some() && self.forge == ForgeType::Gitea {
             anyhow::bail!("Gitea does not support the `git_release_latest` option");
@@ -363,6 +381,9 @@ impl GitClient {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if GitLab rejects the release or the request cannot be sent.
     pub async fn create_gitlab_release(&self, release_info: &GitReleaseInfo) -> anyhow::Result<()> {
         #[derive(Serialize)]
         pub struct GitlabReleaseOption<'a> {
@@ -394,6 +415,7 @@ impl GitClient {
         Ok(())
     }
 
+    #[must_use]
     pub fn pulls_url(&self) -> String {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => {
@@ -405,10 +427,12 @@ impl GitClient {
         }
     }
 
+    #[must_use]
     pub fn issues_url(&self) -> String {
         format!("{}/issues", self.repo_url())
     }
 
+    #[must_use]
     pub fn param_value_pr_state_open(&self) -> &'static str {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => "open",
@@ -430,6 +454,10 @@ impl GitClient {
     }
 
     /// Get all opened Prs which branch starts with the given `branch_prefix`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a page of open pull requests cannot be retrieved or decoded.
     pub async fn opened_prs(&self, branch_prefix: &str) -> anyhow::Result<Vec<GitPr>> {
         let mut page = 1;
         let page_size = 30;
@@ -483,7 +511,7 @@ impl GitClient {
             ForgeType::Gitlab => {
                 let gitlab_mrs: Vec<GitLabMr> =
                     resp.json().await.context("failed to parse gitlab mr")?;
-                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
+                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(Into::into).collect();
                 Ok(git_prs)
             }
         }
@@ -499,6 +527,9 @@ impl GitClient {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the forge request to close the pull request fails.
     #[instrument(skip(self))]
     pub async fn close_pr(&self, pr_number: u64) -> anyhow::Result<()> {
         debug!("closing pr #{pr_number}");
@@ -517,6 +548,9 @@ impl GitClient {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the forge request to edit the pull request fails.
     pub async fn edit_pr(&self, pr_number: u64, pr_edit: PrEdit) -> anyhow::Result<()> {
         let url = format!("{}/{pr_number}", self.pulls_url());
         let req = match self.forge {
@@ -538,6 +572,10 @@ impl GitClient {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the forge cannot create the pull request, its response cannot be
+    /// decoded, or applying labels fails.
     #[instrument(skip(self, pr))]
     pub async fn open_pr(&self, pr: &Pr) -> anyhow::Result<GitPr> {
         debug!("Opening PR in {}", self.remote.owner_slash_repo());
@@ -583,6 +621,9 @@ impl GitClient {
         Ok(git_pr)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the forge cannot look up, create or apply the requested labels.
     #[instrument(skip(self))]
     pub async fn add_labels(&self, labels: &[String], pr_number: u64) -> anyhow::Result<()> {
         if labels.is_empty() {
@@ -669,8 +710,8 @@ impl GitClient {
     /// within the input and against existing PR labels.
     /// # Returns
     /// A tuple containing:
-    /// - Vec<String>: Labels that need to be created in the repository
-    /// - Vec<u64>: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
+    /// - `Vec<String>`: Labels that need to be created in the repository
+    /// - `Vec<u64>`: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
     async fn get_labels_info_and_categorize_labels(
         &self,
         labels: &[String],
@@ -768,6 +809,9 @@ impl GitClient {
         Ok(label_id)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the commit list cannot be retrieved or decoded.
     pub async fn pr_commits(&self, pr_number: u64) -> anyhow::Result<Vec<PrCommit>> {
         let resp = self
             .client
@@ -787,10 +831,7 @@ impl GitClient {
             ForgeType::Gitlab => {
                 let gitlab_commits: Vec<GitLabMrCommit> =
                     resp.json().await.context("failed to parse gitlab mr")?;
-                let pr_commits = gitlab_commits
-                    .into_iter()
-                    .map(|commit| commit.into())
-                    .collect();
+                let pr_commits = gitlab_commits.into_iter().map(Into::into).collect();
                 Ok(pr_commits)
             }
         }
@@ -799,6 +840,11 @@ impl GitClient {
     /// Only works for GitHub.
     /// From my tests, Gitea doesn't work yet,
     /// but this implementation should be correct.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pull requests associated with the commit cannot be retrieved
+    /// or decoded.
     pub async fn associated_prs(&self, commit: &str) -> anyhow::Result<Vec<GitPr>> {
         let url = match self.forge {
             ForgeType::Github => {
@@ -841,6 +887,9 @@ impl GitClient {
         Ok(prs)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the pull request cannot be retrieved or decoded.
     pub async fn get_pr_info(&self, pr_number: u64) -> anyhow::Result<GitPr> {
         let response = self
             .client
@@ -858,6 +907,10 @@ impl GitClient {
     /// `username` is `None` if the commit isn't in the remote repository
     /// (e.g. the user edited files before running release-plz, like with cargo hakari)
     /// or if the forge can't match the commit author to a user.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if querying the forge or decoding its commit information fails.
     pub async fn get_remote_commit(&self, commit: &str) -> Result<RemoteCommit, anyhow::Error> {
         let api_path = match self.forge {
             ForgeType::Github => format!("{}/commits/{commit}", self.repo_url()),
@@ -891,6 +944,10 @@ impl GitClient {
     }
 
     /// Create a new branch from the given SHA.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the forge cannot create the branch at the specified commit.
     pub async fn create_branch(&self, branch_name: &str, sha: &str) -> anyhow::Result<()> {
         match self.forge {
             ForgeType::Github => {
@@ -961,6 +1018,9 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if GitHub cannot update the reference to the given commit.
     pub async fn patch_github_ref(&self, ref_name: &str, sha: &str) -> anyhow::Result<()> {
         self.client
             .patch(format!("{}/git/refs/{}", self.repo_url(), ref_name))
@@ -977,6 +1037,10 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
     }
 
     /// Delete a branch.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the forge request to delete the branch fails.
     pub async fn delete_branch(&self, branch_name: &str) -> anyhow::Result<()> {
         let url = match self.forge {
             ForgeType::Github => format!("{}/git/refs/heads/{}", self.repo_url(), branch_name),
@@ -1002,6 +1066,10 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
     }
 
     /// Creates an annotated tag.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating the tag on the forge fails.
     pub async fn create_tag(
         &self,
         tag_name: &str,
@@ -1038,7 +1106,7 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
             .await?
             .get("sha")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .with_context(|| {
                 format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
             })?;

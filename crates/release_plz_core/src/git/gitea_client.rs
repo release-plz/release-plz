@@ -11,6 +11,10 @@ pub struct Gitea {
 }
 
 impl Gitea {
+    /// # Errors
+    ///
+    /// Returns an error if the repository uses a scheme other than HTTP or HTTPS, or the API
+    /// URL is invalid.
     pub fn new(url: RepoUrl, token: SecretString) -> anyhow::Result<Self> {
         match url.scheme.as_str() {
             "http" | "https" => {}
@@ -33,6 +37,9 @@ impl Gitea {
         })
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the token cannot be represented in an HTTP authorization header.
     pub fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         let mut auth_header: HeaderValue = format!("token {}", self.remote.token.expose_secret())

@@ -1,3 +1,7 @@
+/// # Errors
+///
+/// Returns an error if the registry name contains characters other than letters, digits,
+/// hyphens or underscores.
 pub fn cargo_registries_token_env_var_name(registry: &str) -> anyhow::Result<String> {
     let name = if registry == "crates-io" {
         "CARGO_REGISTRY_TOKEN".to_string()

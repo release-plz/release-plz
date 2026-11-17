@@ -11,6 +11,9 @@ pub struct GitLab {
 }
 
 impl GitLab {
+    /// # Errors
+    ///
+    /// Returns an error if the API URL derived from the repository URL is invalid.
     pub fn new(url: RepoUrl, token: SecretString) -> anyhow::Result<Self> {
         let base_url = url
             .gitlab_api_url()
@@ -29,6 +32,9 @@ impl GitLab {
         })
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the token cannot be represented in an HTTP header.
     pub fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         headers.insert(

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 
 use anyhow::Context as _;
 use cargo_metadata::{
@@ -44,6 +45,10 @@ enum TemplateField {
 }
 
 impl Project {
+    /// # Errors
+    ///
+    /// Returns an error if the workspace cannot be loaded, overrides reference unknown
+    /// packages, or the selected packages cannot be released or ordered.
     pub fn new(
         local_manifest: &Utf8Path,
         single_package: Option<&str>,
@@ -100,11 +105,13 @@ impl Project {
         })
     }
 
+    #[must_use]
     pub fn root(&self) -> &Utf8Path {
         &self.root
     }
 
     /// Packages that can be published, ordered by release order.
+    #[must_use]
     pub fn publishable_packages(&self) -> Vec<&Package> {
         self.packages
             .iter()
@@ -113,6 +120,7 @@ impl Project {
     }
 
     /// Get all packages, including non-publishable.
+    #[must_use]
     pub fn workspace_packages(&self) -> Vec<&Package> {
         self.packages.iter().collect()
     }
@@ -140,10 +148,16 @@ impl Project {
         Ok(repository)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the package's tag name template cannot be rendered.
     pub fn git_tag(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
         self.render_template(package_name, version, TemplateField::GitTagName)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the package's release name template cannot be rendered.
     pub fn release_name(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
         self.render_template(package_name, version, TemplateField::ReleaseName)
     }
@@ -179,7 +193,12 @@ impl Project {
         crate::tera::render_template(template, &context, template_name)
     }
 
-    // Check mandatory fields for crates.io
+    /// Check the package metadata required by crates.io.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a publishable package lacks required metadata or a local
+    /// dependency lacks a version requirement.
     pub fn check_mandatory_fields(&self) -> anyhow::Result<()> {
         let mut missing_fields = Vec::new();
         let mut missing_version_errors = Vec::new();
@@ -210,19 +229,23 @@ impl Project {
         }
         let mut error_message = String::new();
         if has_missing_fields {
-            error_message.push_str(&format!(
+            writeln!(
+                error_message,
                 "The following mandatory fields for crates.io are missing in Cargo.toml:
 {}
-See https://doc.rust-lang.org/cargo/reference/manifest.html\n",
+See https://doc.rust-lang.org/cargo/reference/manifest.html",
                 missing_fields.join("\n")
-            ));
+            )
+            .unwrap();
         }
         if has_missing_version {
-            error_message.push_str(&format!(
+            write!(
+                error_message,
                 "The following packages have local dependencies missing a version specifier:
 {}",
                 missing_version_errors.join("\n")
-            ));
+            )
+            .unwrap();
         }
         error_message.push_str("\nNote: to disable this check, set the `--no-toml-check` flag.");
         anyhow::bail!(error_message);
@@ -256,12 +279,13 @@ fn check_local_dependencies(package: &Package) -> Vec<String> {
 }
 
 fn create_missing_version_error_message(package_name: &str, dependencies: Vec<String>) -> String {
-    let mut error_message = String::new();
-    error_message.push_str(&format!("- package `{package_name}`:\n"));
+    let mut error_message = format!("- package `{package_name}`:\n");
     for dependency in dependencies {
-        error_message.push_str(&format!(
-            "\t• local dependency `{dependency}` is missing a `version` entry\n"
-        ));
+        writeln!(
+            error_message,
+            "\t• local dependency `{dependency}` is missing a `version` entry"
+        )
+        .unwrap();
     }
 
     error_message
@@ -297,6 +321,9 @@ fn check_for_typos(packages: &HashSet<&str>, overrides: &HashSet<&str>) -> anyho
     }
 }
 
+/// # Errors
+///
+/// Returns an error if the original project root has no directory name.
 pub fn new_project_root(
     original_project_root: &Utf8Path,
     new_project_root_parent: &Utf8Path,

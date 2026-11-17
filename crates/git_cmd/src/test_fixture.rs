@@ -6,6 +6,10 @@ use tracing::{debug, instrument};
 use crate::{Repo, git_in_dir, git_in_dir_with_env};
 
 impl Repo {
+    /// # Panics
+    ///
+    /// Panics if the directory path contains invalid UTF-8 or the test repository and initial
+    /// commit cannot be created or configured.
     #[instrument(skip(directory))]
     pub fn init(directory: impl AsRef<Path>) -> Self {
         let directory = Utf8Path::from_path(directory.as_ref()).unwrap();
@@ -28,6 +32,10 @@ impl Repo {
 
     /// Run git with `date` as both author and committer date, so tests control where
     /// a commit lands in a date-ordered walk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Git fails or its output contains invalid UTF-8.
     pub fn git_at(&self, args: &[&str], date: &str) -> anyhow::Result<String> {
         git_in_dir_with_env(
             self.directory(),

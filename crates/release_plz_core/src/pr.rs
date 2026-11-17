@@ -50,6 +50,9 @@ pub struct Pr {
 }
 
 impl Pr {
+    /// # Errors
+    ///
+    /// Returns an error if the release pull request title or body cannot be rendered.
     pub fn new(
         default_branch: &str,
         packages_to_update: &PackagesUpdate,
@@ -73,11 +76,13 @@ impl Pr {
         Ok(pr)
     }
 
+    #[must_use]
     pub fn mark_as_draft(mut self, draft: bool) -> Self {
         self.draft = draft;
         self
     }
 
+    #[must_use]
     pub fn with_labels(mut self, labels: Vec<String>) -> Self {
         self.labels = labels;
         self
@@ -155,10 +160,10 @@ fn pr_body(
             "PR body is longer than {MAX_BODY_LEN} characters. Omitting full changelog."
         );
 
-        releases.iter_mut().for_each(|release| {
+        for release in &mut releases {
             release.changelog = None;
             release.title = None;
-        });
+        }
 
         render_pr_body(&releases, body_template)
     } else {
