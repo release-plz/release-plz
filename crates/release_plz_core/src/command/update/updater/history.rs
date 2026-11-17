@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Context as _;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
+use cargo_utils::CARGO_TOML;
 use git_cmd::{HistoryCommit, Repo};
 use tracing::warn;
 
@@ -13,7 +14,7 @@ mod package_files;
 mod replay;
 
 pub(super) use package_files::CheckoutPackageFiles;
-use replay::{ChangeReplay, TokenConflicts};
+use replay::{ChangeReplay, FileChange, TokenConflicts};
 
 /// Refine equality-based ancestry pruning with the changes still present at HEAD.
 ///
@@ -75,6 +76,11 @@ impl<'a> RetainedChanges<'a> {
             relative_paths: PackagePaths {
                 package: relativize(&paths.package)?,
                 readme: paths.readme.as_deref().map(relativize).transpose()?,
+                configured_readme: paths
+                    .configured_readme
+                    .as_deref()
+                    .map(relativize)
+                    .transpose()?,
             },
             released: None,
             package_files: None,
@@ -169,9 +175,14 @@ impl<'a> RetainedChanges<'a> {
         // A replay that cannot be built, for example on a SHA-256 repository,
         // is reported once: without evidence, ancestry pruning then applies to
         // every candidate.
-        let replay = ChangeReplay::new(self.repository, &self.head, &self.relative_paths.all())
-            .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
-            .ok();
+        let replay = ChangeReplay::new(
+            self.repository,
+            &self.head,
+            &self.relative_paths.all(),
+            self.relative_paths.configured_readme.as_deref(),
+        )
+        .inspect_err(|error| warn!("cannot check retained changes: {error:#}"))
+        .ok();
         commits.retain(|commit| self.retains(replay.as_ref(), &commit.id));
     }
 
@@ -212,7 +223,7 @@ impl<'a> RetainedChanges<'a> {
             .released
             .as_deref()
             .context("no equal snapshot was recorded")?;
-        let includes = |path: &[u8]| self.includes(path);
+        let includes = |change: FileChange<'_>| self.includes(change);
         // The release contains the change, in part at least, when undoing it
         // changes the release. Conflicting tokens keep the release's: a change
         // can be absent even when its inverse conflicts with edits next to it.
@@ -237,7 +248,8 @@ impl<'a> RetainedChanges<'a> {
         )
     }
 
-    fn includes(&self, path: &[u8]) -> bool {
+    fn includes(&self, change: FileChange<'_>) -> bool {
+        let path = change.path;
         let Ok(path) = std::str::from_utf8(path) else {
             // Cargo's UTF-8 file list cannot represent this path. Conservatively
             // include it only beneath the package directory; it cannot equal
@@ -250,18 +262,27 @@ impl<'a> RetainedChanges<'a> {
                 .all(|component| components.next() == Some(component.as_bytes()));
         };
         let path = Utf8Path::new(path);
-        let PackagePaths { package, readme } = &self.relative_paths;
-        // Generated files at the package root do not affect package equality.
-        // Nested copies are packaged; the replay skips the edits that package
-        // equality ignores.
-        if path
-            .strip_prefix(package)
-            .is_ok_and(is_generated_package_file)
-        {
+        let PackagePaths {
+            package,
+            readme,
+            configured_readme,
+        } = &self.relative_paths;
+        // README equality follows links, including targets outside the package.
+        if readme.as_deref() == Some(path) || configured_readme.as_deref() == Some(path) {
+            return true;
+        }
+        let package_relative_path = path.strip_prefix(package).ok();
+        // Nested metadata presence is handled by the replay, while root metadata is generated.
+        if package_relative_path.is_some_and(is_generated_package_file) {
             return false;
         }
-        if readme.as_deref() == Some(path) {
-            return true;
+        // Ordinary symlinks contribute only their presence to package equality.
+        // The manifest and configured README are compared separately.
+        if !change.changes_presence
+            && change.target_is_symlink
+            && package_relative_path.map(Utf8Path::as_str) != Some(CARGO_TOML)
+        {
+            return false;
         }
         match &self.package_files {
             Some(files) => files.contains(path),
@@ -282,6 +303,7 @@ mod tests {
         let paths = PackagePaths {
             package: repo.directory().join(&package),
             readme: Some(repo.directory().join("README.md")),
+            configured_readme: None,
         };
         let head = repo.current_commit_hash().unwrap();
         let mut changes = RetainedChanges::new(&repo, &head, &[], &paths).unwrap();
@@ -296,19 +318,27 @@ mod tests {
             (b"outside/\xff", false),
             (b"crates/\xff/pkg/file", false),
         ] {
-            assert_eq!(changes.includes(path), included, "{path:?}");
+            assert_eq!(includes(&changes, path), included, "{path:?}");
         }
         changes.package_files = None;
-        assert!(changes.includes(b"crates/pkg/ignored.txt"));
-        assert!(changes.includes(b"crates/pkg/\xff"));
-        assert!(!changes.includes(b"crates/pkg-extra/\xff"));
+        assert!(includes(&changes, b"crates/pkg/ignored.txt"));
+        assert!(includes(&changes, b"crates/pkg/\xff"));
+        assert!(!includes(&changes, b"crates/pkg-extra/\xff"));
 
         // A package at the repository root conservatively includes every path
         // whose bytes cannot be checked against its Cargo file list.
         changes.relative_paths.package = Utf8PathBuf::new();
         changes.package_files = Some(HashSet::new());
-        assert!(changes.includes(b"\xff"));
-        assert!(changes.includes(b"src/\xff"));
+        assert!(includes(&changes, b"\xff"));
+        assert!(includes(&changes, b"src/\xff"));
+    }
+
+    fn includes(changes: &RetainedChanges<'_>, path: &[u8]) -> bool {
+        changes.includes(FileChange {
+            path,
+            changes_presence: false,
+            target_is_symlink: false,
+        })
     }
 
     /// Commit `contents` to `file` at the repository root and return the commit hash.
@@ -331,6 +361,7 @@ mod tests {
         let paths = PackagePaths {
             package: repo.directory().to_path_buf(),
             readme: None,
+            configured_readme: None,
         };
         let graph = repo
             .parents_at_paths(changed, &[], &paths.all(), None)
@@ -342,7 +373,7 @@ mod tests {
             package_files.as_deref().unwrap_or_default(),
         );
         changes.add_package_files(package_files);
-        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all()).unwrap();
+        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all(), None).unwrap();
         (changes, replay)
     }
 
