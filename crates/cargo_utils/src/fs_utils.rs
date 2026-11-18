@@ -7,7 +7,7 @@ pub fn to_utf8_pathbuf(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
         Ok(p) => Ok(p),
         Err(path) => Err(anyhow::anyhow!(
             "cannot convert {} to Utf8Path",
-            path.as_os_str().as_encoded_bytes().escape_ascii()
+            path.display()
         )),
     }
 }

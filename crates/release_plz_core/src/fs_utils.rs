@@ -14,12 +14,8 @@ pub fn strip_prefix(path: &Utf8Path, prefix: impl AsRef<Path>) -> anyhow::Result
 }
 
 pub fn to_utf8_path(path: &Path) -> anyhow::Result<&Utf8Path> {
-    Utf8Path::from_path(path).with_context(|| {
-        format!(
-            "cannot convert {} to Utf8Path",
-            path.as_os_str().as_encoded_bytes().escape_ascii()
-        )
-    })
+    Utf8Path::from_path(path)
+        .with_context(|| format!("cannot convert {} to Utf8Path", path.display()))
 }
 
 pub fn current_directory() -> anyhow::Result<Utf8PathBuf> {

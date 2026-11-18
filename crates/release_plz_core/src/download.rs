@@ -105,13 +105,8 @@ fn read_packages(directories: &[Utf8PathBuf]) -> anyhow::Result<Vec<Package>> {
 /// Read a package from file system
 pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
     let manifest_path = directory.as_ref().join(CARGO_TOML);
-    let manifest_path =
-        cargo_metadata::camino::Utf8PathBuf::from_path_buf(manifest_path).map_err(|path| {
-            anyhow!(
-                "non-utf8 manifest path: {}",
-                path.as_os_str().as_encoded_bytes().escape_ascii()
-            )
-        })?;
+    let manifest_path = cargo_metadata::camino::Utf8PathBuf::from_path_buf(manifest_path)
+        .map_err(|path| anyhow!("non-utf8 manifest path: {}", path.display()))?;
     let metadata = cargo_utils::get_manifest_metadata(&manifest_path)
         .context("failed to execute cargo_metadata")?;
     let package = metadata.packages.first().ok_or_else(|| {
