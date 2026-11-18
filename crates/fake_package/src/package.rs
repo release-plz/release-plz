@@ -3,6 +3,7 @@ use cargo_metadata::{Dependency, Package};
 use crate::dependency::FakeDependency;
 
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct FakePackage {
     name: String,
     dependencies: Vec<FakeDependency>,
@@ -94,7 +95,7 @@ mod tests {
     fn default_package_has_no_publish_restriction_and_no_targets() {
         let package = Package::from(FakePackage::new("pkg"));
         assert_eq!(package.publish, None);
-        assert!(package.targets.is_empty());
+        assert_eq!(package.targets, []);
     }
 
     #[test]

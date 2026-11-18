@@ -1,3 +1,4 @@
+use cargo_metadata::semver::Version;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
@@ -10,15 +11,15 @@ use crate::helpers::{
 };
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_update_handles_non_verifiable_release() {
     let context = TestContext::new().await;
     context.write_release_plz_toml(
-        r#"
+        r"
 [workspace]
 git_only = true
 publish = false
-"#,
+",
     );
     fs_err::write(
         context.repo_dir().join("build.rs"),
@@ -47,15 +48,15 @@ publish = false
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_default_tag_name() {
     let context = TestContext::new().await;
 
     // Configure git_only (tag name defaults to "v{version}")
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag
@@ -76,7 +77,7 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_custom_tag_name() {
     let context = TestContext::new().await;
 
@@ -111,19 +112,18 @@ git_tag_name = "release-{{ version }}-prod"
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_finds_highest_version_tag() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create tags with corresponding Cargo.toml versions
     // In git_only mode, tags should point to commits where Cargo.toml version matches the tag
-    use cargo_metadata::semver::Version;
 
     // Tag v0.1.0 (Cargo.toml already has 0.1.0 from cargo init)
     context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
@@ -153,14 +153,14 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_ignores_non_matching_tags() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create tags with different patterns
@@ -183,14 +183,14 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_no_matching_tag_creates_initial_release() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create tag that doesn't match the default "v" pattern
@@ -218,14 +218,14 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_no_tags_creates_initial_release() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Don't create any tags
@@ -252,15 +252,15 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_feat_commit_minor_bump() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 features_always_increment_minor = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
@@ -285,7 +285,7 @@ features_always_increment_minor = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_respects_release_commits_regex() {
     let context = TestContext::new().await;
 
@@ -325,7 +325,7 @@ release_commits = "^feat:"
 // ============================================================================
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_workspace_level_applies_to_all() {
     let context = TestContext::new_workspace(&["lib1", "lib2"]).await;
 
@@ -393,7 +393,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_per_package_prefix() {
     let context = TestContext::new_workspace(&["api", "core"]).await;
 
@@ -468,14 +468,14 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_lightweight_tags() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag
@@ -496,16 +496,14 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_mixed_annotated_and_lightweight_tags() {
-    use cargo_metadata::semver::Version;
-
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create mix of tags with proper version updates
@@ -532,14 +530,14 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_invalid_tag_format() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create tags with invalid semver formats
@@ -562,15 +560,15 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_breaking_change() {
     let context = TestContext::new().await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 features_always_increment_minor = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     context.repo.tag("v0.1.0", "Release v0.1.0").unwrap();
@@ -590,7 +588,7 @@ features_always_increment_minor = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_multiple_packages_changed_workspace() {
     let context = TestContext::new_workspace(&["pkg1", "pkg2", "pkg3"]).await;
 
@@ -680,17 +678,17 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_publish_enabled_fails_validation() {
     let context = TestContext::new().await;
 
     // Configure with both git_only = true and publish not disabled
     // This should fail validation because they are mutually exclusive
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag
@@ -712,16 +710,16 @@ publish = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_publish_disabled_succeeds() {
     let context = TestContext::new().await;
 
     // Configure with git_only = true and publish = false - this is valid
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = false
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag
@@ -742,7 +740,7 @@ publish = false
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_workspace_with_package_publish_enabled_fails() {
     let context = TestContext::new_workspace(&["pkg-a", "pkg-b"]).await;
 
@@ -777,17 +775,17 @@ publish = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_publish_enabled_fails_validation_release_cmd() {
     let context = TestContext::new().await;
 
     // Configure with both git_only = true and publish = true
     // This should fail validation because they are mutually exclusive
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag
@@ -809,18 +807,16 @@ publish = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_release_creates_tag() {
-    use cargo_metadata::semver::Version;
-
     let context = TestContext::new().await;
 
     // Configure with git_only = true and publish = false
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = false
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag and update Cargo.toml to match
@@ -853,7 +849,7 @@ publish = false
     // Verify no packages were published (since publish = false)
     let dest_dir = Utf8TempDir::new().unwrap();
     let packages = context.download_package(dest_dir.path()).await;
-    assert!(packages.is_empty());
+    assert_eq!(packages, []);
 }
 
 /// Test for <https://github.com/release-plz/release-plz/issues/2594>
@@ -861,10 +857,8 @@ publish = false
 /// This test verifies that a package with a name that exists on the cargo registry
 /// still gets tagged in `git_only` mode, because the registry is not checked.
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_release_does_not_check_crates_io() {
-    use cargo_metadata::semver::Version;
-
     // Create workspace with two packages
     let context = TestContext::new_workspace(&["mylib", "mybin"]).await;
 
@@ -872,11 +866,11 @@ async fn git_only_release_does_not_check_crates_io() {
     context.run_cargo_publish("mylib");
 
     // Configure with git_only = true and publish = false
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = false
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tags
@@ -951,7 +945,7 @@ publish = false
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_update_handles_workspace_path_dependencies_at_different_commits() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("mylib").with_type(PackageType::Lib),
@@ -961,11 +955,11 @@ async fn git_only_update_handles_workspace_path_dependencies_at_different_commit
     ])
     .await;
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = false
-"#;
+";
     context.write_release_plz_toml(config);
 
     context
@@ -1036,7 +1030,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_update_handles_packages_sharing_a_release_tag() {
     // All packages are released together under a single workspace tag, so they
     // are all resolved at the same release commit.
@@ -1118,7 +1112,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_update_handles_root_package_path_dependencies() {
     use cargo_utils::{CARGO_TOML, LocalManifest};
 
@@ -1154,11 +1148,11 @@ async fn git_only_update_handles_root_package_path_dependencies() {
     context.run_cargo_check();
     context.push_all_changes("chore: setup root mybin with crates/mylib path dependency");
 
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
 publish = false
-"#;
+";
     context.write_release_plz_toml(config);
 
     context
@@ -1192,7 +1186,7 @@ publish = false
 /// goes through the `release-pr` -> `release` round trip: `release-pr` bumps it and
 /// `release` tags it without running `cargo publish`, which would refuse to publish it.
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_processes_packages_with_publish_false_in_manifest() {
     use cargo_utils::LocalManifest;
 
@@ -1207,10 +1201,10 @@ async fn git_only_processes_packages_with_publish_false_in_manifest() {
 
     // Configure git_only = true in release-plz config.
     // `publish` is not set: git-only mode must skip `cargo publish` on its own.
-    let config = r#"
+    let config = r"
 [workspace]
 git_only = true
-"#;
+";
     context.write_release_plz_toml(config);
 
     // Create initial release tag
@@ -1238,7 +1232,7 @@ git_only = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_with_package_overrides_keeps_workspace_git_only() {
     use cargo_utils::LocalManifest;
 
@@ -1361,7 +1355,7 @@ git_release_name = "{{ package }}-v{{ version }}"
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_releases_workspace_with_versionless_private_dependencies() {
     let context = released_private_workspace().await;
     let root_manifest_path = context.repo_dir().join("Cargo.toml");
@@ -1406,7 +1400,7 @@ async fn git_only_releases_workspace_with_versionless_private_dependencies() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_detects_changes_to_inherited_readme() {
     let context = released_private_workspace().await;
 
@@ -1426,7 +1420,7 @@ async fn git_only_detects_changes_to_inherited_readme() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_releases_dependents_of_versionless_private_libraries_together() {
     use cargo_utils::LocalManifest;
 
@@ -1462,12 +1456,12 @@ async fn git_only_releases_dependents_of_versionless_private_libraries_together(
     context.run_cargo_check();
     context.push_all_changes("chore: configure versionless private dependencies");
     context.write_release_plz_toml(
-        r#"
+        r"
 [workspace]
 git_only = true
 publish = false
 semver_check = false
-"#,
+",
     );
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
@@ -1517,7 +1511,7 @@ semver_check = false
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_checks_semver_with_versionless_private_dependencies() {
     use cargo_utils::LocalManifest;
 
@@ -1553,11 +1547,11 @@ async fn git_only_checks_semver_with_versionless_private_dependencies() {
     context.run_cargo_check();
     context.push_all_changes("chore: configure private libraries");
     context.write_release_plz_toml(
-        r#"
+        r"
 [workspace]
 git_only = true
 semver_check = true
-"#,
+",
     );
     for name in ["support", "wrapper"] {
         context
@@ -1586,7 +1580,7 @@ semver_check = true
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_updates_root_package_with_versionless_dependency() {
     use cargo_utils::LocalManifest;
 
@@ -1607,12 +1601,12 @@ async fn git_only_updates_root_package_with_versionless_dependency() {
     context.push_all_changes("chore: add versionless path dependency");
     // Use git tags as the release baseline, with registry publishing disabled.
     context.write_release_plz_toml(
-        r#"
+        r"
 [workspace]
 git_only = true
 publish = false
 semver_check = false
-"#,
+",
     );
     for name in [context.gitea.repo.as_str(), "internal-lib"] {
         context
@@ -1641,15 +1635,15 @@ semver_check = false
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_does_not_release_unrelated_binaries_for_workspace_lock_changes() {
     let context = TestContext::new_workspace(&["bin-a", "bin-b"]).await;
     context.write_release_plz_toml(
-        r#"
+        r"
 [workspace]
 git_only = true
 publish = false
-"#,
+",
     );
     context.run_release().success();
     context.repo.git(&["fetch", "--tags"]).unwrap();
@@ -1672,7 +1666,7 @@ publish = false
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("support").with_type(PackageType::Lib),
@@ -1735,12 +1729,12 @@ async fn git_only_does_not_release_binary_for_library_dev_dependency_update() {
     };
     update_test_dependency("0.1.0");
     context.write_release_plz_toml(
-        r#"
+        r"
 [workspace]
 git_only = true
 publish = false
 semver_check = false
-"#,
+",
     );
     for name in ["support", "app"] {
         context

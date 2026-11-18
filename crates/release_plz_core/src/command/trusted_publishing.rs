@@ -74,6 +74,11 @@ async fn get_github_actions_jwt(
     client: &reqwest::Client,
     audience: &str,
 ) -> anyhow::Result<String> {
+    #[derive(serde::Deserialize)]
+    struct OidcResp {
+        value: String,
+    }
+
     // Follow GitHub OIDC flow using environment variables provided in Actions runners
     let req_url = read_actions_id_env_var("ACTIONS_ID_TOKEN_REQUEST_URL")?;
     let req_token = read_actions_id_env_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")?;
@@ -95,10 +100,6 @@ async fn get_github_actions_jwt(
         .successful_status()
         .await
         .context("Failed to get GitHub Actions OIDC token")?;
-    #[derive(serde::Deserialize)]
-    struct OidcResp {
-        value: String,
-    }
     let body: OidcResp = resp.json().await?;
     if body.value.is_empty() {
         anyhow::bail!("Empty OIDC token received");
@@ -111,6 +112,11 @@ async fn request_trusted_publishing_token(
     base_url: &str,
     jwt: &str,
 ) -> anyhow::Result<String> {
+    #[derive(serde::Deserialize)]
+    struct TokenResp {
+        token: String,
+    }
+
     let endpoint = get_tokens_endpoint(base_url);
     info!("Requesting token from: {endpoint}");
     let resp = client
@@ -121,10 +127,6 @@ async fn request_trusted_publishing_token(
         .successful_status()
         .await
         .context("Failed to retrieve token from Cargo registry")?;
-    #[derive(serde::Deserialize)]
-    struct TokenResp {
-        token: String,
-    }
     let body: TokenResp = resp.json().await?;
     if body.token.is_empty() {
         anyhow::bail!("Empty token received from registry");

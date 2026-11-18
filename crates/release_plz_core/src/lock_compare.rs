@@ -168,16 +168,15 @@ fn workspace_lock_dependencies(
     let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
     let workspace = load_workspace(metadata, &config)?;
     let loaded_lockfile;
-    let lockfile = match lockfile {
-        Some(lockfile) => lockfile,
-        None => {
-            // Decode the local lockfile without resolving or fetching dependencies.
-            let resolve = cargo::ops::load_pkg_lockfile(&workspace)
-                .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
-                .with_context(|| format!("workspace lockfile {lock_path:?} is missing"))?;
-            loaded_lockfile = WorkspaceLockfile::from_resolve(&resolve);
-            &loaded_lockfile
-        }
+    let lockfile = if let Some(lockfile) = lockfile {
+        lockfile
+    } else {
+        // Decode the local lockfile without resolving or fetching dependencies.
+        let resolve = cargo::ops::load_pkg_lockfile(&workspace)
+            .with_context(|| format!("cannot load workspace lockfile {lock_path:?}"))?
+            .with_context(|| format!("workspace lockfile {lock_path:?} is missing"))?;
+        loaded_lockfile = WorkspaceLockfile::from_resolve(&resolve);
+        &loaded_lockfile
     };
     let patches = workspace
         .root_patch()?
@@ -320,6 +319,7 @@ mod tests {
     use super::*;
     use crate::test_utils::{generate_lockfile, package_manifest, run_cargo_unwrap, write_package};
     use cargo_metadata::DependencyKind;
+    use std::fmt::Write as _;
 
     /// Spell a source the way Cargo writes it into a lockfile: `encodable_source_id`
     /// percent-encodes the Git query parameters, while `cargo metadata` leaves them decoded.
@@ -799,9 +799,9 @@ source = "git+https://example.com/patched-test#0123456789abcdef"
             ("test-only", "1.0.0"),
             ("root-dev", "1.0.0"),
         ] {
-            lockfile.push_str(&format!(
-                "\n[[package]]\nname = {name:?}\nversion = {version:?}\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
-            ));
+            writeln!(lockfile,
+                "\n[[package]]\nname = {name:?}\nversion = {version:?}\nsource = \"registry+https://github.com/rust-lang/crates.io-index\""
+            ).unwrap();
         }
         fs_err::write(released.path().join("Cargo.lock"), &lockfile).unwrap();
         let released = released_workspace(released_metadata);
@@ -1074,6 +1074,43 @@ version = "1.0.0"
         );
     }
 
+    fn lockfile_with_dependency_sources(library: &cargo_metadata::Package) -> String {
+        let mut dependency_ids = Vec::new();
+        let mut lockfile = String::from(
+            "version = 4\n[[package]]\nname = \"binary\"\nversion = \"1.0.0\"\ndependencies = [\"library\"]\n",
+        );
+        for dependency in &library.dependencies {
+            let leaf = if dependency.kind == DependencyKind::Development {
+                "dev-leaf"
+            } else {
+                "normal-leaf"
+            };
+            let source = dependency.source.as_ref().map(|s| s.repr.as_str());
+            // Cargo writes dependency IDs with the same encoding it uses for the
+            // package's own `source`, minus the resolved revision.
+            dependency_ids.push(source.map_or_else(
+                || "shared 1.0.0".to_string(),
+                |source| format!("shared 1.0.0 ({})", encoded_source(source)),
+            ));
+            lockfile.push_str("[[package]]\nname = \"shared\"\nversion = \"1.0.0\"\n");
+            if let Some(source) = source {
+                let precise = if source.starts_with("git+") {
+                    "#0123456789abcdef"
+                } else {
+                    ""
+                };
+                writeln!(lockfile, "source = \"{}{precise}\"", encoded_source(source)).unwrap();
+            }
+            writeln!(lockfile,
+                "dependencies = [{leaf:?}]\n[[package]]\nname = {leaf:?}\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\""
+            ).unwrap();
+        }
+        writeln!(lockfile,
+            "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}"
+        ).unwrap();
+        lockfile
+    }
+
     #[test]
     fn workspace_lock_comparison_distinguishes_dependency_sources() {
         let directory = crate::fs_utils::Utf8TempDir::new().unwrap();
@@ -1137,42 +1174,7 @@ version = "1.0.0"
                 .iter()
                 .find(|p| p.name == "library")
                 .unwrap();
-            let mut dependency_ids = Vec::new();
-            let mut lockfile = String::from(
-                "version = 4\n[[package]]\nname = \"binary\"\nversion = \"1.0.0\"\ndependencies = [\"library\"]\n",
-            );
-            for dependency in &library.dependencies {
-                let leaf = if dependency.kind == DependencyKind::Development {
-                    "dev-leaf"
-                } else {
-                    "normal-leaf"
-                };
-                let source = dependency.source.as_ref().map(|s| s.repr.as_str());
-                // Cargo writes dependency IDs with the same encoding it uses for the
-                // package's own `source`, minus the resolved revision.
-                dependency_ids.push(source.map_or_else(
-                    || "shared 1.0.0".to_string(),
-                    |source| format!("shared 1.0.0 ({})", encoded_source(source)),
-                ));
-                lockfile.push_str("[[package]]\nname = \"shared\"\nversion = \"1.0.0\"\n");
-                if let Some(source) = source {
-                    let precise = if source.starts_with("git+") {
-                        "#0123456789abcdef"
-                    } else {
-                        ""
-                    };
-                    lockfile.push_str(&format!(
-                        "source = \"{}{precise}\"\n",
-                        encoded_source(source)
-                    ));
-                }
-                lockfile.push_str(&format!(
-                    "dependencies = [{leaf:?}]\n[[package]]\nname = {leaf:?}\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
-                ));
-            }
-            lockfile.push_str(&format!(
-                "[[package]]\nname = \"library\"\nversion = \"1.0.0\"\ndependencies = {dependency_ids:?}\n"
-            ));
+            let lockfile = lockfile_with_dependency_sources(library);
             fs_err::write(directory.path().join("Cargo.lock"), &lockfile).unwrap();
             let released = lock_dependencies(&metadata, "binary");
             for (leaf, should_update) in [("dev-leaf", false), ("normal-leaf", true)] {

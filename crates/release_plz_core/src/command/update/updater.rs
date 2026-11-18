@@ -55,6 +55,56 @@ struct PlannedUpdate<'a> {
     version: Version,
 }
 
+fn workspace_version_and_members<'a>(
+    local_manifest_path: &Utf8Path,
+    workspace_packages: &'a [Package],
+) -> anyhow::Result<(Option<Version>, Vec<&'a Package>)> {
+    let (workspace_version, is_workspace_root) = {
+        let manifest = LocalManifest::try_new(local_manifest_path)?;
+        (
+            manifest.get_workspace_version(),
+            manifest.data.contains_key("workspace"),
+        )
+    };
+    let mut inheriting_packages = Vec::new();
+    // Skip version-inheritance checks only for a workspace root without
+    // workspace.package.version. A member manifest may inherit a version
+    // defined in the root, so keep scanning when given a member manifest.
+    if workspace_version.is_some() || !is_workspace_root {
+        for package in workspace_packages {
+            if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
+                inheriting_packages.push(package);
+            }
+        }
+    }
+    Ok((workspace_version, inheriting_packages))
+}
+
+fn align_workspace_versions(
+    planned_updates: &mut [PlannedUpdate<'_>],
+    workspace_version_pkgs: &HashSet<String>,
+    initial_workspace_version: Option<&Version>,
+) -> Option<Version> {
+    // A dependency-only release can raise the shared version after the
+    // initial commit-based calculation. Only activate it if an inheriting
+    // package is actually being released, preserving release_commits filtering.
+    let workspace_version = planned_updates
+        .iter()
+        .filter(|u| workspace_version_pkgs.contains(u.package.name.as_str()))
+        .map(|u| &u.version)
+        .max()
+        .map(|version| version.max(initial_workspace_version.unwrap_or(version)))
+        .cloned();
+    if let Some(version) = &workspace_version {
+        for update in planned_updates.iter_mut() {
+            if workspace_version_pkgs.contains(update.package.name.as_str()) {
+                update.version = version.clone();
+            }
+        }
+    }
+    workspace_version
+}
+
 impl Updater<'_> {
     #[instrument(skip_all)]
     pub async fn packages_to_update(
@@ -81,24 +131,8 @@ impl Updater<'_> {
             self.req.cargo_metadata(),
             crate::manifest_dir(local_manifest_path)?,
         )?;
-        let (workspace_version, is_workspace_root) = {
-            let manifest = LocalManifest::try_new(local_manifest_path)?;
-            (
-                manifest.get_workspace_version(),
-                manifest.data.contains_key("workspace"),
-            )
-        };
-        let mut inheriting_packages = Vec::new();
-        // Skip version-inheritance checks only for a workspace root without
-        // workspace.package.version. A member manifest may inherit a version
-        // defined in the root, so keep scanning when given a member manifest.
-        if workspace_version.is_some() || !is_workspace_root {
-            for package in &workspace_packages {
-                if LocalManifest::try_new(&package.manifest_path)?.version_is_inherited() {
-                    inheriting_packages.push(package);
-                }
-            }
-        }
+        let (workspace_version, inheriting_packages) =
+            workspace_version_and_members(local_manifest_path, &workspace_packages)?;
         let workspace_version_pkgs: HashSet<String> = inheriting_packages
             .iter()
             .map(|p| p.name.to_string())
@@ -434,23 +468,11 @@ impl Updater<'_> {
             .collect();
 
         loop {
-            // A dependency-only release can raise the shared version after the
-            // initial commit-based calculation. Only activate it if an inheriting
-            // package is actually being released, preserving release_commits filtering.
-            let workspace_version = planned_updates
-                .iter()
-                .filter(|u| workspace_version_pkgs.contains(u.package.name.as_str()))
-                .map(|u| &u.version)
-                .max()
-                .map(|version| version.max(initial_workspace_version.unwrap_or(version)))
-                .cloned();
-            if let Some(version) = &workspace_version {
-                for update in planned_updates.iter_mut() {
-                    if workspace_version_pkgs.contains(update.package.name.as_str()) {
-                        update.version = version.clone();
-                    }
-                }
-            }
+            let workspace_version = align_workspace_versions(
+                planned_updates,
+                workspace_version_pkgs,
+                initial_workspace_version,
+            );
             let mut changed_packages: Vec<(&Package, Version)> = planned_updates
                 .iter()
                 .map(|u| (u.package, u.version.clone()))
@@ -1255,7 +1277,7 @@ mod tests {
         let commits: Vec<_> = commits.iter().map(Commit::to_cliff_commit).collect();
 
         assert_eq!(commits[1].remote.as_ref().unwrap().pr_number, Some(42));
-        assert!(get_contributors(&commits[..3]).is_empty());
+        assert_eq!(get_contributors(&commits[..3]), []);
 
         let contributors = get_contributors(&commits);
         let contributors: Vec<_> = contributors
