@@ -250,8 +250,9 @@ fn list_packaged_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
     while let Some(dir) = dirs.pop() {
         for entry in fs_err::read_dir(&dir).with_context(|| format!("cannot read dir {dir:?}"))? {
             let entry = entry.with_context(|| format!("cannot read dir entry in {dir:?}"))?;
-            let path = Utf8PathBuf::from_path_buf(entry.path())
-                .map_err(|path| anyhow::anyhow!("non-utf8 path in package: {}", path.display()))?;
+            let path = Utf8PathBuf::from_path_buf(entry.path()).map_err(|path| {
+                anyhow::anyhow!("non-utf8 path in package: \"{}\"", path.display())
+            })?;
             // Git metadata isn't part of the package, including nested repositories
             // and worktrees whose `.git` entry is a file.
             if path.file_name() == Some(".git") {

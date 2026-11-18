@@ -7,7 +7,7 @@ use cargo_utils::to_utf8_pathbuf;
 pub fn strip_prefix(path: &Utf8Path, prefix: impl AsRef<Path>) -> anyhow::Result<&Utf8Path> {
     path.strip_prefix(prefix.as_ref()).with_context(|| {
         format!(
-            "cannot strip prefix {} from {path}",
+            "cannot strip prefix \"{}\" from \"{path}\"",
             prefix.as_ref().display()
         )
     })
@@ -15,7 +15,7 @@ pub fn strip_prefix(path: &Utf8Path, prefix: impl AsRef<Path>) -> anyhow::Result
 
 pub fn to_utf8_path(path: &Path) -> anyhow::Result<&Utf8Path> {
     Utf8Path::from_path(path)
-        .with_context(|| format!("cannot convert {} to Utf8Path", path.display()))
+        .with_context(|| format!("cannot convert \"{}\" to Utf8Path", path.display()))
 }
 
 pub fn current_directory() -> anyhow::Result<Utf8PathBuf> {

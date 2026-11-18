@@ -242,7 +242,7 @@ impl Update {
                 if provided_path.exists() {
                     Some(provided_path.to_path_buf())
                 } else {
-                    anyhow::bail!("cannot read {}", provided_path.display())
+                    anyhow::bail!("cannot read \"{}\"", provided_path.display())
                 }
             }
             None => GitCliffConfig::retrieve_user_config_path(),
