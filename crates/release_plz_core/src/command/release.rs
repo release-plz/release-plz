@@ -185,25 +185,25 @@ impl ReleaseRequest {
     #[must_use]
     pub fn allow_dirty(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.cargo_publish.allow_dirty
+        config.allow_dirty
     }
 
     #[must_use]
     pub fn no_verify(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.cargo_publish.no_verify
+        config.no_verify
     }
 
     #[must_use]
     pub fn features(&self, package: &str) -> Vec<String> {
         let config = self.get_package_config(package);
-        config.cargo_publish.features
+        config.features
     }
 
     #[must_use]
     pub fn all_features(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
-        config.cargo_publish.all_features
+        config.all_features
     }
 
     /// Find the token to use for the given `registry` ([`Option::None`] means crates.io).
@@ -290,21 +290,6 @@ pub struct ReleaseConfig {
     publish: PublishConfig,
     git_release: GitReleaseConfig,
     git_tag: GitTagConfig,
-    cargo_publish: CargoPublishOptions,
-    /// High-level toggle to process this package or ignore it
-    release: bool,
-    changelog_path: Option<Utf8PathBuf>,
-    /// Whether this package has a changelog that release-plz updates or not.
-    /// Default: `true`.
-    changelog_update: bool,
-    /// Whether the package versions are tracked with git tags instead of a cargo registry.
-    /// A `publish = false` package is only released when this is `true`.
-    /// Default: `false`.
-    git_only: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct CargoPublishOptions {
     /// Don't verify the contents by building them.
     /// If true, `release-plz` adds the `--no-verify` flag to `cargo publish`.
     no_verify: bool,
@@ -317,6 +302,16 @@ struct CargoPublishOptions {
     /// Enable all features when packaging the crate.
     /// If true, pass the `--all-features` flag to `cargo publish`.
     all_features: bool,
+    /// High-level toggle to process this package or ignore it
+    release: bool,
+    changelog_path: Option<Utf8PathBuf>,
+    /// Whether this package has a changelog that release-plz updates or not.
+    /// Default: `true`.
+    changelog_update: bool,
+    /// Whether the package versions are tracked with git tags instead of a cargo registry.
+    /// A `publish = false` package is only released when this is `true`.
+    /// Default: `false`.
+    git_only: bool,
 }
 
 impl ReleaseConfig {
@@ -341,22 +336,22 @@ impl ReleaseConfig {
     }
 
     pub fn with_no_verify(mut self, no_verify: bool) -> Self {
-        self.cargo_publish.no_verify = no_verify;
+        self.no_verify = no_verify;
         self
     }
 
     pub fn with_allow_dirty(mut self, allow_dirty: bool) -> Self {
-        self.cargo_publish.allow_dirty = allow_dirty;
+        self.allow_dirty = allow_dirty;
         self
     }
 
     pub fn with_features(mut self, features: Vec<String>) -> Self {
-        self.cargo_publish.features = features;
+        self.features = features;
         self
     }
 
     pub fn with_all_features(mut self, all_features: bool) -> Self {
-        self.cargo_publish.all_features = all_features;
+        self.all_features = all_features;
         self
     }
 
@@ -387,7 +382,10 @@ impl Default for ReleaseConfig {
             publish: PublishConfig::default(),
             git_release: GitReleaseConfig::default(),
             git_tag: GitTagConfig::default(),
-            cargo_publish: CargoPublishOptions::default(),
+            no_verify: false,
+            allow_dirty: false,
+            features: vec![],
+            all_features: false,
             release: true,
             changelog_path: None,
             changelog_update: true,

@@ -495,18 +495,15 @@ pub struct PackageConfig {
 impl From<PackageConfig> for release_plz_core::UpdateConfig {
     fn from(config: PackageConfig) -> Self {
         Self {
-            version: release_plz_core::VersionConfig {
-                semver_check: config.semver_check != Some(false),
-                features_always_increment_minor: config.features_always_increment_minor
-                    == Some(true),
-                custom_minor_increment_regex: config.custom_minor_increment_regex,
-                custom_major_increment_regex: config.custom_major_increment_regex,
-            },
+            semver_check: config.semver_check != Some(false),
             changelog_update: config.changelog_update != Some(false),
             release: config.release != Some(false),
             publish: config.publish != Some(false),
             tag_name_template: config.git_tag_name,
+            features_always_increment_minor: config.features_always_increment_minor == Some(true),
             changelog_path: config.changelog_path.map(|p| to_utf8_pathbuf(p).unwrap()),
+            custom_minor_increment_regex: config.custom_minor_increment_regex,
+            custom_major_increment_regex: config.custom_major_increment_regex,
             git_only: config.git_only,
         }
     }

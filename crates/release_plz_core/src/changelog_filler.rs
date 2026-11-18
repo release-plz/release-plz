@@ -8,27 +8,17 @@ use crate::{GitClient, NO_COMMIT_ID, diff::Commit};
 
 #[derive(Debug)]
 pub struct RequiredInfo {
-    author: SignatureFields,
-    committer: SignatureFields,
+    author_name: bool,
+    author_email: bool,
+    committer_name: bool,
+    committer_email: bool,
     remote_username: bool,
     remote_pr_number: bool,
 }
 
-#[derive(Debug)]
-struct SignatureFields {
-    name: bool,
-    email: bool,
-}
-
-impl SignatureFields {
-    fn is_required(&self) -> bool {
-        self.name || self.email
-    }
-}
-
 impl RequiredInfo {
     fn is_local_required(&self) -> bool {
-        self.author.is_required() || self.committer.is_required()
+        self.author_name || self.author_email || self.committer_name || self.committer_email
     }
 
     pub(crate) fn is_remote_required(&self) -> bool {
@@ -53,16 +43,16 @@ pub async fn fill_commit<'a>(
     } else {
         if required_info.is_local_required() {
             let signatures = repository.get_commit_signatures(&commit.id)?;
-            if required_info.author.name {
+            if required_info.author_name {
                 commit.author.name = Some(signatures.author_name);
             }
-            if required_info.author.email {
+            if required_info.author_email {
                 commit.author.email = Some(signatures.author_email);
             }
-            if required_info.committer.name {
+            if required_info.committer_name {
                 commit.committer.name = Some(signatures.committer_name);
             }
-            if required_info.committer.email {
+            if required_info.committer_email {
                 commit.committer.email = Some(signatures.committer_email);
             }
         }
@@ -93,17 +83,21 @@ pub async fn fill_commit<'a>(
 }
 
 pub fn get_required_info(changelog_config: &ChangelogConfig) -> RequiredInfo {
-    let body = &changelog_config.body;
-    RequiredInfo {
-        author: SignatureFields {
-            name: body.contains("author.name"),
-            email: body.contains("author.email"),
-        },
-        committer: SignatureFields {
-            name: body.contains("committer.name"),
-            email: body.contains("committer.email"),
-        },
-        remote_username: body.contains("remote.username"),
-        remote_pr_number: body.contains("remote.pr_number"),
-    }
+    let mut required_info = RequiredInfo {
+        author_name: false,
+        author_email: false,
+        committer_name: false,
+        committer_email: false,
+        remote_username: false,
+        remote_pr_number: false,
+    };
+
+    required_info.author_name = changelog_config.body.contains("author.name");
+    required_info.author_email = changelog_config.body.contains("author.email");
+    required_info.committer_name = changelog_config.body.contains("committer.name");
+    required_info.committer_email = changelog_config.body.contains("committer.email");
+    required_info.remote_username = changelog_config.body.contains("remote.username");
+    required_info.remote_pr_number = changelog_config.body.contains("remote.pr_number");
+
+    required_info
 }
