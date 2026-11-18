@@ -74,8 +74,8 @@ pub struct Update {
 
     /// Update all the dependencies in the Cargo.lock file by running `cargo update`.
     /// If this flag is not specified, only update the workspace packages by running `cargo update --workspace`.
-    #[arg(short = 'u', long = "update-deps")]
-    all_dependencies: bool,
+    #[arg(short, long)]
+    update_deps: bool,
 
     /// Path to the git-cliff configuration file.
     /// If not provided, git-cliff's user configuration file is used if present.
@@ -150,7 +150,7 @@ impl Update {
     }
 
     fn dependencies_update(&self, config: &Config) -> bool {
-        self.all_dependencies || config.workspace.dependencies_update == Some(true)
+        self.update_deps || config.workspace.dependencies_update == Some(true)
     }
 
     fn allow_dirty(&self, config: &Config) -> bool {
@@ -301,7 +301,7 @@ mod tests {
             no_changelog: false,
             release_date: None,
             registry: None,
-            all_dependencies: false,
+            update_deps: false,
             changelog_config: None,
             allow_dirty: false,
             repo_url: None,

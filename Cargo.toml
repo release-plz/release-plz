@@ -74,6 +74,7 @@ unused_import_braces = "warn"
 pedantic = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+struct_field_names = "allow"
 
 as_underscore = "warn"
 await_holding_lock = "warn"
