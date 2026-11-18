@@ -54,9 +54,6 @@ pub struct UpdateRequest {
 }
 
 impl UpdateRequest {
-    /// # Errors
-    ///
-    /// Returns an error if the workspace manifest path cannot be canonicalized as UTF-8.
     pub fn new(metadata: Metadata) -> anyhow::Result<Self> {
         let local_manifest = cargo_utils::workspace_manifest(&metadata);
         let local_manifest = cargo_utils::canonical_local_manifest(local_manifest.as_ref())?;
@@ -78,9 +75,6 @@ impl UpdateRequest {
         })
     }
 
-    /// # Panics
-    ///
-    /// Panics if the local manifest has no parent directory.
     #[must_use]
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
@@ -91,9 +85,6 @@ impl UpdateRequest {
         )
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the configured forge client cannot be initialized.
     pub fn git_client(&self) -> anyhow::Result<Option<GitClient>> {
         self.git
             .as_ref()
@@ -112,9 +103,6 @@ impl UpdateRequest {
         &self.metadata
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the given manifest path cannot be canonicalized as UTF-8.
     pub fn set_local_manifest(self, local_manifest: impl AsRef<Path>) -> anyhow::Result<Self> {
         Ok(Self {
             local_manifest: cargo_utils::canonical_local_manifest(local_manifest.as_ref())?,
@@ -146,9 +134,6 @@ impl UpdateRequest {
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the registry manifest path cannot be canonicalized as UTF-8.
     pub fn with_registry_manifest_path(self, registry_manifest: &Utf8Path) -> anyhow::Result<Self> {
         let registry_manifest = fs_utils::canonicalize_utf8(registry_manifest)?;
         Ok(Self {
@@ -211,9 +196,6 @@ impl UpdateRequest {
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the commit pattern is an invalid regular expression.
     pub fn with_release_commits(self, release_commits: &str) -> anyhow::Result<Self> {
         let regex = Regex::new(release_commits).context("invalid release_commits regex pattern")?;
 
@@ -223,9 +205,6 @@ impl UpdateRequest {
         })
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the local manifest path has no parent directory.
     pub fn local_manifest_dir(&self) -> anyhow::Result<&Utf8Path> {
         self.local_manifest
             .parent()

@@ -45,10 +45,6 @@ impl PackageDownloader {
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if Cargo cannot download the requested packages or read their
-    /// metadata.
     #[instrument]
     pub async fn download(&self) -> anyhow::Result<Vec<Package>> {
         info!(
@@ -107,11 +103,6 @@ fn read_packages(directories: &[Utf8PathBuf]) -> anyhow::Result<Vec<Package>> {
 }
 
 /// Read a package from file system
-///
-/// # Errors
-///
-/// Returns an error if the manifest path contains invalid UTF-8 or Cargo cannot return a
-/// package for it.
 pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
     let manifest_path = directory.as_ref().join(CARGO_TOML);
     let manifest_path =

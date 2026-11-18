@@ -132,10 +132,6 @@ impl UpdateConfig {
         Self { publish, ..self }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if a configured version increment pattern is an invalid regular
-    /// expression.
     pub fn version_updater(&self) -> Result<VersionUpdater, regex::Error> {
         let mut updater = VersionUpdater::default()
             .with_features_always_increment_minor(self.version.features_always_increment_minor);

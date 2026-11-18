@@ -554,11 +554,6 @@ pub struct PackageRelease {
 }
 
 /// Release the project as it is.
-///
-/// # Errors
-///
-/// Returns an error if the release configuration is invalid or a requested Git, registry or
-/// forge operation fails.
 #[instrument(skip(input))]
 pub async fn release(input: &ReleaseRequest) -> anyhow::Result<Option<Release>> {
     // Reject unsupported configuration before checkout, registry publication or tag creation.

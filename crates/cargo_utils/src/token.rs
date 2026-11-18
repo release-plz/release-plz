@@ -4,10 +4,6 @@ use anyhow::Context as _;
 use secrecy::SecretString;
 use serde::Deserialize;
 
-/// # Errors
-///
-/// Returns an error if the registry name is invalid or Cargo's credentials cannot be located,
-/// read or parsed.
 pub fn registry_token(registry: Option<&str>) -> anyhow::Result<Option<SecretString>> {
     let mut token = registry_token_from_env(registry)?;
     if token.is_none() {

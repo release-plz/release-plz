@@ -1,7 +1,6 @@
 use anyhow::Context;
 use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
-use std::sync::LazyLock;
 use url::Url;
 
 use crate::RepoUrl;
@@ -12,16 +11,7 @@ pub struct GitHub {
     pub remote: Remote,
 }
 
-static GITHUB_API_URL: LazyLock<Url> = LazyLock::new(|| {
-    "https://api.github.com"
-        .parse()
-        .expect("valid GitHub API URL")
-});
-
 impl GitHub {
-    /// # Errors
-    ///
-    /// Returns an error if the REST API URL derived from the repository URL is invalid.
     pub fn from_repo_url(url: RepoUrl, token: SecretString) -> anyhow::Result<Self> {
         let base_url = url
             .github_api_url()
@@ -44,7 +34,7 @@ impl GitHub {
                 owner,
                 repo,
                 token,
-                base_url: GITHUB_API_URL.clone(),
+                base_url: "https://api.github.com".parse().unwrap(),
             },
         }
     }
@@ -59,9 +49,6 @@ impl GitHub {
         }
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the token cannot be represented in an HTTP authorization header.
     pub fn default_headers(&self) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         headers.insert(

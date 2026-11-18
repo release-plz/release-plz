@@ -106,10 +106,6 @@ fn align_workspace_versions(
 }
 
 impl Updater<'_> {
-    /// # Errors
-    ///
-    /// Returns an error if the package history, version requirements or changelog cannot be
-    /// processed.
     #[instrument(skip_all)]
     pub async fn packages_to_update(
         &self,

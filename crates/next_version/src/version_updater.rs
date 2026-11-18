@@ -199,10 +199,6 @@ impl VersionUpdater {
     ///     Version::new(1, 3, 0)
     /// );
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the major increment pattern is an invalid regular expression.
     pub fn with_custom_major_increment_regex(
         mut self,
         custom_major_increment_regex: &str,
@@ -250,10 +246,6 @@ impl VersionUpdater {
     ///     Version::new(0, 2, 4)
     /// );
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the minor increment pattern is an invalid regular expression.
     pub fn with_custom_minor_increment_regex(
         mut self,
         custom_minor_increment_regex: &str,
@@ -294,11 +286,6 @@ impl VersionUpdater {
     ///     Version::new(1, 2, 3)
     /// );
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the pattern for skipping increments is an invalid regular
-    /// expression.
     pub fn with_no_increment_regex(
         mut self,
         no_increment_regex: &str,

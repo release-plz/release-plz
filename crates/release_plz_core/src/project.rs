@@ -45,10 +45,6 @@ enum TemplateField {
 }
 
 impl Project {
-    /// # Errors
-    ///
-    /// Returns an error if the workspace cannot be loaded, overrides reference unknown
-    /// packages, or the selected packages cannot be released or ordered.
     pub fn new(
         local_manifest: &Utf8Path,
         single_package: Option<&str>,
@@ -148,16 +144,10 @@ impl Project {
         Ok(repository)
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the package's tag name template cannot be rendered.
     pub fn git_tag(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
         self.render_template(package_name, version, TemplateField::GitTagName)
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the package's release name template cannot be rendered.
     pub fn release_name(&self, package_name: &str, version: &str) -> anyhow::Result<String> {
         self.render_template(package_name, version, TemplateField::ReleaseName)
     }
@@ -193,12 +183,7 @@ impl Project {
         crate::tera::render_template(template, &context, template_name)
     }
 
-    /// Check the package metadata required by crates.io.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a publishable package lacks required metadata or a local
-    /// dependency lacks a version requirement.
+    // Check mandatory fields for crates.io
     pub fn check_mandatory_fields(&self) -> anyhow::Result<()> {
         let mut missing_fields = Vec::new();
         let mut missing_version_errors = Vec::new();
@@ -321,9 +306,6 @@ fn check_for_typos(packages: &HashSet<&str>, overrides: &HashSet<&str>) -> anyho
     }
 }
 
-/// # Errors
-///
-/// Returns an error if the original project root has no directory name.
 pub fn new_project_root(
     original_project_root: &Utf8Path,
     new_project_root_parent: &Utf8Path,

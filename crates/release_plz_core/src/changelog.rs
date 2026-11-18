@@ -76,11 +76,6 @@ pub struct Remote {
 
 impl<'a> Changelog<'a> {
     /// Generate the full changelog.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the changelog configuration, commits or template cannot be
-    /// processed.
     pub fn generate(mut self) -> anyhow::Result<String> {
         let config = self.changelog_config(None);
         let changelog = self.get_changelog(config)?;
@@ -88,10 +83,6 @@ impl<'a> Changelog<'a> {
     }
 
     /// Update an existing changelog.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the new entry cannot be generated or prepended to the changelog.
     pub fn prepend(mut self, old_changelog: impl Into<String>) -> anyhow::Result<String> {
         let old_changelog: String = old_changelog.into();
         if is_version_unchanged(&self.release) {

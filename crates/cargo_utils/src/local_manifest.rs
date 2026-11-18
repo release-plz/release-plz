@@ -37,10 +37,6 @@ impl DerefMut for LocalManifest {
 
 impl LocalManifest {
     /// Construct the `LocalManifest` corresponding to the `Path` provided.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the path is relative or the manifest cannot be read or parsed.
     pub fn try_new(path: &Utf8Path) -> anyhow::Result<Self> {
         if !path.is_absolute() {
             anyhow::bail!("can only edit absolute paths, got {path}");
@@ -54,10 +50,6 @@ impl LocalManifest {
     }
 
     /// Write changes back to the file
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the manifest cannot be written to its original path.
     pub fn write(&self) -> anyhow::Result<()> {
         let s = self.manifest.data.to_string();
         let new_contents_bytes = s.as_bytes();
@@ -70,10 +62,6 @@ impl LocalManifest {
     /// for `[dev-dependencies]` and `[target.'cfg(..)'.dev-dependencies]`).
     /// `[workspace.dependencies]` entries are templates, not dependencies of this package,
     /// so they are left out.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the manifest contains a `target` item that is not a table.
     pub fn get_package_dependency_tables(
         &self,
     ) -> impl Iterator<Item = (DepKind, &dyn toml_edit::TableLike)> + '_ {
@@ -98,10 +86,6 @@ impl LocalManifest {
     }
 
     /// Allow mutating depedencies, wherever they live
-    ///
-    /// # Panics
-    ///
-    /// Panics if a `workspace` or `target` item is present but is not a table.
     pub fn get_dependency_tables_mut(
         &mut self,
     ) -> impl Iterator<Item = &mut dyn toml_edit::TableLike> + '_ {
@@ -196,9 +180,6 @@ pub fn workspace_manifest(metadata: &Metadata) -> Utf8PathBuf {
     metadata.workspace_root.join(CARGO_TOML)
 }
 
-/// # Errors
-///
-/// Returns an error if the path cannot be canonicalized or contains invalid UTF-8.
 pub fn canonical_local_manifest(local_manifest: &Path) -> anyhow::Result<Utf8PathBuf> {
     let mut local_manifest = dunce::canonicalize(local_manifest)?;
     if !local_manifest.ends_with(CARGO_TOML) {

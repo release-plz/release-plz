@@ -26,9 +26,6 @@ pub struct SetVersionRequest {
 }
 
 impl SetVersionRequest {
-    /// # Errors
-    ///
-    /// Returns an error if the workspace manifest path cannot be canonicalized as UTF-8.
     pub fn new(version_changes: SetVersionSpec, metadata: Metadata) -> anyhow::Result<Self> {
         let manifest = cargo_utils::workspace_manifest(&metadata);
         let manifest = canonical_local_manifest(manifest.as_ref())?;
@@ -67,10 +64,6 @@ pub enum SetVersionSpec {
     Workspace(BTreeMap<String, Version>),
 }
 
-/// # Errors
-///
-/// Returns an error if the requested packages or versions cannot be resolved, or their
-/// manifests and changelogs cannot be updated.
 pub fn set_version(input: &SetVersionRequest) -> anyhow::Result<()> {
     let mut workspace_manifest = LocalManifest::try_new(&input.manifest)?;
     let workspace_dir = crate::manifest_dir(&workspace_manifest.path)?.to_owned();

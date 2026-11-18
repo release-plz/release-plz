@@ -50,9 +50,6 @@ pub struct Pr {
 }
 
 impl Pr {
-    /// # Errors
-    ///
-    /// Returns an error if the release pull request title or body cannot be rendered.
     pub fn new(
         default_branch: &str,
         packages_to_update: &PackagesUpdate,

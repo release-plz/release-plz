@@ -66,10 +66,6 @@ impl PackageFiles {
 }
 
 /// Check if two packages are equal.
-///
-/// # Errors
-///
-/// Returns an error if the package manifests or packaged files cannot be listed or compared.
 pub fn are_packages_equal(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,
@@ -149,9 +145,6 @@ pub(crate) fn are_packages_equal_cached(
     Ok(true)
 }
 
-/// # Errors
-///
-/// Returns an error if Cargo cannot list the packaged files or a path contains invalid UTF-8.
 pub fn get_cargo_package_files(package: &Utf8Path) -> anyhow::Result<Vec<Utf8PathBuf>> {
     // Downloaded and locally unpacked crates already contain the packaged files.
     debug!("Getting packaged files for crate at {}", package);
@@ -299,10 +292,6 @@ fn are_cargo_toml_equal(local_package: &Utf8Path, registry_package: &Utf8Path) -
 
 /// Check whether the local README differs from an extracted registry package's README.
 /// Returns false if the local package has no README.
-///
-/// # Errors
-///
-/// Returns an error if resolving or comparing the README files fails.
 pub fn is_readme_updated(
     package_name: &str,
     local_package_path: &Utf8Path,
@@ -374,10 +363,6 @@ fn compare_readme(
     Ok(!are_readmes_equal)
 }
 
-/// # Errors
-///
-/// Returns an error if the configured README exists but its path cannot be canonicalized as
-/// UTF-8.
 pub fn local_readme_override(
     package: &Package,
     local_package_path: &Utf8Path,

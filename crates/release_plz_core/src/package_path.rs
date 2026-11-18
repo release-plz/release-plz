@@ -7,15 +7,8 @@ use cargo_metadata::{
 use crate::fs_utils;
 
 pub trait PackagePath {
-    /// # Errors
-    ///
-    /// Returns an error if the package directory cannot be determined from its manifest path.
     fn package_path(&self) -> anyhow::Result<&Utf8Path>;
 
-    /// # Errors
-    ///
-    /// Returns an error if the package directory cannot be determined or canonicalized as
-    /// UTF-8.
     fn canonical_path(&self) -> anyhow::Result<Utf8PathBuf> {
         let p = fs_utils::canonicalize_utf8(self.package_path()?)?;
         Ok(p)
@@ -28,9 +21,6 @@ impl PackagePath for Package {
     }
 }
 
-/// # Errors
-///
-/// Returns an error if the manifest path has no parent directory.
 pub fn manifest_dir(manifest: &Utf8Path) -> anyhow::Result<&Utf8Path> {
     let manifest_dir = manifest
         .parent()

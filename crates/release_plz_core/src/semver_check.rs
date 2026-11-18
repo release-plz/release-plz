@@ -70,10 +70,6 @@ impl TargetDir {
     }
 }
 
-/// # Errors
-///
-/// Returns an error if preparing the package, running the check, reading its result or
-/// cleaning up generated lockfiles fails.
 pub fn run_semver_check(
     local_package: &Utf8Path,
     registry_package: &Utf8Path,

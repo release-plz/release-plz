@@ -3,10 +3,6 @@ use std::collections::BTreeSet;
 use cargo_metadata::{Metadata, Package};
 
 /// Lookup all members of the current workspace
-///
-/// # Errors
-///
-/// Currently infallible. If a path cannot be canonicalized, its original value is retained.
 pub fn workspace_members(metadata: &Metadata) -> anyhow::Result<impl Iterator<Item = Package>> {
     let workspace_members: BTreeSet<_> = metadata.workspace_members.iter().collect();
     let workspace_members = metadata

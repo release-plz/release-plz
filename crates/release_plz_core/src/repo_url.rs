@@ -19,16 +19,10 @@ pub struct RepoUrl {
 }
 
 impl RepoUrl {
-    /// # Errors
-    ///
-    /// Returns an error if the Git URL cannot be parsed as a repository URL.
     pub fn new(git_host_url: &str) -> anyhow::Result<Self> {
         new_url(git_host_url).with_context(|| format!("cannot parse git url {git_host_url}"))
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the repository's original remote URL cannot be read or parsed.
     pub fn from_repo(repo: &Repo) -> Result<Self, anyhow::Error> {
         let url = repo
             .original_remote_url()

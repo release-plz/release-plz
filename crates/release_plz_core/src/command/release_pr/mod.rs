@@ -123,11 +123,6 @@ pub struct PrPackageRelease {
 /// - [`ReleasePr`] if release-plz opened or updated a PR.
 /// - [`None`] if release-plz didn't open any pr. This happens when all packages
 ///   are up-to-date.
-///
-/// # Errors
-///
-/// Returns an error if preparing the release changes, updating the branch or opening or
-/// updating the pull request fails.
 #[instrument(skip_all)]
 pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<ReleasePr>> {
     let manifest_dir = input.update_request.local_manifest_dir()?;
