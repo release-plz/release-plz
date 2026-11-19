@@ -30,6 +30,7 @@ impl GitForge {
         }
     }
 
+    #[must_use]
     pub fn forge_type(&self) -> ForgeType {
         match self {
             Self::Github(_) => ForgeType::Github,
@@ -122,10 +123,12 @@ pub struct GitPr {
 
 /// Pull request.
 impl GitPr {
+    #[must_use]
     pub fn branch(&self) -> &str {
         self.head.ref_field.as_str()
     }
 
+    #[must_use]
     pub fn label_names(&self) -> Vec<&str> {
         self.labels.iter().map(|l| l.name.as_str()).collect()
     }
@@ -308,6 +311,7 @@ impl GitClient {
         })
     }
 
+    #[must_use]
     pub fn per_page(&self) -> &str {
         match self.forge {
             ForgeType::Github | ForgeType::Gitlab => "per_page",
@@ -394,6 +398,7 @@ impl GitClient {
         Ok(())
     }
 
+    #[must_use]
     pub fn pulls_url(&self) -> String {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => {
@@ -405,10 +410,12 @@ impl GitClient {
         }
     }
 
+    #[must_use]
     pub fn issues_url(&self) -> String {
         format!("{}/issues", self.repo_url())
     }
 
+    #[must_use]
     pub fn param_value_pr_state_open(&self) -> &'static str {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => "open",
@@ -483,7 +490,7 @@ impl GitClient {
             ForgeType::Gitlab => {
                 let gitlab_mrs: Vec<GitLabMr> =
                     resp.json().await.context("failed to parse gitlab mr")?;
-                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
+                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(Into::into).collect();
                 Ok(git_prs)
             }
         }
@@ -669,8 +676,8 @@ impl GitClient {
     /// within the input and against existing PR labels.
     /// # Returns
     /// A tuple containing:
-    /// - Vec<String>: Labels that need to be created in the repository
-    /// - Vec<u64>: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
+    /// - `Vec<String>`: Labels that need to be created in the repository
+    /// - `Vec<u64>`: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
     async fn get_labels_info_and_categorize_labels(
         &self,
         labels: &[String],
@@ -787,10 +794,7 @@ impl GitClient {
             ForgeType::Gitlab => {
                 let gitlab_commits: Vec<GitLabMrCommit> =
                     resp.json().await.context("failed to parse gitlab mr")?;
-                let pr_commits = gitlab_commits
-                    .into_iter()
-                    .map(|commit| commit.into())
-                    .collect();
+                let pr_commits = gitlab_commits.into_iter().map(Into::into).collect();
                 Ok(pr_commits)
             }
         }
@@ -1038,7 +1042,7 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
             .await?
             .get("sha")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .with_context(|| {
                 format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
             })?;

@@ -14,6 +14,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[must_use]
 pub struct SetVersionRequest {
     /// The manifest of the project you want to update.
     manifest: Utf8PathBuf,

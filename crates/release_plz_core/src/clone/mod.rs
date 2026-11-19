@@ -107,15 +107,15 @@ impl Cloner {
 
         let mut destinations = vec![];
         while let Some((name, summary)) = summaries.next().await {
-            match summary.with_context(|| format!("failed to query package {name}"))? {
-                Some(summary) => {
-                    let dest_path = self.directory.join(name);
-                    check_destination(&dest_path).with_context(|| {
-                        format!("failed to clone package {name} in {dest_path}")
-                    })?;
-                    destinations.push((summary.package_id(), dest_path));
-                }
-                None => warn!("Package `{name}` not found"),
+            if let Some(summary) =
+                summary.with_context(|| format!("failed to query package {name}"))?
+            {
+                let dest_path = self.directory.join(name);
+                check_destination(&dest_path)
+                    .with_context(|| format!("failed to clone package {name} in {dest_path}"))?;
+                destinations.push((summary.package_id(), dest_path));
+            } else {
+                warn!("Package `{name}` not found");
             }
         }
         Ok(destinations)

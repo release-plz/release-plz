@@ -258,6 +258,7 @@ fn default_git_cliff_config(pr_link: Option<&str>) -> Config {
 }
 
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct ChangelogBuilder<'a> {
     commits: Vec<Commit<'a>>,
     version: String,
@@ -331,18 +332,18 @@ impl<'a> ChangelogBuilder<'a> {
         }
     }
 
+    #[must_use]
     pub fn config(&self) -> Option<&Config> {
         self.config.as_ref()
     }
 
     pub fn build(&self) -> Changelog<'a> {
         let default_config;
-        let git_config = match &self.config {
-            Some(config) => &config.git,
-            None => {
-                default_config = default_git_config(self.pr_link.as_deref());
-                &default_config
-            }
+        let git_config = if let Some(config) = &self.config {
+            &config.git
+        } else {
+            default_config = default_git_config(self.pr_link.as_deref());
+            &default_config
         };
         let release_date = self.release_timestamp();
         let mut commits: Vec<_> = self
@@ -400,12 +401,12 @@ impl<'a> ChangelogBuilder<'a> {
     fn release_timestamp(&self) -> i64 {
         self.release_date
             .and_then(|date| date.and_hms_opt(0, 0, 0))
-            .map(|d| Utc.from_utc_datetime(&d))
-            .unwrap_or_else(Utc::now)
+            .map_or_else(Utc::now, |d| Utc.from_utc_datetime(&d))
             .timestamp()
     }
 }
 
+#[must_use]
 pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
     GitConfig {
         conventional_commits: true,
@@ -427,19 +428,17 @@ pub fn default_git_config(pr_link: Option<&str>) -> GitConfig {
 }
 
 fn default_commit_preprocessors(pr_link: Option<&str>) -> Vec<TextProcessor> {
-    pr_link
-        .map(|pr_link| {
-            static PR_NUMBER: LazyLock<Regex> =
-                LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
-            // Replace #123 with [#123](https://link_to_pr).
-            // If the number refers to an issue, GitHub redirects the PR link to the issue link.
-            vec![TextProcessor {
-                pattern: PR_NUMBER.clone(),
-                replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
-                replace_command: None,
-            }]
-        })
-        .unwrap_or_default()
+    pr_link.map_or_default(|pr_link| {
+        static PR_NUMBER: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\(#([0-9]+)\)").expect("invalid regex"));
+        // Replace #123 with [#123](https://link_to_pr).
+        // If the number refers to an issue, GitHub redirects the PR link to the issue link.
+        vec![TextProcessor {
+            pattern: PR_NUMBER.clone(),
+            replace: Some(format!("([#${{1}}]({pr_link}/${{1}}))")),
+            replace_command: None,
+        }]
+    })
 }
 
 fn commit_parser(regex: &str, group: &str) -> CommitParser {
@@ -474,6 +473,7 @@ fn kac_commit_parsers() -> Vec<CommitParser> {
     PARSERS.clone()
 }
 
+#[must_use]
 pub fn default_changelog_config(header: Option<String>) -> ChangelogConfig {
     ChangelogConfig {
         header: Some(header.unwrap_or(String::from(CHANGELOG_HEADER))),
