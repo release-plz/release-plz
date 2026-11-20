@@ -27,6 +27,7 @@ impl GitHub {
         })
     }
 
+    #[must_use]
     pub fn new(owner: String, repo: String, token: SecretString) -> Self {
         Self {
             remote: Remote {
@@ -38,6 +39,7 @@ impl GitHub {
         }
     }
 
+    #[must_use]
     pub fn with_base_url(self, base_url: Url) -> Self {
         Self {
             remote: Remote {

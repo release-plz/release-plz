@@ -208,7 +208,7 @@ mod tests {
                     // Only a versionless dev-only declaration of the updated package
                     // leaves the root package alone.
                     let root_app_updated =
-                        !dependency.is_empty() && !(dev_only && version.is_empty());
+                        !(dependency.is_empty() || dev_only && version.is_empty());
                     let expected = if name == "consumer" || root_app_updated {
                         vec!["support"]
                     } else {

@@ -74,7 +74,35 @@ ignore = [
     "RUSTSEC-2026-0247",
     "RUSTSEC-2026-0250",
     "RUSTSEC-2026-0251",
-    "RUSTSEC-2026-0387",
+    # zstd is only pulled in by git-cliff-core -> rust-embed -> include-flate.
+    # git-cliff-core's embedded configs use rust-embed's default DEFLATE backend.
+    # include-flate-compress 0.3.4 requires zstd ^0.13.3, so the patched
+    # zstd >=0.14.3 / zstd-safe >=8.2.0 cannot be selected yet. Remove these
+    # exceptions when upstream supports them; recheck the call paths on updates.
+    { id = "RUSTSEC-2026-0391", reason = "include-flate creates fresh Zstd contexts; it does not use the affected with_context constructors to reuse an abandoned stream's context." },
+    { id = "RUSTSEC-2026-0398", reason = "zstd-safe's vulnerable seekable feature is not enabled, including with all workspace features and targets." },
+    { id = "RUSTSEC-2026-0403", reason = "include-flate uses zstd::stream::read::Decoder, which the advisory identifies as unaffected, rather than the vulnerable write decoder." },
+    # pin-utils is only pulled in by reqwest-retry -> wasmtimer. wasmtimer 0.4.3
+    # is the latest release and still depends on pin-utils
+    # (whizsid/wasmtimer-rs#32 replaces it with pin-project-lite).
+    # Remove this exception once a fixed wasmtimer is released.
+    { id = "RUSTSEC-2026-0441", reason = "Unmaintained-crate advisory; reqwest-retry only compiles wasmtimer for wasm32, which release-plz does not target." },
+    # libsqlite3-sys is only pulled in by cargo -> rusqlite. cargo 0.101.0 is the
+    # latest release and requires rusqlite ^0.40, which requires libsqlite3-sys
+    # ^0.38, so the patched libsqlite3-sys >=0.39.0 (rusqlite 0.41) cannot be
+    # selected yet. Remove this exception once a cargo release supports
+    # rusqlite 0.41.
+    { id = "RUSTSEC-2026-0459", reason = "cargo only opens its global cache tracker database in $CARGO_HOME; a party able to write that file and its -wal already controls cargo's config, credentials and installed binaries." },
+    # chrono and the crates built on it were declared unmaintained
+    # (chronotope/chrono#1768) and no maintained release exists.
+    # git-cliff-core 2.14.2 is the latest release and requires chrono, tera 1.x
+    # (-> chrono-tz -> chrono-tz-build) and humantime-serde (-> humantime).
+    # release-plz also uses chrono directly. Remove these exceptions once
+    # git-cliff-core drops these dependencies and release-plz migrates off chrono.
+    { id = "RUSTSEC-2026-0542", reason = "Unmaintained-crate advisory with no known vulnerability; humantime is required by git-cliff-core via humantime-serde." },
+    { id = "RUSTSEC-2026-0543", reason = "Unmaintained-crate advisory with no known vulnerability; chrono is required by git-cliff-core and tera 1.x." },
+    { id = "RUSTSEC-2026-0555", reason = "Unmaintained-crate advisory with no known vulnerability; chrono-tz is required by tera 1.x via git-cliff-core." },
+    { id = "RUSTSEC-2026-0559", reason = "Unmaintained-crate advisory with no known vulnerability; chrono-tz-build is a build dependency of chrono-tz." },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
@@ -93,6 +121,7 @@ allow = [
     "MIT",
     "ISC",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "BSD-2-Clause",
     "CC0-1.0",

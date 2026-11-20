@@ -18,6 +18,7 @@ Here are some popular projects using release-plz:
 - [daktilo](https://github.com/orhun/daktilo/blob/9e2bb1a955d5f1e51f4b77ecef4f518ba66e06d5/.github/workflows/cd.yml#L13)
 - [trillium](https://github.com/trillium-rs/trillium/blob/5d7d0ddde14006193a346c7ef7c559f09f965eaf/.github/workflows/release.yml)
 - [rabbitmq-stream-rust-client](https://github.com/rabbitmq/rabbitmq-stream-rust-client/blob/551d00e2de7917917fd2db1920270fe8896cdeb6/.github/workflows/release-plz.yml)
+- [GitHub's rust-gems](https://github.com/github/rust-gems/blob/31331e8eeadf7e58f5af355a3881d95e9315ee32/.github/workflows/publish-release.yaml#L21)
 
 ## GitHub Action users
 

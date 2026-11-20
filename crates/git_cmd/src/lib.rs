@@ -93,6 +93,7 @@ impl Repo {
         })
     }
 
+    #[must_use]
     pub fn directory(&self) -> &Utf8Path {
         &self.directory
     }
@@ -183,7 +184,7 @@ impl Repo {
         let output = self.git(&["show", "--oneline", "--name-only", "--pretty=format:"])?;
         let changed_files = output
             .lines()
-            .map(|l| l.trim())
+            .map(str::trim)
             .map(Utf8PathBuf::from)
             .collect();
         Ok(changed_files)
@@ -195,7 +196,7 @@ impl Repo {
 
     pub fn add<T: AsRef<str>>(&self, paths: &[T]) -> anyhow::Result<()> {
         let mut args = vec!["add"];
-        let paths: Vec<&str> = paths.iter().map(|p| p.as_ref()).collect();
+        let paths: Vec<&str> = paths.iter().map(std::convert::AsRef::as_ref).collect();
         args.extend(paths);
         self.git(&args)?;
         Ok(())
@@ -241,6 +242,7 @@ impl Repo {
 
     /// Branch name, or commit hash if HEAD was detached, before running any git operation.
     /// I.e. when the [`Repo`] was created.
+    #[must_use]
     pub fn original_branch(&self) -> &str {
         &self.original_branch
     }
@@ -492,11 +494,13 @@ impl Repo {
     }
 
     /// Get the commit hash of the given tag
+    #[must_use]
     pub fn get_tag_commit(&self, tag: &str) -> Option<String> {
         self.git(&["rev-list", "-n", "1", tag]).ok()
     }
 
     /// Returns all the tags in the repository in an unspecified order.
+    #[must_use]
     pub fn get_all_tags(&self) -> Vec<String> {
         match self
             .git(&["tag", "--list"])
@@ -505,7 +509,7 @@ impl Repo {
             .map(|output| output.trim())
         {
             None | Some("") => vec![],
-            Some(output) => output.lines().map(|line| line.to_owned()).collect(),
+            Some(output) => output.lines().map(std::borrow::ToOwned::to_owned).collect(),
         }
     }
 
@@ -520,6 +524,7 @@ impl Repo {
     /// ```
     ///
     /// `git.is_ancestor("e880d8786cb16aa9a3f258e7503932445d708df7", "d6ec399b80d44bf9c4391e4a9ead8482faa9bffd")` returns true.
+    #[must_use]
     pub fn is_ancestor(&self, maybe_ancestor_commit: &str, descendant_commit: &str) -> bool {
         self.git(&[
             "merge-base",
@@ -531,6 +536,7 @@ impl Repo {
     }
 
     /// Name of the remote when the [`Repo`] was created.
+    #[must_use]
     pub fn original_remote(&self) -> &str {
         &self.original_remote
     }
@@ -549,12 +555,14 @@ impl Repo {
     }
 }
 
+#[must_use]
 pub fn is_file_ignored(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
     let file = file.as_str();
 
     git_in_dir(repo_path, &["check-ignore", "--no-index", file]).is_ok()
 }
 
+#[must_use]
 pub fn is_file_committed(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
     let file = file.as_str();
     git_in_dir(repo_path, &["ls-files", "--error-unmatch", file]).is_ok()
@@ -563,11 +571,11 @@ pub fn is_file_committed(repo_path: &Utf8Path, file: &Utf8Path) -> bool {
 fn changed_files(output: &str, filter: impl FnMut(&&str) -> bool) -> Vec<String> {
     output
         .lines()
-        .map(|l| l.trim())
+        .map(str::trim)
         // filter typechanges
         .filter(filter)
         .filter_map(|e| e.rsplit(' ').next())
-        .map(|e| e.to_string())
+        .map(std::string::ToString::to_string)
         .collect()
 }
 

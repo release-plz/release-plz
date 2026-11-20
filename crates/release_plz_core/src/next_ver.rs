@@ -388,7 +388,9 @@ async fn collect_registry_packages(
                 package_name.to_string(),
                 RegistryPackage::new(
                     reg_pkg.package.clone(),
-                    reg_pkg.published_at_sha1().map(|s| s.to_string()),
+                    reg_pkg
+                        .published_at_sha1()
+                        .map(std::string::ToString::to_string),
                 ),
             );
         }
@@ -443,7 +445,7 @@ impl UpdateResult {
 }
 
 pub fn workspace_packages(metadata: &Metadata) -> anyhow::Result<Vec<Package>> {
-    cargo_utils::workspace_members(metadata).map(|members| members.collect())
+    cargo_utils::workspace_members(metadata).map(std::iter::Iterator::collect)
 }
 
 pub fn publishable_packages_from_manifest(
@@ -451,7 +453,7 @@ pub fn publishable_packages_from_manifest(
 ) -> anyhow::Result<Vec<Package>> {
     let metadata = cargo_utils::get_manifest_metadata(manifest.as_ref())?;
     cargo_utils::workspace_members(&metadata)
-        .map(|members| members.filter(|p| p.is_publishable()).collect())
+        .map(|members| members.filter(Publishable::is_publishable).collect())
 }
 
 pub trait Publishable {

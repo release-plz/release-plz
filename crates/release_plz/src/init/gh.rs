@@ -42,8 +42,7 @@ pub fn store_secret(token_name: &str) -> anyhow::Result<()> {
 pub fn is_gh_installed() -> bool {
     gh().arg("version")
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 pub fn default_branch() -> anyhow::Result<String> {
