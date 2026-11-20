@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use super::*;
 use crate::{GitTagConfig, ReleaseConfig, RepoUrl};
 use cargo_metadata::{Metadata, camino::Utf8Path};
@@ -156,10 +158,11 @@ fn receipts_require_uploaded_assets_of_the_recorded_size() {
 
 #[test]
 fn manifest_must_describe_exactly_this_release() {
-    let package = package();
-    receipt(0, 1).manifest.validate("v1.0.0", &package).unwrap();
     const WRONG_RELEASE: &str = "cargo-dist must select exactly the requested package and version";
     type Mutation = fn(&mut Manifest);
+
+    let package = package();
+    receipt(0, 1).manifest.validate("v1.0.0", &package).unwrap();
     let cases: [(Mutation, &str); 5] = [
         (
             |manifest| manifest.dist_version = "0.0.1".into(),
@@ -696,42 +699,18 @@ async fn published_release_stops_build_and_is_a_finalize_no_op() {
     assert!(requests.iter().all(|request| request.method == "GET"));
 }
 
-#[tokio::test]
-async fn real_cargo_dist_build_retry_and_finalize() {
-    // Exercise the actual cargo-dist protocol against an in-memory GitHub release.
-    use std::sync::{Arc, Mutex};
-    let server = MockServer::start().await;
-    let temporary = tempfile::tempdir().unwrap();
-    let repo = Repo::init(temporary.path());
-    fs_err::create_dir_all(repo.directory().join("src")).unwrap();
-    // The dev profile unwinds, so only an inherited release profile compiles.
-    fs_err::write(
-        repo.directory().join("src/main.rs"),
-        "#[cfg(not(panic = \"abort\"))]\ncompile_error!(\"must inherit release settings\");\nfn main() { println!(\"hello\"); }",
-    )
-    .unwrap();
-    // No dist profile: both build and finalize must default to the release settings.
-    fs_err::write(repo.directory().join("Cargo.toml"), "[package]\nname = \"dist-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\npublish = false\n[profile.release]\npanic = \"abort\"\n").unwrap();
-    fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
-    fs_err::write(
-        repo.directory().join("CHANGELOG.md"),
-        "# Changelog\n\n## [1.0.0] - 2026-01-01\n\nDuplicate changelog.\n",
-    )
-    .unwrap();
-    let metadata =
-        cargo_utils::get_manifest_metadata(&repo.directory().join("Cargo.toml")).unwrap();
-    repo.add_all_and_commit("initial").unwrap();
-    repo.git(&["tag", "v1.0.0"]).unwrap();
-    let original = fs_err::read(repo.directory().join("Cargo.toml")).unwrap();
+#[derive(Default)]
+struct MockReleaseState {
+    assets: BTreeMap<u64, (String, Vec<u8>)>,
+    next_id: u64,
+    published: Option<Value>,
+    failed_global_upload: bool,
+}
 
-    #[derive(Default)]
-    struct State {
-        assets: BTreeMap<u64, (String, Vec<u8>)>,
-        next_id: u64,
-        published: Option<Value>,
-        failed_global_upload: bool,
-    }
-    let state = Arc::new(Mutex::new(State::default()));
+async fn mock_release_with_failed_installer_upload(
+    server: &MockServer,
+) -> Arc<Mutex<MockReleaseState>> {
+    let state = Arc::new(Mutex::new(MockReleaseState::default()));
     let mock_state = Arc::clone(&state);
     let upload_url = format!("{}/upload{{?name,label}}", server.uri());
     Mock::given(|_: &wiremock::Request| true).respond_with(move |req: &wiremock::Request| {
@@ -769,13 +748,45 @@ async fn real_cargo_dist_build_retry_and_finalize() {
             }
             _ => ResponseTemplate::new(404),
         }
-    }).mount(&server).await;
+    }).mount(server).await;
+    state
+}
+
+// The full error chain: `successful_status` keeps the HTTP status in the cause.
+async fn finalize_error(request: &DistRequest, run_id: &str) -> String {
+    format!("{:#}", request.finalize(run_id).await.unwrap_err())
+}
+
+#[tokio::test]
+async fn real_cargo_dist_build_retry_and_finalize() {
+    // Exercise the actual cargo-dist protocol against an in-memory GitHub release.
+    let server = MockServer::start().await;
+    let temporary = tempfile::tempdir().unwrap();
+    let repo = Repo::init(temporary.path());
+    fs_err::create_dir_all(repo.directory().join("src")).unwrap();
+    // The dev profile unwinds, so only an inherited release profile compiles.
+    fs_err::write(
+        repo.directory().join("src/main.rs"),
+        "#[cfg(not(panic = \"abort\"))]\ncompile_error!(\"must inherit release settings\");\nfn main() { println!(\"hello\"); }",
+    )
+    .unwrap();
+    // No dist profile: both build and finalize must default to the release settings.
+    fs_err::write(repo.directory().join("Cargo.toml"), "[package]\nname = \"dist-test\"\nversion = \"1.0.0\"\nedition = \"2021\"\npublish = false\n[profile.release]\npanic = \"abort\"\n").unwrap();
+    fs_err::write(repo.directory().join(".gitignore"), "/target\n").unwrap();
+    fs_err::write(
+        repo.directory().join("CHANGELOG.md"),
+        "# Changelog\n\n## [1.0.0] - 2026-01-01\n\nDuplicate changelog.\n",
+    )
+    .unwrap();
+    let metadata =
+        cargo_utils::get_manifest_metadata(&repo.directory().join("Cargo.toml")).unwrap();
+    repo.add_all_and_commit("initial").unwrap();
+    repo.git(&["tag", "v1.0.0"]).unwrap();
+    let original = fs_err::read(repo.directory().join("Cargo.toml")).unwrap();
+
+    let state = mock_release_with_failed_installer_upload(&server).await;
     let request = ReleaseRequest::new(metadata).with_default_package_config(distribute_config());
     let request = DistRequest::new(request, "v1.0.0".into(), github(&server)).unwrap();
-    // The full error chain: `successful_status` keeps the HTTP status in the cause.
-    async fn finalize_error(request: &DistRequest, run_id: &str) -> String {
-        format!("{:#}", request.finalize(run_id).await.unwrap_err())
-    }
     let error = finalize_error(&request, "123").await;
     assert!(
         error.contains("no successful distribution builds"),

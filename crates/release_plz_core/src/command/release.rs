@@ -7,7 +7,7 @@ use crate::command::trusted_publishing;
 use anyhow::Context;
 use cargo::util::VersionExt;
 use cargo_metadata::{
-    Metadata, Package,
+    Metadata, Package, Target,
     camino::{Utf8Path, Utf8PathBuf},
     semver::Version,
 };
@@ -83,6 +83,7 @@ impl ReleaseRequest {
         cargo_utils::workspace_manifest(&self.metadata)
     }
 
+    #[must_use]
     pub fn cargo_metadata(&self) -> &Metadata {
         &self.metadata
     }
@@ -191,9 +192,10 @@ impl ReleaseRequest {
             .and_then(|config| config.distribute)
             .or_else(|| {
                 self.packages_config.default.distribute.filter(|_| {
-                    self.metadata.workspace_packages().iter().any(|p| {
-                        p.name == package && p.targets.iter().any(|target| target.is_bin())
-                    })
+                    self.metadata
+                        .workspace_packages()
+                        .iter()
+                        .any(|p| p.name == package && p.targets.iter().any(Target::is_bin))
                 })
             });
         config
@@ -262,7 +264,7 @@ impl ReleaseRequest {
                 package.name
             );
             anyhow::ensure!(
-                package.targets.iter().any(|target| target.is_bin()),
+                package.targets.iter().any(Target::is_bin),
                 "Package `{}`: `distribute` requires a binary target",
                 package.name
             );
@@ -382,6 +384,7 @@ impl ReleaseConfig {
         self
     }
 
+    #[must_use]
     pub fn distribute(&self) -> bool {
         self.distribute.unwrap_or(false)
     }
@@ -511,10 +514,12 @@ impl Default for GitReleaseConfig {
 }
 
 impl GitReleaseConfig {
+    #[must_use]
     pub fn draft(&self) -> bool {
         self.draft
     }
 
+    #[must_use]
     pub fn latest(&self) -> Option<bool> {
         self.latest
     }
@@ -1683,7 +1688,7 @@ mod tests {
                     json!({"event_type": "release-plz-dist", "client_payload": {"tag": "v0.1.0"}}),
                 ))
                 .respond_with(ResponseTemplate::new(204))
-                .expect(if dry_run { 0 } else { 1 })
+                .expect(u64::from(!dry_run))
                 .mount(&server)
                 .await;
             release(&request).await.unwrap();
@@ -1790,7 +1795,7 @@ mod tests {
                 .contains("does not support GitHub Enterprise Server")
         );
         assert!(server.received_requests().await.unwrap().is_empty());
-        assert!(repo.git(&["tag", "--list"]).unwrap().is_empty());
+        assert_eq!(repo.git(&["tag", "--list"]).unwrap(), "");
     }
 
     #[tokio::test]

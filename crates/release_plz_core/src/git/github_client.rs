@@ -54,6 +54,7 @@ impl GitHub {
         }
     }
 
+    #[must_use]
     pub fn is_enterprise(&self) -> bool {
         self.enterprise
     }
