@@ -30,6 +30,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[must_use]
 pub struct ReleaseRequest {
     /// Cargo metadata.
     metadata: Metadata,
@@ -61,7 +62,7 @@ pub struct ReleaseRequest {
 
 impl ReleaseRequest {
     pub fn new(metadata: Metadata) -> Self {
-        let minutes_30 = Duration::from_secs(30 * 60);
+        let minutes_30 = Duration::from_mins(30);
         Self {
             metadata,
             registry: None,
@@ -77,6 +78,7 @@ impl ReleaseRequest {
     }
 
     /// The manifest of the project you want to release.
+    #[must_use]
     pub fn local_manifest(&self) -> Utf8PathBuf {
         cargo_utils::workspace_manifest(&self.metadata)
     }
@@ -138,6 +140,7 @@ impl ReleaseRequest {
         self
     }
 
+    #[must_use]
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
         crate::changelog_path(
@@ -179,21 +182,25 @@ impl ReleaseRequest {
         self.packages_config.get(package)
     }
 
+    #[must_use]
     pub fn allow_dirty(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
         config.allow_dirty
     }
 
+    #[must_use]
     pub fn no_verify(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
         config.no_verify
     }
 
+    #[must_use]
     pub fn features(&self, package: &str) -> Vec<String> {
         let config = self.get_package_config(package);
-        config.features.clone()
+        config.features
     }
 
+    #[must_use]
     pub fn all_features(&self, package: &str) -> bool {
         let config = self.get_package_config(package);
         config.all_features
@@ -273,11 +280,12 @@ impl PackagesConfig {
     }
 
     pub fn overridden_packages(&self) -> HashSet<&str> {
-        self.overrides.keys().map(|s| s.as_str()).collect()
+        self.overrides.keys().map(String::as_str).collect()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct ReleaseConfig {
     publish: PublishConfig,
     git_release: GitReleaseConfig,
@@ -362,6 +370,7 @@ impl ReleaseConfig {
         self
     }
 
+    #[must_use]
     pub fn git_release(&self) -> &GitReleaseConfig {
         &self.git_release
     }
@@ -397,6 +406,7 @@ impl Default for PublishConfig {
 }
 
 impl PublishConfig {
+    #[must_use]
     pub fn enabled(enabled: bool) -> Self {
         Self { enabled }
     }
@@ -411,6 +421,7 @@ pub enum ReleaseType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct GitReleaseConfig {
     enabled: bool,
     draft: bool,
@@ -440,6 +451,7 @@ impl GitReleaseConfig {
         }
     }
 
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -474,6 +486,7 @@ impl GitReleaseConfig {
         self
     }
 
+    #[must_use]
     pub fn is_pre_release(&self, version: &Version) -> bool {
         match self.release_type {
             ReleaseType::Pre => true,
@@ -484,6 +497,7 @@ impl GitReleaseConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct GitTagConfig {
     enabled: bool,
     name_template: Option<String>,
@@ -508,6 +522,7 @@ impl GitTagConfig {
         self
     }
 
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -796,9 +811,8 @@ fn registry_indexes(
     registry: Option<String>,
     workspace_root: &Utf8Path,
 ) -> anyhow::Result<Vec<CargoRegistry>> {
-    let registries = registry
-        .map(|r| vec![r])
-        .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
+    let registries =
+        registry.map_or_else(|| package.publish.clone().unwrap_or_default(), |r| vec![r]);
     let config = new_cargo_config(Some(workspace_root.to_owned()))?;
     if registries.is_empty() {
         Ok(vec![CargoRegistry::new(&config, None)?])
@@ -867,7 +881,7 @@ async fn release_package(
             release_info.package,
             input,
             workspace_root,
-            &publish_token,
+            publish_token.as_ref(),
             registry_name,
         )
         .context("failed to run cargo publish")?;
@@ -881,13 +895,12 @@ async fn release_package(
                     release_info.package.name, release_info.package.version
                 );
                 return Ok(false);
-            } else {
-                anyhow::bail!(
-                    "failed to publish {}: {}",
-                    release_info.package.name,
-                    output.stderr
-                );
             }
+            anyhow::bail!(
+                "failed to publish {}: {}",
+                release_info.package.name,
+                output.stderr
+            );
         }
         // Wait if a remote mirror may still lag behind (`cargo publish` only checks the
         // publish registry) or if `cargo publish` didn't confirm the package.
@@ -1163,7 +1176,7 @@ pub struct GitReleaseInfo {
 /// - If the token is unset, the user might want to log in to the registry
 ///   with `cargo login`. Don't throw an error in this case.
 fn verify_ci_cargo_registry_token(token_env_var: &str) -> anyhow::Result<()> {
-    let is_token_empty = std::env::var(token_env_var).map(|t| t.is_empty()) == Ok(true);
+    let is_token_empty = std::env::var(token_env_var).is_ok_and(|t| t.is_empty());
     let is_environment_github_actions = std::env::var("GITHUB_ACTIONS").is_ok();
     anyhow::ensure!(
         !(is_environment_github_actions && is_token_empty),
@@ -1183,7 +1196,7 @@ fn run_cargo_publish(
     package: &Package,
     input: &ReleaseRequest,
     workspace_root: &Utf8Path,
-    token: &Option<SecretString>,
+    token: Option<&SecretString>,
     registry: Option<&str>,
 ) -> anyhow::Result<CmdOutput> {
     let mut args = vec!["publish"];
@@ -1200,7 +1213,7 @@ fn run_cargo_publish(
         args.push(registry);
     }
     let token_env_var = cargo_registry_token_env_var(registry)?;
-    let token = token.as_ref().or(input.token.as_ref());
+    let token = token.or(input.token.as_ref());
     if token.is_none() {
         verify_ci_cargo_registry_token(&token_env_var)?;
     }
@@ -1221,9 +1234,7 @@ fn run_cargo_publish(
     if input.all_features(&package.name) {
         args.push("--all-features");
     }
-    let envs = token
-        .map(|token| vec![(token_env_var, token.clone())])
-        .unwrap_or_default();
+    let envs = token.map_or_default(|token| vec![(token_env_var, token.clone())]);
     run_cargo_with_env(workspace_root, &args, &envs)
 }
 
@@ -1386,7 +1397,7 @@ mod tests {
             .expect(1)
             .mount(server)
             .await;
-        let follow_up_requests: u64 = if tag_status == 201 { 1 } else { 0 };
+        let follow_up_requests: u64 = u64::from(tag_status == 201);
         Mock::given(method("POST"))
             .and(path("/repos/owner/repo/git/refs"))
             .and(body_partial_json(

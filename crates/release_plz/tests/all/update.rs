@@ -5,7 +5,7 @@ use release_plz_core::fs_utils::Utf8TempDir;
 use crate::helpers::{
     assert_cargo_semver_checks_is_installed, assert_locked_versions, assert_walked_concurrently,
     assert_walked_one_at_a_time,
-    cmd::{fail_with_debug_logs, release_plz_cmd, run_with_debug_logs},
+    cmd::{cargo_cmd, fail_with_debug_logs, release_plz_cmd, run_with_debug_logs},
     ignore_global_checkout_conversions, locked_metadata,
 };
 
@@ -1438,7 +1438,7 @@ fn init_workspace(
 }
 
 fn generate_lockfile(dir: &Utf8Path) {
-    assert_cmd::Command::new("cargo")
+    cargo_cmd()
         .current_dir(dir)
         .args(["generate-lockfile", "--offline"])
         .assert()

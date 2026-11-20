@@ -22,6 +22,7 @@
 //! absent, as is Git configuration included from a `.rs` file. Hooks and
 //! configuration outside the trees are assumed stable during a walk.
 
+use std::fmt::Write as _;
 use std::iter::Peekable;
 
 use git_cmd::{HistoryCommit, Repo};
@@ -217,10 +218,10 @@ fn compare_trees(repository: &Repo, commits: &[&str]) -> Vec<bool> {
     // before their changes, even without changes thanks to `--always`. It
     // prints nothing for a line it can't process, though, and still succeeds:
     // only the commits it prints in input order are known.
-    let input: String = commits
-        .windows(2)
-        .map(|pair| format!("{} {}\n", pair[1], pair[0]))
-        .collect();
+    let mut input = String::new();
+    for pair in commits.windows(2) {
+        writeln!(input, "{} {}", pair[1], pair[0]).unwrap();
+    }
     // `diff-tree` detects no renames, so it reads no blobs and reports a rename
     // as a deletion and an addition. Report submodule updates even if
     // `submodule.<name>.ignore` hides them.
