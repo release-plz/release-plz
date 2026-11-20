@@ -117,6 +117,7 @@ impl VersionIncrement {
     /// let increment = VersionIncrement::breaking(&Version::parse("1.3.3-alpha.1").unwrap());
     /// assert_eq!(increment, VersionIncrement::Prerelease);
     /// ```
+    #[must_use]
     pub fn breaking(current_version: &Version) -> Self {
         if !current_version.pre.is_empty() {
             Self::Prerelease
@@ -131,6 +132,7 @@ impl VersionIncrement {
 }
 
 impl VersionIncrement {
+    #[must_use]
     pub fn bump(&self, version: &Version) -> Version {
         match self {
             Self::Major => version.increment_major(),

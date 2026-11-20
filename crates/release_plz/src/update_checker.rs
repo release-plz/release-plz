@@ -42,7 +42,7 @@ async fn get_latest_version() -> anyhow::Result<String> {
         .with_context(|| {
             format!("can't extract latest release-plz version from tag name {tag_name}")
         })
-        .map(|v| v.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 fn extract_version(tag: &str) -> Option<&str> {

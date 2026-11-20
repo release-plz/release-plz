@@ -158,7 +158,7 @@ impl TestContext {
 
     /// Running this will create the Cargo.lock file if missing.
     pub fn run_cargo_check(&self) {
-        assert_cmd::Command::new("cargo")
+        super::cmd::cargo_cmd()
             .current_dir(self.repo.directory())
             .arg("check")
             .assert()
@@ -171,7 +171,7 @@ impl TestContext {
 
     pub fn cargo_publish_command(&self, package_name: &str) -> assert_cmd::Command {
         let token_env_var = cargo_registries_token_env_var_name(TEST_REGISTRY).unwrap();
-        let mut command = assert_cmd::Command::new("cargo");
+        let mut command = super::cmd::cargo_cmd();
         command
             .current_dir(self.repo.directory())
             .env("CARGO_TARGET_DIR", self.cargo_target_dir())
