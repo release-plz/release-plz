@@ -147,7 +147,7 @@ async fn release_pr_pre_bumped_shared_versions_update_dependency_requirements() 
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_creates_and_updates_gitea_pr_without_git_credentials() {
     use base64::Engine as _;
 

@@ -16,7 +16,18 @@ pub(crate) fn authenticated_repo(repo: Repo, remote: &Remote) -> anyhow::Result<
     };
     let path = url.path().trim_end_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
-    if !matches!(url.scheme(), "http" | "https")
+    // Only send credentials over plaintext when Git connects to the local machine.
+    let safe_transport = match url.scheme() {
+        "https" => true,
+        "http" => match url.host() {
+            Some(url::Host::Domain("localhost")) => true,
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            _ => false,
+        },
+        _ => false,
+    };
+    if !safe_transport
         || url.origin() != remote.base_url.origin()
         || path != format!("/{}", remote.owner_slash_repo())
     {
@@ -195,6 +206,22 @@ mod tests {
         for request in requests {
             assert!(!request.headers.contains_key("authorization"));
         }
+    }
+
+    #[test]
+    fn authenticated_repo_skips_plaintext_remote_even_when_the_origin_matches() {
+        let directory = tempdir().unwrap();
+        let repo = Repo::init(&directory);
+        repo.git(&[
+            "remote",
+            "add",
+            "origin",
+            "http://example.com/owner/repo.git",
+        ])
+        .unwrap();
+        let before = format!("{repo:?}");
+        let repo = authenticated_repo(repo, &remote("http://example.com")).unwrap();
+        assert_eq!(format!("{repo:?}"), before);
     }
 
     #[test]
