@@ -30,6 +30,7 @@ impl GitForge {
         }
     }
 
+    #[must_use]
     pub fn forge_type(&self) -> ForgeType {
         match self {
             Self::Github(_) => ForgeType::Github,
@@ -46,7 +47,7 @@ pub enum ForgeType {
     Gitlab,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GitClient {
     pub forge: ForgeType,
     pub remote: Remote,
@@ -122,10 +123,12 @@ pub struct GitPr {
 
 /// Pull request.
 impl GitPr {
+    #[must_use]
     pub fn branch(&self) -> &str {
         self.head.ref_field.as_str()
     }
 
+    #[must_use]
     pub fn label_names(&self) -> Vec<&str> {
         self.labels.iter().map(|l| l.name.as_str()).collect()
     }
@@ -308,6 +311,7 @@ impl GitClient {
         })
     }
 
+    #[must_use]
     pub fn per_page(&self) -> &str {
         match self.forge {
             ForgeType::Github | ForgeType::Gitlab => "per_page",
@@ -394,6 +398,7 @@ impl GitClient {
         Ok(())
     }
 
+    #[must_use]
     pub fn pulls_url(&self) -> String {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => {
@@ -405,10 +410,12 @@ impl GitClient {
         }
     }
 
+    #[must_use]
     pub fn issues_url(&self) -> String {
         format!("{}/issues", self.repo_url())
     }
 
+    #[must_use]
     pub fn param_value_pr_state_open(&self) -> &'static str {
         match self.forge {
             ForgeType::Github | ForgeType::Gitea => "open",
@@ -483,7 +490,7 @@ impl GitClient {
             ForgeType::Gitlab => {
                 let gitlab_mrs: Vec<GitLabMr> =
                     resp.json().await.context("failed to parse gitlab mr")?;
-                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
+                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(Into::into).collect();
                 Ok(git_prs)
             }
         }
@@ -518,23 +525,22 @@ impl GitClient {
     }
 
     pub async fn edit_pr(&self, pr_number: u64, pr_edit: PrEdit) -> anyhow::Result<()> {
+        let url = format!("{}/{pr_number}", self.pulls_url());
         let req = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => self
-                .client
-                .patch(format!("{}/{}", self.pulls_url(), pr_number))
-                .json(&pr_edit),
+            ForgeType::Github | ForgeType::Gitea => self.client.patch(url).json(&pr_edit),
             ForgeType::Gitlab => {
                 let edit_mr: GitLabMrEdit = pr_edit.into();
-                self.client
-                    .put(format!("{}/merge_requests/{pr_number}", self.repo_url()))
-                    .json(&edit_mr)
+                self.client.put(url).json(&edit_mr)
             }
         };
         debug!("editing pr: {req:?}");
 
         req.send()
             .await
-            .with_context(|| format!("cannot edit pr {pr_number}"))?;
+            .with_context(|| format!("cannot edit pr {pr_number}"))?
+            .successful_status()
+            .await
+            .with_context(|| format!("forge rejected the edit of pr {pr_number}"))?;
 
         Ok(())
     }
@@ -575,15 +581,7 @@ impl GitClient {
             .await
             .context("received unexpected response")?;
 
-        let git_pr: GitPr = match self.forge {
-            ForgeType::Github | ForgeType::Gitea => {
-                rep.json().await.context("Failed to parse PR")?
-            }
-            ForgeType::Gitlab => {
-                let gitlab_mr: GitLabMr = rep.json().await.context("Failed to parse Gitlab MR")?;
-                gitlab_mr.into()
-            }
-        };
+        let git_pr = self.pr_from_response(rep).await?;
 
         info!("opened pr: {}", git_pr.html_url);
         self.add_labels(&pr.labels, git_pr.number)
@@ -678,8 +676,8 @@ impl GitClient {
     /// within the input and against existing PR labels.
     /// # Returns
     /// A tuple containing:
-    /// - Vec<String>: Labels that need to be created in the repository
-    /// - Vec<u64>: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
+    /// - `Vec<String>`: Labels that need to be created in the repository
+    /// - `Vec<u64>`: IDs of existing labels to be added to the PR (excluding duplicates and ones already present)
     async fn get_labels_info_and_categorize_labels(
         &self,
         labels: &[String],
@@ -796,10 +794,7 @@ impl GitClient {
             ForgeType::Gitlab => {
                 let gitlab_commits: Vec<GitLabMrCommit> =
                     resp.json().await.context("failed to parse gitlab mr")?;
-                let pr_commits = gitlab_commits
-                    .into_iter()
-                    .map(|commit| commit.into())
-                    .collect();
+                let pr_commits = gitlab_commits.into_iter().map(Into::into).collect();
                 Ok(pr_commits)
             }
         }
@@ -840,25 +835,9 @@ impl GitClient {
         debug!("Associated PR found. Status: {}", response.status());
 
         let prs = match self.forge {
-            ForgeType::Github => {
-                let prs: Vec<GitPr> = response
-                    .json()
-                    .await
-                    .context("can't parse associated PRs")?;
-                prs
-            }
-            ForgeType::Gitea => {
-                let pr: GitPr = response.json().await.context("can't parse associated PR")?;
-                vec![pr]
-            }
-            ForgeType::Gitlab => {
-                let gitlab_mrs: Vec<GitLabMr> = response
-                    .json()
-                    .await
-                    .context("can't parse associated Gitlab MR")?;
-                let git_prs: Vec<GitPr> = gitlab_mrs.into_iter().map(|mr| mr.into()).collect();
-                git_prs
-            }
+            ForgeType::Github | ForgeType::Gitlab => self.prs_from_response(response).await?,
+            // Gitea returns the single PR that merged the commit.
+            ForgeType::Gitea => vec![self.pr_from_response(response).await?],
         };
 
         let prs_numbers = prs.iter().map(|pr| pr.number).collect::<Vec<_>>();
@@ -1063,7 +1042,7 @@ If the commit hasn't been pushed to the remote repository yet, push it and run r
             .await?
             .get("sha")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .with_context(|| {
                 format!("failed to create git tag object for tag '{tag_name}' on '{sha}'")
             })?;
@@ -1282,6 +1261,37 @@ mod tests {
             let remote_commit = client.get_remote_commit("abc").await.unwrap();
             assert_eq!(remote_commit.username.as_deref(), Some("bob"), "{forge:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn rejected_pr_close_is_an_error() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{body_json, method, path},
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/repos/owner/repo/pulls/42"))
+            .and(body_json(json!({"state": "closed"})))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "message": "Resource not accessible by integration"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let github = GitHub::new("owner".into(), "repo".into(), SecretString::from("token"))
+            .with_base_url(server.uri().parse().unwrap());
+        let client = GitClient::new(GitForge::Github(github)).unwrap();
+
+        let error = client.close_pr(42).await.unwrap_err();
+
+        // The forge's explanation must reach the user, e.g. to fix the token permissions.
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("Resource not accessible by integration"),
+            "{error}"
+        );
+        server.verify().await;
     }
 
     #[test]

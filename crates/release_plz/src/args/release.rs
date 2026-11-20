@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use clap::builder::{NonEmptyStringValueParser, PathBufValueParser};
+use clap::builder::NonEmptyStringValueParser;
 use release_plz_core::ReleaseRequest;
 use secrecy::SecretString;
 
@@ -19,7 +19,7 @@ pub struct Release {
     /// Path to the Cargo.toml of the project you want to release.
     /// If not provided, release-plz will use the Cargo.toml of the current directory.
     /// Both Cargo workspaces and single packages are supported.
-    #[arg(long, value_parser = PathBufValueParser::new(), alias = "project-manifest")]
+    #[arg(long, alias = "project-manifest")]
     manifest_path: Option<PathBuf>,
 
     /// Registry where you want to publish the packages.
@@ -79,6 +79,8 @@ impl Release {
         config: &Config,
         metadata: cargo_metadata::Metadata,
     ) -> anyhow::Result<ReleaseRequest> {
+        config.check_publish_fields(&metadata)?;
+
         let git_release = if let Some(git_token) = &self.git_token {
             let git_token = SecretString::from(git_token.clone());
             let repo_url = self.get_repo_url(config)?;
@@ -112,8 +114,6 @@ impl Release {
         req = config.fill_release_config(self.allow_dirty, self.no_verify, req)?;
 
         req = req.with_branch_prefix(config.workspace.pr_branch_prefix.clone());
-
-        req.check_publish_fields()?;
 
         Ok(req)
     }

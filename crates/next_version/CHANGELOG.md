@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5](https://github.com/release-plz/release-plz/compare/next_version-v0.3.4...next_version-v0.3.5) - 2026-10-24
+
+### Fixed
+
+- *(update)* bump the version at most by a patch for `changelog_include` commits ([#3282](https://github.com/release-plz/release-plz/pull/3282))
+
 ## [0.3.4](https://github.com/release-plz/release-plz/compare/next_version-v0.3.3...next_version-v0.3.4) - 2026-10-12
 
 ### Performance

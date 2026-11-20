@@ -1,4 +1,4 @@
-use std::{io, path::Path, process::Command};
+use std::{io, path::Path, process::Command, sync::OnceLock};
 
 use anyhow::Context;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
@@ -24,6 +24,7 @@ pub(crate) fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>>(
 }
 
 /// Copy directory preserving symlinks.
+/// Git objects are hard linked when possible.
 /// `to` is created if it doesn't exist.
 pub fn copy_dir(from: impl AsRef<Utf8Path>, to: impl AsRef<Utf8Path>) -> anyhow::Result<()> {
     let from = from.as_ref();
@@ -65,30 +66,62 @@ fn copy_directory(
         // Skip the root `.git` entry (depth 1) and its descendants;
         // the separate walker below copies them without ignore filtering.
         .filter_entry(|entry| entry.depth() != 1 || entry.file_name() != ".git")
-        .build();
-    // Copy Git metadata without applying ignore rules: patterns such as `tags`
-    // must not exclude `.git/refs/tags`. `.git` can also be a worktree's gitdir file.
+        .build_parallel();
     let git_path = from.join(".git");
-    let git_walker = (git_path.try_exists()? || git_path.is_symlink()).then(|| {
-        ignore::WalkBuilder::new(&git_path)
-            .standard_filters(false)
-            .build()
-    });
-    for entry in walker.chain(git_walker.into_iter().flatten()) {
+    let objects_path = git_path.join("objects");
+    let copy_walked_entry = |entry: Result<ignore::DirEntry, ignore::Error>| {
         let entry = entry.context("invalid entry")?;
         let destination =
             destination_path(to, &entry, from).context("failed to determine destination path")?;
         let file_type = entry.file_type().context("unknown file type")?;
+        let source: &Utf8Path = entry.path().try_into()?;
+        let file_copy = if source.starts_with(&objects_path) {
+            FileCopy::HardLinkOrCopy
+        } else {
+            FileCopy::Copy
+        };
         copy_entry(
             root_from,
             root_to,
-            entry.path().try_into()?,
+            source,
             &destination,
             file_type,
-        )?;
+            file_copy,
+        )
+    };
+    copy_walked_entries(walker, copy_walked_entry)?;
+    // Copy Git metadata without applying ignore rules: patterns such as `tags`
+    // must not exclude `.git/refs/tags`. `.git` can also be a worktree's gitdir file.
+    if git_path.try_exists()? || git_path.is_symlink() {
+        let git_walker = ignore::WalkBuilder::new(&git_path)
+            .standard_filters(false)
+            .build_parallel();
+        copy_walked_entries(git_walker, copy_walked_entry)?;
     }
     copy_tracked_files(from, to, root_from, root_to)?;
     Ok(())
+}
+
+/// Copying is dominated by file system calls, which take long for repositories
+/// with many files, so copy from multiple threads.
+/// The walker visits directories before their entries, so the destination
+/// directory of an entry always exists.
+fn copy_walked_entries(
+    walker: ignore::WalkParallel,
+    copy: impl Fn(Result<ignore::DirEntry, ignore::Error>) -> anyhow::Result<()> + Sync,
+) -> anyhow::Result<()> {
+    // Other threads can fail before they quit, so only the first error is kept.
+    let first_error = OnceLock::new();
+    walker.run(|| {
+        Box::new(|entry| match copy(entry) {
+            Ok(()) => ignore::WalkState::Continue,
+            Err(error) => {
+                first_error.get_or_init(|| error);
+                ignore::WalkState::Quit
+            }
+        })
+    });
+    first_error.into_inner().map_or(Ok(()), Err)
 }
 
 /// Ignore rules only apply to untracked files. The walker can skip whole ignored
@@ -179,10 +212,26 @@ fn copy_tracked_files(
                 &source,
                 &destination,
                 metadata.file_type(),
+                FileCopy::Copy,
             )?;
         }
     }
     Ok(())
+}
+
+/// How [`copy_entry`] copies regular files.
+#[derive(Clone, Copy, Debug)]
+enum FileCopy {
+    Copy,
+    /// Git never rewrites the files of its object database: it writes new
+    /// objects, packs and indexes to temporary files that it renames, and
+    /// deletes the files it no longer needs. So, like `git clone --local`, the
+    /// copy can share them with the original repository instead of copying the
+    /// whole history.
+    /// When Git writes an object that already exists, it only refreshes the
+    /// modification time of the existing file. That's shared with the original
+    /// repository too, but at most delays its pruning of unreachable objects.
+    HardLinkOrCopy,
 }
 
 #[expect(clippy::filetype_is_file)] // we want to distinguish between files and symlinks
@@ -192,6 +241,7 @@ fn copy_entry(
     source: &Utf8Path,
     destination: &Utf8Path,
     file_type: std::fs::FileType,
+    file_copy: FileCopy,
 ) -> anyhow::Result<()> {
     if file_type.is_dir() {
         if destination != root_to {
@@ -213,8 +263,12 @@ fn copy_entry(
         })?;
     } else if file_type.is_file() {
         trace!("copying file {:?} to {:?}", source, destination);
-        match fs_err::copy(source, destination) {
-            Ok(_) => {}
+        let copied = match file_copy {
+            FileCopy::Copy => fs_err::copy(source, destination).map(|_| ()),
+            FileCopy::HardLinkOrCopy => hard_link_or_copy(source, destination),
+        };
+        match copied {
+            Ok(()) => {}
             // Files such as Git's maintenance lock can disappear between the
             // directory walk and the copy. Preserve that concurrent deletion.
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -227,6 +281,19 @@ fn copy_entry(
         }
     }
     Ok(())
+}
+
+fn hard_link_or_copy(source: &Utf8Path, destination: &Utf8Path) -> io::Result<()> {
+    fs_err::hard_link(source, destination).or_else(|error| {
+        // The destination can be a hard link of the source: copying would
+        // truncate the shared file, emptying the original.
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            return Err(error);
+        }
+        // E.g. the temporary directory is on another file system.
+        trace!("cannot hard link {source:?}, copying it instead: {error}");
+        fs_err::copy(source, destination).map(|_| ())
+    })
 }
 
 fn destination_path(
@@ -506,16 +573,35 @@ mod tests {
 
         let destination = Utf8TempDir::new().unwrap();
         let destination_file = destination.path().join("transient.lock");
-        copy_entry(
-            source.path(),
-            destination.path(),
-            &source_file,
-            &destination_file,
-            file_type,
-        )
-        .unwrap();
+        // Git also deletes loose objects concurrently when it packs them.
+        for file_copy in [FileCopy::Copy, FileCopy::HardLinkOrCopy] {
+            copy_entry(
+                source.path(),
+                destination.path(),
+                &source_file,
+                &destination_file,
+                file_type,
+                file_copy,
+            )
+            .unwrap();
+        }
 
         assert!(!destination_file.exists());
+    }
+
+    #[test]
+    fn hard_link_or_copy_keeps_existing_destination() {
+        let temp = Utf8TempDir::new().unwrap();
+        let source = temp.path().join("source");
+        fs_err::write(&source, "contents").unwrap();
+        let destination = temp.path().join("destination");
+        hard_link_or_copy(&source, &destination).unwrap();
+
+        // The destination is now a hard link of the source, so copying over it
+        // would truncate the source as well.
+        let error = hard_link_or_copy(&source, &destination).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs_err::read_to_string(source).unwrap(), "contents");
     }
 
     #[test]
@@ -684,6 +770,81 @@ mod tests {
             fs_err::read(destination.path().join("repo/.git")).unwrap(),
             fs_err::read(repo_dir.join(".git")).unwrap()
         );
+    }
+
+    #[test]
+    fn copy_errors_are_reported() {
+        let source = Utf8TempDir::new().unwrap();
+        let dir = source.path().join("dir");
+        fs_err::create_dir_all(dir.join("nested")).unwrap();
+        let destination = Utf8TempDir::new().unwrap();
+        // A file where the copy needs a directory fails one of the copying threads.
+        fs_err::create_dir(destination.path().join("dir")).unwrap();
+        fs_err::write(destination.path().join("dir/nested"), "not a directory").unwrap();
+
+        let error = copy_dir(&dir, destination.path()).unwrap_err();
+        assert!(format!("{error:?}").contains("nested"), "{error:?}");
+    }
+
+    #[test]
+    fn git_objects_are_shared_without_altering_the_original() {
+        let source = Utf8TempDir::new().unwrap();
+        let repo_dir = source.path().join("repo");
+        fs_err::create_dir(&repo_dir).unwrap();
+        let repo = git_cmd::Repo::init(&repo_dir);
+        // Commits can start a detached auto maintenance, which adds and removes
+        // files such as `objects/maintenance.lock` while the objects are listed.
+        repo.git(&["config", "maintenance.auto", "false"]).unwrap();
+        repo.git(&["config", "gc.auto", "0"]).unwrap();
+        // Cover both object formats: a pack and loose objects.
+        repo.git(&["gc"]).unwrap();
+        fs_err::write(repo_dir.join("loose"), "loose").unwrap();
+        repo.add_all_and_commit("add loose objects").unwrap();
+        let objects_dir = repo_dir.join(".git/objects");
+        let objects: Vec<Utf8PathBuf> = walkdir::WalkDir::new(&objects_dir)
+            .into_iter()
+            .map(|entry| entry.unwrap())
+            .filter(|entry| !entry.file_type().is_dir())
+            .map(|entry| {
+                let relative = entry.path().strip_prefix(&objects_dir).unwrap();
+                Utf8Path::from_path(relative).unwrap().to_owned()
+            })
+            .collect();
+        assert!(objects.iter().any(|object| object.starts_with("pack")));
+
+        let destination = Utf8TempDir::new().unwrap();
+        copy_dir(&repo_dir, destination.path()).unwrap();
+        let copied_dir = destination.path().join("repo");
+        let copied_objects_dir = copied_dir.join(".git/objects");
+        for object in &objects {
+            // The temporary directories are on the same file system.
+            assert!(
+                same_file::is_same_file(objects_dir.join(object), copied_objects_dir.join(object))
+                    .unwrap(),
+                "{object:?} isn't hard linked"
+            );
+        }
+
+        let copied_repo = git_cmd::Repo::new(&copied_dir).unwrap();
+        // Commit in the copy, like `release-pr` does. Git appends to the reflogs
+        // in place, so this would alter the original if more than its objects
+        // were hard linked.
+        fs_err::write(copied_dir.join("loose"), "changed").unwrap();
+        copied_repo.add_all_and_commit("change loose").unwrap();
+        // Git deletes the shared object files of the copy when it repacks them.
+        copied_repo.git(&["gc", "--prune=now"]).unwrap();
+        assert!(
+            objects
+                .iter()
+                .any(|object| !copied_objects_dir.join(object).exists())
+        );
+        // The original repository still has all its objects, unchanged, also
+        // after the copy is deleted.
+        drop(destination);
+        repo.git(&["fsck", "--full", "--strict"]).unwrap();
+        for object in &objects {
+            assert!(objects_dir.join(object).is_file(), "{object:?} was deleted");
+        }
     }
 
     #[test]

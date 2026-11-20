@@ -2,6 +2,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use next_version::VersionUpdater;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[must_use]
 pub struct UpdateConfig {
     /// This path needs to be a relative path to the Cargo.toml of the project.
     /// I.e. if you have a workspace, it needs to be relative to the workspace root.
@@ -54,18 +55,22 @@ impl From<UpdateConfig> for PackageUpdateConfig {
 }
 
 impl PackageUpdateConfig {
+    #[must_use]
     pub fn semver_check(&self) -> bool {
         self.generic.semver_check
     }
 
+    #[must_use]
     pub fn should_update_changelog(&self) -> bool {
         self.generic.changelog_update
     }
 
+    #[must_use]
     pub fn should_publish(&self) -> bool {
         self.generic.publish
     }
 
+    #[must_use]
     pub fn git_only(&self) -> Option<bool> {
         self.generic.git_only
     }

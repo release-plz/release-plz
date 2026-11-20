@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/release-plz/release-plz/compare/git_cmd-v0.9.0...git_cmd-v0.9.1) - 2026-10-19
+
+### Performance
+
+- spawn fewer and cheaper git processes in history walks ([#3250](https://github.com/release-plz/release-plz/pull/3250))
+
 ## [0.9.0](https://github.com/release-plz/release-plz/compare/git_cmd-v0.8.0...git_cmd-v0.9.0) - 2026-10-10
 
 ### Performance

@@ -8,7 +8,8 @@ remap = [
 ]
 
 exclude = [
-  'https://linkedin.com/*',
+  # LinkedIn rejects automated requests intermittently (e.g. 403 on share links).
+  'https://(www\.)?linkedin\.com/',
   'https://twitter.com/*',
   'https://x.com/*',
   # When the changelog is committed, release-plz didn't create the tag yet

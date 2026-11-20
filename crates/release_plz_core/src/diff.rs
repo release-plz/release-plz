@@ -9,6 +9,9 @@ use crate::semver_check::SemverCheck;
 pub(crate) struct Diff {
     /// List of commits from last released version to last local changes.
     pub commits: Vec<Commit>,
+    /// Commits of the packages in `changelog_include` that aren't in `commits`.
+    /// Like a local dependency update, they bump the version at most by a patch.
+    pub included_commits: Vec<Commit>,
     /// Whether the package name exists in the registry or not.
     pub registry_package_exists: bool,
     /// Whether the current local version is published to the registry.
@@ -63,6 +66,7 @@ impl Diff {
     pub fn new(registry_package_exists: bool) -> Self {
         Self {
             commits: vec![],
+            included_commits: vec![],
             registry_package_exists,
             is_version_published: true,
             semver_check: SemverCheck::Skipped,
@@ -77,7 +81,16 @@ impl Diff {
         //
         // If `is_version_published = false`, it means the local version is already bumped,
         // so we only need to update the changelog, if necessary.
-        self.registry_package_exists && !self.commits.is_empty() && self.is_version_published
+        self.registry_package_exists && self.has_commits() && self.is_version_published
+    }
+
+    pub fn has_commits(&self) -> bool {
+        !self.commits.is_empty() || !self.included_commits.is_empty()
+    }
+
+    /// The package commits, followed by the included ones.
+    pub fn all_commits(&self) -> impl Iterator<Item = &Commit> {
+        self.commits.iter().chain(&self.included_commits)
     }
 
     /// Mark that the local version is already bumped (not yet published to registry).
@@ -92,18 +105,17 @@ impl Diff {
         self.semver_check = semver_check;
     }
 
-    pub fn add_commits(&mut self, commits: &[Commit]) {
+    pub fn include_commits(&mut self, commits: &[Commit]) {
         for c in commits {
-            if !self.commits.contains(c) {
-                self.commits.push(c.clone());
+            if !self.all_commits().any(|commit| commit == c) {
+                self.included_commits.push(c.clone());
             }
         }
     }
 
     /// Return `true` if any commit message matches the given pattern.
     pub fn any_commit_matches(&self, pattern: &Regex) -> bool {
-        self.commits
-            .iter()
+        self.all_commits()
             .any(|commit| pattern.is_match(&commit.message))
     }
 }
@@ -114,10 +126,10 @@ mod tests {
 
     pub fn create_diff() -> Diff {
         let mut diff = Diff::new(false);
-        diff.add_commits(&[Commit::new(
+        diff.commits.push(Commit::new(
             "1e6903d".to_string(),
             "feature release".to_string(),
-        )]);
+        ));
         diff
     }
 

@@ -22,6 +22,7 @@ use crate::VersionIncrement;
 /// assert_eq!(Version::new(1, 3, 0), updated_version);
 /// ```
 #[derive(Debug)]
+#[must_use]
 pub struct VersionUpdater {
     pub(crate) features_always_increment_minor: bool,
     pub(crate) breaking_always_increment_major: bool,
@@ -295,12 +296,12 @@ impl VersionUpdater {
     }
 
     /// Analyze commits and determine the next version.
-    pub fn increment<I>(self, version: &Version, commits: I) -> Version
+    pub fn increment<I>(&self, version: &Version, commits: I) -> Version
     where
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let increment = VersionIncrement::from_commits_with_updater(&self, version, commits);
+        let increment = VersionIncrement::from_commits_with_updater(self, version, commits);
         match increment {
             Some(increment) => increment.bump(version),
             None => version.clone(),

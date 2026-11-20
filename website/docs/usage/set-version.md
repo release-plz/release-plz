@@ -2,6 +2,10 @@
 
 Edit the version of a package in Cargo.toml and changelog.
 
+Like [`release-plz update`](update.md), this command looks for the changelog of each package
+at the [`changelog_path`](../config.md#the-changelog_path-field) and doesn't edit the changelog
+of packages with [`changelog_update`](../config.md#the-changelog_update-field) set to `false`.
+
 - In a project containing a single package pass the version you want to set.
   E.g. `release-plz set-version 1.2.3`
 

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use cargo::{GlobalContext, util::homedir};
+use cargo::{GlobalContext, sources::SourceConfigMap, util::homedir, workspace::SourceId};
 use cargo_metadata::{
     Package,
     camino::{Utf8Path, Utf8PathBuf},
@@ -11,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::{debug, info};
-use url::Url;
 
 /// Read a workspace member without resolving its dependencies.
 pub(crate) fn read_package_metadata(
@@ -46,7 +45,32 @@ pub struct CargoRegistry {
     /// Name of the registry.
     /// [`Option::None`] means default 'crate.io'.
     pub name: Option<String>,
-    pub index_url: Option<Url>,
+    /// Whether Cargo resolves dependencies from a remote mirror, i.e. a remote registry
+    /// other than the one where `cargo publish` confirms the package, which may lag behind.
+    pub has_remote_mirror: bool,
+}
+
+impl CargoRegistry {
+    pub fn new(config: &GlobalContext, name: Option<String>) -> anyhow::Result<Self> {
+        let source_id = SourceId::alt_registry(config, registry_or_crates_io(name.as_deref()))?;
+        // `cargo publish` confirms the package on the publish registry, which follows only
+        // Cargo's built-in replacement (e.g. the crates.io sparse index).
+        let publish_source = SourceConfigMap::empty(config)?
+            .load(source_id)?
+            .replaced_source_id();
+        // Dependency resolution follows the configured replacement instead, which may be
+        // a remote mirror that lags behind. Local replacements (`directory` and
+        // `local-registry`) never receive the published package, so don't wait for them.
+        let dependency_source = SourceConfigMap::new(config)?
+            .load(source_id)?
+            .replaced_source_id();
+        let has_remote_mirror =
+            dependency_source.is_remote_registry() && dependency_source != publish_source;
+        Ok(Self {
+            name,
+            has_remote_mirror,
+        })
+    }
 }
 
 fn cargo_cmd() -> Command {
@@ -107,11 +131,10 @@ pub async fn is_published(
     package: &Package,
     timeout: Duration,
     registry: Option<&str>,
-    index_url: Option<&Url>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
-        let output = run_cargo_info(workspace_root, package, registry, index_url, token)
+        let output = run_cargo_info(workspace_root, package, registry, token)
             .context("cannot run cargo info")?;
         if output.status.success() {
             Ok(true)
@@ -135,7 +158,7 @@ pub async fn is_published(
     .with_context(|| format!("timeout while checking if `{}` is published", package.name))
 }
 
-fn cargo_info_registry_name(registry: Option<&str>) -> &str {
+fn registry_or_crates_io(registry: Option<&str>) -> &str {
     match registry {
         None | Some("crates-io") => "crates-io",
         Some(name) => name,
@@ -153,27 +176,16 @@ fn run_cargo_info(
     workspace_root: &Utf8Path,
     package: &Package,
     registry: Option<&str>,
-    index_url: Option<&Url>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<CmdOutput> {
-    let registry_name = cargo_info_registry_name(registry);
-    let mut args = vec![
-        "info".to_string(),
-        format!("{}@{}", package.name, package.version),
-    ];
-
-    if let Some(index_url) = index_url {
-        args.push("--index".to_string());
-        args.push(index_url.as_str().to_string());
-    } else {
-        args.push("--registry".to_string());
-        args.push(registry_name.to_string());
-    }
+    let registry_name = registry_or_crates_io(registry);
+    let spec = format!("{}@{}", package.name, package.version);
+    let args = ["info", &spec, "--registry", registry_name];
 
     debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
 
     let mut cmd = cargo_cmd();
-    cmd.current_dir(workspace_root).args(&args);
+    cmd.current_dir(workspace_root).args(args);
 
     let mut envs = vec![];
 
@@ -182,8 +194,7 @@ fn run_cargo_info(
         envs.push((env_var, token.clone()));
     }
 
-    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_cargo_with_env(workspace_root, &args_refs, &envs)
+    run_cargo_with_env(workspace_root, &args, &envs)
 }
 
 pub async fn wait_until_published(
@@ -191,7 +202,6 @@ pub async fn wait_until_published(
     package: &Package,
     timeout: Duration,
     registry: Option<&str>,
-    index_url: Option<&Url>,
     token: Option<&SecretString>,
 ) -> anyhow::Result<()> {
     let now: Instant = Instant::now();
@@ -199,8 +209,7 @@ pub async fn wait_until_published(
     let mut logged = false;
 
     loop {
-        let is_published =
-            is_published(workspace_root, package, timeout, registry, index_url, token).await?;
+        let is_published = is_published(workspace_root, package, timeout, registry, token).await?;
         if is_published {
             break;
         } else if timeout < now.elapsed() {
@@ -223,4 +232,30 @@ pub async fn wait_until_published(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crates_io_sparse_index_does_not_require_a_mirror_wait() {
+        // Cargo reads the configuration of the Cargo home and of the `.cargo` directories
+        // of the working directory and its ancestors. Use a temporary Cargo home and the
+        // filesystem root as working directory, so that the Cargo configuration of the
+        // machine running the test (e.g. a crates.io mirror) doesn't apply, even if the
+        // temporary directory is inside the home directory.
+        let temporary = crate::fs_utils::Utf8TempDir::new().unwrap();
+        let cargo_home = temporary.path().as_std_path();
+        let root = cargo_home.ancestors().last().unwrap();
+        #[expect(
+            clippy::default_trait_access,
+            reason = "Cargo doesn't export the shell type"
+        )]
+        let config = GlobalContext::new(Default::default(), root.to_owned(), cargo_home.to_owned());
+        for name in [None, Some("crates-io".to_string())] {
+            let registry = CargoRegistry::new(&config, name).unwrap();
+            assert!(!registry.has_remote_mirror);
+        }
+    }
 }

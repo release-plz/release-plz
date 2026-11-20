@@ -30,11 +30,13 @@ impl RepoUrl {
         Self::new(&url)
     }
 
+    #[must_use]
     pub fn is_on_github(&self) -> bool {
         self.host.contains("github")
     }
 
     /// Whether this repository uses one of GitHub.com's public Git hostnames.
+    #[must_use]
     pub fn is_on_github_dot_com(&self) -> bool {
         matches!(
             self.host.as_str(),
@@ -42,15 +44,18 @@ impl RepoUrl {
         )
     }
 
+    #[must_use]
     pub fn full_host(&self) -> String {
-        let instance = match self.https_port() {
-            Some(port) => format!("{}:{port}", self.host),
-            None => self.host.clone(),
-        };
-        format!("https://{instance}/{}/{}", self.owner, self.name)
+        format!(
+            "https://{}/{}/{}",
+            self.host_with_port(self.https_port()),
+            self.owner,
+            self.name
+        )
     }
 
     /// Get GitHub/Gitea release link
+    #[must_use]
     pub fn git_release_link(&self, prev_tag: &str, new_tag: &str) -> String {
         let host = self.full_host();
 
@@ -61,6 +66,7 @@ impl RepoUrl {
         }
     }
 
+    #[must_use]
     pub fn git_pr_link_for(&self, forge: ForgeType) -> String {
         let host = self.full_host();
         let pull_path = match forge {
@@ -71,17 +77,17 @@ impl RepoUrl {
         format!("{host}/{pull_path}")
     }
 
+    #[must_use]
     pub fn gitea_api_url(&self) -> String {
-        let v1 = "api/v1/";
-        if let Some(port) = self.port {
-            format!("{}://{}:{}/{v1}", self.scheme, self.host, port)
-        } else {
-            format!("{}://{}/{v1}", self.scheme, self.host)
-        }
+        format!(
+            "{}://{}/api/v1/",
+            self.scheme,
+            self.host_with_port(self.port)
+        )
     }
 
+    #[must_use]
     pub fn gitlab_api_url(&self) -> String {
-        let v4 = "api/v4/projects";
         let prj_path =
             crate::url_utils::encode_component(self.path.strip_prefix('/').unwrap_or(&self.path));
         let scheme = if self.scheme == "ssh" {
@@ -89,36 +95,31 @@ impl RepoUrl {
         } else {
             self.scheme.as_str()
         };
-        if let Some(port) = self.port {
-            format!("{scheme}://{}:{port}/{v4}/{prj_path}", self.host)
-        } else {
-            format!("{scheme}://{}/{v4}/{prj_path}", self.host)
-        }
+        format!(
+            "{scheme}://{}/api/v4/projects/{prj_path}",
+            self.host_with_port(self.port)
+        )
     }
 
+    #[must_use]
     pub fn github_api_url(&self) -> String {
         if self.is_on_github_dot_com() {
             return format!("https://api.{GITHUB_COM}/");
         }
 
-        format!("{}/api/v3/", self.github_enterprise_base_url())
+        format!(
+            "{}://{}/api/v3/",
+            self.api_scheme(),
+            self.host_with_port(self.https_port())
+        )
     }
 
-    pub fn github_graphql_url(&self) -> String {
-        if self.is_on_github_dot_com() {
-            return format!("https://api.{GITHUB_COM}/graphql");
-        }
-
-        format!("{}/api/graphql", self.github_enterprise_base_url())
-    }
-
-    fn github_enterprise_base_url(&self) -> String {
-        let scheme = self.api_scheme();
-        let instance = match self.https_port() {
+    /// `host`, or `host:port` if `port` is set.
+    fn host_with_port(&self, port: Option<u16>) -> String {
+        match port {
             Some(port) => format!("{}:{port}", self.host),
             None => self.host.clone(),
-        };
-        format!("{scheme}://{instance}")
+        }
     }
 
     fn api_scheme(&self) -> &str {
@@ -393,14 +394,12 @@ mod tests {
     fn github_api_url_dotcom() {
         let r = RepoUrl::new("https://github.com/owner/repo").unwrap();
         assert_eq!(r.github_api_url(), "https://api.github.com/");
-        assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
     }
 
     #[test]
     fn github_api_url_dotcom_http_still_uses_https() {
         let r = RepoUrl::new("http://github.com/owner/repo").unwrap();
         assert_eq!(r.github_api_url(), "https://api.github.com/");
-        assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
     }
 
     #[test]
@@ -411,7 +410,6 @@ mod tests {
         ] {
             let r = RepoUrl::new(url).unwrap();
             assert_eq!(r.github_api_url(), "https://api.github.com/");
-            assert_eq!(r.github_graphql_url(), "https://api.github.com/graphql");
         }
     }
 
@@ -419,21 +417,13 @@ mod tests {
     fn github_api_url_enterprise_https() {
         let r = RepoUrl::new("https://github.example.com/owner/repo").unwrap();
         assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
-        assert_eq!(
-            r.github_graphql_url(),
-            "https://github.example.com/api/graphql"
-        );
     }
 
     #[test]
     fn github_api_url_enterprise_ssh_origin() {
-        // SSH origins must be promoted to HTTPS for the REST/GraphQL APIs.
+        // SSH origins must be promoted to HTTPS for the API.
         let r = RepoUrl::new("git@github.example.com:owner/repo.git").unwrap();
         assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
-        assert_eq!(
-            r.github_graphql_url(),
-            "https://github.example.com/api/graphql"
-        );
     }
 
     #[test]
@@ -444,10 +434,6 @@ mod tests {
             r.github_api_url(),
             "https://github.example.com:8443/api/v3/"
         );
-        assert_eq!(
-            r.github_graphql_url(),
-            "https://github.example.com:8443/api/graphql"
-        );
     }
 
     #[test]
@@ -455,10 +441,6 @@ mod tests {
         let r = RepoUrl::new("ssh://git@github.example.com:2222/owner/repo.git").unwrap();
         assert_eq!(r.full_host(), "https://github.example.com/owner/repo");
         assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
-        assert_eq!(
-            r.github_graphql_url(),
-            "https://github.example.com/api/graphql"
-        );
     }
 
     #[test]
@@ -466,10 +448,6 @@ mod tests {
         let r = RepoUrl::new("git://github.example.com:9418/owner/repo.git").unwrap();
         assert_eq!(r.full_host(), "https://github.example.com/owner/repo");
         assert_eq!(r.github_api_url(), "https://github.example.com/api/v3/");
-        assert_eq!(
-            r.github_graphql_url(),
-            "https://github.example.com/api/graphql"
-        );
     }
 
     #[test]
