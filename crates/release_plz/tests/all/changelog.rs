@@ -1,13 +1,16 @@
+use std::fmt::Write as _;
+
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
     package::{PackageType, TestPackage},
+    release_pr_stdout,
     test_context::TestContext,
     today,
 };
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_does_not_open_release_pr_if_there_are_no_release_commits() {
     let context = TestContext::new().await;
 
@@ -35,7 +38,7 @@ async fn release_plz_does_not_open_release_pr_if_there_are_no_release_commits() 
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_adds_changelog_on_new_project() {
     let context = TestContext::new().await;
 
@@ -45,25 +48,7 @@ async fn release_plz_adds_changelog_on_new_project() {
     assert_eq!(opened_prs.len(), 1);
     let opened_pr = &opened_prs[0];
 
-    let expected_stdout = serde_json::json!({
-        "prs": [
-          {
-            "head_branch": opened_pr.branch(),
-            "base_branch": "main",
-            "html_url": opened_pr.html_url,
-            "number": opened_pr.number,
-            "releases": [
-                {
-                    "package_name": context.gitea.repo,
-                    "version": "0.1.0"
-                }
-            ]
-          }
-        ]
-    })
-    .to_string();
-
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(opened_pr, &context.gitea.repo, "0.1.0"));
 
     let changed_files = context.gitea.changed_files_in_pr(opened_pr.number).await;
     assert_eq!(changed_files.len(), 1);
@@ -71,7 +56,7 @@ async fn release_plz_adds_changelog_on_new_project() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_releases_a_new_project() {
     let context = TestContext::new().await;
 
@@ -79,7 +64,7 @@ async fn release_plz_releases_a_new_project() {
 
     let packages = async || context.download_package(dest_dir.path()).await;
     // Before running release-plz, no packages should be present.
-    assert!(packages().await.is_empty());
+    assert_eq!(packages().await, []);
 
     context.run_release().success();
 
@@ -88,7 +73,7 @@ async fn release_plz_releases_a_new_project() {
 
 // TODO: switch `### Contributors` to `=== Contributors` and make test pass
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_adds_custom_changelog() {
     let context = TestContext::new().await;
     let config = r#"
@@ -162,19 +147,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         expected_pr_body.trim()
     );
 
-    let expected_stdout = serde_json::json!({
-        "prs": [{
-            "base_branch": "main",
-            "head_branch": open_pr.branch(),
-            "html_url": open_pr.html_url,
-            "number": open_pr.number,
-            "releases": [{
-                "package_name": context.gitea.repo,
-                "version": "0.1.0"
-            }]
-        }]
-    });
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_pr_stdout(open_pr, &context.gitea.repo, "0.1.0"));
 
     let changelog = context
         .gitea
@@ -190,11 +163,10 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
         "== {repo} - [0.1.0](https://localhost:3000/{username}/{repo}/releases/tag/v0.1.0)\n\n"
     );
     let commits = ["add config file", "cargo init", "Initial commit"];
-    #[expect(clippy::format_collect)]
-    let commits_str = commits
-        .iter()
-        .map(|commit| format!("- {commit} by {username} (gitea: {username})\n"))
-        .collect::<String>();
+    let mut commits_str = String::new();
+    for commit in commits {
+        writeln!(commits_str, "- {commit} by {username} (gitea: {username})").unwrap();
+    }
     let changes = format!(
         "
 === Other
@@ -210,7 +182,7 @@ This PR was generated with [release-plz](https://github.com/release-plz/release-
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
     let context = TestContext::new_workspace_with_packages(&[
         TestPackage::new("one")
@@ -276,7 +248,7 @@ async fn can_generate_single_changelog_for_multiple_packages_in_pr() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn can_generate_single_changelog_for_multiple_packages_locally() {
     let context = TestContext::new_workspace(&["one", "two"]).await;
     let config = r#"
@@ -328,7 +300,7 @@ async fn can_generate_single_changelog_for_multiple_packages_locally() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn raw_message_contains_entire_commit_message() {
     let context = TestContext::new().await;
     let config = r#"
@@ -378,7 +350,7 @@ async fn raw_message_contains_entire_commit_message() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn pr_link_is_expanded() {
     let context = TestContext::new().await;
 

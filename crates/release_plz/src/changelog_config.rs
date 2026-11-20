@@ -1,5 +1,5 @@
 use anyhow::Context;
-use git_cliff_core::config::{Bump, ChangelogConfig, RemoteConfig};
+use git_cliff_core::config::{Bump, ChangelogConfig, GitConfig, RemoteConfig};
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -156,73 +156,43 @@ fn to_opt_regex(input: Option<&str>, element_name: &str) -> anyhow::Result<Optio
     input.map(|i| to_regex(i, element_name)).transpose()
 }
 
-fn to_opt_vec<T, U>(vec: Option<Vec<T>>, element_name: &str) -> anyhow::Result<Vec<U>>
+/// Convert each item of an optional list, defaulting to an empty list.
+fn to_vec<T, U>(vec: Option<Vec<T>>, element_name: &str) -> anyhow::Result<Vec<U>>
 where
     T: TryInto<U, Error = anyhow::Error>,
 {
-    vec.map(|v| vec_try_into(v, element_name))
-        .transpose()
-        .map(|v| v.unwrap_or_default())
-}
-
-fn vec_try_into<T, U>(vec: Vec<T>, element_name: &str) -> anyhow::Result<Vec<U>>
-where
-    T: TryInto<U, Error = anyhow::Error>,
-{
-    vec.into_iter()
-        .map(|cp| {
-            cp.try_into()
+    vec.unwrap_or_default()
+        .into_iter()
+        .map(|item| {
+            item.try_into()
                 .with_context(|| format!("failed to parse {element_name}"))
         })
         .collect()
 }
 
-pub fn to_git_cliff_config(
-    cfg: ChangelogCfg,
-    pr_link: Option<&str>,
-) -> anyhow::Result<git_cliff_core::config::Config> {
-    let commit_preprocessors: Vec<git_cliff_core::config::TextProcessor> =
-        to_opt_vec(cfg.commit_preprocessors, "commit_preprocessors")?;
-    let postprocessors: Vec<git_cliff_core::config::TextProcessor> =
-        to_opt_vec(cfg.postprocessors, "postprocessors")?;
-    let link_parsers: Vec<git_cliff_core::config::LinkParser> =
-        to_opt_vec(cfg.link_parsers, "link_parsers")?;
-    let tag_pattern = to_opt_regex(cfg.tag_pattern.as_deref(), "tag_pattern")?;
-
-    let sort_commits = cfg.sort_commits.map(|s| format!("{s}"));
-
-    let commit_parsers: Vec<git_cliff_core::config::CommitParser> =
-        to_opt_vec(cfg.commit_parsers, "commit_parsers")?;
-
-    let default_changelog_config = release_plz_core::default_changelog_config(cfg.header.clone());
-    let default_git_config = release_plz_core::default_git_config(pr_link);
+pub fn to_git_cliff_config(cfg: ChangelogCfg) -> anyhow::Result<git_cliff_core::config::Config> {
+    let default_changelog_config = release_plz_core::default_changelog_config(cfg.header);
+    // The PR link only affects the default commit preprocessors, which aren't used here.
+    let default_git_config = release_plz_core::default_git_config(None);
     Ok(git_cliff_core::config::Config {
         changelog: ChangelogConfig {
-            header: default_changelog_config.header,
             body: cfg.body.unwrap_or(default_changelog_config.body),
             trim: cfg.trim.unwrap_or(default_changelog_config.trim),
-            postprocessors,
-            footer: None,
-            ..ChangelogConfig::default()
+            postprocessors: to_vec(cfg.postprocessors, "postprocessors")?,
+            ..default_changelog_config
         },
-        git: git_cliff_core::config::GitConfig {
-            conventional_commits: default_git_config.conventional_commits,
-            filter_unconventional: default_git_config.filter_unconventional,
-            split_commits: default_git_config.split_commits,
-            commit_preprocessors,
-            commit_parsers,
+        git: GitConfig {
+            commit_preprocessors: to_vec(cfg.commit_preprocessors, "commit_preprocessors")?,
+            commit_parsers: to_vec(cfg.commit_parsers, "commit_parsers")?,
             protect_breaking_commits: cfg
                 .protect_breaking_commits
                 .unwrap_or(default_git_config.protect_breaking_commits),
-            link_parsers,
-            filter_commits: default_git_config.filter_commits,
-            tag_pattern,
-            skip_tags: None,
-            ignore_tags: None,
-            topo_order: default_git_config.topo_order,
-            sort_commits: sort_commits.unwrap_or(default_git_config.sort_commits),
-            limit_commits: None,
-            ..Default::default()
+            link_parsers: to_vec(cfg.link_parsers, "link_parsers")?,
+            tag_pattern: to_opt_regex(cfg.tag_pattern.as_deref(), "tag_pattern")?,
+            sort_commits: cfg
+                .sort_commits
+                .map_or(default_git_config.sort_commits, |s| s.to_string()),
+            ..default_git_config
         },
         remote: RemoteConfig::default(),
         bump: Bump::default(),
@@ -263,7 +233,7 @@ mod tests {
     "#;
         let cfg: Config = toml::from_str(toml).unwrap();
         let actual_cliff_config: git_cliff_core::config::Config =
-            to_git_cliff_config(cfg.changelog, None).unwrap();
+            to_git_cliff_config(cfg.changelog).unwrap();
         let expected_cliff_config = git_cliff_core::config::Config {
             changelog: ChangelogConfig {
                 header: Some("Changelog".to_string()),
@@ -349,7 +319,7 @@ mod tests {
                 "#
             );
             let cfg: Config = toml::from_str(&toml).unwrap();
-            let cliff_config = to_git_cliff_config(cfg.changelog, None).unwrap();
+            let cliff_config = to_git_cliff_config(cfg.changelog).unwrap();
             assert_eq!(
                 cliff_config.git.commit_parsers[0].r#continue,
                 expected_continue

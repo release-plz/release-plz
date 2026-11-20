@@ -3,7 +3,8 @@ use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    assert_cargo_semver_checks_is_installed, assert_locked_versions, cmd::release_plz_cmd,
+    assert_cargo_semver_checks_is_installed, assert_locked_versions,
+    cmd::{cargo_cmd, release_plz_cmd},
     locked_metadata,
 };
 
@@ -101,6 +102,52 @@ fn update_workspace_without_publishable_packages() {
 }
 
 #[test]
+fn update_ignores_inherited_dev_dependency_requirement_changes() {
+    for (kind, released) in [
+        ("dev-dependencies", false),
+        ("dependencies", true),
+        ("build-dependencies", true),
+    ] {
+        let package = format!("version = \"1.0.0\"\n[{kind}]\nanyhow.workspace = true\n");
+        // Patch the registry dependency `anyhow` with a local stub, so cargo resolves it offline.
+        let (temp_dir, repo) = released_workspace(
+            &[
+                ("one", &package),
+                ("anyhow", "version = \"1.0.5\"\npublish = false\n"),
+            ],
+            "[workspace.dependencies]\nanyhow = \"1.0.0\"\n\
+             [patch.crates-io]\nanyhow = { path = \"anyhow\" }\n",
+            "[workspace]\nsemver_check = false\n",
+        );
+        // Only the workspace manifest changes: the package has no commits of its own.
+        let manifest_path = repo.directory().join("Cargo.toml");
+        let manifest = fs_err::read_to_string(&manifest_path).unwrap();
+        fs_err::write(
+            manifest_path,
+            manifest.replace("anyhow = \"1.0.0\"", "anyhow = \"1.0.1\""),
+        )
+        .unwrap();
+        repo.add_all_and_commit("chore: update workspace dependency")
+            .unwrap();
+
+        run_workspace_update(&temp_dir, &repo, None);
+
+        if released {
+            assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+            let changelog =
+                fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+            assert!(
+                changelog.contains("update Cargo.toml dependencies"),
+                "{changelog}"
+            );
+        } else {
+            // No version bump and no changelog: release-plz didn't touch the repository.
+            repo.is_clean().unwrap();
+        }
+    }
+}
+
+#[test]
 fn update_changelog_includes_distinct_author_and_committer() {
     for (body, expected) in [
         (
@@ -185,6 +232,49 @@ changelog_include = ["three"]
             );
         }
     }
+}
+
+#[test]
+fn changelog_include_commits_bump_the_version_at_most_by_a_patch() {
+    let config = r#"
+[workspace]
+semver_check = false
+[[package]]
+name = "without_commits"
+changelog_include = ["core"]
+[[package]]
+name = "with_feature"
+changelog_include = ["core"]
+"#;
+    let (temp_dir, repo) = released_workspace(
+        &[
+            ("without_commits", "version = \"1.0.0\"\n"),
+            ("with_feature", "version = \"1.0.0\"\n"),
+            ("core", "version = \"1.0.0\"\n"),
+        ],
+        "",
+        config,
+    );
+    change_package(&repo, "core", "feat!: break core");
+    change_package(&repo, "with_feature", "feat: update with_feature");
+
+    run_workspace_update(&temp_dir, &repo, None);
+
+    // The breaking change of `core` doesn't break the packages that include its commits.
+    assert_locked_versions(
+        repo.directory(),
+        &[
+            // Only the included commits release it, as if `core` was a dependency.
+            ("without_commits", "1.0.1"),
+            // Its own `feat` commit requires a bigger increment than the included commits.
+            ("with_feature", "1.1.0"),
+            ("core", "2.0.0"),
+        ],
+    );
+    // The changelog lists the breaking change, even if it only bumps the patch.
+    let changelog =
+        fs_err::read_to_string(repo.directory().join("without_commits/CHANGELOG.md")).unwrap();
+    assert!(changelog.contains("break core"), "{changelog}");
 }
 
 #[tokio::test]
@@ -1232,7 +1322,7 @@ fn init_workspace(
 }
 
 fn generate_lockfile(dir: &Utf8Path) {
-    assert_cmd::Command::new("cargo")
+    cargo_cmd()
         .current_dir(dir)
         .args(["generate-lockfile", "--offline"])
         .assert()
@@ -1277,6 +1367,8 @@ fn workspace_update_command(temp_dir: &Utf8TempDir, repo: &Repo) -> assert_cmd::
     let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
     cmd.current_dir(repo.directory())
         .args(["update", "--registry-manifest-path"])
-        .arg(temp_dir.path().join("registry/Cargo.toml"));
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        // The fixtures resolve only local or patched packages, so cargo never needs the network.
+        .env("CARGO_NET_OFFLINE", "true");
     cmd
 }

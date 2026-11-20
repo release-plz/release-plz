@@ -7,9 +7,10 @@ use cargo_metadata::{Package, camino::Utf8PathBuf};
 use cargo_utils::CARGO_TOML;
 use tracing::{info, instrument};
 
-use crate::clone::{Cloner, ClonerSource, Crate};
+use crate::clone::Cloner;
 
 #[derive(Debug)]
+#[must_use]
 pub struct PackageDownloader {
     packages: Vec<String>,
     directory: String,
@@ -46,27 +47,17 @@ impl PackageDownloader {
 
     #[instrument]
     pub async fn download(&self) -> anyhow::Result<Vec<Package>> {
-        let source: ClonerSource = match &self.registry {
-            Some(registry) => ClonerSource::registry(registry),
-            None => ClonerSource::crates_io(),
-        };
         info!(
             "downloading packages from cargo registry {}",
-            source.cargo_source
+            self.registry.as_deref().unwrap_or("crates.io")
         );
-        let crates: Vec<Crate> = self
-            .packages
-            .iter()
-            .map(|package_name| Crate::new(package_name.clone(), None))
-            .collect();
-        let mut cloner_builder = Cloner::builder()
-            .with_directory(&self.directory)
-            .with_source(source);
-        if let Some(cwd) = &self.cargo_cwd {
-            cloner_builder = cloner_builder.with_cargo_cwd(cwd.clone());
-        }
-        let cloner = cloner_builder.build().context("can't build cloner")?;
-        let result = cloner.clone(&crates).await;
+        let cloner = Cloner::new(
+            &self.directory,
+            self.registry.as_deref(),
+            self.cargo_cwd.clone(),
+        )
+        .context("can't build cloner")?;
+        let result = cloner.clone(&self.packages).await;
         // Dropping Cargo's context waits for its HTTP worker to finish the requests still
         // in flight, like the queries after a failed one. Don't make the caller wait.
         // If the thread can't start, `spawn` drops the cloner here instead.
@@ -115,12 +106,14 @@ fn read_packages(directories: &[Utf8PathBuf]) -> anyhow::Result<Vec<Package>> {
 pub fn read_package(directory: impl AsRef<Path>) -> anyhow::Result<Package> {
     let manifest_path = directory.as_ref().join(CARGO_TOML);
     let manifest_path = cargo_metadata::camino::Utf8PathBuf::from_path_buf(manifest_path)
-        .map_err(|path| anyhow!("non-utf8 manifest path: {path:?}"))?;
+        .map_err(|path| anyhow!("non-utf8 manifest path: \"{}\"", path.display()))?;
     let metadata = cargo_utils::get_manifest_metadata(&manifest_path)
         .context("failed to execute cargo_metadata")?;
-    let package = metadata
-        .packages
-        .first()
-        .ok_or_else(|| anyhow!("cannot retrieve package at {:?}", directory.as_ref()))?;
+    let package = metadata.packages.first().ok_or_else(|| {
+        anyhow!(
+            "cannot retrieve package at \"{}\"",
+            directory.as_ref().display()
+        )
+    })?;
     Ok(package.clone())
 }

@@ -3,18 +3,23 @@ use semver::Version;
 use crate::VersionUpdater;
 
 pub trait NextVersion {
+    #[must_use]
     fn next<I>(&self, commits: I) -> Self
     where
         I: IntoIterator,
         I::Item: AsRef<str>;
 
     /// Increments the major version number.
+    #[must_use]
     fn increment_major(&self) -> Self;
     /// Increments the minor version number.
+    #[must_use]
     fn increment_minor(&self) -> Self;
     /// Increments the patch version number.
+    #[must_use]
     fn increment_patch(&self) -> Self;
     /// Increments the prerelease version number.
+    #[must_use]
     fn increment_prerelease(&self) -> Self;
 }
 

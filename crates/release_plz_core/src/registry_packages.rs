@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context;
-use cargo::workspace::Workspace;
 use cargo_metadata::{Metadata, Package, camino::Utf8Path};
 use git_cmd::git_in_dir;
 use tempfile::{TempDir, tempdir};
@@ -44,7 +43,7 @@ pub(crate) struct ReleasedWorkspace {
 
 impl ReleasedWorkspace {
     pub(crate) fn new(metadata: Metadata, commit: String) -> anyhow::Result<Self> {
-        let lockfile = load_lockfile(&metadata, &commit)?;
+        let lockfile = WorkspaceLockfile::load_committed(&metadata, &commit)?;
         Ok(Self {
             metadata,
             lockfile,
@@ -58,24 +57,6 @@ impl ReleasedWorkspace {
     pub(crate) fn lockfile(&self) -> Option<&WorkspaceLockfile> {
         self.lockfile.as_ref()
     }
-}
-
-/// Decode the committed lockfile without resolving or fetching dependencies.
-fn load_lockfile(metadata: &Metadata, commit: &str) -> anyhow::Result<Option<WorkspaceLockfile>> {
-    let lock_path = metadata.workspace_root.join("Cargo.lock");
-    if !lock_path.exists() {
-        return Ok(None);
-    }
-    let config = crate::cargo::new_cargo_config(Some(metadata.workspace_root.clone()))?;
-    let manifest = metadata.workspace_root.join("Cargo.toml");
-    let workspace = Workspace::new(manifest.as_std_path(), &config).with_context(|| {
-        format!(
-            "cannot load workspace manifest {manifest:?} with the Cargo library bundled in release-plz"
-        )
-    })?;
-    let resolve = cargo::ops::load_pkg_lockfile(&workspace)
-        .with_context(|| format!("cannot load lockfile {lock_path:?} committed at {commit}"))?;
-    Ok(resolve.as_ref().map(WorkspaceLockfile::from_resolve))
 }
 
 impl RegistryPackage {
@@ -129,28 +110,27 @@ pub async fn get_registry_packages(
     local_packages: &[&Package],
     registry: Option<&str>,
 ) -> anyhow::Result<PackagesCollection> {
-    let (temp_dir, registry_packages) = match registry_manifest {
-        Some(manifest) => (
+    let (temp_dir, registry_packages) = if let Some(manifest) = registry_manifest {
+        (
             None,
             next_ver::publishable_packages_from_manifest(manifest)?
                 .into_iter()
                 .map(|p| RegistryPackage::new(p, None))
                 .collect(),
-        ),
-        None => {
-            let temp_dir = tempdir().context("failed to get a temporary directory")?;
-            let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
+        )
+    } else {
+        let temp_dir = tempdir().context("failed to get a temporary directory")?;
+        let directory = temp_dir.as_ref().to_str().context("invalid tempdir path")?;
 
-            let registry_packages =
-                download_packages_from_registry(local_packages, registry, directory).await?;
+        let registry_packages =
+            download_packages_from_registry(local_packages, registry, directory).await?;
 
-            // After downloading the package, we initialize a git repo in the package.
-            // This is because if cargo doesn't find a git repo in the package, it doesn't
-            // show hidden files in `cargo package --list` output.
-            let registry_packages = initialize_registry_package(registry_packages)
-                .context("failed to initialize repository package")?;
-            (Some(temp_dir), registry_packages)
-        }
+        // After downloading the package, we initialize a git repo in the package.
+        // This is because if cargo doesn't find a git repo in the package, it doesn't
+        // show hidden files in `cargo package --list` output.
+        let registry_packages = initialize_registry_package(registry_packages)
+            .context("failed to initialize repository package")?;
+        (Some(temp_dir), registry_packages)
     };
     let registry_packages: BTreeMap<String, RegistryPackage> = registry_packages
         .into_iter()
@@ -177,7 +157,7 @@ async fn download_packages_from_registry(
                 .as_ref()
                 // Use the first registry in the `publish` field.
                 .and_then(|p| p.first())
-                .map(|x| x.as_str())
+                .map(String::as_str)
         })
     }
     let packages_grouped_by_registry = local_packages

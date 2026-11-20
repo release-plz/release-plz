@@ -1,9 +1,9 @@
 use release_plz_core::fs_utils::Utf8TempDir;
 
-use crate::helpers::test_context::TestContext;
+use crate::helpers::{package::TestPackage, release_stdout, test_context::TestContext};
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_info_contains_prs_in_changelog() {
     let context = TestContext::new().await;
 
@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_releases_a_new_project_with_custom_tag_name() {
     let context = TestContext::new().await;
 
@@ -72,24 +72,13 @@ async fn release_plz_releases_a_new_project_with_custom_tag_name() {
     assert!(!is_tag_created());
 
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": expected_tag,
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, &expected_tag, "0.1.0"));
 
     assert!(is_tag_created());
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_does_not_release_a_new_project_if_release_always_is_false() {
     let context = TestContext::new().await;
 
@@ -106,7 +95,7 @@ async fn release_plz_does_not_release_a_new_project_if_release_always_is_false()
 
     let dest_dir = Utf8TempDir::new().unwrap();
     let packages = context.download_package(dest_dir.path()).await;
-    assert!(packages.is_empty());
+    assert_eq!(packages, []);
 
     // TODO: Gitea doesn't detect associated PRs. I don't know why.
     // context.run_release_pr().success();
@@ -120,7 +109,7 @@ async fn release_plz_does_not_release_a_new_project_if_release_always_is_false()
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_releases_a_new_project_with_custom_release() {
     let context = TestContext::new().await;
 
@@ -145,7 +134,7 @@ async fn release_plz_releases_a_new_project_with_custom_release() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_releases_after_release_pr_merged() {
     let context = TestContext::new().await;
 
@@ -180,7 +169,7 @@ async fn release_plz_releases_after_release_pr_merged() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_does_not_releases_twice() {
     let context = TestContext::new().await;
 
@@ -188,18 +177,7 @@ async fn release_plz_does_not_releases_twice() {
 
     // Running `release` the first time, releases the project
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 
     // Running `release` the second time, releases nothing.
     let outcome = context.run_release().success();
@@ -207,7 +185,25 @@ async fn release_plz_does_not_releases_twice() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
+async fn release_plz_publishes_with_the_token_of_the_package_registry() {
+    let context = TestContext::new().await;
+
+    let crate_name = &context.gitea.repo;
+
+    // Without `--registry`, the package is published to the test registry because it's
+    // the one in its `publish` field. The crates.io token is invalid for the test registry,
+    // so `cargo publish` only succeeds if release-plz uses the token of the test registry.
+    let outcome = context
+        .release_command_without_registry()
+        .env("CARGO_REGISTRY_TOKEN", "crates-io-token")
+        .assert()
+        .success();
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_plz_can_do_backports() {
     let context = TestContext::new().await;
 
@@ -215,18 +211,7 @@ async fn release_plz_can_do_backports() {
 
     // Running `release` the first time, releases the project
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.0",
-                "version": "0.1.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.0", "0.1.0"));
 
     // Publish a new breaking release
     context.set_package_version(crate_name, &cargo_metadata::semver::Version::new(0, 2, 0));
@@ -234,18 +219,7 @@ async fn release_plz_can_do_backports() {
     context.run_cargo_check();
     context.push_all_changes("breaking release");
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.2.0",
-                "version": "0.2.0",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.2.0", "0.2.0"));
 
     // Publish a backport release.
     // It's a backport because v0.1.1 < v0.2.0.
@@ -254,18 +228,46 @@ async fn release_plz_can_do_backports() {
     context.run_cargo_check();
     context.push_all_changes("backport release");
     let outcome = context.run_release().success();
-    let expected_stdout = serde_json::json!({
-        "releases": [
-            {
-                "package_name": crate_name,
-                "prs": [],
-                "tag": "v0.1.1",
-                "version": "0.1.1",
-            }
-        ]
-    })
-    .to_string();
-    outcome.stdout(format!("{expected_stdout}\n"));
+    outcome.stdout(release_stdout(crate_name, "v0.1.1", "0.1.1"));
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
+async fn release_rejects_only_explicit_publish_of_unpublishable_package() {
+    let context = TestContext::new_workspace_with_packages(&[
+        TestPackage::new("published"),
+        TestPackage::new("private").with_publish(false),
+    ])
+    .await;
+
+    // Cargo can't publish `private`, so asking release-plz to publish it is a mistake.
+    context.write_release_plz_toml(
+        r#"
+[[package]]
+name = "private"
+publish = true
+"#,
+    );
+    let error = context.run_release().failure().to_string();
+    assert!(
+        error.contains("Remove `publish = true` from its `[[package]]` section"),
+        "unexpected error: {error}"
+    );
+
+    // A `[[package]]` section that doesn't set `publish` doesn't ask to publish the
+    // package, even if it inherits `publish = true` from `[workspace]`.
+    context.write_release_plz_toml(
+        r#"
+[workspace]
+publish = true
+
+[[package]]
+name = "private"
+"#,
+    );
+    let outcome = context.run_release().success();
+    // `private` is skipped because it's unpublishable.
+    outcome.stdout(release_stdout("published", "published-v0.1.0", "0.1.0"));
 }
 
 /// How [`CARGO_WRAPPER`] and the registry behave during the release.
@@ -379,7 +381,7 @@ async fn release_cargo_calls(scenario: Scenario) -> Vec<String> {
 
 #[cfg(unix)]
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_trusts_cargo_publish_confirmation() {
     // The first `cargo info` checks whether the package was already published.
     assert_eq!(
@@ -390,7 +392,7 @@ async fn release_trusts_cargo_publish_confirmation() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
     assert_eq!(
         release_cargo_calls(Scenario::Unconfirmed).await,
@@ -400,7 +402,7 @@ async fn release_waits_for_package_if_cargo_publish_does_not_confirm() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_waits_for_mirror_after_cargo_publish_confirms() {
     assert_eq!(
         release_cargo_calls(Scenario::LaggingMirror).await,
@@ -410,7 +412,7 @@ async fn release_waits_for_mirror_after_cargo_publish_confirms() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_trusts_cargo_publish_confirmation_with_vendored_sources() {
     // The directory never receives the package, so release-plz must not wait for it.
     assert_eq!(

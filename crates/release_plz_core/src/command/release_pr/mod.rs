@@ -25,6 +25,7 @@ use crate::{
 use super::update_request::UpdateRequest;
 
 #[derive(Debug)]
+#[must_use]
 pub struct ReleasePrRequest {
     /// Tera template for the release pull request name.
     pr_name_template: Option<String>,
@@ -96,6 +97,7 @@ pub struct ReleasePr {
 }
 
 impl ReleasePr {
+    #[must_use]
     pub fn new(git_pr: &GitPr, base_branch: String) -> Self {
         Self {
             head_branch: git_pr.branch().to_string(),
@@ -178,13 +180,7 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
                 &git_client,
                 &unreleased_package_worktree_repo,
                 &opened_release_prs,
-                ReleasePrOptions {
-                    draft: input.draft,
-                    pr_name: input.pr_name_template.clone(),
-                    pr_body: input.pr_body_template.clone(),
-                    pr_labels: input.labels.clone(),
-                    pr_branch_prefix: input.branch_prefix.clone(),
-                },
+                input,
             )
             .await?;
             return Ok(Some(pr));
@@ -194,21 +190,13 @@ pub async fn release_pr(input: &ReleasePrRequest) -> anyhow::Result<Option<Relea
     Ok(None)
 }
 
-struct ReleasePrOptions {
-    draft: bool,
-    pr_name: Option<String>,
-    pr_body: Option<String>,
-    pr_labels: Vec<String>,
-    pr_branch_prefix: String,
-}
-
 async fn open_or_update_release_pr(
     local_manifest: &Utf8Path,
     packages_to_update: &PackagesUpdate,
     git_client: &GitClient,
     repo: &Repo,
     opened_release_prs: &[GitPr],
-    release_pr_options: ReleasePrOptions,
+    input: &ReleasePrRequest,
 ) -> anyhow::Result<ReleasePr> {
     // Close all release-plz prs, except one.
     let old_release_prs = opened_release_prs.iter().skip(1);
@@ -226,23 +214,16 @@ async fn open_or_update_release_pr(
             repo.original_branch(),
             packages_to_update,
             project_contains_multiple_pub_packages,
-            &release_pr_options.pr_branch_prefix,
-            release_pr_options.pr_name,
-            release_pr_options.pr_body.as_deref(),
+            &input.branch_prefix,
+            input.pr_name_template.clone(),
+            input.pr_body_template.as_deref(),
         )?
-        .mark_as_draft(release_pr_options.draft)
-        .with_labels(release_pr_options.pr_labels)
+        .mark_as_draft(input.draft)
+        .with_labels(input.labels.clone())
     };
     let release_pr = match opened_release_prs.first() {
         Some(opened_pr) => {
-            handle_opened_pr(
-                git_client,
-                opened_pr,
-                repo,
-                &new_pr,
-                &release_pr_options.pr_branch_prefix,
-            )
-            .await
+            handle_opened_pr(git_client, opened_pr, repo, &new_pr, &input.branch_prefix).await
         }
         None => create_pr(git_client, repo, &new_pr).await,
     }?;
@@ -405,7 +386,7 @@ fn reset_branch(pr: &GitPr, commits_number: usize, repository: &Repo) -> anyhow:
     if repository.checkout(pr.branch()).is_err() {
         repository.git(&["pull"])?;
         repository.checkout(pr.branch())?;
-    };
+    }
 
     let head = format!("HEAD~{commits_number}");
     repository.git(&["reset", "--hard", &head])?;
