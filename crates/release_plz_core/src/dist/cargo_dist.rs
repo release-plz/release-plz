@@ -63,7 +63,10 @@ impl CargoDist {
         check_executable(Path::new(EXECUTABLE))?;
         let original_root = fs_utils::canonicalize_utf8(project.root())?;
         let repo = project.get_repo()?;
-        let root = repo.repo.directory().join(fs_utils::strip_prefix(
+        // cargo-dist compares its working directory with Git's repository root.
+        // Windows temp paths can use an 8.3 alias while Git reports the long name.
+        let copied_root = fs_utils::canonicalize_utf8(repo.repo.directory())?;
+        let root = copied_root.join(fs_utils::strip_prefix(
             &fs_utils::canonicalize_utf8(&metadata.workspace_root)?,
             &original_root,
         )?);
@@ -72,7 +75,7 @@ impl CargoDist {
             "distribute=true manages its own cargo-dist configuration; remove dist-workspace.toml or use cargo-dist independently"
         );
         for member in metadata.workspace_packages() {
-            let path = repo.repo.directory().join(fs_utils::strip_prefix(
+            let path = copied_root.join(fs_utils::strip_prefix(
                 &fs_utils::canonicalize_utf8(&member.manifest_path)?,
                 &original_root,
             )?);
