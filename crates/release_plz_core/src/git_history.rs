@@ -38,29 +38,6 @@ impl ShallowHistory {
         self.boundaries.contains(commit)
     }
 
-    /// Commits that bound the walk before comparing package contents.
-    pub(crate) fn known_baselines(
-        &self,
-        repository: &Repo,
-        release_boundaries: &[&str],
-        graph: &[git_cmd::HistoryCommit],
-        max_analyze_commits: Option<u32>,
-    ) -> Vec<String> {
-        let mut complete_after: Vec<String> = release_boundaries
-            .iter()
-            .filter(|boundary| repository.git(&["cat-file", "-e", boundary]).is_ok())
-            .map(|boundary| (*boundary).to_owned())
-            .collect();
-        if max_analyze_commits.is_some_and(|limit| graph.len() >= limit as usize)
-            && let Some(last) = graph.last()
-            && !self.contains(&last.id)
-        {
-            // A first release intentionally ignores ancestry beyond this limit.
-            complete_after.push(last.id.clone());
-        }
-        complete_after
-    }
-
     /// A baseline excludes its ancestors, but not missing history on another
     /// branch merged after the baseline.
     pub(crate) fn is_complete_since(
@@ -74,7 +51,8 @@ impl ShallowHistory {
         if baselines.is_empty() {
             return Ok(false);
         }
-        let mut args = vec!["rev-list", &self.head, "--not"];
+        // A release commit may still be absent from a shallow clone.
+        let mut args = vec!["rev-list", "--ignore-missing", &self.head, "--not"];
         args.extend_from_slice(baselines);
         let commits = repo.git(&args)?;
         Ok(!commits.lines().any(|commit| self.contains(commit)))
@@ -84,17 +62,23 @@ impl ShallowHistory {
     /// analyzed. Batching avoids a network round trip for every missing parent.
     pub(crate) fn deepen(&self, repo: &Repo) -> anyhow::Result<()> {
         let remote = repo.original_remote();
-        let help = "More git history is needed to determine changes. Run `git fetch --unshallow` or set `fetch-depth: 0` in actions/checkout.";
+        let help = "More git history is needed to determine changes. Run `git fetch --unshallow --tags` or set `fetch-depth: 0` in actions/checkout.";
         info!("Fetching more git history from {remote} to determine changes");
-        repo.git(&[
+        let fetch = [
             "fetch",
             "--deepen=50",
             "--no-tags",
             "--no-recurse-submodules",
             remote,
-            &self.head,
-        ])
-        .with_context(|| format!("Failed to deepen the shallow repository. {help}"))?;
+        ];
+        // The tip can contain local commits. Ask for the missing parents of
+        // the reachable shallow roots, which were supplied by the remote.
+        let mut args = fetch.to_vec();
+        args.extend(self.boundaries.iter().map(String::as_str));
+        repo.git(&args)
+            // Some servers only accept requests for advertised refs.
+            .or_else(|_| repo.git(&fetch))
+            .with_context(|| format!("Failed to deepen the shallow repository. {help}"))?;
         // The remote itself may be shallow. A successful fetch does not imply
         // that it supplied any of the missing ancestry.
         let after = Self::at_head(repo, self.head.clone())?;
@@ -202,10 +186,28 @@ mod tests {
             .git(&["worktree", "add", "-b", "linked", worktree_path.as_str()])
             .unwrap();
         let worktree = Repo::new(&worktree_path).unwrap();
+        // A local commit can need upstream ancestry even though the remote
+        // cannot serve the local tip itself.
+        worktree
+            .git(&[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "unpushed",
+            ])
+            .unwrap();
+        let local_head = worktree.current_commit_hash().unwrap();
         let history = ShallowHistory::new(&worktree).unwrap();
         assert!(history.contains(&latest));
         assert!(history.is_complete_since(&worktree, &[&latest]).unwrap());
         history.deepen(&worktree).unwrap();
+        assert_eq!(worktree.current_commit_hash().unwrap(), local_head);
         assert!(
             ShallowHistory::new(&worktree)
                 .unwrap()

@@ -36,5 +36,5 @@ before the package is treated as an initial release.
 
 Automatic fetching uses your Git credentials. If fetching fails or the remote
 cannot provide more history, release-plz returns an error before updating versions
-or changelogs. You can fetch the history yourself with `git fetch --unshallow`,
+or changelogs. You can fetch the history yourself with `git fetch --unshallow --tags`,
 or configure `actions/checkout` with `fetch-depth: 0`.

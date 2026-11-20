@@ -788,8 +788,7 @@ impl Updater<'_> {
             max_analyze_commits,
         )?;
         let checked_out_history = !graph.is_empty();
-        let mut complete_after =
-            history.known_baselines(repository, &release_boundaries, &graph, max_analyze_commits);
+        let mut complete_after = release_boundaries.clone();
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
         for (index, commit) in graph.iter().enumerate() {
@@ -823,7 +822,7 @@ impl Updater<'_> {
                     )
                 })?;
                 if are_packages_equal {
-                    complete_after.push(current_commit_hash.to_owned());
+                    complete_after.push(current_commit_hash);
                     // Collect pruning candidates with full history: a "keep mine"
                     // merge can hide real ancestors from a simplified walk. Reuse
                     // the outer walk's paths and release boundaries to avoid
@@ -879,8 +878,12 @@ impl Updater<'_> {
         {
             self.add_dependencies_update_if_any(diff, released_package, package, released_path)?;
         }
-        let baselines: Vec<&str> = complete_after.iter().map(String::as_str).collect();
-        history.is_complete_since(repository, &baselines)
+        // Every analyzed commit has passed the shallow-root check. A capped
+        // first release needs no ancestry outside that window, even on a merge.
+        if max_analyze_commits.is_some_and(|limit| graph.len() >= limit as usize) {
+            return Ok(true);
+        }
+        history.is_complete_since(repository, &complete_after)
     }
 
     /// If the dependencies changed, add a commit to the diff.

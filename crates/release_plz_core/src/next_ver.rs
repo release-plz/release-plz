@@ -565,7 +565,7 @@ mod tests {
             "true"
         );
 
-        check_limited_first_release(root, &source_url, &missing_remote).await;
+        check_limited_first_release(root, &source, &missing_remote).await;
 
         git_in_dir(
             &checkout,
@@ -585,7 +585,7 @@ mod tests {
             error.contains("Failed to deepen the shallow repository"),
             "{error}"
         );
-        assert!(error.contains("git fetch --unshallow"), "{error}");
+        assert!(error.contains("git fetch --unshallow --tags"), "{error}");
         assert!(error.contains("fetch-depth: 0"), "{error}");
         for (name, manifest_before) in manifests_before {
             assert!(!checkout.join(name).join("CHANGELOG.md").exists());
@@ -716,13 +716,37 @@ mod tests {
 
     async fn check_limited_first_release(
         root: &Utf8Path,
-        source_url: &url::Url,
+        source: &Utf8Path,
         missing_remote: &Utf8Path,
     ) {
         // First releases can intentionally limit analysis. Enough history for
         // that limit also works offline, without requiring the repository root.
         let unpublished = root.join("unpublished");
-        clone_shallow(source_url, &unpublished, "4");
+        let source_url = url::Url::from_directory_path(source).unwrap();
+        clone_shallow(&source_url, &unpublished, "4");
+        // The capped walk has enough recent changes on the main line. An
+        // unrelated shallow parent of a merge must not force an offline fetch.
+        let old = git_in_dir(source, &["rev-parse", "HEAD~5"]).unwrap();
+        git_in_dir(&unpublished, &["fetch", "--depth=1", "origin", &old]).unwrap();
+        git_in_dir(
+            &unpublished,
+            &[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgSign=false",
+                "merge",
+                "--allow-unrelated-histories",
+                "-s",
+                "ours",
+                "-m",
+                "merge older history",
+                "FETCH_HEAD",
+            ],
+        )
+        .unwrap();
         git_in_dir(
             &unpublished,
             &["remote", "set-url", "origin", missing_remote.as_str()],
