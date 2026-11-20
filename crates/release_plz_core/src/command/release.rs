@@ -226,8 +226,7 @@ impl ReleaseRequest {
         let names = self
             .registry
             .clone()
-            .map(|r| vec![r])
-            .unwrap_or_else(|| package.publish.clone().unwrap_or_default());
+            .map_or_else(|| package.publish.clone().unwrap_or_default(), |r| vec![r]);
         new_cargo_config(Some(self.metadata.workspace_root.clone()))
             .and_then(|config| {
                 if names.is_empty() {

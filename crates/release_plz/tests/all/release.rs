@@ -277,14 +277,14 @@ name = "private"
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
     let context = app_whose_registry_dependency_depends_on_shared(false).await;
     assert_release_publishes_shared_and_app(&context);
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_publishes_root_package_whose_registry_dependency_depends_on_workspace_package() {
     // Cargo packages the workspace lockfile with the root package, so `cargo publish` also
     // checks that the lockfile has no uncommitted changes.
@@ -293,7 +293,7 @@ async fn release_publishes_root_package_whose_registry_dependency_depends_on_wor
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_doesnt_publish_root_package_with_other_uncommitted_changes() {
     let context = app_whose_registry_dependency_depends_on_shared(true).await;
     // With this config, `git status` hides untracked files. Cargo doesn't reject them as
@@ -321,7 +321,7 @@ async fn release_doesnt_publish_root_package_with_other_uncommitted_changes() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_rerun_publishes_package_whose_registry_dependency_depends_on_workspace_package() {
     let context = app_whose_registry_dependency_depends_on_shared(false).await;
     // Like a previous `release` run that published and tagged `shared`, and then failed
