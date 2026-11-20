@@ -12,6 +12,7 @@ pub fn disable_cargo_quiet(command: &mut Command) -> &mut Command {
     command.env(CARGO_TERM_QUIET, FALSE)
 }
 
+#[must_use]
 pub fn cargo_metadata_command() -> cargo_metadata::MetadataCommand {
     let mut command = cargo_metadata::MetadataCommand::new();
     disable_cargo_metadata_quiet(&mut command);

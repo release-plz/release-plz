@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use cargo_utils::to_utf8_pathbuf;
 use release_plz_core::{
-    GitReleaseConfig, ReleaseRequest,
+    GitReleaseConfig, Publishable as _, ReleaseRequest,
     set_version::SetVersionRequest,
     update_request::{DEFAULT_MAX_ANALYZE_COMMITS, UpdateRequest},
 };
@@ -136,6 +136,30 @@ impl Config {
         }
         Ok(release_request)
     }
+
+    /// Errors if a package's Cargo.toml makes it unpublishable (e.g. `publish = false` or
+    /// `publish = []`), but its `[[package]]` section sets `publish = true`.
+    ///
+    /// A `publish` field that is unset or inherited from the `[workspace]` section isn't checked:
+    /// release-plz doesn't publish these packages anyway.
+    pub fn check_publish_fields(&self, metadata: &cargo_metadata::Metadata) -> anyhow::Result<()> {
+        let workspace_packages = metadata.workspace_packages();
+        let explicitly_published = self
+            .package
+            .iter()
+            .filter(|p| p.config.common.publish == Some(true));
+        for package_config in explicitly_published {
+            let is_unpublishable = workspace_packages
+                .iter()
+                .any(|p| p.name.as_str() == package_config.name && !p.is_publishable());
+            anyhow::ensure!(
+                !is_unpublishable,
+                "Package `{}` can't be published by release-plz because of its Cargo.toml. Remove `publish = true` from its `[[package]]` section in the release-plz configuration. Learn more at https://release-plz.dev/docs/faq#what-packages-does-release-plz-publish",
+                package_config.name
+            );
+        }
+        Ok(())
+    }
 }
 
 fn validate_git_only_settings(git_only: Option<bool>, publish: Option<bool>) -> anyhow::Result<()> {
@@ -227,7 +251,7 @@ impl Default for Workspace {
             publish_timeout: None,
             release_commits: None,
             release_always: None,
-            max_analyze_commits: default_max_analyze_commits(),
+            max_analyze_commits: Some(DEFAULT_MAX_ANALYZE_COMMITS),
         }
     }
 }
@@ -242,7 +266,7 @@ impl Workspace {
 }
 
 fn default_max_analyze_commits() -> Option<u32> {
-    Some(DEFAULT_MAX_ANALYZE_COMMITS)
+    Workspace::default().max_analyze_commits
 }
 
 /// Parse the duration from the input string.
@@ -365,10 +389,8 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
 
 fn git_release(config: &PackageConfig) -> GitReleaseConfig {
     let is_git_release_enabled = config.git_release_enable != Some(false);
-    let git_release_type: release_plz_core::ReleaseType = config
-        .git_release_type
-        .map(|release_type| release_type.into())
-        .unwrap_or_default();
+    let git_release_type: release_plz_core::ReleaseType =
+        config.git_release_type.map_or_default(Into::into);
     let is_git_release_draft = config.git_release_draft == Some(true);
     let git_release_name = config.git_release_name.clone();
     let git_release_body = config.git_release_body.clone();
