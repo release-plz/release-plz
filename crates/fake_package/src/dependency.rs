@@ -1,6 +1,7 @@
 use cargo_metadata::{Dependency, DependencyKind};
 
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct FakeDependency {
     name: String,
     kind: DependencyKind,

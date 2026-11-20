@@ -2,6 +2,8 @@ use std::borrow::Cow;
 
 /// Percent-encode a URL component, preserving only ASCII alphanumerics and `-._~`.
 pub(crate) fn encode_component(value: &str) -> Cow<'_, str> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
     fn is_unreserved(byte: u8) -> bool {
         byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
     }
@@ -10,7 +12,6 @@ pub(crate) fn encode_component(value: &str) -> Cow<'_, str> {
         return Cow::Borrowed(value);
     }
 
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
         if is_unreserved(byte) {

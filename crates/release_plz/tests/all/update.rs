@@ -3,7 +3,8 @@ use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    assert_cargo_semver_checks_is_installed, assert_locked_versions, cmd::release_plz_cmd,
+    assert_cargo_semver_checks_is_installed, assert_locked_versions,
+    cmd::{cargo_cmd, release_plz_cmd},
     locked_metadata,
 };
 
@@ -98,6 +99,52 @@ fn update_workspace_without_publishable_packages() {
     repo.is_clean().unwrap();
     assert_eq!(repo.current_commit_hash().unwrap(), original_commit);
     assert!(!repo.directory().join("one/CHANGELOG.md").exists());
+}
+
+#[test]
+fn update_ignores_inherited_dev_dependency_requirement_changes() {
+    for (kind, released) in [
+        ("dev-dependencies", false),
+        ("dependencies", true),
+        ("build-dependencies", true),
+    ] {
+        let package = format!("version = \"1.0.0\"\n[{kind}]\nanyhow.workspace = true\n");
+        // Patch the registry dependency `anyhow` with a local stub, so cargo resolves it offline.
+        let (temp_dir, repo) = released_workspace(
+            &[
+                ("one", &package),
+                ("anyhow", "version = \"1.0.5\"\npublish = false\n"),
+            ],
+            "[workspace.dependencies]\nanyhow = \"1.0.0\"\n\
+             [patch.crates-io]\nanyhow = { path = \"anyhow\" }\n",
+            "[workspace]\nsemver_check = false\n",
+        );
+        // Only the workspace manifest changes: the package has no commits of its own.
+        let manifest_path = repo.directory().join("Cargo.toml");
+        let manifest = fs_err::read_to_string(&manifest_path).unwrap();
+        fs_err::write(
+            manifest_path,
+            manifest.replace("anyhow = \"1.0.0\"", "anyhow = \"1.0.1\""),
+        )
+        .unwrap();
+        repo.add_all_and_commit("chore: update workspace dependency")
+            .unwrap();
+
+        run_workspace_update(&temp_dir, &repo, None);
+
+        if released {
+            assert_locked_versions(repo.directory(), &[("one", "1.0.1")]);
+            let changelog =
+                fs_err::read_to_string(repo.directory().join("one/CHANGELOG.md")).unwrap();
+            assert!(
+                changelog.contains("update Cargo.toml dependencies"),
+                "{changelog}"
+            );
+        } else {
+            // No version bump and no changelog: release-plz didn't touch the repository.
+            repo.is_clean().unwrap();
+        }
+    }
 }
 
 #[test]
@@ -1275,7 +1322,7 @@ fn init_workspace(
 }
 
 fn generate_lockfile(dir: &Utf8Path) {
-    assert_cmd::Command::new("cargo")
+    cargo_cmd()
         .current_dir(dir)
         .args(["generate-lockfile", "--offline"])
         .assert()
@@ -1320,6 +1367,8 @@ fn workspace_update_command(temp_dir: &Utf8TempDir, repo: &Repo) -> assert_cmd::
     let mut cmd = release_plz_cmd(&temp_dir.path().join("target"));
     cmd.current_dir(repo.directory())
         .args(["update", "--registry-manifest-path"])
-        .arg(temp_dir.path().join("registry/Cargo.toml"));
+        .arg(temp_dir.path().join("registry/Cargo.toml"))
+        // The fixtures resolve only local or patched packages, so cargo never needs the network.
+        .env("CARGO_NET_OFFLINE", "true");
     cmd
 }
