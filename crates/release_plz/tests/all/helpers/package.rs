@@ -39,7 +39,7 @@ impl TestPackage {
 
     pub fn with_path_dependencies<I: Into<String>>(self, path_dependencies: Vec<I>) -> Self {
         let path_dependencies: Vec<String> =
-            path_dependencies.into_iter().map(|d| d.into()).collect();
+            path_dependencies.into_iter().map(Into::into).collect();
         Self {
             path_dependencies,
             ..self
@@ -51,7 +51,7 @@ impl TestPackage {
             PackageType::Bin => vec!["init"],
             PackageType::Lib => vec!["init", "--lib"],
         };
-        assert_cmd::Command::new("cargo")
+        super::cmd::cargo_cmd()
             .current_dir(crate_dir)
             .args(&args)
             .assert()
@@ -61,7 +61,7 @@ impl TestPackage {
 
     pub fn write_dependencies(&self, crate_dir: &Utf8Path) {
         for dep in &self.path_dependencies {
-            assert_cmd::Command::new("cargo")
+            super::cmd::cargo_cmd()
                 .current_dir(crate_dir)
                 .args(["add", "--path", dep])
                 .assert()

@@ -3,7 +3,8 @@ use git_cmd::Repo;
 use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{
-    assert_cargo_semver_checks_is_installed, assert_locked_versions, cmd::release_plz_cmd,
+    assert_cargo_semver_checks_is_installed, assert_locked_versions,
+    cmd::{cargo_cmd, release_plz_cmd},
     locked_metadata,
 };
 
@@ -1321,7 +1322,7 @@ fn init_workspace(
 }
 
 fn generate_lockfile(dir: &Utf8Path) {
-    assert_cmd::Command::new("cargo")
+    cargo_cmd()
         .current_dir(dir)
         .args(["generate-lockfile", "--offline"])
         .assert()

@@ -189,7 +189,7 @@ My custom changelog header
     #[test]
     fn changelog_header_with_crlf_parsed_will_contain_crlf() {
         let changelog = "# Changelog\r\n\r\nMy custom changelog header\r\n\r\n## [Unreleased]\r\n";
-        let header = parse_header(changelog).unwrap_or("".to_string());
+        let header = parse_header(changelog).unwrap_or_default();
         assert_eq!(header, changelog);
     }
 

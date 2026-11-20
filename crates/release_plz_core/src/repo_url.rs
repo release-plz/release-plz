@@ -30,11 +30,13 @@ impl RepoUrl {
         Self::new(&url)
     }
 
+    #[must_use]
     pub fn is_on_github(&self) -> bool {
         self.host.contains("github")
     }
 
     /// Whether this repository uses one of GitHub.com's public Git hostnames.
+    #[must_use]
     pub fn is_on_github_dot_com(&self) -> bool {
         matches!(
             self.host.as_str(),
@@ -42,6 +44,7 @@ impl RepoUrl {
         )
     }
 
+    #[must_use]
     pub fn full_host(&self) -> String {
         format!(
             "https://{}/{}/{}",
@@ -52,6 +55,7 @@ impl RepoUrl {
     }
 
     /// Get GitHub/Gitea release link
+    #[must_use]
     pub fn git_release_link(&self, prev_tag: &str, new_tag: &str) -> String {
         let host = self.full_host();
 
@@ -62,6 +66,7 @@ impl RepoUrl {
         }
     }
 
+    #[must_use]
     pub fn git_pr_link_for(&self, forge: ForgeType) -> String {
         let host = self.full_host();
         let pull_path = match forge {
@@ -72,6 +77,7 @@ impl RepoUrl {
         format!("{host}/{pull_path}")
     }
 
+    #[must_use]
     pub fn gitea_api_url(&self) -> String {
         format!(
             "{}://{}/api/v1/",
@@ -80,6 +86,7 @@ impl RepoUrl {
         )
     }
 
+    #[must_use]
     pub fn gitlab_api_url(&self) -> String {
         let prj_path =
             crate::url_utils::encode_component(self.path.strip_prefix('/').unwrap_or(&self.path));
@@ -94,6 +101,7 @@ impl RepoUrl {
         )
     }
 
+    #[must_use]
     pub fn github_api_url(&self) -> String {
         if self.is_on_github_dot_com() {
             return format!("https://api.{GITHUB_COM}/");

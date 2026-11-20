@@ -5,6 +5,7 @@ use cargo_utils::CARGO_TOML;
 use git_cmd::Repo;
 
 use crate::helpers::{
+    cmd::cargo_cmd,
     locked_metadata,
     package::{PackageType, TestPackage},
     test_context::TestContext,
@@ -1232,9 +1233,9 @@ async fn final_revert_does_not_release_reverted_changes() {
     history.repo.tag_lightweight("v0.1.0").unwrap();
     history.write_commit("src/lib.rs", "pub fn temporary() {}\n", "feat: temporary");
     history.write_commit("src/lib.rs", "", "revert: temporary");
-    assert!(history.update_history().is_empty());
+    assert_eq!(history.update_history(), "");
     history.repo.git(&["tag", "-d", "v0.1.0"]).unwrap();
-    assert!(history.update_history().is_empty());
+    assert_eq!(history.update_history(), "");
 }
 
 #[tokio::test]
@@ -1369,7 +1370,7 @@ async fn workspace_dependency_updates_are_detected_without_package_commits() {
         history.write_release_plz_toml(HISTORY_CONFIG);
         history.run_cargo_publish(PACKAGE);
         repo.tag_lightweight("pkg-v0.1.0").unwrap();
-        assert!(history.update_history().is_empty());
+        assert_eq!(history.update_history(), "");
         let (path, old, new, expected) = if update_lockfile {
             (
                 "crates/history-dependency/Cargo.toml",
@@ -1391,7 +1392,7 @@ async fn workspace_dependency_updates_are_detected_without_package_commits() {
         if update_lockfile {
             repo.add_all_and_commit("chore: bump dependency").unwrap();
             history.run_cargo_publish("history-dependency");
-            assert_cmd::Command::new("cargo")
+            cargo_cmd()
                 .current_dir(repo.directory())
                 .arg("update")
                 .assert()
@@ -1400,10 +1401,10 @@ async fn workspace_dependency_updates_are_detected_without_package_commits() {
         history.run_cargo_check();
         repo.add_all_and_commit("chore: workspace dependencies")
             .unwrap();
-        assert!(
+        assert_eq!(
             repo.git(&["rev-list", "pkg-v0.1.0..HEAD", "--", "crates/pkg"])
-                .unwrap()
-                .is_empty()
+                .unwrap(),
+            ""
         );
         let changelog = history.update_history();
         assert_commits(&changelog, &["0000000"]);
@@ -1466,5 +1467,5 @@ async fn a_tip_matching_the_release_releases_nothing_although_its_branches_diffe
     history.two_merged_siblings();
     // Neither sibling matches the published tree; their merge does.
     history.publish_snapshot(&[]);
-    assert!(history.update_history().is_empty());
+    assert_eq!(history.update_history(), "");
 }

@@ -5,12 +5,17 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_utils::to_utf8_pathbuf;
 
 pub fn strip_prefix(path: &Utf8Path, prefix: impl AsRef<Path>) -> anyhow::Result<&Utf8Path> {
-    path.strip_prefix(prefix.as_ref())
-        .with_context(|| format!("cannot strip prefix {:?} from {:?}", prefix.as_ref(), path))
+    path.strip_prefix(prefix.as_ref()).with_context(|| {
+        format!(
+            "cannot strip prefix \"{}\" from \"{path}\"",
+            prefix.as_ref().display()
+        )
+    })
 }
 
 pub fn to_utf8_path(path: &Path) -> anyhow::Result<&Utf8Path> {
-    Utf8Path::from_path(path).with_context(|| format!("cannot convert {path:?} to Utf8Path"))
+    Utf8Path::from_path(path)
+        .with_context(|| format!("cannot convert \"{}\" to Utf8Path", path.display()))
 }
 
 pub fn current_directory() -> anyhow::Result<Utf8PathBuf> {
@@ -41,6 +46,7 @@ impl Utf8TempDir {
         })
     }
 
+    #[must_use]
     pub fn path(&self) -> &Utf8Path {
         &self.path
     }

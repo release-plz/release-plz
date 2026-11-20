@@ -25,6 +25,7 @@ use crate::{
 use super::update_request::UpdateRequest;
 
 #[derive(Debug)]
+#[must_use]
 pub struct ReleasePrRequest {
     /// Tera template for the release pull request name.
     pr_name_template: Option<String>,
@@ -96,6 +97,7 @@ pub struct ReleasePr {
 }
 
 impl ReleasePr {
+    #[must_use]
     pub fn new(git_pr: &GitPr, base_branch: String) -> Self {
         Self {
             head_branch: git_pr.branch().to_string(),
@@ -384,7 +386,7 @@ fn reset_branch(pr: &GitPr, commits_number: usize, repository: &Repo) -> anyhow:
     if repository.checkout(pr.branch()).is_err() {
         repository.git(&["pull"])?;
         repository.checkout(pr.branch())?;
-    };
+    }
 
     let head = format!("HEAD~{commits_number}");
     repository.git(&["reset", "--hard", &head])?;
