@@ -997,14 +997,8 @@ async fn release_package(
     }
 
     if should_publish {
-        // This package might depend on the new versions of the packages before it.
-        // Only some workspaces have stale registry copies, so don't fail the release if
-        // release-plz can't update them, e.g. because the Cargo library bundled in release-plz
-        // can't load the lockfile. If `cargo publish` needs the update, it fails with Cargo's error.
-        if let Err(e) = update_stale_registry_copies(input, repo, context) {
-            warn!("can't update the stale registry copies in the lockfile: {e:#}");
-        }
-        let should_allow_dirty = should_allow_dirty(input, repo, context, release_info.package)?;
+        let should_allow_dirty =
+            prepare_lockfile_for_publish(input, repo, context, release_info.package)?;
         // Run `cargo publish`. Note that `--dry-run` is added if `input.dry_run` is true.
         let output = run_cargo_publish(
             release_info.package,
@@ -1339,13 +1333,20 @@ fn uncommitted_changes(repo: &Repo, pathspecs: &[&str]) -> anyhow::Result<String
     repo.git(&args)
 }
 
-/// Return `true` if `cargo publish` must accept uncommitted changes.
-fn should_allow_dirty(
+/// Update stale registry copies and return whether `cargo publish` must allow a dirty tree.
+fn prepare_lockfile_for_publish(
     input: &ReleaseRequest,
     repo: &Repo,
-    context: &ReleaseContext<'_>,
+    context: &mut ReleaseContext<'_>,
     package: &Package,
 ) -> anyhow::Result<bool> {
+    // This package might depend on the new versions of the packages before it.
+    // Only some workspaces have stale registry copies, so don't fail the release if
+    // release-plz can't update them, e.g. because the Cargo library bundled in release-plz
+    // can't load the lockfile. If `cargo publish` needs the update, it fails with Cargo's error.
+    if let Err(e) = update_stale_registry_copies(input, repo, context) {
+        warn!("can't update the stale registry copies in the lockfile: {e:#}");
+    }
     if input.allow_dirty(&package.name) {
         return Ok(true);
     }
