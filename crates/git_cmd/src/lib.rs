@@ -6,6 +6,7 @@ pub mod test_fixture;
 
 use std::{
     collections::HashSet,
+    fmt::Write as _,
     io::{ErrorKind, Write as _},
     path::Path,
     process::{Command, Output, Stdio},
@@ -96,7 +97,7 @@ impl HttpExtraHeader {
             if !parameters.is_empty() {
                 parameters.push(' ');
             }
-            parameters.push_str(&format!("'{key}'='{value}'"));
+            write!(parameters, "'{key}'='{value}'").expect("writing to a String cannot fail");
         }
         parameters
     }
@@ -126,6 +127,7 @@ impl Repo {
 
     /// Send an HTTP header to this URL when fetching, pulling or pushing.
     /// The header is passed through the command environment, never stored in git config.
+    #[must_use]
     pub fn with_http_extra_header(mut self, url: String, header: SecretString) -> Self {
         self.http_extra_header = Some(HttpExtraHeader {
             url: url.into(),
