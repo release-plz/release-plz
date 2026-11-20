@@ -725,6 +725,17 @@ impl Updater<'_> {
                 );
             }
         }
+        // A workspace-only version bump may have no commits in this package's
+        // paths. Recognize it before the walk so dependency updates preserve it.
+        if let Some(released_package) = registry_package
+            && package.version > released_package.package.version
+        {
+            info!(
+                "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
+                package.name, package.version, released_package.package.version
+            );
+            diff.set_version_unpublished(released_package.package.version.clone());
+        }
         let complete = self.get_package_diff(
             package,
             registry_package,
@@ -755,17 +766,6 @@ impl Updater<'_> {
         let released = registry_package
             .map(|p| p.package.package_path().map(|path| (p, path)))
             .transpose()?;
-        // A workspace-only version bump may have no commits in this package's
-        // paths. Recognize it before the walk so dependency updates preserve it.
-        if let Some((released_package, _)) = released
-            && package.version > released_package.package.version
-        {
-            info!(
-                "{}: local version ({}) > registry version ({}). Only changelog will be updated.",
-                package.name, package.version, released_package.package.version
-            );
-            diff.set_version_unpublished(released_package.package.version.clone());
-        }
         let paths = PackagePaths::new(package_path, package)?;
         let max_analyze_commits = released
             .is_none()
@@ -788,18 +788,8 @@ impl Updater<'_> {
             max_analyze_commits,
         )?;
         let checked_out_history = !graph.is_empty();
-        let mut complete_after: Vec<String> = release_boundaries
-            .iter()
-            .filter(|boundary| repository.git(&["cat-file", "-e", boundary]).is_ok())
-            .map(|boundary| (*boundary).to_owned())
-            .collect();
-        if max_analyze_commits.is_some_and(|limit| graph.len() >= limit as usize)
-            && let Some(last) = graph.last()
-            && !history.contains(&last.id)
-        {
-            // A first release intentionally ignores ancestry beyond this limit.
-            complete_after.push(last.id.clone());
-        }
+        let mut complete_after =
+            history.known_baselines(repository, &release_boundaries, &graph, max_analyze_commits);
         let mut retained_changes = history::RetainedChanges::new(repository, head, &graph, &paths)?;
         let mut checkout_package_files = history::CheckoutPackageFiles::new(repository, &graph);
         for (index, commit) in graph.iter().enumerate() {

@@ -38,6 +38,29 @@ impl ShallowHistory {
         self.boundaries.contains(commit)
     }
 
+    /// Commits that bound the walk before comparing package contents.
+    pub(crate) fn known_baselines(
+        &self,
+        repository: &Repo,
+        release_boundaries: &[&str],
+        graph: &[git_cmd::HistoryCommit],
+        max_analyze_commits: Option<u32>,
+    ) -> Vec<String> {
+        let mut complete_after: Vec<String> = release_boundaries
+            .iter()
+            .filter(|boundary| repository.git(&["cat-file", "-e", boundary]).is_ok())
+            .map(|boundary| (*boundary).to_owned())
+            .collect();
+        if max_analyze_commits.is_some_and(|limit| graph.len() >= limit as usize)
+            && let Some(last) = graph.last()
+            && !self.contains(&last.id)
+        {
+            // A first release intentionally ignores ancestry beyond this limit.
+            complete_after.push(last.id.clone());
+        }
+        complete_after
+    }
+
     /// A baseline excludes its ancestors, but not missing history on another
     /// branch merged after the baseline.
     pub(crate) fn is_complete_since(
