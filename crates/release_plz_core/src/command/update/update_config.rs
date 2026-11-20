@@ -79,10 +79,12 @@ impl PackageUpdateConfig {
         self.generic.git_only
     }
 
+    #[must_use]
     pub fn publish_features(&self) -> &[String] {
         &self.generic.publish_features
     }
 
+    #[must_use]
     pub fn publish_all_features(&self) -> bool {
         self.generic.publish_all_features
     }
