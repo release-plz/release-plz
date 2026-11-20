@@ -250,7 +250,7 @@ impl Default for Workspace {
             publish_timeout: None,
             release_commits: None,
             release_always: None,
-            max_analyze_commits: default_max_analyze_commits(),
+            max_analyze_commits: Some(DEFAULT_MAX_ANALYZE_COMMITS),
         }
     }
 }
@@ -265,7 +265,7 @@ impl Workspace {
 }
 
 fn default_max_analyze_commits() -> Option<u32> {
-    Some(DEFAULT_MAX_ANALYZE_COMMITS)
+    Workspace::default().max_analyze_commits
 }
 
 /// Parse the duration from the input string.
@@ -385,10 +385,8 @@ impl From<PackageConfig> for release_plz_core::ReleaseConfig {
 
 fn git_release(config: &PackageConfig) -> GitReleaseConfig {
     let is_git_release_enabled = config.git_release_enable != Some(false);
-    let git_release_type: release_plz_core::ReleaseType = config
-        .git_release_type
-        .map(|release_type| release_type.into())
-        .unwrap_or_default();
+    let git_release_type: release_plz_core::ReleaseType =
+        config.git_release_type.map_or_default(Into::into);
     let is_git_release_draft = config.git_release_draft == Some(true);
     let git_release_name = config.git_release_name.clone();
     let git_release_body = config.git_release_body.clone();

@@ -9,7 +9,7 @@ pub fn init() {
 
 /// Initialize logs if `ENABLE_LOGS` environment variable is set.
 /// Use `debug` level by default, but you can customize it with `RUST_LOG` environment variable.
-fn _init() {
+fn init_subscriber() {
     if std::env::var("ENABLE_LOGS").is_ok() {
         let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new("debug,hyper=info"));
@@ -22,4 +22,4 @@ fn _init() {
     }
 }
 
-static TEST_LOGS: LazyLock<()> = LazyLock::new(_init);
+static TEST_LOGS: LazyLock<()> = LazyLock::new(init_subscriber);

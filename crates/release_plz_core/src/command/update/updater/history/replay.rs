@@ -467,7 +467,7 @@ fn text_conflict_leaves_file_unchanged(
     let Some(encoded) = encode_conflict(blobs)? else {
         return Ok(false);
     };
-    let [ancestor, ours, theirs] = encoded.each_ref().map(|text| text.as_bytes());
+    let [ancestor, ours, theirs] = encoded.each_ref().map(String::as_bytes);
     let merged = merge_text([ancestor, ours, theirs], conflicts)?;
     if merged.is_automergeable() {
         return Ok(merged.content() == ours);
@@ -528,12 +528,12 @@ fn encode_conflict<const N: usize>(blobs: [&[u8]; N]) -> anyhow::Result<Option<[
             return Ok(None);
         };
         tokens.reserve(contents.len() * 4);
-        let mut in_word = false;
+        let mut previous_was_word = false;
         let mut word_token = false;
         for character in contents.chars() {
             let is_word = character.is_alphanumeric() || character == '_';
-            let continues_token =
-                (in_word && is_word) || (word_token && !is_word && !character.is_whitespace());
+            let continues_token = (previous_was_word && is_word)
+                || (word_token && !is_word && !character.is_whitespace());
             if !continues_token {
                 if !tokens.is_empty() {
                     tokens.push('\n');
@@ -541,7 +541,7 @@ fn encode_conflict<const N: usize>(blobs: [&[u8]; N]) -> anyhow::Result<Option<[
                 word_token = is_word;
             }
             write!(tokens, "{:x},", u32::from(character))?;
-            in_word = is_word;
+            previous_was_word = is_word;
         }
         tokens.push('\n');
     }
@@ -633,7 +633,7 @@ mod tests {
                 "docs/x",
             ]
         );
-        assert!(restricted_blobs(&["missing"]).is_empty());
+        assert_eq!(restricted_blobs(&["missing"]), Vec::<String>::new());
     }
 
     /// Write the tree of `entries`, each a mode, a name and an id, raw:

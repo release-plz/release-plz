@@ -16,12 +16,12 @@ fn cargo_lock(path: &Utf8Path) -> Utf8PathBuf {
     path.join("Cargo.lock")
 }
 
+#[must_use]
 pub fn is_cargo_semver_checks_installed() -> bool {
     Command::new("cargo-semver-checks")
         .arg("--version")
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 /// Outcome of semver check.
@@ -36,6 +36,7 @@ pub enum SemverCheck {
 }
 
 impl SemverCheck {
+    #[must_use]
     pub fn outcome_str(&self) -> &'static str {
         match self {
             Self::Compatible => " (✓ API compatible changes)",
@@ -57,6 +58,7 @@ pub enum TargetDir {
 }
 
 impl TargetDir {
+    #[must_use]
     pub fn new(metadata: &Metadata) -> Self {
         // `cargo metadata` already reflects these variables, but they can explicitly
         // point to the default `target` directory (e.g. to cache it in CI): keep that cache.
