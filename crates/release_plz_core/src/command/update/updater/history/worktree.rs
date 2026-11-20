@@ -76,6 +76,15 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
     if has_other_files {
         return Ok(Some("a new worktree would have other files"));
     }
+    // With core.symlinks=false, Git can consider an existing real symlink
+    // clean even though a fresh checkout writes the link target as plain text.
+    if files
+        .split_terminator('\0')
+        .any(|entry| entry.starts_with("H 120000 "))
+        && !checks_out_symlinks(repository)?
+    {
+        return Ok(Some("Git checks out symlinks as plain files"));
+    }
     if has_checkout_conversion(repository)? {
         return Ok(Some("Git can change checkout contents"));
     }
@@ -97,6 +106,16 @@ fn reason_against_worktrees(repository: &Repo) -> anyhow::Result<Option<&'static
         return Ok(Some("Git recurses into submodules"));
     }
     Ok(None)
+}
+
+fn checks_out_symlinks(repository: &Repo) -> anyhow::Result<bool> {
+    Ok(repository.git(&[
+        "config",
+        "--type=bool",
+        "--default=true",
+        "--get",
+        "core.symlinks",
+    ])? == "true")
 }
 
 /// Clean files need not have the bytes a fresh checkout writes: Git compares
@@ -160,11 +179,19 @@ impl<'a> Worktree<'a> {
         let path = crate::new_project_root(repository.directory(), dir.path())?;
         repository.add_worktree(&path, commit)?;
         let worktree = Repo::new(&path).context("cannot open worktree")?;
-        Ok(Self {
+        let checkout = Self {
             repository,
             worktree,
             _dir: dir,
-        })
+        };
+        // Conditional includes and worktree-specific config can give a linked
+        // checkout different rules. Reject it before its worker takes any jobs.
+        anyhow::ensure!(
+            !has_checkout_conversion(checkout.repo())?
+                && checks_out_symlinks(checkout.repo())? == checks_out_symlinks(repository)?,
+            "Git can change checkout contents in the linked worktree"
+        );
+        Ok(checkout)
     }
 
     pub(crate) fn repo(&self) -> &Repo {
@@ -181,5 +208,77 @@ impl Drop for Worktree<'_> {
             // is harmless.
             debug!("cannot remove worktree {path}: {error:#}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repository(dir: &Utf8TempDir) -> Repo {
+        let repo = Repo::init(dir.path());
+        repo.git(&["config", "core.autocrlf", "false"]).unwrap();
+        // Override global attributes that could independently disable worktrees.
+        fs_err::create_dir_all(dir.path().join(".git/info")).unwrap();
+        fs_err::write(
+            dir.path().join(".git/info/attributes"),
+            "* -text -eol -crlf -filter -ident -working-tree-encoding\n",
+        )
+        .unwrap();
+        repo
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn indexed_symlink_requires_a_checkout_that_preserves_links() {
+        let dir = Utf8TempDir::new().unwrap();
+        let repo = repository(&dir);
+        repo.git(&["config", "core.symlinks", "true"]).unwrap();
+        std::os::unix::fs::symlink("README.md", dir.path().join("link")).unwrap();
+        repo.add_all_and_commit("add symlink").unwrap();
+        assert!(supports_worktrees(&repo));
+
+        // Changing the setting leaves the link in place and the index clean.
+        repo.git(&["config", "core.symlinks", "false"]).unwrap();
+        repo.is_clean().unwrap();
+        assert_eq!(
+            reason_against_worktrees(&repo).unwrap(),
+            Some("Git checks out symlinks as plain files")
+        );
+    }
+
+    #[test]
+    fn linked_checkout_checks_its_own_conversion_settings() {
+        let dir = Utf8TempDir::new().unwrap();
+        let repo = repository(&dir);
+        repo.git(&["config", "core.autocrlf", "true"]).unwrap();
+        // Only the main checkout has a Git directory ending in .git.
+        fs_err::write(
+            dir.path().join(".git/main-config"),
+            "[core]\n autocrlf = false\n",
+        )
+        .unwrap();
+        repo.git(&["config", "includeIf.gitdir:**/.git.path", "main-config"])
+            .unwrap();
+        assert!(supports_worktrees(&repo));
+
+        let error = Worktree::new(&repo, "HEAD")
+            .err()
+            .expect("linked checkout should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("Git can change checkout contents"),
+            "{error:#}"
+        );
+        // The rejected worktree must be unregistered as well as removed from disk.
+        assert_eq!(
+            repo.git(&["worktree", "list", "--porcelain"])
+                .unwrap()
+                .lines()
+                .filter(|line| line.starts_with("worktree "))
+                .count(),
+            1
+        );
     }
 }
