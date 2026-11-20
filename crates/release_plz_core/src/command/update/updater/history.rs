@@ -283,8 +283,8 @@ mod tests {
             readme: Some(repo.directory().join("README.md")),
         };
         let head = repo.current_commit_hash().unwrap();
-        let mut changes = RetainedChanges::new(&repo, &head, &[], &paths).unwrap();
-        changes.package_files = Some(HashSet::from([package.join("src/lib.rs")]));
+        let mut retained = RetainedChanges::new(&repo, &head, &[], &paths).unwrap();
+        retained.package_files = Some(HashSet::from([package.join("src/lib.rs")]));
 
         for (path, included) in [
             (b"crates/pkg/src/lib.rs".as_slice(), true),
@@ -295,19 +295,19 @@ mod tests {
             (b"outside/\xff", false),
             (b"crates/\xff/pkg/file", false),
         ] {
-            assert_eq!(changes.includes(path), included, "{path:?}");
+            assert_eq!(retained.includes(path), included, "{path:?}");
         }
-        changes.package_files = None;
-        assert!(changes.includes(b"crates/pkg/ignored.txt"));
-        assert!(changes.includes(b"crates/pkg/\xff"));
-        assert!(!changes.includes(b"crates/pkg-extra/\xff"));
+        retained.package_files = None;
+        assert!(retained.includes(b"crates/pkg/ignored.txt"));
+        assert!(retained.includes(b"crates/pkg/\xff"));
+        assert!(!retained.includes(b"crates/pkg-extra/\xff"));
 
         // A package at the repository root conservatively includes every path
         // whose bytes cannot be checked against its Cargo file list.
-        changes.relative_paths.package = Utf8PathBuf::new();
-        changes.package_files = Some(HashSet::new());
-        assert!(changes.includes(b"\xff"));
-        assert!(changes.includes(b"src/\xff"));
+        retained.relative_paths.package = Utf8PathBuf::new();
+        retained.package_files = Some(HashSet::new());
+        assert!(retained.includes(b"\xff"));
+        assert!(retained.includes(b"src/\xff"));
     }
 
     /// Commit `contents` to `file` at the repository root and return the commit hash.
@@ -334,15 +334,15 @@ mod tests {
         let graph = repo
             .parents_at_paths(changed, &[], &paths.all(), None)
             .unwrap();
-        let mut changes = RetainedChanges::new(repo, changed, &graph, &paths).unwrap();
-        changes.add_boundary(
+        let mut retained = RetainedChanges::new(repo, changed, &graph, &paths).unwrap();
+        retained.add_boundary(
             released,
             vec![released.to_owned()],
             package_files.as_deref().unwrap_or_default(),
         );
-        changes.add_package_files(package_files);
-        let replay = ChangeReplay::new(repo, changed, &changes.relative_paths.all()).unwrap();
-        (changes, replay)
+        retained.add_package_files(package_files);
+        let replay = ChangeReplay::new(repo, changed, &retained.relative_paths.all()).unwrap();
+        (retained, replay)
     }
 
     #[test]
@@ -406,9 +406,9 @@ mod tests {
             let head_before = source.current_commit_hash().unwrap();
             let objects_before = source.git(&["count-objects", "-v"]).unwrap();
             let contents_before = fs_err::read(path.join("file")).unwrap();
-            let (changes, replay) = retained_changes(&source, &changed, &released, None);
+            let (retained, replay) = retained_changes(&source, &changed, &released, None);
 
-            assert!(changes.survives(&replay, &changed).unwrap());
+            assert!(retained.survives(&replay, &changed).unwrap());
             assert_eq!(fs_err::read(&index_path).unwrap(), index_before);
             assert_eq!(source.current_commit_hash().unwrap(), head_before);
             assert_eq!(
@@ -439,10 +439,10 @@ mod tests {
             commit_file(&repo, base);
             let changed = commit_file(&repo, changed);
             let released = commit_file(&repo, released);
-            let (changes, replay) = retained_changes(&repo, &changed, &released, None);
+            let (retained, replay) = retained_changes(&repo, &changed, &released, None);
             // A nonconflicting hunk still undoes a released change. Binary
             // conflicts cannot establish absence by choosing the release's bytes.
-            assert!(!changes.survives(&replay, &changed).unwrap());
+            assert!(!retained.survives(&replay, &changed).unwrap());
         }
     }
 
@@ -455,8 +455,8 @@ mod tests {
         repo.git(&["rm", "README.md"]).unwrap();
         repo.add_all_and_commit("remove root's file").unwrap();
         let released = repo.current_commit_hash().unwrap();
-        let (changes, replay) = retained_changes(&repo, &root, &released, None);
-        assert!(changes.survives(&replay, &root).unwrap());
+        let (retained, replay) = retained_changes(&repo, &root, &released, None);
+        assert!(retained.survives(&replay, &root).unwrap());
     }
 
     #[test]
@@ -477,7 +477,7 @@ mod tests {
         fs_err::write(repo.directory().join("file"), "a\n").unwrap();
         repo.add_all_and_commit("revert merged change").unwrap();
         let released = repo.current_commit_hash().unwrap();
-        let (changes, replay) = retained_changes(
+        let (retained, replay) = retained_changes(
             &repo,
             &changed,
             &released,
@@ -485,7 +485,7 @@ mod tests {
         );
         // The first parent has the old file. Reverting relative to the
         // second parent would only remove the unrelated mainline file.
-        assert!(changes.survives(&replay, &changed).unwrap());
+        assert!(retained.survives(&replay, &changed).unwrap());
     }
 
     #[test]
@@ -502,7 +502,7 @@ mod tests {
         repo.git(&["mv", "old", "new"]).unwrap();
         repo.add_all_and_commit("rename directory").unwrap();
         let target = repo.current_commit_hash().unwrap();
-        let (changes, replay) = retained_changes(
+        let (retained, replay) = retained_changes(
             &repo,
             &target,
             &target,
@@ -513,7 +513,7 @@ mod tests {
         assert!(
             replay
                 .undo_affects_package(&changed, &target, TokenConflicts::Unresolved, |path| {
-                    changes.includes(path)
+                    retained.includes(path)
                 })
                 .unwrap()
         );

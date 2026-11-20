@@ -16,6 +16,7 @@ pub struct PackagesUpdate {
 }
 
 impl PackagesUpdate {
+    #[must_use]
     pub fn new(updates: PackagesToUpdate) -> Self {
         Self {
             updates,
@@ -27,6 +28,7 @@ impl PackagesUpdate {
         self.workspace_version = Some(workspace_version);
     }
 
+    #[must_use]
     pub fn updates(&self) -> &[(Package, UpdateResult)] {
         &self.updates
     }
@@ -35,10 +37,12 @@ impl PackagesUpdate {
         &mut self.updates
     }
 
+    #[must_use]
     pub fn workspace_version(&self) -> Option<&Version> {
         self.workspace_version.as_ref()
     }
 
+    #[must_use]
     pub fn summary(&self) -> String {
         let updates = self.updates_summary();
         let breaking_changes = self.breaking_changes();
@@ -67,6 +71,7 @@ impl PackagesUpdate {
             .collect()
     }
 
+    #[must_use]
     pub fn breaking_changes(&self) -> String {
         self.updates
             .iter()
@@ -83,6 +88,7 @@ impl PackagesUpdate {
     }
 
     /// Return info about releases of the updated packages
+    #[must_use]
     pub fn releases(&self) -> Vec<ReleaseInfo> {
         self.updates
             .iter()

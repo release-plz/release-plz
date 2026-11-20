@@ -1,14 +1,20 @@
-use cargo_metadata::{Dependency, Source};
+use cargo_metadata::{Dependency, DependencyKind, Source};
 
 /// Compare the dependencies of the registry package and the local one.
 /// Check if the dependencies of the registry package were updated.
 /// This function checks only dependencies of `Cargo.toml`.
+///
+/// Local path dependencies and dev-dependencies are ignored.
+/// Dev-dependencies are only used by tests, examples and benchmarks, so changing them
+/// doesn't change what the users of the package build.
 pub fn are_toml_dependencies_updated(
     registry_dependencies: &[Dependency],
     local_dependencies: &[Dependency],
 ) -> bool {
     local_dependencies.iter().any(|d| {
-        d.path.is_none() && !is_dependency_in_registry_dependencies(d, registry_dependencies)
+        d.path.is_none()
+            && d.kind != DependencyKind::Development
+            && !is_dependency_in_registry_dependencies(d, registry_dependencies)
     })
 }
 

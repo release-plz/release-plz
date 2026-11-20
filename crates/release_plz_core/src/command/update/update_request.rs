@@ -17,6 +17,7 @@ use super::update_config::{PackageUpdateConfig, UpdateConfig};
 pub const DEFAULT_MAX_ANALYZE_COMMITS: u32 = 1000;
 
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct UpdateRequest {
     /// The manifest of the project you want to update.
     local_manifest: Utf8PathBuf,
@@ -74,6 +75,7 @@ impl UpdateRequest {
         })
     }
 
+    #[must_use]
     pub fn changelog_path(&self, package: &Package) -> Utf8PathBuf {
         let config = self.get_package_config(&package.name);
         crate::changelog_path(
@@ -90,11 +92,13 @@ impl UpdateRequest {
             .transpose()
     }
 
+    #[must_use]
     pub fn max_analyze_commits(&self) -> u32 {
         self.max_analyze_commits
             .unwrap_or(DEFAULT_MAX_ANALYZE_COMMITS)
     }
 
+    #[must_use]
     pub fn cargo_metadata(&self) -> &Metadata {
         &self.metadata
     }
@@ -118,6 +122,7 @@ impl UpdateRequest {
         Self { forge_type, ..self }
     }
 
+    #[must_use]
     pub fn forge_type(&self) -> ForgeType {
         self.forge_type
     }
@@ -160,6 +165,7 @@ impl UpdateRequest {
         self
     }
 
+    #[must_use]
     pub fn get_package_config(&self, package: &str) -> PackageUpdateConfig {
         self.packages_config.get(package)
     }
@@ -171,6 +177,7 @@ impl UpdateRequest {
         }
     }
 
+    #[must_use]
     pub fn registry(&self) -> Option<&str> {
         self.registry.as_deref()
     }
@@ -204,10 +211,12 @@ impl UpdateRequest {
             .context("wrong local manifest path")
     }
 
+    #[must_use]
     pub fn local_manifest(&self) -> &Utf8Path {
         &self.local_manifest
     }
 
+    #[must_use]
     pub fn registry_manifest(&self) -> Option<&Utf8Path> {
         self.registry_manifest.as_deref()
     }
@@ -219,6 +228,7 @@ impl UpdateRequest {
         }
     }
 
+    #[must_use]
     pub fn should_update_dependencies(&self) -> bool {
         self.dependencies_update
     }
@@ -230,31 +240,38 @@ impl UpdateRequest {
         }
     }
 
+    #[must_use]
     pub fn allow_dirty(&self) -> bool {
         self.allow_dirty
     }
 
+    #[must_use]
     pub fn repo_url(&self) -> Option<&RepoUrl> {
         self.repo_url.as_ref()
     }
 
+    #[must_use]
     pub fn packages_config(&self) -> &PackagesConfig {
         &self.packages_config
     }
 
+    #[must_use]
     pub fn single_package(&self) -> Option<&str> {
         self.single_package.as_deref()
     }
 
+    #[must_use]
     pub fn changelog_req(&self) -> &ChangelogRequest {
         &self.changelog_req
     }
 
+    #[must_use]
     pub fn release_commits(&self) -> Option<&Regex> {
         self.release_commits.as_ref()
     }
 
     /// Determine if `git_only` mode should be used for a specific package.
+    #[must_use]
     pub fn should_use_git_only(&self, package_name: &str) -> bool {
         let pkg_config = self.get_package_config(package_name);
         pkg_config.git_only().unwrap_or(false)
@@ -262,6 +279,7 @@ impl UpdateRequest {
 
     /// Get the release tag name template for a specific package.
     /// Package-level config overrides workspace-level config.
+    #[must_use]
     pub fn get_package_tag_name(&self, package_name: &str) -> Option<String> {
         let pkg_config = self.get_package_config(package_name);
         pkg_config.generic.tag_name_template.clone()
@@ -293,7 +311,8 @@ impl PackagesConfig {
         self.overrides.insert(package_name, config);
     }
 
+    #[must_use]
     pub fn overridden_packages(&self) -> HashSet<&str> {
-        self.overrides.keys().map(|s| s.as_str()).collect()
+        self.overrides.keys().map(String::as_str).collect()
     }
 }

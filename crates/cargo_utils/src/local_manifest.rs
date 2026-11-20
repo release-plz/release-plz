@@ -130,6 +130,7 @@ impl LocalManifest {
     }
 
     /// Iterates over the `[workspace.dependencies]`.
+    #[must_use]
     pub fn get_workspace_dependency_table(&self) -> Option<&dyn toml_edit::TableLike> {
         self.data
             .get("workspace")?
@@ -143,6 +144,7 @@ impl LocalManifest {
     }
 
     /// `true` if the package inherits the workspace version
+    #[must_use]
     pub fn version_is_inherited(&self) -> bool {
         fn inherits_workspace_version_impl(this: &Manifest) -> Option<bool> {
             this.data
@@ -156,6 +158,7 @@ impl LocalManifest {
     }
 
     /// Get the current workspace version, if any.
+    #[must_use]
     pub fn get_workspace_version(&self) -> Option<Version> {
         let version = self
             .data
@@ -172,6 +175,7 @@ impl LocalManifest {
     }
 }
 
+#[must_use]
 pub fn workspace_manifest(metadata: &Metadata) -> Utf8PathBuf {
     metadata.workspace_root.join(CARGO_TOML)
 }

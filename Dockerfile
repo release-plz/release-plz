@@ -88,15 +88,14 @@ RUN set -eux; \
     ./rustup-init -y --no-modify-path --profile minimal --default-host ${rustArch}; \
     rm rustup-init; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
-    cargo --version; \
     apt-get remove -y --auto-remove \
         wget \
         ; \
     rm -rf /var/lib/apt/lists/*; \
-    mv /usr/local/cargo/bin/cargo ~; \
-    mv /usr/local/cargo/bin/rustc ~; \
-    rm /usr/local/cargo/bin/*; \
-    mv ~/cargo /usr/local/cargo/bin/; \
-    mv ~/rustc /usr/local/cargo/bin/;
+    # `cargo` and `rustc` are links to the `rustup` binary, so `rustup` must stay in the image.
+    # Run these checks last, so that the build fails if an earlier command breaks the toolchain.
+    rustup --version; \
+    cargo --version; \
+    rustc --version;
 COPY --from=builder /app/target/release/release-plz /usr/local/bin
 ENTRYPOINT ["release-plz"]

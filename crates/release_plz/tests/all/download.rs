@@ -4,7 +4,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
 use crate::helpers::{TEST_REGISTRY, TEST_SPARSE_REGISTRY, test_context::TestContext};
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn download_preserves_request_order_and_skips_missing_packages() {
     let crates = ["first", "second", "third"];
     let context = TestContext::new_workspace(&crates).await;
@@ -52,11 +52,11 @@ async fn download_returns_nothing_for_empty_requests() {
         .download()
         .await
         .unwrap();
-    assert!(packages.is_empty());
+    assert_eq!(packages, []);
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn download_rejects_duplicate_packages() {
     let context = TestContext::new().await;
     let name = &context.gitea.repo;
@@ -250,7 +250,7 @@ async fn download_returns_query_error_before_other_index_requests_finish() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "docker-tests"), ignore)]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn download_respects_source_replacement() {
     let context = TestContext::new().await;
     let name = &context.gitea.repo;
