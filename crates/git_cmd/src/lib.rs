@@ -1219,8 +1219,8 @@ D  crates/git_cmd/CHANGELOG.md
         let objects = repo.git_path("objects").unwrap();
         assert_eq!(objects, repo.directory().join(".git/objects"));
 
-        let worktrees_dir = tempdir().unwrap();
-        let worktree_dir = Utf8Path::from_path(worktrees_dir.path())
+        let temporary = tempdir().unwrap();
+        let worktree_dir = Utf8Path::from_path(temporary.path())
             .unwrap()
             .join("worktree");
         repo.add_worktree(&worktree_dir, "HEAD").unwrap();
