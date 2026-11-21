@@ -84,6 +84,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: read
+      # Enabled the following for trusted-publishing
+      # id-token: write
     steps:
       - &checkout
         name: Checkout repository
@@ -100,6 +102,7 @@ jobs:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable the following from being set when using trusted-publishing
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   # Create a PR with the new versions and changelog, preparing the next release.
@@ -175,6 +178,8 @@ jobs:
       contents: write
       # Detect the release PR and its commits.
       pull-requests: read
+      # Let github generate a OIDC token for trusted publishing
+      # id-token: write
     steps:
       - &checkout
         name: Checkout repository
