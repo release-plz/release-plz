@@ -52,12 +52,20 @@ jobs:
       - ...
       - name: Run release-plz
 # highlight-next-line
-        uses: release-plz/action@63ab0c2746bedc448370bad4b0b3d536458398b0 # v0.5.50
+        uses: release-plz/action@1528104d2ca23787631a1c1f022abb64b34c1e11 # v0.5.128
 
 ```
 
 This is the same approach used in the crates.io
 [repository](https://github.com/rust-lang/crates.io/blob/7e52e11c5ddeb33db70f0000bbcdfb01e9b43b0d/.github/workflows/ci.yml#L30C32-L31C1).
+
+:::tip
+
+Use [Renovate](https://docs.renovatebot.com/) or [Dependabot](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates)
+to keep the pinned action version up to date automatically.
+Both tools can detect pinned GitHub Action commits and open PRs when new versions are released.
+
+:::
 
 ## Pass environment variables
 
