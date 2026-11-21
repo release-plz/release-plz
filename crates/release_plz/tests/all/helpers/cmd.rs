@@ -1,4 +1,4 @@
-use assert_cmd::Command;
+use assert_cmd::{Command, assert::Assert};
 use cargo_metadata::camino::Utf8Path;
 
 pub fn release_plz_cmd(target_dir: &Utf8Path) -> Command {
@@ -9,6 +9,27 @@ pub fn release_plz_cmd(target_dir: &Utf8Path) -> Command {
     // release-plz runs cargo on the fixture packages, e.g. `cargo publish`.
     allow_cargo_warnings(&mut cmd);
     cmd
+}
+
+/// Run the release-plz `command`, asserting that it succeeds, and return its
+/// debug logs.
+pub fn run_with_debug_logs(command: Command) -> String {
+    debug_logs(command, Assert::success)
+}
+
+/// Run the release-plz `command`, asserting that it fails, and return its
+/// debug logs, followed by its error.
+pub fn fail_with_debug_logs(command: Command) -> String {
+    debug_logs(command, Assert::failure)
+}
+
+/// Run the release-plz `command`, asserting its `outcome`, and return its
+/// standard error, with debug logs.
+fn debug_logs(mut command: Command, outcome: fn(Assert) -> Assert) -> String {
+    let assert = command
+        .env("RELEASE_PLZ_LOG", "release_plz_core=debug")
+        .assert();
+    String::from_utf8(outcome(assert).get_output().stderr.clone()).unwrap()
 }
 
 pub fn cargo_cmd() -> Command {
