@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.1](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.43.0...release_plz_core-v0.43.1) - 2026-11-21
+
+### Other
+
+- enable the workspace pedantic Clippy lint group ([#3334](https://github.com/release-plz/release-plz/pull/3334))
+- *(deps)* update cargo to 0.101.0 ([#3332](https://github.com/release-plz/release-plz/pull/3332))
+
 ## [0.43.0](https://github.com/release-plz/release-plz/compare/release_plz_core-v0.42.1...release_plz_core-v0.43.0) - 2026-10-26
 
 ### Fixed
