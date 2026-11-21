@@ -22,6 +22,10 @@ Read our [AI policy](https://github.com/release-plz/.github/blob/main/AI_POLICY.
 
 ## Developing
 
+Tests require [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
+and [cargo-dist 0.33.0](https://github.com/axodotdev/cargo-dist/releases/tag/v0.33.0)
+to be installed, with `cargo-semver-checks` and `dist` available on `PATH`.
+
 ### Useful Commands
 
 - Build and run release version:
