@@ -10,6 +10,7 @@ mod set_version;
 mod update;
 
 use anyhow::bail;
+use cargo_metadata::camino::Utf8Path;
 use clap::{
     ValueEnum,
     builder::{Styles, styling::AnsiColor},
@@ -30,6 +31,16 @@ const HELP_STYLES: Styles = Styles::styled()
     .usage(MAIN_COLOR.on_default().bold())
     .placeholder(SECONDARY_COLOR.on_default())
     .literal(SECONDARY_COLOR.on_default());
+
+pub fn config_paths() -> impl Iterator<Item = &'static Utf8Path> {
+    config_path::DEFAULT_CONFIG_PATHS
+        .iter()
+        .map(|path| Utf8Path::new(path))
+}
+
+pub fn main_config_path() -> &'static Utf8Path {
+    Utf8Path::new("release-plz.toml")
+}
 
 /// Release-plz manages versioning, changelogs, and releases for Rust projects.
 ///

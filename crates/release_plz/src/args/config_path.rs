@@ -11,7 +11,7 @@ use tracing::info;
 use crate::config::Config;
 
 /// Paths checked in order when `--config` is not specified.
-const DEFAULT_CONFIG_PATHS: &[&str] = &[
+pub(super) const DEFAULT_CONFIG_PATHS: &[&str] = &[
     "release-plz.toml",
     ".release-plz.toml",
     ".config/release-plz.toml",
