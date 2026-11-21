@@ -364,9 +364,15 @@ impl Updater<'_> {
                     SEMVER_CHECK_LOG_ONCE.call_once(|| {
                         tracing::info!("Checking API compatibility with cargo-semver-checks...");
                     });
+                    let features = semver_check::Features::published(
+                        p,
+                        package_config.publish_features(),
+                        package_config.publish_all_features(),
+                    );
                     let semver_check = semver_check::run_semver_check(
                         &package_path,
                         registry_package_path,
+                        &features,
                         semver_check_target_dir,
                     )
                     .context("error while running cargo-semver-checks")?;
