@@ -7,7 +7,7 @@ use cargo_metadata::{
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     env,
-    process::{Command, ExitStatus},
+    process::{Command, ExitStatus, Output},
     time::{Duration, Instant},
 };
 use tracing::{debug, info};
@@ -98,24 +98,29 @@ pub fn run_cargo_with_env(
     }
 
     let output = command.output().context("cannot run cargo")?;
-
-    let output_stdout = String::from_utf8(output.stdout)?;
-    let output_stderr = String::from_utf8(output.stderr)?;
-
-    debug!("cargo stderr: {}", output_stderr);
-    debug!("cargo stdout: {}", output_stdout);
-
-    Ok(CmdOutput {
-        status: output.status,
-        stdout: output_stdout,
-        stderr: output_stderr,
-    })
+    CmdOutput::from_output(output)
 }
 
 pub struct CmdOutput {
     pub status: ExitStatus,
     pub stdout: String,
     pub stderr: String,
+}
+
+impl CmdOutput {
+    fn from_output(output: Output) -> anyhow::Result<Self> {
+        let stdout = String::from_utf8(output.stdout)?;
+        let stderr = String::from_utf8(output.stderr)?;
+
+        debug!("cargo stderr: {}", stderr);
+        debug!("cargo stdout: {}", stdout);
+
+        Ok(Self {
+            status: output.status,
+            stdout,
+            stderr,
+        })
+    }
 }
 
 /// Check if the package is published via `cargo info`.
@@ -135,6 +140,7 @@ pub async fn is_published(
 ) -> anyhow::Result<bool> {
     tokio::time::timeout(timeout, async {
         let output = run_cargo_info(workspace_root, package, registry, token)
+            .await
             .context("cannot run cargo info")?;
         if output.status.success() {
             Ok(true)
@@ -154,8 +160,8 @@ pub async fn is_published(
             )
         }
     })
-    .await?
-    .with_context(|| format!("timeout while checking if `{}` is published", package.name))
+    .await
+    .with_context(|| format!("timeout while checking if `{}` is published", package.name))?
 }
 
 fn registry_or_crates_io(registry: Option<&str>) -> &str {
@@ -172,7 +178,7 @@ fn cargo_info_reports_missing(output: &CmdOutput) -> bool {
     stdout_and_stderr.contains("could not find")
 }
 
-fn run_cargo_info(
+async fn run_cargo_info(
     workspace_root: &Utf8Path,
     package: &Package,
     registry: Option<&str>,
@@ -184,17 +190,18 @@ fn run_cargo_info(
 
     debug!("Run `cargo {}` in {workspace_root}", args.join(" "));
 
-    let mut cmd = cargo_cmd();
+    let mut cmd = tokio::process::Command::from(cargo_cmd());
     cmd.current_dir(workspace_root).args(args);
-
-    let mut envs = vec![];
+    // A timed-out registry lookup must not keep running and holding Cargo's cache lock.
+    cmd.kill_on_drop(true);
 
     if let Some(token) = token {
         let env_var = cargo_utils::cargo_registries_token_env_var_name(registry_name)?;
-        envs.push((env_var, token.clone()));
+        cmd.env(env_var, token.expose_secret());
     }
 
-    run_cargo_with_env(workspace_root, &args, &envs)
+    let output = cmd.output().await.context("cannot run cargo")?;
+    CmdOutput::from_output(output)
 }
 
 pub async fn wait_until_published(
