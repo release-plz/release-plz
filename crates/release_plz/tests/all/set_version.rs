@@ -606,6 +606,73 @@ fn set_version_updates_each_package_release_in_shared_workspace_changelog() {
 }
 
 #[test]
+fn set_version_updates_shared_release_of_packages_set_to_the_same_version() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-shared-changelog");
+    // Both packages are at 1.2.3 and share the release `## [1.2.3]`.
+    // Renaming it once per package used to produce `## [1.2.300]`.
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    let changelog = fs_err::read_to_string(&changelog_path).unwrap();
+
+    run_set_version(&project_dir, "one@1.2.30 two@1.2.30");
+
+    assert_eq!(
+        fs_err::read_to_string(changelog_path).unwrap(),
+        changelog.replace("1.2.3", "1.2.30")
+    );
+}
+
+#[test]
+fn set_version_fails_if_packages_sharing_a_release_get_different_versions() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-shared-changelog");
+    // Both packages are at 1.2.3 and share the release `## [1.2.3]`,
+    // which can't be renamed to both versions.
+    let files = [
+        project_dir.join(CHANGELOG_FILENAME),
+        project_dir.join("crates/one").join(CARGO_TOML),
+        project_dir.join("crates/two").join(CARGO_TOML),
+    ];
+    let original_files = files.each_ref().map(|f| fs_err::read_to_string(f).unwrap());
+
+    let stderr = run_set_version_failure(&project_dir, "one@1.2.30 two@1.2.31");
+
+    assert!(
+        stderr.contains("can't set `one` to 1.2.30 and `two` to 1.2.31")
+            && stderr.contains("[1.2.3](https://example.com/releases/v1.2.3) - 2024-05-16")
+            && stderr.contains("CHANGELOG.md"),
+        "{stderr}"
+    );
+    for (file, original) in files.iter().zip(original_files) {
+        assert_eq!(fs_err::read_to_string(file).unwrap(), original, "{file}");
+    }
+}
+
+#[test]
+fn set_version_replaces_only_whole_versions_in_release_title() {
+    let (_temp_dir, project_dir) = copy_fixture("set-version-in-package");
+    // The link starts from a pre-release of the current version (0.1.0),
+    // whose version contains the current one but must stay unchanged.
+    let changelog_path = project_dir.join(CHANGELOG_FILENAME);
+    fs_err::write(
+        &changelog_path,
+        "\
+# Changelog
+
+## [0.1.0](https://github.com/owner/repo/compare/v0.1.0-alpha.1...v0.1.0) - 2024-05-16
+",
+    )
+    .unwrap();
+
+    run_set_version(&project_dir, "0.1.1");
+
+    expect_test::expect![[r"
+        # Changelog
+
+        ## [0.1.1](https://github.com/owner/repo/compare/v0.1.0-alpha.1...v0.1.1) - 2024-05-16
+    "]]
+    .assert_eq(&fs_err::read_to_string(changelog_path).unwrap());
+}
+
+#[test]
 fn set_version_warns_when_last_release_is_not_the_current_version() {
     let (_temp_dir, project_dir) = copy_fixture("set-version-in-workspace");
     // `one` has no release in its changelog.
