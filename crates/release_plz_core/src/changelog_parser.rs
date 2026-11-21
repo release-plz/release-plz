@@ -1,7 +1,7 @@
 use anyhow::Context;
 use cargo_metadata::camino::Utf8Path;
 use regex::Regex;
-use std::sync::LazyLock;
+use std::{ops::Range, sync::LazyLock};
 
 /// Parse the header from a changelog.
 /// The changelog header is a string at the begin of the changelog that:
@@ -79,6 +79,46 @@ pub fn last_version_from_str(changelog: &str) -> anyhow::Result<Option<String>> 
 
 pub fn last_release_from_str(changelog: &str) -> anyhow::Result<Option<ChangelogRelease>> {
     map_last_release(changelog, ChangelogRelease::from_release)
+}
+
+/// Last release of `package`, skipping the "Unreleased" section.
+///
+/// To let several packages share a changelog, the release title can start with the
+/// package name, optionally in backticks, e.g.
+/// `` ## `my-package` - [1.2.3](https://...) - 2024-05-17 ``
+/// or `## my-package - [1.2.3] - 2024-05-17`.
+/// Titles starting with the name of another package are ignored.
+pub fn last_package_release<'a>(changelog: &'a str, package: &str) -> Option<PackageRelease<'a>> {
+    // The default prefix format of `parse_changelog`, preceded by the package name.
+    let prefix_format = format!(
+        r"^(?:`?{}`?\s+(?:-\s+)?)?(?:v|Version |Release )?",
+        regex::escape(package)
+    );
+    let mut parser = parse_changelog::Parser::new();
+    parser
+        .prefix_format(&prefix_format)
+        .expect("package names are escaped");
+    let release = parser
+        .parse_iter(changelog)
+        .find(|release| !release.version.to_lowercase().contains("unreleased"))?;
+    // `parse_changelog` borrows the title from the changelog, so its address locates it,
+    // even if the same text is also part of another title.
+    let title_start = release.title.as_ptr().addr() - changelog.as_ptr().addr();
+    Some(PackageRelease {
+        version: release.version,
+        title: release.title,
+        title_range: title_start..title_start + release.title.len(),
+    })
+}
+
+#[derive(Debug)]
+pub struct PackageRelease<'a> {
+    /// E.g. `1.2.3`.
+    pub version: &'a str,
+    /// E.g. `` `my-package` - [1.2.3](https://...) - 2024-05-17 ``.
+    pub title: &'a str,
+    /// Byte range of the title in the changelog.
+    pub title_range: Range<usize>,
 }
 
 /// Parse the changelog and map its last release, skipping the "Unreleased" section.

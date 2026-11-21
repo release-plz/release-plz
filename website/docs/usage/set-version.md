@@ -6,6 +6,17 @@ Like [`release-plz update`](update.md), this command looks for the changelog of 
 at the [`changelog_path`](../config.md#the-changelog_path-field) and doesn't edit the changelog
 of packages with [`changelog_update`](../config.md#the-changelog_update-field) set to `false`.
 
+In the changelog, `set-version` renames the last release of the package,
+replacing the current version of the package with the new one, also in the release link.
+To support a changelog shared by multiple packages, release titles can start
+with the package name, like in the [single changelog](../extra/single-changelog.md#all-packages)
+example: `` ## `my-package` - [1.2.3](...) - 2024-05-17 `` or `## my-package - [1.2.3](...) - 2024-05-17`.
+Releases of other packages are ignored.
+
+If the last release of a package isn't its current version, or if its changelog doesn't exist,
+`set-version` logs a warning and leaves the changelog unchanged.
+If a changelog can't be read, `set-version` fails without editing any file.
+
 - In a project containing a single package pass the version you want to set.
   E.g. `release-plz set-version 1.2.3`
 
