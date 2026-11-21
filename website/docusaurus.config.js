@@ -132,10 +132,22 @@ const config = {
               {
                 label: "BlueSky",
                 href: "https://bsky.app/profile/release-plz.dev",
+                className: "footer__link-item--social footer__link-item--bluesky",
               },
               {
                 label: "LinkedIn",
                 href: "https://www.linkedin.com/company/release-plz/",
+                className: "footer__link-item--social footer__link-item--linkedin",
+              },
+              {
+                label: "X (Twitter)",
+                href: "https://x.com/release_plz_dev",
+                className: "footer__link-item--social footer__link-item--x",
+              },
+              {
+                label: "Mastodon",
+                href: "https://hachyderm.io/@release_plz",
+                className: "footer__link-item--social footer__link-item--mastodon",
               },
             ],
           },
