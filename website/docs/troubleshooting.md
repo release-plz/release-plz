@@ -21,6 +21,32 @@ If yes, try to:
 
 Please open an [issue](https://github.com/release-plz/release-plz/issues), too.
 
+## GitHub rejects branch creation with `403 Resource not accessible by integration`
+
+First, check that the token has `contents: write` and `pull-requests: write`
+permissions, as described in the [GitHub setup guide](./github/quickstart.md).
+
+This error can also occur with those permissions when release-plz runs on an older
+commit and newer commits have changed `.github/workflows/`. GitHub checks workflow
+permissions when creating Git references, even if release-plz itself only changes
+versions and changelogs. The default `GITHUB_TOKEN` cannot be granted
+`workflows: write`. See this [GitHub discussion](https://github.com/orgs/community/discussions/151442)
+for a reproduction of the workflow-file restriction.
+
+Run release-plz on the latest commit of the target branch. Rerunning an old GitHub
+Actions run uses its original commit, so it can keep failing even after a newer run
+has succeeded. This can also happen when another push advances the branch while a
+release-plz job is running; serializing release jobs does not prevent new pushes.
+
+If you need to run on that older commit, use a [GitHub App or personal access token](./github/token.md)
+with permission to write workflows as well as the usual release-plz permissions.
+Repository rulesets can also restrict branch creation, so check those if the error
+persists on the latest commit.
+
+When updating an existing release PR fails with an HTTP `401` or `403`, release-plz
+leaves it open and reports the error. Closing it before creating a replacement can
+leave you without a release PR if the replacement is denied too.
+
 ## `release-plz release` hangs
 
 Something similar happened in [#1015](https://github.com/release-plz/release-plz/issues/1015).
