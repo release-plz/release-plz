@@ -19,6 +19,8 @@ Example:
 
 You can configure whether to run `cargo-semver-checks` or not in the
 [configuration file](config.md#the-semver_check-field).
+To choose the features to check, see
+[`publish_features`](config.md#the-publish_features-field).
 
 ## FAQ
 

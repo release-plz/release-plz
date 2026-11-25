@@ -640,12 +640,35 @@ Pass a list of features to use for verification by `cargo publish`.
   `cargo publish`.
 - If not set or if it is empty, no list of features will be passed to `cargo publish`.
 
+If `publish_features` is set to `["a", "b"]` and
+[`publish_all_features`](#the-publish_all_features-field) isn't `true`,
+[cargo-semver-checks] enables the default features plus `a` and `b`, like `cargo publish`.
+Since [cargo-semver-checks] can only enable features of the package itself:
+
+- `package_name/feature` and `package_name?/feature` become `feature`.
+- `dependency/feature` becomes `dependency` if `dependency` is an optional dependency and the
+  package has a feature named after it, because `cargo publish` enables that feature.
+- Other features of dependencies, such as `dependency?/feature` and features of required
+  dependencies, are ignored.
+
+If `publish_features` is not set or is empty and `publish_all_features` isn't `true`,
+[cargo-semver-checks] enables all features except the ones that look unstable or internal, such
+as `unstable`, `nightly` or features starting with `_`.
+
+Set this field if some features are mutually exclusive, intentionally change the public API,
+or need dependencies that aren't available in CI.
+To check only the default features, set it to `["default"]`. If your package doesn't
+have default features, declare `default = []` in its `Cargo.toml`.
+
 #### The `publish_all_features` field
 
 Whether to pass the `--all-features` to `cargo publish` when verifying.
 
 - If `true`, `release-plz` adds the `--all-features` flag to `cargo publish`.
 - If `false`, `release-plz` doesn't add the `--all-features` flag to `cargo publish`.
+
+If `true`, [cargo-semver-checks] checks the API with all features enabled,
+regardless of [`publish_features`](#the-publish_features-field).
 
 #### The `publish_timeout` field
 
@@ -795,6 +818,8 @@ API breaking changes of your package:
 :::info
 [cargo-semver-checks] only works with packages containing a library.
 :::
+
+To choose the features to check, see [`publish_features`](#the-publish_features-field).
 
 This field can be overridden in the [`[package]`](#the-package-section) section.
 

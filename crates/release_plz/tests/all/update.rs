@@ -85,6 +85,83 @@ fn update_with_removed_function(
 }
 
 #[test]
+fn semver_check_uses_publish_features() {
+    assert_cargo_semver_checks_is_installed();
+    let removed_functions = [
+        "default_feature",
+        "listed_feature",
+        "unlisted_feature",
+        "internal_feature",
+        "optional_dependency",
+    ];
+    for (release_plz_toml, expected_reported) in [
+        // Values can hold several features, qualified with the package name. `two?/x`
+        // doesn't enable the optional dependency, so `optional_dependency` stays hidden.
+        (
+            "publish_features = [\"one/listed two?/x\"]\n",
+            &["default_feature", "listed_feature"][..],
+        ),
+        // Unlike `two?/x`, `two/x` enables `two`, so cargo-semver-checks must get the `two`
+        // feature, as it can't enable features of dependencies. `one?/listed` enables
+        // `listed`, because cargo ignores the `?` after the name of the package itself.
+        (
+            "publish_features = [\"two/x\", \"one?/listed\"]\n",
+            &["default_feature", "listed_feature", "optional_dependency"],
+        ),
+        // `cargo publish --all-features` also enables the unlisted features, including
+        // `_internal`, which cargo-semver-checks doesn't enable by default.
+        (
+            "publish_features = [\"listed\"]\n[[package]]\nname = \"one\"\npublish_all_features = true\n",
+            &removed_functions,
+        ),
+    ] {
+        let (temp_dir, repo) = released_workspace(
+            &[
+                (
+                    "one",
+                    "version = \"1.0.0\"\n\
+                     [dependencies]\n\
+                     two = { path = \"../two\", version = \"1.0.0\", optional = true }\n\
+                     [features]\n\
+                     default = [\"std\"]\n\
+                     std = []\n\
+                     listed = []\n\
+                     unlisted = []\n\
+                     _internal = []\n",
+                ),
+                ("two", "version = \"1.0.0\"\n[features]\nx = []\n"),
+            ],
+            "",
+            &format!("[workspace]\nsemver_check = true\n{release_plz_toml}"),
+        );
+        // The published version has a function behind each kind of feature, and the
+        // `fix` commit removes all of them.
+        fs_err::write(
+            temp_dir.path().join("registry/one/src/lib.rs"),
+            "#[cfg(feature = \"std\")]\npub fn default_feature() {}\n\
+             #[cfg(feature = \"listed\")]\npub fn listed_feature() {}\n\
+             #[cfg(feature = \"unlisted\")]\npub fn unlisted_feature() {}\n\
+             #[cfg(feature = \"_internal\")]\npub fn internal_feature() {}\n\
+             #[cfg(feature = \"two\")]\npub fn optional_dependency() {}\n",
+        )
+        .unwrap();
+        change_package(&repo, "one", "fix: remove functions");
+
+        let output = run_workspace_update(&temp_dir, &repo, None);
+
+        // cargo-semver-checks reports a removed function only if it enabled its feature,
+        // like `cargo publish` does with the configured features.
+        for function in removed_functions {
+            assert_eq!(
+                output.contains(&format!("function one::{function},")),
+                expected_reported.contains(&function),
+                "{function} with config:\n{release_plz_toml}\noutput:\n{output}"
+            );
+        }
+    }
+}
+
+#[test]
 fn update_workspace_without_publishable_packages() {
     let (temp_dir, repo) = released_workspace(
         &[("one", "version = \"1.0.0\"\npublish = false\n")],
