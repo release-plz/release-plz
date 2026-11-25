@@ -35,10 +35,13 @@ mod version;
 pub use changelog::*;
 pub use command::*;
 pub use download::{PackageDownloader, read_package};
-pub use git::forge::{ForgeType, GitClient, GitForge, GitPr};
 pub use git::gitea_client::Gitea;
 pub use git::github_client::GitHub;
 pub use git::gitlab_client::GitLab;
+pub use git::{
+    error::GitError,
+    forge::{ForgeType, GitClient, GitForge, GitPr},
+};
 pub use next_ver::*;
 pub use package_compare::*;
 pub use package_path::*;
