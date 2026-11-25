@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/release-plz/release-plz/compare/git_cmd-v0.9.1...git_cmd-v0.9.2) - 2026-11-25
+
+### Other
+
+- enable the workspace pedantic Clippy lint group ([#3334](https://github.com/release-plz/release-plz/pull/3334))
+
 ## [0.9.1](https://github.com/release-plz/release-plz/compare/git_cmd-v0.9.0...git_cmd-v0.9.1) - 2026-10-19
 
 ### Performance

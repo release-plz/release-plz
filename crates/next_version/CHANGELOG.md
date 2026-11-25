@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6](https://github.com/release-plz/release-plz/compare/next_version-v0.3.5...next_version-v0.3.6) - 2026-11-25
+
+### Fixed
+
+- *(next_version)* increment pre-release made of a single number ([#3343](https://github.com/release-plz/release-plz/pull/3343))
+
+### Other
+
+- enable the workspace pedantic Clippy lint group ([#3334](https://github.com/release-plz/release-plz/pull/3334))
+
 ## [0.3.5](https://github.com/release-plz/release-plz/compare/next_version-v0.3.4...next_version-v0.3.5) - 2026-10-24
 
 ### Fixed
