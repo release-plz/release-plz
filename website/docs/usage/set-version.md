@@ -15,7 +15,8 @@ Releases of other packages are ignored.
 
 If the last release of a package isn't its current version, or if its changelog doesn't exist,
 `set-version` logs a warning and leaves the changelog unchanged.
-If a changelog can't be read, `set-version` fails without editing any file.
+If a changelog can't be read, or if packages sharing a release title like `## [1.2.3](...)`
+are set to different versions, `set-version` fails without editing any file.
 
 - In a project containing a single package pass the version you want to set.
   E.g. `release-plz set-version 1.2.3`
