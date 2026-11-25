@@ -2,6 +2,64 @@ use release_plz_core::fs_utils::Utf8TempDir;
 
 use crate::helpers::{package::TestPackage, release_stdout, test_context::TestContext};
 
+#[cfg(unix)]
+#[tokio::test]
+#[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
+async fn cargo_info_timeout_stops_the_child() {
+    use std::{os::unix::fs::PermissionsExt, process::Command, time::Duration};
+
+    let context = TestContext::new().await;
+    context.write_release_plz_toml("[workspace]\npublish_timeout = \"1s\"\n");
+    let scripts = Utf8TempDir::new().unwrap();
+    let cargo = scripts.path().join("cargo");
+    let pid_file = scripts.path().join("cargo-info.pid");
+    fs_err::write(
+        &cargo,
+        r#"#!/bin/sh
+if [ "$1" = "info" ]; then
+    echo $$ > "$RELEASE_PLZ_TEST_PID_FILE"
+    exec sleep 10
+fi
+exec "$RELEASE_PLZ_TEST_REAL_CARGO" "$@"
+"#,
+    )
+    .unwrap();
+    fs_err::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let result = context
+        .release_command()
+        .env("CARGO", cargo)
+        .env("RELEASE_PLZ_TEST_REAL_CARGO", env!("CARGO"))
+        .env("RELEASE_PLZ_TEST_PID_FILE", &pid_file)
+        .timeout(Duration::from_secs(30))
+        .assert()
+        .failure();
+    let stderr = String::from_utf8_lossy(&result.get_output().stderr);
+    assert!(
+        stderr.contains(&format!(
+            "timeout while checking if `{}` is published",
+            context.gitea.repo
+        )),
+        "{stderr}"
+    );
+
+    // The wrapper replaces itself with sleep, so this is the direct child's PID.
+    // A zombie has already exited, even if its parent hasn't reaped it yet.
+    let pid = fs_err::read_to_string(pid_file).unwrap();
+    for _ in 0..20 {
+        let process = Command::new("ps")
+            .args(["-o", "stat=", "-p", pid.trim()])
+            .output()
+            .unwrap();
+        let state = String::from_utf8(process.stdout).unwrap();
+        if state.trim().is_empty() || state.trim_start().starts_with('Z') {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("cargo info process {pid} is still running after the timeout");
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "docker-tests"), ignore = "requires Docker")]
 async fn release_info_contains_prs_in_changelog() {
