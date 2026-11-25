@@ -86,8 +86,11 @@ pub enum Features {
 }
 
 impl Features {
-    /// The features that `cargo publish` verifies `package` with, given its
-    /// `--features` values and whether it passes `--all-features`.
+    /// The features to check `package` with, given the `--features` values of
+    /// `cargo publish` and whether it passes `--all-features`.
+    /// If `features` is empty and `all_features` is `false`, `cargo publish` enables only
+    /// the default features, while cargo-semver-checks uses its heuristic. Features of
+    /// dependencies aren't included, because cargo-semver-checks can't enable them directly.
     pub fn published(package: &Package, features: &[String], all_features: bool) -> Self {
         if all_features {
             return Self::All;
@@ -104,7 +107,12 @@ impl Features {
             .filter(|feature| !feature.is_empty())
             .filter_map(|feature| match feature.split_once('/') {
                 None => Some(feature),
-                Some((name, feature)) if name == package.name.as_str() => Some(feature),
+                // Cargo ignores a `?` after the package's own name.
+                Some((name, feature))
+                    if name.strip_suffix('?').unwrap_or(name) == package.name.as_str() =>
+                {
+                    Some(feature)
+                }
                 // `dependency/feature` enables an optional dependency, along with the
                 // package feature named after it.
                 Some((dependency, _)) if enables_feature(package, dependency) => Some(dependency),

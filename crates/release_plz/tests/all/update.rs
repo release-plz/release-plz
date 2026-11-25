@@ -91,6 +91,7 @@ fn semver_check_uses_publish_features() {
         "default_feature",
         "listed_feature",
         "unlisted_feature",
+        "internal_feature",
         "optional_dependency",
     ];
     for (release_plz_toml, expected_reported) in [
@@ -101,12 +102,14 @@ fn semver_check_uses_publish_features() {
             &["default_feature", "listed_feature"][..],
         ),
         // Unlike `two?/x`, `two/x` enables `two`, so cargo-semver-checks must get the `two`
-        // feature, as it can't enable features of dependencies.
+        // feature, as it can't enable features of dependencies. `one?/listed` enables
+        // `listed`, because cargo ignores the `?` after the name of the package itself.
         (
-            "publish_features = [\"two/x\"]\n",
-            &["default_feature", "optional_dependency"],
+            "publish_features = [\"two/x\", \"one?/listed\"]\n",
+            &["default_feature", "listed_feature", "optional_dependency"],
         ),
-        // `cargo publish --all-features` also enables the unlisted feature.
+        // `cargo publish --all-features` also enables the unlisted features, including
+        // `_internal`, which cargo-semver-checks doesn't enable by default.
         (
             "publish_features = [\"listed\"]\n[[package]]\nname = \"one\"\npublish_all_features = true\n",
             &removed_functions,
@@ -123,7 +126,8 @@ fn semver_check_uses_publish_features() {
                      default = [\"std\"]\n\
                      std = []\n\
                      listed = []\n\
-                     unlisted = []\n",
+                     unlisted = []\n\
+                     _internal = []\n",
                 ),
                 ("two", "version = \"1.0.0\"\n[features]\nx = []\n"),
             ],
@@ -137,6 +141,7 @@ fn semver_check_uses_publish_features() {
             "#[cfg(feature = \"std\")]\npub fn default_feature() {}\n\
              #[cfg(feature = \"listed\")]\npub fn listed_feature() {}\n\
              #[cfg(feature = \"unlisted\")]\npub fn unlisted_feature() {}\n\
+             #[cfg(feature = \"_internal\")]\npub fn internal_feature() {}\n\
              #[cfg(feature = \"two\")]\npub fn optional_dependency() {}\n",
         )
         .unwrap();

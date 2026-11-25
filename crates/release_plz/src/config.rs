@@ -471,7 +471,8 @@ pub struct PackageConfig {
     pub publish_no_verify: Option<bool>,
     /// # Publish Features
     /// If `["a", "b", "c"]`, add the `--features=a,b,c` flag to the `cargo publish` command.
-    /// cargo-semver-checks then checks the default features plus `a`, `b` and `c`.
+    /// cargo-semver-checks then checks the default features plus `a`, `b` and `c`,
+    /// unless `publish_all_features` is `true`.
     pub publish_features: Option<Vec<String>>,
     /// # Publish All Features
     /// If `true`, add the `--all-features` flag to the `cargo publish` command.

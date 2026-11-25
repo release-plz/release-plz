@@ -31,9 +31,11 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
-    /// Features passed to `cargo publish`. cargo-semver-checks checks the same features.
+    /// Features passed to `cargo publish`. Unless this is empty or `publish_all_features` is
+    /// `true`, cargo-semver-checks enables the default features plus the features of the
+    /// package (not of its dependencies) that these values enable.
     pub publish_features: Vec<String>,
-    /// Whether `cargo publish` enables all features. cargo-semver-checks does the same.
+    /// If `true`, `cargo publish` and cargo-semver-checks enable all features.
     pub publish_all_features: bool,
 }
 
