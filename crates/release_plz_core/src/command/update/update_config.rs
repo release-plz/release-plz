@@ -31,6 +31,9 @@ pub struct UpdateConfig {
     pub custom_major_increment_regex: Option<String>,
     /// Whether to use git tags instead of registry for determining package versions.
     pub git_only: Option<bool>,
+    /// Features passed to `cargo publish`. If not empty, cargo-semver-checks
+    /// checks only the default features plus these.
+    pub publish_features: Vec<String>,
 }
 
 /// Package-specific config
@@ -74,6 +77,10 @@ impl PackageUpdateConfig {
     pub fn git_only(&self) -> Option<bool> {
         self.generic.git_only
     }
+
+    pub fn publish_features(&self) -> &[String] {
+        &self.generic.publish_features
+    }
 }
 
 impl Default for UpdateConfig {
@@ -89,6 +96,7 @@ impl Default for UpdateConfig {
             changelog_path: None,
             custom_minor_increment_regex: None,
             custom_major_increment_regex: None,
+            publish_features: vec![],
         }
     }
 }
