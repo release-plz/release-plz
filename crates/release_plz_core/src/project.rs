@@ -52,8 +52,7 @@ impl Project {
         metadata: &Metadata,
         release_metadata_builder: &dyn ReleaseMetadataBuilder,
     ) -> anyhow::Result<Self> {
-        let manifest = local_manifest;
-        let manifest_dir = manifest_dir(manifest)?.to_path_buf();
+        let manifest_dir = fs_utils::canonicalize_utf8(manifest_dir(local_manifest)?)?;
         debug!("manifest_dir: {manifest_dir:?}");
         let root = root_repo_path_from_manifest_dir(&manifest_dir)?;
         debug!("project_root: {root:?}");
