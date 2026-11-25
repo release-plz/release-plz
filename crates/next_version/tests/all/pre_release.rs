@@ -63,3 +63,11 @@ fn dot_1_is_added_to_character_identifier_in_pre_release() {
     let expected = Version::parse("1.0.0-beta.1.a.1").unwrap();
     assert_eq!(version.next(commits), expected);
 }
+
+#[test]
+fn single_numeric_identifier_in_pre_release_is_incremented() {
+    let commits = ["feat!: break user"];
+    let version = Version::parse("1.0.0-1").unwrap();
+    let expected = Version::parse("1.0.0-2").unwrap();
+    assert_eq!(version.next(commits), expected);
+}

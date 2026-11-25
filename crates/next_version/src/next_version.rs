@@ -90,14 +90,10 @@ impl NextVersion for Version {
 }
 
 fn increment_last_identifier(release: &str) -> String {
-    match release.rsplit_once('.') {
-        Some((left, right)) => {
-            if let Ok(right_num) = right.parse::<u32>() {
-                format!("{left}.{}", right_num + 1)
-            } else {
-                format!("{release}.1")
-            }
-        }
+    let last_start = release.rfind('.').map_or(0, |dot| dot + 1);
+    let (prefix, last) = release.split_at(last_start);
+    match last.parse::<u32>().ok().and_then(|num| num.checked_add(1)) {
+        Some(next) => format!("{prefix}{next}"),
         None => format!("{release}.1"),
     }
 }
