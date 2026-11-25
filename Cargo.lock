@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "cargo_utils"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -1520,7 +1520,7 @@ dependencies = [
  "glob",
  "humantime-serde",
  "indexmap",
- "next_version 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "next_version 0.3.5",
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
  "regex",
@@ -1589,7 +1589,7 @@ dependencies = [
 
 [[package]]
 name = "git_cmd"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "anyhow",
  "camino",
@@ -3377,6 +3377,8 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 [[package]]
 name = "next_version"
 version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00a6a2b4d7d00c336f6d4f13845c85a92dac6491186b940803a7b4e29ebe7a0d"
 dependencies = [
  "git-conventional 1.1.0",
  "regex",
@@ -3385,9 +3387,7 @@ dependencies = [
 
 [[package]]
 name = "next_version"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00a6a2b4d7d00c336f6d4f13845c85a92dac6491186b940803a7b4e29ebe7a0d"
+version = "0.3.6"
 dependencies = [
  "git-conventional 1.1.0",
  "regex",
@@ -4251,7 +4251,7 @@ checksum = "d902046e6a28a1e4c3cab97258a0ce11e994903f01c2d97a9447a0b3df85f4f6"
 
 [[package]]
 name = "release-plz"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4286,7 +4286,7 @@ dependencies = [
 
 [[package]]
 name = "release_plz_core"
-version = "0.43.0"
+version = "0.43.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4305,7 +4305,7 @@ dependencies = [
  "git2",
  "git_cmd",
  "ignore",
- "next_version 0.3.5",
+ "next_version 0.3.6",
  "parse-changelog",
  "regex",
  "reqwest",
@@ -5204,7 +5204,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_logs"
-version = "0.1.34"
+version = "0.1.35"
 dependencies = [
  "tracing-subscriber",
 ]
